@@ -19,7 +19,8 @@ import {
   Palette,
   ChevronDown,
   Languages,
-  Clock
+  Clock,
+  Trash2
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
@@ -52,6 +53,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(openAddModalInitially);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<{id: string, orderNumber: string} | null>(null);
   const [viewingInvoiceOrder, setViewingInvoiceOrder] = useState<SalesOrder | null>(
     selectedOrderIdInitially ? orders.find(o => o.id === selectedOrderIdInitially) || null : null
   );
@@ -185,6 +187,24 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   };
 
   // Mock Actions
+  const handleDeleteInvoice = (orderId: string, orderNumber: string) => {
+    setInvoiceToDelete({ id: orderId, orderNumber });
+  };
+
+  const confirmDeleteInvoice = () => {
+    if (!invoiceToDelete) return;
+    try {
+      dbStore.deleteSalesOrder(invoiceToDelete.id);
+      dbStore.logActivity(user.id, user.name, user.role, 'Delete Invoice', `Deleted invoice ${invoiceToDelete.orderNumber}`, businessId);
+      triggerToast(`Invoice ${invoiceToDelete.orderNumber} deleted successfully.`, 'success');
+      setOrders(dbStore.getSalesOrders(businessId));
+      setViewingInvoiceOrder(null);
+      setInvoiceToDelete(null);
+    } catch (err: any) {
+      triggerToast(err.message || 'Failed to delete invoice.', 'error');
+    }
+  };
+
   const handlePrintInvoice = (orderNumber: string) => {
     triggerToast(`Sent Tax Invoice for "${orderNumber}" to standard system spooler.`, 'success');
     dbStore.logActivity(user.id, user.name, user.role, 'Print Invoice', `Printed PDF invoice for ${orderNumber}`, businessId);
@@ -565,13 +585,25 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
               {/* Action buttons */}
               <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t flex justify-between gap-2">
-                <button 
-                  onClick={() => handleEmailInvoice(viewingInvoiceOrder.order_number, custObj?.email || 'customer@omnipack.com')}
-                  className="px-3.5 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold hover:bg-slate-200 cursor-pointer flex items-center gap-1.5"
-                >
-                  <Mail size={14} />
-                  <span>Email PDF Invoice</span>
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => handleEmailInvoice(viewingInvoiceOrder.order_number, custObj?.email || 'customer@omnipack.com')}
+                    className="px-3.5 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold hover:bg-slate-200 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Mail size={14} />
+                    <span className="hidden sm:inline">Email PDF Invoice</span>
+                  </button>
+                  {user.role === 'Super Admin' && (
+                    <button 
+                      onClick={() => handleDeleteInvoice(viewingInvoiceOrder.id, viewingInvoiceOrder.order_number)}
+                      className="px-3.5 py-2 bg-rose-100 text-rose-700 hover:bg-rose-200 rounded-lg text-[11px] font-semibold cursor-pointer flex items-center gap-1.5"
+                      title="Delete Invoice"
+                    >
+                      <Trash2 size={14} />
+                      <span className="hidden sm:inline">Delete</span>
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex gap-2">
                   <button 
@@ -761,6 +793,31 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   Compile & Place Sales Order
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {invoiceToDelete && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Delete Invoice</h3>
+            <p className="text-[13px] text-slate-500 mb-6">
+              Are you sure you want to delete invoice <strong>{invoiceToDelete.orderNumber}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setInvoiceToDelete(null)}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+              >
+                No
+              </button>
+              <button
+                onClick={confirmDeleteInvoice}
+                className="px-4 py-2 bg-rose-600 text-white rounded-lg text-xs font-semibold hover:bg-rose-700 cursor-pointer"
+              >
+                Yes, Delete
+              </button>
             </div>
           </div>
         </div>

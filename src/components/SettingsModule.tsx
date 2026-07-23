@@ -28,6 +28,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
 }) => {
   const [business, setBusiness] = useState<Business | null>(dbStore.getBusiness(businessId) || null);
 
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
   // Form states for multi-tenant settings
   const [name, setName] = useState(business?.name || '');
   const [gstin, setGstin] = useState(business?.gstin || '');
@@ -74,6 +76,17 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [whatsappTemplate, setWhatsappTemplate] = useState('Dear {{1}}, your order {{2}} has been packed!');
   const [smsGatewayUrl, setSmsGatewayUrl] = useState('https://api.sms-gateway.in/v1/send');
   const [googleMapsKey, setGoogleMapsKey] = useState('AIzaSy_SimulatedMapKey_Omnipack');
+
+  const handleFactoryReset = () => {
+    setShowResetConfirm(true);
+  };
+
+  const confirmFactoryReset = () => {
+    dbStore.clearAllAndReset();
+    triggerToast('System factory reset complete. Reloading...', 'success');
+    setShowResetConfirm(false);
+    setTimeout(() => window.location.reload(), 1500);
+  };
 
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,6 +303,47 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         </div>
 
       </form>
+      {user.role === 'Super Admin' && (
+        <div className="mt-8 pt-8 border-t border-rose-100 dark:border-rose-900/30">
+          <h3 className="text-sm font-bold text-rose-600 dark:text-rose-400 mb-2">Danger Zone</h3>
+          <p className="text-[11px] text-slate-500 mb-4">
+            Permanently delete all business data (orders, inventory, customers) and reset the database to a blank state.
+          </p>
+          <button
+            type="button"
+            onClick={handleFactoryReset}
+            className="px-4 py-2 bg-rose-100 text-rose-700 hover:bg-rose-200 rounded-lg text-[11px] font-bold cursor-pointer"
+          >
+            Factory Reset System Data
+          </button>
+        </div>
+      )}
+
+      {/* Factory Reset Confirmation Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6">
+            <h3 className="text-lg font-bold text-rose-600 dark:text-rose-400 mb-2">Factory Reset System</h3>
+            <p className="text-[13px] text-slate-500 mb-6">
+              WARNING: This will delete <strong>ALL</strong> data (Products, Orders, Customers, etc.) and reset the system. This action cannot be undone. Are you absolutely sure?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+              >
+                No, Cancel
+              </button>
+              <button
+                onClick={confirmFactoryReset}
+                className="px-4 py-2 bg-rose-600 text-white rounded-lg text-xs font-semibold hover:bg-rose-700 cursor-pointer"
+              >
+                Yes, Reset System
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

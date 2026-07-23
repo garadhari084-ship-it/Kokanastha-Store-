@@ -42,7 +42,7 @@ const PRE_SEEDED_BUSINESSES: Business[] = [
 // Seed profiles with email and clear password hashes
 const PRE_SEEDED_PROFILES: (UserProfile & { password_hash: string })[] = [
   {
-    id: 'admin_user',
+    id: 'a1111111-1111-1111-1111-111111111111',
     email: 'admin@admin.com',
     name: 'System Admin',
     role: 'Super Admin',
@@ -107,6 +107,11 @@ class ERPStorage {
   };
 
   constructor() {
+    const catStr = localStorage.getItem('omnipack_erp_categories');
+    if (catStr && catStr.includes('"cat-')) {
+       console.log('Clearing old invalid local storage with non-UUIDs...');
+       localStorage.clear();
+    }
     this.cache = {
       businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),
       profiles: this.load('profiles', PRE_SEEDED_PROFILES),
@@ -133,6 +138,46 @@ class ERPStorage {
     }
   }
 
+
+  
+  public async forcePushAllToSupabase() {
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase not configured');
+    console.log('Force pushing local pre-seeded data to Supabase...');
+    
+    const errors = [];
+    let err;
+
+    // Order matters for foreign keys!
+    err = await this.syncToSupabase('businesses', this.cache.businesses);
+    if (err) errors.push('businesses: ' + err.message);
+
+    err = await this.syncToSupabase('settings', this.cache.settings);
+    if (err) errors.push('settings: ' + err.message);
+    
+    // Skip profiles since they are managed by Supabase Auth
+    
+    err = await this.syncToSupabase('categories', this.cache.categories);
+    if (err) errors.push('categories: ' + err.message);
+
+    err = await this.syncToSupabase('products', this.cache.products);
+    if (err) errors.push('products: ' + err.message);
+
+    err = await this.syncToSupabase('customers', this.cache.customers);
+    if (err) errors.push('customers: ' + err.message);
+
+    err = await this.syncToSupabase('suppliers', this.cache.suppliers);
+    if (err) errors.push('suppliers: ' + err.message);
+
+    err = await this.syncToSupabase('purchases', this.cache.purchases);
+    if (err) errors.push('purchases: ' + err.message);
+
+    err = await this.syncToSupabase('sales', this.cache.sales);
+    if (err) errors.push('sales: ' + err.message);
+
+    if (errors.length > 0) {
+       throw new Error(errors.join('\n'));
+    }
+  }
 
   public async syncFromSupabase(businessId?: string) {
     if (!isSupabaseConfigured || !supabase) return;
@@ -191,10 +236,74 @@ class ERPStorage {
     if (!tableName) return;
 
     if (isDelete && deleteId) {
-       await supabase.from(tableName).delete().eq(tableName === 'business_settings' ? 'business_id' : 'id', deleteId);
+       const { error } = await supabase.from(tableName).delete().eq(tableName === 'business_settings' ? 'business_id' : 'id', deleteId);
+       if (error) {
+         console.error(`Supabase delete error on ${tableName}:`, JSON.stringify(error));
+         return error;
+       }
     } else if (dataItem) {
-       // Upsert single item
-       await supabase.from(tableName).upsert(dataItem);
+       if (Array.isArray(dataItem) && dataItem.length === 0) return;
+       
+       let payload = Array.isArray(dataItem) ? [...dataItem] : { ...dataItem };
+       let salesItems = [];
+       let purchaseItems = [];
+       
+       const cleanItem = (item) => {
+           const clean = { ...item };
+           if (tableName === 'business_settings') {
+               delete clean.business_name;
+               delete clean.gstin;
+               delete clean.invoice_prefix;
+           }
+           if (tableName === 'sales_orders') {
+               if (clean.items) {
+                   clean.items.forEach(i => {
+                       // The table might not have 'id' if we just created the order items inline,
+                       // so we should let Supabase generate it or generate one here.
+                       const si = { ...i, sales_order_id: clean.id };
+                       if(!si.id) si.id = crypto.randomUUID();
+                       salesItems.push(si);
+                   });
+               }
+               delete clean.items;
+           }
+           if (tableName === 'purchase_orders') {
+               if (clean.items) {
+                   clean.items.forEach(i => {
+                       const pi = { ...i, purchase_order_id: clean.id };
+                       if(!pi.id) pi.id = crypto.randomUUID();
+                       purchaseItems.push(pi);
+                   });
+               }
+               delete clean.items;
+           }
+           if (tableName === 'users_profiles') {
+               delete clean.password_hash;
+           }
+           return clean;
+       };
+       
+       if (Array.isArray(payload)) {
+           payload = payload.map(cleanItem);
+       } else {
+           payload = cleanItem(payload);
+       }
+
+       const { error } = await supabase.from(tableName).upsert(payload);
+       if (error) {
+         console.error(`Supabase sync error on ${tableName}:`, JSON.stringify(error));
+         return error;
+       }
+       
+       if (tableName === 'sales_orders' && salesItems.length > 0) {
+           const { error: err2 } = await supabase.from('sales_order_items').upsert(salesItems);
+           if (err2) console.error('Supabase sync error on sales_order_items:', JSON.stringify(err2));
+       }
+       
+       if (tableName === 'purchase_orders' && purchaseItems.length > 0) {
+           const { error: err3 } = await supabase.from('purchase_order_items').upsert(purchaseItems);
+           if (err3) console.error('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
+       }
     }
   }
 
@@ -261,7 +370,7 @@ class ERPStorage {
 
     const newProfile: UserProfile & { password_hash: string } = {
       ...user,
-      id: user.id || `u-${Math.random().toString(36).substr(2, 9)}`,
+      id: user.id || crypto.randomUUID(),
       created_at: new Date().toISOString()
     };
     this.cache.profiles.push(newProfile);
@@ -287,7 +396,7 @@ class ERPStorage {
   public createCategory(cat: Omit<Category, 'id' | 'created_at'>): Category {
     const newCat: Category = {
       ...cat,
-      id: `cat-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       created_at: new Date().toISOString()
     };
     this.cache.categories.push(newCat);
@@ -323,7 +432,7 @@ class ERPStorage {
   public createProduct(prod: Omit<Product, 'id' | 'created_at' | 'current_stock'>): Product {
     const newProd: Product = {
       ...prod,
-      id: `p-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       current_stock: prod.opening_stock,
       created_at: new Date().toISOString()
     };
@@ -366,7 +475,7 @@ class ERPStorage {
   public createCustomer(cust: Omit<Customer, 'id' | 'created_at' | 'outstanding_amount'>): Customer {
     const newCust: Customer = {
       ...cust,
-      id: `cust-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       outstanding_amount: 0,
       created_at: new Date().toISOString()
     };
@@ -403,7 +512,7 @@ class ERPStorage {
   public createSupplier(sup: Omit<Supplier, 'id' | 'created_at' | 'outstanding_amount'>): Supplier {
     const newSup: Supplier = {
       ...sup,
-      id: `sup-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       outstanding_amount: 0,
       created_at: new Date().toISOString()
     };
@@ -440,7 +549,7 @@ class ERPStorage {
   public createPurchaseOrder(po: Omit<PurchaseOrder, 'id' | 'created_at'>): PurchaseOrder {
     const newPO: PurchaseOrder = {
       ...po,
-      id: `po-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       created_at: new Date().toISOString()
     };
     this.cache.purchases.push(newPO);
@@ -484,7 +593,7 @@ class ERPStorage {
   public createSalesOrder(so: Omit<SalesOrder, 'id' | 'created_at'>): SalesOrder {
     const newSO: SalesOrder = {
       ...so,
-      id: `so-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       created_at: new Date().toISOString()
     };
     this.cache.sales.push(newSO);
@@ -537,7 +646,7 @@ class ERPStorage {
     businessId: string
   ): StockLog {
     const newLog: StockLog = {
-      id: `sl-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       product_id: productId,
       change_qty: changeQty,
       type,
@@ -673,7 +782,7 @@ class ERPStorage {
 
     // Record packing session log
     const session: PackingSession = {
-      id: `ps-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       order_id: orderId,
       packing_staff_id: staffId,
       start_time: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // Simulated 5 min duration
@@ -712,7 +821,7 @@ class ERPStorage {
   // System Activity Logger
   public logActivity(userId: string, userName: string, userRole: string, action: string, details: string, businessId: string) {
     const newLog: SystemAuditLog = {
-      id: `sal-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       user_id: userId,
       user_name: userName,
       user_role: userRole,

@@ -56,6 +56,24 @@ interface Toast {
 }
 
 export default function App() {
+
+  useEffect(() => {
+    // Sanitize old localStorage data that violates UUID schema
+    
+    const profiles = localStorage.getItem('omnipack_erp_profiles');
+    const cats = localStorage.getItem('omnipack_erp_categories');
+    
+    if (
+        (cats && cats.includes('"cat-')) || 
+        (profiles && profiles.includes('"admin_user"'))
+    ) {
+       console.log('Clearing old non-UUID local storage...');
+       localStorage.clear();
+       window.location.reload();
+    }
+
+  }, []);
+
   // Auth state
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [currentBusiness, setCurrentBusiness] = useState<Business | null>(null);

@@ -1,4 +1,5 @@
 import { PageHeader } from './PageHeader';
+import { Database } from 'lucide-react';
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -288,6 +289,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 ))}
               </div>
             {/* Quick Action Button */}
+              <button 
+                onClick={async () => {
+                  try {
+                    await dbStore.forcePushAllToSupabase();
+                    triggerToast('Successfully synced initial data to Supabase!', 'success');
+                  } catch(e) {
+                    triggerToast(`Failed to sync.`, 'error');
+            alert('Supabase errors:\n' + e.message + '\n\nNOTE: Row-Level Security (RLS) might be blocking this. Please either disable RLS temporarily in Supabase, or run the seed.sql file in the Supabase SQL Editor directly.');
+                  }
+                }}
+                className="px-4 py-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-xl font-extrabold text-[11px] transition cursor-pointer shadow-lg flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              >
+                <Database size={16} />
+                <span>Sync to Supabase</span>
+              </button>
               <button 
                 onClick={() => setIsNewOrderModalOpen(true)}
                 className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 rounded-xl font-extrabold text-[11px] transition cursor-pointer shadow-lg flex items-center gap-1.5 whitespace-nowrap shrink-0"

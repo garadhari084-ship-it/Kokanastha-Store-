@@ -1,3 +1,4 @@
+import { supabase, isSupabaseConfigured } from './supabase';
 import {
   Business,
   UserProfile,
@@ -132,7 +133,73 @@ class ERPStorage {
     }
   }
 
-  private save(key: keyof typeof this.cache) {
+
+  public async syncFromSupabase(businessId?: string) {
+    if (!isSupabaseConfigured || !supabase) return;
+    
+    console.log('Syncing from Supabase...');
+    const tables = {
+       businesses: 'businesses',
+       profiles: 'users_profiles',
+       categories: 'categories',
+       products: 'products',
+       customers: 'customers',
+       suppliers: 'suppliers',
+       purchases: 'purchase_orders',
+       sales: 'sales_orders',
+       packingSessions: 'packing_sessions',
+       stockLogs: 'stock_logs',
+       auditLogs: 'system_audit_logs',
+       settings: 'business_settings'
+    };
+    
+    for (const [key, table] of Object.entries(tables)) {
+       let query = supabase.from(table).select('*');
+       if (businessId && table !== 'businesses') {
+          query = query.eq('business_id', businessId);
+       } else if (businessId && table === 'businesses') {
+          query = query.eq('id', businessId);
+       }
+       
+       const { data, error } = await query;
+       if (!error && data && data.length > 0) {
+          (this.cache as any)[key] = data;
+          localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
+       }
+    }
+  }
+
+  private async syncToSupabase(key: keyof typeof this.cache, dataItem: any, isDelete = false, deleteId?: string) {
+    if (!isSupabaseConfigured || !supabase) return;
+    
+    const tables: any = {
+       businesses: 'businesses',
+       profiles: 'users_profiles',
+       categories: 'categories',
+       products: 'products',
+       customers: 'customers',
+       suppliers: 'suppliers',
+       purchases: 'purchase_orders',
+       sales: 'sales_orders',
+       packingSessions: 'packing_sessions',
+       stockLogs: 'stock_logs',
+       auditLogs: 'system_audit_logs',
+       settings: 'business_settings'
+    };
+    
+    const tableName = tables[key];
+    if (!tableName) return;
+
+    if (isDelete && deleteId) {
+       await supabase.from(tableName).delete().eq(tableName === 'business_settings' ? 'business_id' : 'id', deleteId);
+    } else if (dataItem) {
+       // Upsert single item
+       await supabase.from(tableName).upsert(dataItem);
+    }
+  }
+
+  private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string) {
+    this.syncToSupabase(key, dataItem, isDelete, deleteId);
     try {
       localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(this.cache[key]));
     } catch (e) {
@@ -173,7 +240,7 @@ class ERPStorage {
     const index = this.cache.businesses.findIndex(b => b.id === id);
     if (index !== -1) {
       this.cache.businesses[index] = { ...this.cache.businesses[index], ...updates };
-      this.save('businesses');
+      this.save('businesses', this.cache.businesses.find(b => b.id === id));
       return this.cache.businesses[index];
     }
     throw new Error('Business not found');
@@ -198,7 +265,7 @@ class ERPStorage {
       created_at: new Date().toISOString()
     };
     this.cache.profiles.push(newProfile);
-    this.save('profiles');
+    this.save('profiles', newProfile);
     return newProfile;
   }
 
@@ -206,7 +273,7 @@ class ERPStorage {
     const index = this.cache.profiles.findIndex(p => p.id === id);
     if (index !== -1) {
       this.cache.profiles[index] = { ...this.cache.profiles[index], ...updates };
-      this.save('profiles');
+      this.save('profiles', this.cache.profiles[index]);
       return this.cache.profiles[index];
     }
     throw new Error('User not found');
@@ -224,7 +291,7 @@ class ERPStorage {
       created_at: new Date().toISOString()
     };
     this.cache.categories.push(newCat);
-    this.save('categories');
+    this.save('categories', newCat);
     return newCat;
   }
 
@@ -242,7 +309,7 @@ class ERPStorage {
     const initialLen = this.cache.categories.length;
     this.cache.categories = this.cache.categories.filter(c => c.id !== id);
     if (this.cache.categories.length !== initialLen) {
-      this.save('categories');
+      this.save('categories', null, true, id);
       return true;
     }
     return false;
@@ -261,7 +328,7 @@ class ERPStorage {
       created_at: new Date().toISOString()
     };
     this.cache.products.push(newProd);
-    this.save('products');
+    this.save('products', newProd);
 
     // Add stock log for opening stock
     if (prod.opening_stock > 0) {
@@ -285,7 +352,7 @@ class ERPStorage {
     const initialLen = this.cache.products.length;
     this.cache.products = this.cache.products.filter(p => p.id !== id);
     if (this.cache.products.length !== initialLen) {
-      this.save('products');
+      this.save('products', null, true, id);
       return true;
     }
     return false;
@@ -304,7 +371,7 @@ class ERPStorage {
       created_at: new Date().toISOString()
     };
     this.cache.customers.push(newCust);
-    this.save('customers');
+    this.save('customers', newCust);
     return newCust;
   }
 
@@ -322,7 +389,7 @@ class ERPStorage {
     const initialLen = this.cache.customers.length;
     this.cache.customers = this.cache.customers.filter(c => c.id !== id);
     if (this.cache.customers.length !== initialLen) {
-      this.save('customers');
+      this.save('customers', null, true, id);
       return true;
     }
     return false;
@@ -341,7 +408,7 @@ class ERPStorage {
       created_at: new Date().toISOString()
     };
     this.cache.suppliers.push(newSup);
-    this.save('suppliers');
+    this.save('suppliers', newSup);
     return newSup;
   }
 
@@ -359,7 +426,7 @@ class ERPStorage {
     const initialLen = this.cache.suppliers.length;
     this.cache.suppliers = this.cache.suppliers.filter(s => s.id !== id);
     if (this.cache.suppliers.length !== initialLen) {
-      this.save('suppliers');
+      this.save('suppliers', null, true, id);
       return true;
     }
     return false;
@@ -377,7 +444,7 @@ class ERPStorage {
       created_at: new Date().toISOString()
     };
     this.cache.purchases.push(newPO);
-    this.save('purchases');
+    this.save('purchases', newPO);
 
     // If order received immediately, trigger stock ledger in-movement
     if (newPO.status === 'Received') {
@@ -421,7 +488,7 @@ class ERPStorage {
       created_at: new Date().toISOString()
     };
     this.cache.sales.push(newSO);
-    this.save('sales');
+    this.save('sales', newSO);
     return newSO;
   }
 
@@ -429,7 +496,7 @@ class ERPStorage {
     const index = this.cache.sales.findIndex(s => s.id === id);
     if (index !== -1) {
       this.cache.sales.splice(index, 1);
-      this.save('sales');
+      this.save('sales', null, true, id);
       return true;
     }
     return false;
@@ -618,7 +685,7 @@ class ERPStorage {
     };
 
     this.cache.packingSessions.push(session);
-    this.save('packingSessions');
+    this.save('packingSessions', session);
 
     // Update order status to "Packed" and delivery status to "Packed"
     order.status = 'Packed';
@@ -681,7 +748,7 @@ class ERPStorage {
         theme: 'light'
       };
       this.cache.settings.push(setting);
-      this.save('settings');
+      this.save('settings', this.cache.settings.find(s => s.business_id === businessId));
     }
     return setting;
   }

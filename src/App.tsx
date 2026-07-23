@@ -123,6 +123,7 @@ export default function App() {
                 
           if (dbProfile) {
             setCurrentUser(dbProfile as UserProfile);
+            await dbStore.syncFromSupabase(dbProfile.business_id);
             const biz = dbStore.getBusiness(dbProfile.business_id) || dbStore.getBusinesses()[0];
             setCurrentBusiness(biz);
             setDbMode('supabase');
@@ -250,6 +251,7 @@ export default function App() {
               } catch (_) {}
             }
 
+            await dbStore.syncFromSupabase(profile.business_id);
             const biz = dbStore.getBusiness(profile.business_id) || dbStore.getBusinesses()[0];
             setCurrentUser(profile);
             setCurrentBusiness(biz);
@@ -760,7 +762,7 @@ export default function App() {
               />
               <ClipboardCheck size={18} className="text-white hidden" />
             </div>
-            <strong className={`text-sm font-extrabold tracking-tight truncate max-w-[150px] ${isSidebarMinimized ? 'lg:hidden' : ''}`}>{currentBusiness.name}</strong>
+            <strong className={`text-sm font-extrabold tracking-tight truncate max-w-[150px] ${isSidebarMinimized ? 'lg:hidden' : ''}`}>Kokanastha Operation</strong>
           </div>
           <button className="lg:hidden text-slate-400 cursor-pointer hover:text-white" onClick={() => setIsMobileMenuOpen(false)}>
             <X size={20} />

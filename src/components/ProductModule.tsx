@@ -946,10 +946,53 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       {isScannerOpen && (
         <BarcodeScanner 
           onClose={() => setIsScannerOpen(false)}
-          onScan={(barcode) => {
-            setFormBarcode(barcode);
+          onScan={async (scannedData) => {
             setIsScannerOpen(false);
-            triggerToast('Barcode scanned successfully', 'success');
+            try {
+              // Try to parse as JSON if it's a rich QR code containing product info
+              const data = JSON.parse(scannedData);
+              
+              if (data.barcode) setFormBarcode(data.barcode);
+              else setFormBarcode(scannedData);
+              
+              if (data.name) setFormName(data.name);
+              if (data.sku) setFormSku(data.sku);
+              if (data.brand) setFormBrand(data.brand);
+              if (data.unit) setFormUnit(data.unit);
+              if (data.hsn_code) setFormHsn(data.hsn_code);
+              if (data.gst_rate !== undefined) setFormGst(Number(data.gst_rate));
+              if (data.purchase_price !== undefined) setFormPurchasePrice(Number(data.purchase_price));
+              if (data.selling_price !== undefined) setFormSellingPrice(Number(data.selling_price));
+              if (data.mrp !== undefined) setFormMrp(Number(data.mrp));
+              if (data.description) setFormDescription(data.description);
+              
+              triggerToast('QR code scanned: Product info populated!', 'success');
+            } catch (e) {
+              // Not JSON, assume it's just a standard barcode string (EAN/UPC)
+              setFormBarcode(scannedData);
+              triggerToast('Barcode scanned successfully', 'success');
+              
+              // If it's a numeric barcode, let's try to fetch basic info from OpenFoodFacts
+              if (/^\d{8,14}$/.test(scannedData)) {
+                try {
+                  triggerToast('Looking up product details online...', 'info');
+                  const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${scannedData}.json`);
+                  if (response.ok) {
+                    const json = await response.json();
+                    if (json && json.product) {
+                      if (json.product.product_name) setFormName(json.product.product_name);
+                      if (json.product.brands) setFormBrand(json.product.brands.split(',')[0]);
+                      if (json.product.image_url) setFormImage(json.product.image_url);
+                      triggerToast('Product details found and populated!', 'success');
+                    } else {
+                      triggerToast('Product not found in global database.', 'info');
+                    }
+                  }
+                } catch (fetchErr) {
+                  console.error('Failed to fetch from OpenFoodFacts', fetchErr);
+                }
+              }
+            }
           }}
         />
       )}

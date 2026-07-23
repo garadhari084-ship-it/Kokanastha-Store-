@@ -1,0 +1,1 @@
+I have reduced the vertical gap between the cards in the "Core System Modules" grid (Billing & Invoicing, Godown Packing, etc.). They are now stacked much closer together vertically while maintaining a readable horizontal distance. Let me know if you'd like them even closer!

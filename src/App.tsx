@@ -203,6 +203,18 @@ export default function App() {
         });
 
         if (error) {
+          // Fallback for users created via the UI (since they don't exist in Supabase Auth, only in users_profiles)
+          const fallbackResult = dbStore.login(emailInput, passwordInput);
+          if (fallbackResult.success && fallbackResult.user && fallbackResult.business) {
+             await dbStore.syncFromSupabase(fallbackResult.business.id);
+             setCurrentUser(fallbackResult.user);
+             setCurrentBusiness(fallbackResult.business);
+             localStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase' }));
+             setActiveView('dashboard');
+             triggerToast(`Session Established. Welcome, ${fallbackResult.user.name}!`, 'success');
+             return;
+          }
+          
           setAuthError(error.message);
           return;
         }

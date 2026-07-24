@@ -6,7 +6,9 @@ import {
   Plus, 
   X, 
   ShieldCheck, 
-  UserPlus
+  UserPlus,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { UserProfile, UserRole } from '../types/erp';
@@ -25,6 +27,9 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
 
   // New User Form State
   const [newUserName, setNewUserName] = useState('');
@@ -81,6 +86,90 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
     }
   };
 
+    const openEditModal = (u: UserProfile) => {
+    if (currentUser.role !== 'Super Admin') {
+      triggerToast('Unauthorized: Only Super Admins can edit users.', 'error');
+      return;
+    }
+    setSelectedUser(u);
+    setNewUserName(u.name);
+    setNewUserEmail(u.email);
+    setNewUserRole(u.role);
+    setNewUserPassword(''); // Provide empty or don't change if empty
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+    
+    try {
+      const updates: Partial<UserProfile> = {
+        name: newUserName,
+        email: newUserEmail,
+        role: newUserRole
+      };
+      
+      if (newUserPassword.trim() !== '') {
+        (updates as any).password_hash = newUserPassword;
+      }
+      
+      dbStore.updateUser(selectedUser.id, updates);
+      triggerToast(`User ${newUserName} updated successfully.`, 'success');
+      
+      dbStore.logActivity(
+        currentUser.id,
+        currentUser.name,
+        currentUser.role,
+        'Edit User',
+        `Updated user ${newUserName}`,
+        businessId
+      );
+      
+      setIsEditModalOpen(false);
+      setSelectedUser(null);
+      loadUsers();
+    } catch (e: any) {
+      triggerToast(e.message || 'Failed to update user', 'error');
+    }
+  };
+
+  const openDeleteModal = (u: UserProfile) => {
+    if (currentUser.role !== 'Super Admin') {
+      triggerToast('Unauthorized: Only Super Admins can delete users.', 'error');
+      return;
+    }
+    if (u.id === currentUser.id) {
+      triggerToast('You cannot delete your own account.', 'error');
+      return;
+    }
+    setSelectedUser(u);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteUser = () => {
+    if (!selectedUser) return;
+    try {
+      dbStore.deleteUser(selectedUser.id);
+      triggerToast(`User ${selectedUser.name} deleted successfully.`, 'success');
+      
+      dbStore.logActivity(
+        currentUser.id,
+        currentUser.name,
+        currentUser.role,
+        'Delete User',
+        `Deleted user ${selectedUser.name}`,
+        businessId
+      );
+      
+      setIsDeleteModalOpen(false);
+      setSelectedUser(null);
+      loadUsers();
+    } catch (e: any) {
+      triggerToast(e.message || 'Failed to delete user', 'error');
+    }
+  };
+
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -132,12 +221,13 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
                 <th className="px-6 py-4">Role & Access</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Joined At</th>
+                <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500 text-xs">
+                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500 text-xs">
                     No users found matching your criteria.
                   </td>
                 </tr>
@@ -175,6 +265,24 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
                     <td className="px-6 py-4 text-slate-500 dark:text-slate-400 text-[11px] font-mono">
                       {new Date(u.created_at).toLocaleDateString()}
                     </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => openEditModal(u)}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition"
+                          title="Edit User"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => openDeleteModal(u)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition"
+                          title="Delete User"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -183,6 +291,124 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
         </div>
       </div>
 
+      {/* Edit User Modal */}
+      {isEditModalOpen && selectedUser && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Edit2 size={18} className="text-indigo-600" />
+                Edit User
+              </h3>
+              <button 
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              <form id="editUserForm" onSubmit={handleEditUser} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Full Name</label>
+                  <input 
+                    type="text"
+                    required
+                    value={newUserName}
+                    onChange={e => setNewUserName(e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all dark:text-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Email Address</label>
+                  <input 
+                    type="email"
+                    required
+                    value={newUserEmail}
+                    onChange={e => setNewUserEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all dark:text-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Assign Role</label>
+                  <select
+                    value={newUserRole}
+                    onChange={e => setNewUserRole(e.target.value as UserRole)}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all dark:text-white cursor-pointer"
+                  >
+                    <option value="Super Admin">Super Admin</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Manager">Manager</option>
+                    <option value="Packing Staff">Packing Staff</option>
+                    <option value="Sales Staff">Sales Staff</option>
+                    <option value="Viewer">Viewer</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Change Password (Optional)</label>
+                  <input 
+                    type="password"
+                    value={newUserPassword}
+                    onChange={e => setNewUserPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all dark:text-white"
+                    placeholder="Leave blank to keep unchanged"
+                  />
+                </div>
+              </form>
+            </div>
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 flex justify-end gap-3">
+              <button 
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit"
+                form="editUserForm"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-indigo-600/20"
+              >
+                Update User
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && selectedUser && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-6 flex flex-col items-center text-center space-y-4">
+              <div className="w-16 h-16 rounded-full bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center text-rose-500">
+                <Trash2 size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Delete User?</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                  Are you sure you want to delete <span className="font-bold">{selectedUser.name}</span>? This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 flex gap-3">
+              <button 
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="flex-1 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              >
+                No, Keep User
+              </button>
+              <button 
+                onClick={confirmDeleteUser}
+                className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-rose-600/20"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Add User Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -235,6 +461,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
                     onChange={e => setNewUserRole(e.target.value as UserRole)}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all dark:text-white cursor-pointer"
                   >
+                    <option value="Super Admin">Super Admin</option>
                     <option value="Admin">Admin</option>
                     <option value="Manager">Manager</option>
                     <option value="Packing Staff">Packing Staff</option>

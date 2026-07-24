@@ -388,6 +388,16 @@ class ERPStorage {
     throw new Error('User not found');
   }
 
+  public deleteUser(id: string): boolean {
+    const index = this.cache.profiles.findIndex(p => p.id === id);
+    if (index !== -1) {
+      this.cache.profiles.splice(index, 1);
+      this.save('profiles', null, true, id);
+      return true;
+    }
+    return false;
+  }
+
   // Category Operations
   public getCategories(businessId: string): Category[] {
     return this.cache.categories.filter(c => c.business_id === businessId);

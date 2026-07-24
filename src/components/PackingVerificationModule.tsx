@@ -139,7 +139,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
     try {
       // Check if all items are fully scanned
-      const allPacked = selectedOrder.items.every(it => it.scanned_qty === it.qty);
+      const allPacked = (selectedOrder.items || []).every(it => (it.scanned_qty || 0) === it.qty);
       if (!allPacked) {
         triggerToast('Cannot dispatch: Some items in the order have not been scan-verified yet.', 'error');
         return;
@@ -168,7 +168,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     if (!selectedOrder) return;
     if (window.confirm('Reset all scanned quantities back to 0 for this packing task?')) {
       dbStore.updateSalesOrder(selectedOrder.id, {
-        items: selectedOrder.items.map(it => ({ ...it, scanned_qty: 0 }))
+        items: (selectedOrder.items || []).map(it => ({ ...it, scanned_qty: 0 }))
       });
       triggerToast('Quantities reset.', 'info');
       reloadPending();
@@ -176,8 +176,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   };
 
   // Calculate Packing stats
-  const totalItemsCount = selectedOrder ? selectedOrder.items.reduce((acc, it) => acc + it.qty, 0) : 0;
-  const packedItemsCount = selectedOrder ? selectedOrder.items.reduce((acc, it) => acc + it.scanned_qty, 0) : 0;
+  const totalItemsCount = selectedOrder ? (selectedOrder.items || []).reduce((acc, it) => acc + it.qty, 0) : 0;
+  const packedItemsCount = selectedOrder ? (selectedOrder.items || []).reduce((acc, it) => acc + (it.scanned_qty || 0), 0) : 0;
   const packingProgressPercent = totalItemsCount > 0 ? Math.round((packedItemsCount / totalItemsCount) * 100) : 0;
 
   return (
@@ -214,8 +214,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
             <div className="space-y-2.5 max-h-[60vh] overflow-y-auto">
               {pendingOrders.map((o, idx) => {
                 const customer = customers.find(c => c.id === o.customer_id);
-                const itemsCount = o.items.reduce((acc, it) => acc + it.qty, 0);
-                const packedCount = o.items.reduce((acc, it) => acc + it.scanned_qty, 0);
+                const itemsCount = (o.items || []).reduce((acc, it) => acc + (it.qty || 0), 0);
+                const packedCount = (o.items || []).reduce((acc, it) => acc + (it.scanned_qty || 0), 0);
                 const pct = Math.round((packedCount / itemsCount) * 100);
 
                 return (
@@ -363,7 +363,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                         </tr>
                       </thead>
                       <tbody className="divide-y font-medium text-slate-700 dark:text-slate-300">
-                        {selectedOrder.items.map((it, idx) => {
+                        {(selectedOrder.items || []).map((it, idx) => {
                           const p = products.find(prod => prod.id === it.product_id);
                           if (!p) return null;
 

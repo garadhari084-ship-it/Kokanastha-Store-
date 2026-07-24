@@ -517,7 +517,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                      {viewingInvoiceOrder.items.map((it, idx) => {
+                      {(viewingInvoiceOrder.items || []).map((it, idx) => {
                         const p = products.find(prod => prod.id === it.product_id);
                         const sub = it.qty * it.selling_price;
                         return (
@@ -560,16 +560,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   <div className="w-1/2 space-y-1.5 font-mono text-right text-[11px]">
                     <div className="flex justify-between">
                       <span className="text-slate-400 font-sans">Total Taxable Value:</span>
-                      <span>₹{viewingInvoiceOrder.items.reduce((sum, it) => sum + (it.qty * it.selling_price), 0).toLocaleString()}</span>
+                      <span>₹{(viewingInvoiceOrder.items || []).reduce((sum, it) => sum + (it.qty * it.selling_price), 0).toLocaleString()}</span>
                     </div>
                     {/* CGST/SGST splitting */}
                     <div className="flex justify-between text-slate-400">
                       <span className="font-sans">Simulated CGST (9.0%):</span>
-                      <span>₹{Math.round(viewingInvoiceOrder.items.reduce((sum, it) => sum + (it.qty * it.selling_price * (it.gst_rate/200)), 0)).toLocaleString()}</span>
+                      <span>₹{Math.round((viewingInvoiceOrder.items || []).reduce((sum, it) => sum + (it.qty * it.selling_price * ((it.gst_rate || 0)/200)), 0)).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-slate-400">
                       <span className="font-sans">Simulated SGST (9.0%):</span>
-                      <span>₹{Math.round(viewingInvoiceOrder.items.reduce((sum, it) => sum + (it.qty * it.selling_price * (it.gst_rate/200)), 0)).toLocaleString()}</span>
+                      <span>₹{Math.round((viewingInvoiceOrder.items || []).reduce((sum, it) => sum + (it.qty * it.selling_price * ((it.gst_rate || 0)/200)), 0)).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between border-t border-slate-200 pt-2 text-[11px] font-bold font-sans text-slate-900 dark:text-white">
                       <span>Total Invoice Amount (Rounded):</span>

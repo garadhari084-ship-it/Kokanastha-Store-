@@ -171,7 +171,7 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
 
       dbStore.updatePurchaseOrder(poId, {
         status: 'Received',
-        items: po.items.map(it => ({ ...it, received_qty: it.qty }))
+        items: (po.items || []).map(it => ({ ...it, received_qty: it.qty }))
       });
 
       dbStore.logActivity(

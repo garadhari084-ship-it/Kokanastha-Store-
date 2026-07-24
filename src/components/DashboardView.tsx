@@ -1331,7 +1331,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {/* Items List */}
               <div className="space-y-2">
                 <span className="text-[11px] font-bold text-slate-400 uppercase">Items Ordered</span>
-                {selectedOrderForDetail.items.map((it, idx) => {
+                {(selectedOrderForDetail.items || []).map((it, idx) => {
                   const pObj = products.find(p => p.id === it.product_id);
                   return (
                     <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-100 dark:border-slate-800 text-[11px]">

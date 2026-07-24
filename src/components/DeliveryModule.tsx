@@ -109,7 +109,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
         ) : (
           filteredOrders.map((o, idx) => {
             const cust = customers.find(c => c.id === o.customer_id);
-            const totalItems = o.items.reduce((acc, it) => acc + it.qty, 0);
+            const totalItems = (o.items || []).reduce((acc, it) => acc + (it.qty || 0), 0);
             
             return (
               <div key={`${o.id}-${idx}`} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">

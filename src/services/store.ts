@@ -273,6 +273,32 @@ class ERPStorage {
              }));
              this.cache.profiles = mergedProfiles;
              localStorage.setItem(`omnipack_erp_profiles`, JSON.stringify(mergedProfiles));
+          } else if (key === 'sales') {
+             const { data: itemsData } = await supabase.from('sales_order_items').select('*');
+             const itemsByOrder: Record<string, any[]> = {};
+             (itemsData || []).forEach((item: any) => {
+               if (!itemsByOrder[item.sales_order_id]) itemsByOrder[item.sales_order_id] = [];
+               itemsByOrder[item.sales_order_id].push(item);
+             });
+             const mergedSales = (data || []).map((so: any) => ({
+               ...so,
+               items: (itemsByOrder[so.id] && itemsByOrder[so.id].length > 0) ? itemsByOrder[so.id] : (so.items || [])
+             }));
+             this.cache.sales = mergedSales;
+             localStorage.setItem('omnipack_erp_sales', JSON.stringify(mergedSales));
+          } else if (key === 'purchases') {
+             const { data: itemsData } = await supabase.from('purchase_order_items').select('*');
+             const itemsByPO: Record<string, any[]> = {};
+             (itemsData || []).forEach((item: any) => {
+               if (!itemsByPO[item.purchase_order_id]) itemsByPO[item.purchase_order_id] = [];
+               itemsByPO[item.purchase_order_id].push(item);
+             });
+             const mergedPurchases = (data || []).map((po: any) => ({
+               ...po,
+               items: (itemsByPO[po.id] && itemsByPO[po.id].length > 0) ? itemsByPO[po.id] : (po.items || [])
+             }));
+             this.cache.purchases = mergedPurchases;
+             localStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
           } else {
              (this.cache as any)[key] = data;
              localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
@@ -657,7 +683,9 @@ class ERPStorage {
 
   // Purchase Order Operations
   public getPurchaseOrders(businessId: string): PurchaseOrder[] {
-    return this.cache.purchases.filter(p => p.business_id === businessId);
+    return (this.cache.purchases || [])
+      .filter(p => p.business_id === businessId)
+      .map(p => ({ ...p, items: p.items || [] }));
   }
 
   public createPurchaseOrder(po: Omit<PurchaseOrder, 'id' | 'created_at'>): PurchaseOrder {
@@ -701,7 +729,9 @@ class ERPStorage {
 
   // Sales Order Operations
   public getSalesOrders(businessId: string): SalesOrder[] {
-    return this.cache.sales.filter(s => s.business_id === businessId);
+    return (this.cache.sales || [])
+      .filter(s => s.business_id === businessId)
+      .map(s => ({ ...s, items: s.items || [] }));
   }
 
   public createSalesOrder(so: Omit<SalesOrder, 'id' | 'created_at'>): SalesOrder {
@@ -1113,10 +1143,10 @@ class ERPStorage {
     const topProducts = products
       .map(p => {
         const qtySold = orders
-          .filter(o => o.status !== 'Cancelled')
-          .flatMap(o => o.items)
-          .filter(item => item.product_id === p.id)
-          .reduce((sum, item) => sum + item.qty, 0);
+          .filter(o => o && o.status !== 'Cancelled')
+          .flatMap(o => o.items || [])
+          .filter(item => item && item.product_id === p.id)
+          .reduce((sum, item) => sum + (item.qty || 0), 0);
         return {
           id: p.id,
           name: p.name,

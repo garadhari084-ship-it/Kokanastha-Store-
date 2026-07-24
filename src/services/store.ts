@@ -687,6 +687,19 @@ class ERPStorage {
              }));
              this.cache.purchases = mergedPurchases;
              localStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
+          } else if (key === 'businesses') {
+             const mergedBusinesses = (data || []).map((b: any) => {
+               const existing = (this.cache.businesses || []).find(eb => eb.id === b.id);
+               return {
+                 ...existing,
+                 ...b,
+                 logo_url: b.logo_url || existing?.logo_url || undefined,
+                 login_cover_url: b.login_cover_url || existing?.login_cover_url || undefined,
+                 upi_qr_url: b.upi_qr_url || existing?.upi_qr_url || undefined,
+               };
+             });
+             this.cache.businesses = mergedBusinesses.length > 0 ? mergedBusinesses : this.cache.businesses;
+             localStorage.setItem('omnipack_erp_businesses', JSON.stringify(this.cache.businesses));
           } else {
              (this.cache as any)[key] = data;
              localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
@@ -696,6 +709,51 @@ class ERPStorage {
          console.warn(`Supabase query failed for ${table}:`, tableErr);
        }
     }
+
+    // Auto-discover uploaded assets directly from Supabase Storage tenant-assets bucket
+    try {
+      if (this.cache.businesses && this.cache.businesses.length > 0) {
+        const biz = this.cache.businesses[0];
+        let assetUpdated = false;
+
+        // Check logo
+        const { data: logoFiles } = await supabase.storage.from("tenant-assets").list("logo", { limit: 1, sortBy: { column: "created_at", order: "desc" } });
+        if (logoFiles && logoFiles.length > 0) {
+          const { data: pUrl } = supabase.storage.from("tenant-assets").getPublicUrl(`logo/${logoFiles[0].name}`);
+          if (pUrl?.publicUrl) {
+            biz.logo_url = pUrl.publicUrl;
+            assetUpdated = true;
+          }
+        }
+
+        // Check cover
+        const { data: coverFiles } = await supabase.storage.from("tenant-assets").list("cover", { limit: 1, sortBy: { column: "created_at", order: "desc" } });
+        if (coverFiles && coverFiles.length > 0) {
+          const { data: pUrl } = supabase.storage.from("tenant-assets").getPublicUrl(`cover/${coverFiles[0].name}`);
+          if (pUrl?.publicUrl) {
+            biz.login_cover_url = pUrl.publicUrl;
+            assetUpdated = true;
+          }
+        }
+
+        // Check upi_qr
+        const { data: qrFiles } = await supabase.storage.from("tenant-assets").list("upi_qr", { limit: 1, sortBy: { column: "created_at", order: "desc" } });
+        if (qrFiles && qrFiles.length > 0) {
+          const { data: pUrl } = supabase.storage.from("tenant-assets").getPublicUrl(`upi_qr/${qrFiles[0].name}`);
+          if (pUrl?.publicUrl) {
+            biz.upi_qr_url = pUrl.publicUrl;
+            assetUpdated = true;
+          }
+        }
+
+        if (assetUpdated) {
+          localStorage.setItem("omnipack_erp_businesses", JSON.stringify(this.cache.businesses));
+        }
+      }
+    } catch (storageErr) {
+      console.warn("Storage asset auto-discovery warning:", storageErr);
+    }
+
     this.notify();
     } catch (err) {
       console.warn('Supabase syncFromSupabase network error:', err);

@@ -142,12 +142,26 @@ export default function App() {
     };
   }, []);
 
+  // Subscribe to store updates to keep UI in sync across devices
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setSyncTick(prev => prev + 1);
+    });
+  }, []);
+
   // Restore session on mount
   useEffect(() => {
     const restoreSession = async () => {
       const savedSession = localStorage.getItem('omnipack_session');
       
       if (isSupabaseConfigured && supabase) {
+        // Sync public business info (logo, cover, QR) so login screen shows uploaded images
+        try {
+          await dbStore.syncFromSupabase();
+        } catch (syncErr) {
+          console.warn("Public business sync notice:", syncErr);
+        }
+
         // Try supabase session
         const { data: { session } } = await supabase.auth.getSession();
         if (session && session.user) {

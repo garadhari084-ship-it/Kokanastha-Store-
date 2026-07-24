@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
-import { X, Camera, RefreshCw, AlertCircle } from 'lucide-react';
+import { X, Camera, RefreshCw, AlertCircle, CheckCircle2, Volume2 } from 'lucide-react';
 
 interface BarcodeScannerProps {
-  onScan: (barcode: string) => void;
+  onScan: (barcode: string) => { success: boolean; message: string; scanned?: number; total?: number } | void;
   onClose: () => void;
 }
 
@@ -12,8 +12,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [currentFacingMode, setCurrentFacingMode] = useState<'environment' | 'user'>('environment');
+  const [lastScanBanner, setLastScanBanner] = useState<{ success: boolean; message: string } | null>(null);
+  
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const onScanRef = useRef(onScan);
+  const isCoolingDownRef = useRef<boolean>(false);
 
   useEffect(() => {
     onScanRef.current = onScan;
@@ -28,7 +31,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
         setIsLoading(true);
         setError('');
 
-        // Get available camera devices
         try {
           const deviceList = await Html5Qrcode.getCameras();
           if (isMounted) {
@@ -47,16 +49,43 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
         };
 
         const onScanSuccess = (decodedText: string) => {
-          if (isMounted) {
-            onScanRef.current(decodedText);
+          if (!isMounted || isCoolingDownRef.current) return;
+
+          // Activate 1.2 second scan cooldown so same barcode can be scanned repeatedly at deliberate pace
+          isCoolingDownRef.current = true;
+
+          try {
+            const res = onScanRef.current(decodedText);
+            if (res) {
+              setLastScanBanner({
+                success: res.success,
+                message: res.message
+              });
+            } else {
+              setLastScanBanner({
+                success: true,
+                message: `Scanned: ${decodedText}`
+              });
+            }
+          } catch (err: any) {
+            setLastScanBanner({
+              success: false,
+              message: err?.message || 'Scan error'
+            });
           }
+
+          // Reset cooldown after 1200ms for next scan
+          setTimeout(() => {
+            if (isMounted) {
+              isCoolingDownRef.current = false;
+            }
+          }, 1200);
         };
 
         const onScanFailure = () => {
           // Frame failed to detect QR/Barcode - normal stream loop
         };
 
-        // Always attempt back camera first ({ facingMode: "environment" })
         try {
           await qrCode.start(
             { facingMode: currentFacingMode },
@@ -65,9 +94,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
             onScanFailure
           );
         } catch (facingErr) {
-          console.warn("Direct facingMode camera start failed, trying available cameras list:", facingErr);
-          
-          // Fallback: try finding back camera in cameras list or use default camera
           const available = await Html5Qrcode.getCameras();
           if (available && available.length > 0) {
             const backCam = available.find(c => 
@@ -138,9 +164,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
               <Camera size={18} />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">Barcode Scanner</h3>
+              <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">Continuous Camera Scanner</h3>
               <p className="text-[10px] text-slate-500 font-medium">
-                {currentFacingMode === 'environment' ? 'Back Camera Active' : 'Front Camera Active'}
+                Keep camera on items to scan multiple units automatically
               </p>
             </div>
           </div>
@@ -149,26 +175,38 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
               <button
                 onClick={toggleCameraFacing}
                 title="Switch Camera"
-                className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 transition-colors"
+                className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
               >
                 <RefreshCw size={16} />
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-500 dark:text-slate-400 transition-colors"
+              className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-500 dark:text-slate-400 transition-colors cursor-pointer"
             >
               <X size={18} />
             </button>
           </div>
         </div>
 
+        {/* Live Feedback Banner inside camera view */}
+        {lastScanBanner && (
+          <div className={`px-4 py-2 text-xs font-bold flex items-center gap-2 border-b animate-in slide-in-from-top-1 ${
+            lastScanBanner.success 
+              ? 'bg-emerald-600 text-white border-emerald-700' 
+              : 'bg-rose-600 text-white border-rose-700'
+          }`}>
+            {lastScanBanner.success ? <CheckCircle2 size={18} className="shrink-0" /> : <AlertCircle size={18} className="shrink-0" />}
+            <span className="truncate">{lastScanBanner.message}</span>
+          </div>
+        )}
+
         {/* Camera Feed Container */}
         <div className="relative bg-black min-h-[300px] flex items-center justify-center overflow-hidden">
           {isLoading && (
             <div className="absolute inset-0 z-10 bg-slate-900/90 flex flex-col items-center justify-center text-white p-4">
               <RefreshCw size={28} className="animate-spin text-indigo-400 mb-2" />
-              <p className="text-xs font-medium text-slate-300">Opening back camera...</p>
+              <p className="text-xs font-medium text-slate-300">Opening camera feed...</p>
             </div>
           )}
 
@@ -178,7 +216,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
               <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{error}</p>
               <button
                 onClick={() => setCurrentFacingMode('environment')}
-                className="mt-2 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-medium rounded-lg transition-colors"
+                className="mt-2 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-medium rounded-lg transition-colors cursor-pointer"
               >
                 Retry Back Camera
               </button>
@@ -188,14 +226,17 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 text-center flex items-center justify-between px-4">
+        {/* Footer with Done Button */}
+        <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-4">
           <p className="text-[11px] text-slate-500 font-medium">
-            Point camera at barcode/QR code to scan
+            Scan same barcode multiple times for quantity
           </p>
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">
-            Auto-Detect
-          </span>
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-sm"
+          >
+            Done Scanning
+          </button>
         </div>
       </div>
     </div>

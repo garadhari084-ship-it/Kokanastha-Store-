@@ -127,10 +127,14 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   };
 
   // Barcode Submission Handler
-  const processBarcodeScan = (codeToVerify: string) => {
-    if (!selectedOrder) return;
+  const processBarcodeScan = (codeToVerify: string): { success: boolean; message: string; scanned?: number; total?: number } => {
+    if (!selectedOrder) {
+      return { success: false, message: 'No order selected.' };
+    }
     const cleanCode = codeToVerify.trim();
-    if (!cleanCode) return;
+    if (!cleanCode) {
+      return { success: false, message: 'Empty barcode.' };
+    }
 
     try {
       const result = dbStore.verifyPackingBarcode(businessId, selectedOrder.id, cleanCode);
@@ -144,8 +148,10 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       const total = result.required_qty || 0;
       const pending = Math.max(0, total - scanned);
 
+      const msg = `Scanned: ${prodName} | ${scanned}/${total} Verified (${pending} Pending)`;
+
       setRecentScanLog({
-        msg: `Scanned: ${prodName} | ${scanned}/${total} Verified (${pending} Pending)`,
+        msg,
         success: true
       });
 
@@ -155,14 +161,33 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
       setBarcodeInput('');
       reloadOrders();
+
+      return {
+        success: true,
+        message: `${prodName}: ${scanned}/${total} Verified`,
+        scanned,
+        total
+      };
     } catch (err: any) {
+      const errMsg = err.message || 'Scan error / product mismatch.';
       setRecentScanLog({
-        msg: err.message || 'Scan error / product mismatch.',
+        msg: errMsg,
         success: false
       });
       if (audioFeedback) {
-        triggerToast(`Scan Error: ${err.message}`, 'error');
+        triggerToast(`Scan Error: ${errMsg}`, 'error');
       }
+      return {
+        success: false,
+        message: errMsg
+      };
+    }
+  };
+
+  // Helper to scan all remaining pending units for a specific item in 1 click
+  const handleScanAllForProduct = (barcodeOrSku: string, pendingQty: number) => {
+    for (let i = 0; i < pendingQty; i++) {
+      processBarcodeScan(barcodeOrSku);
     }
   };
 
@@ -517,12 +542,26 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
                         <td className="py-3.5 px-4 text-right">
                           {!isItemDone && p && (
-                            <button
-                              onClick={() => processBarcodeScan(p.barcode || p.sku)}
-                              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                            >
-                              Simulate Scan
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => processBarcodeScan(p.barcode || p.sku || p.id)}
+                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                title="Scan 1 unit"
+                              >
+                                +1 Scan
+                              </button>
+                              {pending > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleScanAllForProduct(p.barcode || p.sku || p.id, pending)}
+                                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[11px] font-extrabold rounded-lg transition-colors cursor-pointer"
+                                  title={`Verify all ${pending} remaining units at once`}
+                                >
+                                  Verify All ({pending})
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -814,8 +853,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         <BarcodeScanner 
           onClose={() => setIsScannerOpen(false)}
           onScan={(barcode) => {
-            setIsScannerOpen(false);
-            processBarcodeScan(barcode);
+            return processBarcodeScan(barcode);
           }}
         />
       )}

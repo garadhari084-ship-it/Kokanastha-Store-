@@ -20,10 +20,13 @@ import {
   ChevronDown,
   Languages,
   Clock,
-  Trash2
+  Trash2,
+  Download
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
+import { generateBillOfSupplyHTML } from '../utils/invoiceTemplate';
+import { BillOfSupplyView } from './BillOfSupplyView';
 
 interface SalesModuleProps {
   businessId: string;
@@ -60,6 +63,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   // New Order Form States
   const [selectedCustomerId, setSelectedCustomerId] = useState(customers[0]?.id || '');
+  const [selectedArea, setSelectedArea] = useState('Dahisar');
   const [isAdvanceBooking, setIsAdvanceBooking] = useState(false);
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
 
@@ -158,6 +162,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       const createdOrder = dbStore.createSalesOrder({
         order_number: orderNum,
         customer_id: selectedCustomerId,
+        customer_name: customerObj?.name || 'Walk-in Customer',
+        area: selectedArea || customerObj?.area || 'Dahisar',
+        channel: 'Direct Order',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         order_date: new Date().toISOString().split('T')[0],
         status: 'Pending',
         payment_status: isAdvanceBooking ? 'Partial' : 'Unpaid',
@@ -213,9 +221,70 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     }
   };
 
-  const handlePrintInvoice = (orderNumber: string) => {
-    triggerToast(`Sent Tax Invoice for "${orderNumber}" to standard system spooler.`, 'success');
-    dbStore.logActivity(user.id, user.name, user.role, 'Print Invoice', `Printed PDF invoice for ${orderNumber}`, businessId);
+  const handlePrintInvoice = (order: SalesOrder) => {
+    triggerToast(`Sent Bill of Supply for "${order.order_number}" to system print spooler.`, 'success');
+    dbStore.logActivity(user.id, user.name, user.role, 'Print Invoice', `Printed Bill of Supply for ${order.order_number}`, businessId);
+
+    const cust = customers.find(c => c.id === order.customer_id);
+    const businessObj = dbStore.getBusiness(businessId);
+    const printHtml = generateBillOfSupplyHTML(order, cust, businessObj, products);
+
+    try {
+      let printFrame = document.getElementById('tax-invoice-print-frame') as HTMLIFrameElement;
+      if (!printFrame) {
+        printFrame = document.createElement('iframe');
+        printFrame.id = 'tax-invoice-print-frame';
+        printFrame.style.position = 'fixed';
+        printFrame.style.right = '0';
+        printFrame.style.bottom = '0';
+        printFrame.style.width = '0';
+        printFrame.style.height = '0';
+        printFrame.style.border = '0';
+        document.body.appendChild(printFrame);
+      }
+
+      const doc = printFrame.contentWindow?.document;
+      if (doc) {
+        doc.open();
+        doc.write(printHtml);
+        doc.close();
+
+        setTimeout(() => {
+          try {
+            printFrame.contentWindow?.focus();
+            printFrame.contentWindow?.print();
+          } catch (e) {
+            window.print();
+          }
+        }, 500);
+      } else {
+        window.print();
+      }
+    } catch (err) {
+      console.error('Print error:', err);
+      window.print();
+    }
+  };
+
+  const handleDownloadPDFInvoice = (order: SalesOrder) => {
+    const cust = customers.find(c => c.id === order.customer_id);
+    const businessObj = dbStore.getBusiness(businessId);
+    const fullHtml = generateBillOfSupplyHTML(order, cust, businessObj, products);
+
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Bill_of_Supply_${order.order_number}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    triggerToast(`Bill of Supply for "${order.order_number}" downloaded & opening print spooler!`, 'success');
+    dbStore.logActivity(user.id, user.name, user.role, 'Download Invoice', `Downloaded Bill of Supply for ${order.order_number}`, businessId);
+
+    handlePrintInvoice(order);
   };
 
   const handleEmailInvoice = (orderNumber: string, emailStr: string) => {
@@ -595,6 +664,14 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t flex justify-between gap-2">
                 <div className="flex gap-2">
                   <button 
+                    onClick={() => handleDownloadPDFInvoice(viewingInvoiceOrder)}
+                    className="px-3.5 py-2 bg-emerald-600 text-white rounded-lg text-[11px] font-semibold hover:bg-emerald-500 cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    title="Save/Download PDF Invoice Copy"
+                  >
+                    <Download size={14} />
+                    <span>Save / Download PDF</span>
+                  </button>
+                  <button 
                     onClick={() => handleEmailInvoice(viewingInvoiceOrder.order_number, custObj?.email || 'customer@omnipack.com')}
                     className="px-3.5 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold hover:bg-slate-200 cursor-pointer flex items-center gap-1.5"
                   >
@@ -621,7 +698,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     Close Invoice
                   </button>
                   <button 
-                    onClick={() => handlePrintInvoice(viewingInvoiceOrder.order_number)}
+                    onClick={() => handlePrintInvoice(viewingInvoiceOrder)}
                     className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold hover:bg-indigo-700 cursor-pointer flex items-center gap-1"
                   >
                     <Printer size={14} />
@@ -647,17 +724,37 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-500 uppercase">Select Customer Party</label>
                   <select 
                     value={selectedCustomerId}
-                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedCustomerId(e.target.value);
+                      const c = customers.find(cust => cust.id === e.target.value);
+                      if (c?.area) setSelectedArea(c.area);
+                    }}
                     className="w-full px-3 py-2 bg-slate-50 text-[11px] rounded-lg border focus:outline-hidden"
                   >
                     {customers.map((c, idx) => (
                       <option key={`${c.id}-${idx}`} value={c.id}>{c.name} (Credit outstanding: ₹{c.outstanding_amount.toLocaleString()})</option>
                     ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Area Zone Location</label>
+                  <select 
+                    value={selectedArea}
+                    onChange={(e) => setSelectedArea(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 text-[11px] rounded-lg border focus:outline-hidden font-bold text-slate-700"
+                  >
+                    <option value="Dahisar">Dahisar</option>
+                    <option value="Borivali">Borivali</option>
+                    <option value="Kandivali">Kandivali</option>
+                    <option value="Mira Road">Mira Road</option>
+                    <option value="Vasai">Vasai</option>
+                    <option value="Virar">Virar</option>
                   </select>
                 </div>
 
@@ -668,9 +765,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       id="advance-chk"
                       checked={isAdvanceBooking}
                       onChange={(e) => setIsAdvanceBooking(e.target.checked)}
-                      className="h-4 w-4 text-indigo-600"
+                      className="h-4 w-4 text-indigo-600 cursor-pointer"
                     />
-                    <label htmlFor="advance-chk" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1">
+                    <label htmlFor="advance-chk" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
                       <Sparkles size={14} className="text-indigo-500" />
                       <span>Flag as Advance Booking</span>
                     </label>

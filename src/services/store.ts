@@ -35,6 +35,11 @@ const PRE_SEEDED_BUSINESSES: Business[] = [
     phone: '+91 98200 12345',
     invoice_prefix: 'KF-',
     tax_rate_default: 5.00,
+    upi_id: '9820769697@okicici',
+    bank_name: 'NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN',
+    account_number: '092110100000085',
+    ifsc_code: 'NKGS0000092',
+    account_holder: 'Kokanastha Faral & Sweets',
     created_at: new Date().toISOString()
   }
 ];
@@ -55,17 +60,320 @@ const PRE_SEEDED_PROFILES: (UserProfile & { password_hash: string })[] = [
 
 const PRE_SEEDED_CATEGORIES: Category[] = [];
 
-const PRE_SEEDED_PRODUCTS: Product[] = [];
+const PRE_SEEDED_PRODUCTS: Product[] = [
+  {
+    id: 'p1',
+    name: 'Ukadiche Modak (Pack of 6)',
+    sku: 'MODAK-UKD-6',
+    category_id: 'cat1',
+    purchase_price: 220,
+    selling_price: 350,
+    mrp: 380,
+    gst_rate: 5,
+    unit: 'Pack',
+    current_stock: 45,
+    minimum_stock: 10,
+    maximum_stock: 200,
+    opening_stock: 50,
+    brand: 'Kokanastha',
+    hsn_code: '2106',
+    qr_code: '8901234567101',
+    image_url: '',
+    description: 'Fresh authentic Ukadiche Modak',
+    business_id: BIZ_ID,
+    active: true,
+    barcode: '8901234567101',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'p2',
+    name: 'Kaju Katli Special (500g)',
+    sku: 'SWT-KAJU-500',
+    category_id: 'cat1',
+    purchase_price: 180,
+    selling_price: 280,
+    mrp: 300,
+    gst_rate: 5,
+    unit: 'Box',
+    current_stock: 30,
+    minimum_stock: 10,
+    maximum_stock: 200,
+    opening_stock: 35,
+    brand: 'Kokanastha',
+    hsn_code: '2106',
+    qr_code: '8901234567102',
+    image_url: '',
+    description: 'Rich Cashew Katli',
+    business_id: BIZ_ID,
+    active: true,
+    barcode: '8901234567102',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'p3',
+    name: 'Special Diwali Faral Box (1kg)',
+    sku: 'FRL-BOX-1KG',
+    category_id: 'cat1',
+    purchase_price: 320,
+    selling_price: 520,
+    mrp: 550,
+    gst_rate: 5,
+    unit: 'Box',
+    current_stock: 25,
+    minimum_stock: 10,
+    maximum_stock: 200,
+    opening_stock: 30,
+    brand: 'Kokanastha',
+    hsn_code: '2106',
+    qr_code: '8901234567103',
+    image_url: '',
+    description: 'Assorted Diwali Faral Snacks',
+    business_id: BIZ_ID,
+    active: true,
+    barcode: '8901234567103',
+    created_at: new Date().toISOString()
+  }
+];
 
-const PRE_SEEDED_CUSTOMERS: Customer[] = [];
+const PRE_SEEDED_CUSTOMERS: Customer[] = [
+  {
+    id: 'c1',
+    name: 'Aniket Sharma',
+    group: 'Retail',
+    area: 'Dahisar',
+    gstin: '27AABCS1234F1Z1',
+    pan: 'AABCS1234F',
+    billing_address: 'Dahisar Resident',
+    shipping_address: 'Dahisar Resident',
+    email: 'aniket@gmail.com',
+    phone: '+91 98200 11111',
+    credit_limit: 10000,
+    outstanding_amount: 0,
+    business_id: BIZ_ID,
+    active: true,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'c2',
+    name: 'Priyanka Joshi',
+    group: 'Retail',
+    area: 'Borivali',
+    gstin: '27AABCJ5678F1Z2',
+    pan: 'AABCJ5678F',
+    billing_address: 'Borivali Resident',
+    shipping_address: 'Borivali Resident',
+    email: 'priyanka@gmail.com',
+    phone: '+91 98200 22222',
+    credit_limit: 10000,
+    outstanding_amount: 0,
+    business_id: BIZ_ID,
+    active: true,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'c3',
+    name: 'Rajesh Kadam',
+    group: 'Retail',
+    area: 'Kandivali',
+    gstin: '27AABCK9012F1Z3',
+    pan: 'AABCK9012F',
+    billing_address: 'Kandivali Resident',
+    shipping_address: 'Kandivali Resident',
+    email: 'rajesh@gmail.com',
+    phone: '+91 98200 33333',
+    credit_limit: 10000,
+    outstanding_amount: 0,
+    business_id: BIZ_ID,
+    active: true,
+    created_at: new Date().toISOString()
+  }
+];
 
 const PRE_SEEDED_SUPPLIERS: Supplier[] = [];
 
 const PRE_SEEDED_PURCHASES: PurchaseOrder[] = [];
 
-const todayDate = new Date().toISOString().split('T')[0];
+const nowSeed = new Date();
+const todaySeedStr = `${nowSeed.getFullYear()}-${String(nowSeed.getMonth() + 1).padStart(2, '0')}-${String(nowSeed.getDate()).padStart(2, '0')}`;
 
-const PRE_SEEDED_SALES: SalesOrder[] = [];
+const ySeed = new Date(nowSeed);
+ySeed.setDate(ySeed.getDate() - 1);
+const yesterdaySeedStr = `${ySeed.getFullYear()}-${String(ySeed.getMonth() + 1).padStart(2, '0')}-${String(ySeed.getDate()).padStart(2, '0')}`;
+
+const d3Seed = new Date(nowSeed);
+d3Seed.setDate(d3Seed.getDate() - 3);
+const days3SeedStr = `${d3Seed.getFullYear()}-${String(d3Seed.getMonth() + 1).padStart(2, '0')}-${String(d3Seed.getDate()).padStart(2, '0')}`;
+
+const d10Seed = new Date(nowSeed);
+d10Seed.setDate(d10Seed.getDate() - 10);
+const days10SeedStr = `${d10Seed.getFullYear()}-${String(d10Seed.getMonth() + 1).padStart(2, '0')}-${String(d10Seed.getDate()).padStart(2, '0')}`;
+
+const d40Seed = new Date(nowSeed);
+d40Seed.setDate(d40Seed.getDate() - 40);
+const days40SeedStr = `${d40Seed.getFullYear()}-${String(d40Seed.getMonth() + 1).padStart(2, '0')}-${String(d40Seed.getDate()).padStart(2, '0')}`;
+
+const PRE_SEEDED_SALES: SalesOrder[] = [
+  {
+    id: 'so-1001',
+    order_number: '#1036',
+    customer_id: 'c1',
+    customer_name: 'Aniket Sharma',
+    area: 'Dahisar',
+    channel: 'Direct Order',
+    time: '10:30 AM',
+    is_overdue: false,
+    order_date: todaySeedStr,
+    status: 'Pending',
+    payment_status: 'Unpaid',
+    delivery_status: 'Pending',
+    items: [{ product_id: 'p1', qty: 2, scanned_qty: 0, selling_price: 350, gst_rate: 5 }],
+    advance_booking: false,
+    total_amount: 700,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString(),
+    qr_code_data: '#1036'
+  },
+  {
+    id: 'so-1002',
+    order_number: '#1037',
+    customer_id: 'c2',
+    customer_name: 'Priyanka Joshi',
+    area: 'Borivali',
+    channel: 'WhatsApp Store',
+    time: '11:15 AM',
+    is_overdue: false,
+    order_date: todaySeedStr,
+    status: 'Packing',
+    payment_status: 'Paid',
+    delivery_status: 'Packing',
+    items: [{ product_id: 'p2', qty: 3, scanned_qty: 1, selling_price: 280, gst_rate: 5 }],
+    advance_booking: false,
+    total_amount: 840,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString(),
+    qr_code_data: '#1037'
+  },
+  {
+    id: 'so-1003',
+    order_number: '#1038',
+    customer_id: 'c3',
+    customer_name: 'Rajesh Kadam',
+    area: 'Kandivali',
+    channel: 'Direct Order',
+    time: '01:45 PM',
+    is_overdue: false,
+    order_date: todaySeedStr,
+    status: 'Packed',
+    payment_status: 'Paid',
+    delivery_status: 'Packed',
+    items: [{ product_id: 'p3', qty: 1, scanned_qty: 1, selling_price: 520, gst_rate: 5 }],
+    advance_booking: false,
+    total_amount: 520,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString(),
+    qr_code_data: '#1038'
+  },
+  {
+    id: 'so-1004',
+    order_number: '#1034',
+    customer_id: 'c1',
+    customer_name: 'Aniket Sharma',
+    area: 'Dahisar',
+    channel: 'Direct Order',
+    time: '03:10 PM',
+    is_overdue: false,
+    order_date: yesterdaySeedStr,
+    status: 'Dispatched',
+    payment_status: 'Paid',
+    delivery_status: 'Dispatched',
+    items: [{ product_id: 'p1', qty: 1, scanned_qty: 1, selling_price: 350, gst_rate: 5 }],
+    advance_booking: false,
+    total_amount: 350,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString(),
+    qr_code_data: '#1034'
+  },
+  {
+    id: 'so-1005',
+    order_number: '#1035',
+    customer_id: 'c2',
+    customer_name: 'Priyanka Joshi',
+    area: 'Mira Road',
+    channel: 'Phone Booking',
+    time: '04:20 PM',
+    is_overdue: false,
+    order_date: yesterdaySeedStr,
+    status: 'Delivered',
+    payment_status: 'Paid',
+    delivery_status: 'Delivered',
+    items: [{ product_id: 'p2', qty: 2, scanned_qty: 2, selling_price: 280, gst_rate: 5 }],
+    advance_booking: false,
+    total_amount: 560,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString(),
+    qr_code_data: '#1035'
+  },
+  {
+    id: 'so-1006',
+    order_number: '#1031',
+    customer_id: 'c3',
+    customer_name: 'Rajesh Kadam',
+    area: 'Vasai',
+    channel: 'Direct Order',
+    time: '09:00 AM',
+    is_overdue: false,
+    order_date: days3SeedStr,
+    status: 'Delivered',
+    payment_status: 'Paid',
+    delivery_status: 'Delivered',
+    items: [{ product_id: 'p3', qty: 2, scanned_qty: 2, selling_price: 520, gst_rate: 5 }],
+    advance_booking: false,
+    total_amount: 1040,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString(),
+    qr_code_data: '#1031'
+  },
+  {
+    id: 'so-1007',
+    order_number: '#1025',
+    customer_id: 'c1',
+    customer_name: 'Aniket Sharma',
+    area: 'Virar',
+    channel: 'WhatsApp Store',
+    time: '02:00 PM',
+    is_overdue: false,
+    order_date: days10SeedStr,
+    status: 'Delivered',
+    payment_status: 'Paid',
+    delivery_status: 'Delivered',
+    items: [{ product_id: 'p1', qty: 4, scanned_qty: 4, selling_price: 350, gst_rate: 5 }],
+    advance_booking: false,
+    total_amount: 1400,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString(),
+    qr_code_data: '#1025'
+  },
+  {
+    id: 'so-1008',
+    order_number: '#1010',
+    customer_id: 'c2',
+    customer_name: 'Priyanka Joshi',
+    area: 'Borivali',
+    channel: 'Direct Order',
+    time: '11:00 AM',
+    is_overdue: false,
+    order_date: days40SeedStr,
+    status: 'Delivered',
+    payment_status: 'Paid',
+    delivery_status: 'Delivered',
+    items: [{ product_id: 'p2', qty: 5, scanned_qty: 5, selling_price: 280, gst_rate: 5 }],
+    advance_booking: false,
+    total_amount: 1400,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString(),
+    qr_code_data: '#1010'
+  }
+];
 
 const PRE_SEEDED_SETTINGS: BusinessSettings[] = [
   {
@@ -85,6 +393,56 @@ const PRE_SEEDED_SETTINGS: BusinessSettings[] = [
 const PRE_SEEDED_STOCK_LOGS: StockLog[] = [];
 
 const PRE_SEEDED_SYSTEM_AUDIT_LOGS: SystemAuditLog[] = [];
+
+export function isOrderInTimeHorizon(order: SalesOrder, horizon: 'today' | 'yesterday' | '7days' | '30days' | 'all'): boolean {
+  if (horizon === 'all') return true;
+
+  const rawDateStr = order.order_date || (order.created_at ? order.created_at.split('T')[0] : '');
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const date = now.getDate();
+
+  const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
+
+  const yesterdayDate = new Date(year, month, date - 1);
+  const yesterdayStr = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
+
+  if (!rawDateStr) {
+    return horizon === 'today';
+  }
+
+  if (horizon === 'today') {
+    return rawDateStr === todayStr;
+  }
+
+  if (horizon === 'yesterday') {
+    return rawDateStr === yesterdayStr;
+  }
+
+  const parts = rawDateStr.split('-');
+  if (parts.length < 3) return true;
+  const oYear = parseInt(parts[0], 10);
+  const oMonth = parseInt(parts[1], 10) - 1;
+  const oDay = parseInt(parts[2], 10);
+
+  const orderDateObj = new Date(oYear, oMonth, oDay);
+  const todayObj = new Date(year, month, date);
+
+  const diffMs = todayObj.getTime() - orderDateObj.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (horizon === '7days') {
+    return diffDays >= 0 && diffDays < 7;
+  }
+
+  if (horizon === '30days') {
+    return diffDays >= 0 && diffDays < 30;
+  }
+
+  return true;
+}
 
 // ====================================================================
 // STORAGE STATE CLASS (LOCALSTORAGE BACKED)
@@ -230,6 +588,7 @@ class ERPStorage {
     if (!isSupabaseConfigured || !supabase) return;
     
     console.log('Syncing from Supabase...');
+    try {
     const tables = {
        businesses: 'businesses',
        profiles: 'users_profiles',
@@ -246,6 +605,7 @@ class ERPStorage {
     };
     
     for (const [key, table] of Object.entries(tables)) {
+       try {
        let query = supabase.from(table).select('*');
        if (businessId && table !== 'businesses') {
           query = query.eq('business_id', businessId);
@@ -293,12 +653,27 @@ class ERPStorage {
                  };
                });
                return {
+                 ...existingSO,
                  ...so,
+                 area: so.area || existingSO?.area || undefined,
+                 channel: so.channel || existingSO?.channel || undefined,
+                 time: so.time || existingSO?.time || undefined,
                  items: mergedItems
                };
              });
              this.cache.sales = mergedSales;
              localStorage.setItem('omnipack_erp_sales', JSON.stringify(mergedSales));
+          } else if (key === 'customers') {
+             const mergedCustomers = (data || []).map((cust: any) => {
+               const existingCust = (this.cache.customers || []).find(c => c.id === cust.id);
+               return {
+                 ...existingCust,
+                 ...cust,
+                 area: cust.area || existingCust?.area || undefined
+               };
+             });
+             this.cache.customers = mergedCustomers;
+             localStorage.setItem('omnipack_erp_customers', JSON.stringify(mergedCustomers));
           } else if (key === 'purchases') {
              const { data: itemsData } = await supabase.from('purchase_order_items').select('*');
              const itemsByPO: Record<string, any[]> = {};
@@ -317,12 +692,19 @@ class ERPStorage {
              localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
           }
        }
+       } catch (tableErr) {
+         console.warn(`Supabase query failed for ${table}:`, tableErr);
+       }
     }
     this.notify();
+    } catch (err) {
+      console.warn('Supabase syncFromSupabase network error:', err);
+    }
   }
 
   private async syncToSupabase(key: keyof typeof this.cache, dataItem: any, isDelete = false, deleteId?: string) {
     if (!isSupabaseConfigured || !supabase) return;
+    try {
     
     const tables: any = {
        businesses: 'businesses',
@@ -362,7 +744,11 @@ class ERPStorage {
                delete clean.gstin;
                delete clean.invoice_prefix;
            }
+           if (tableName === 'customers') {
+               delete clean.area;
+           }
            if (tableName === 'sales_orders') {
+               delete clean.area;
                if (clean.items) {
                    clean.items.forEach(i => {
                        // The table might not have 'id' if we just created the order items inline,
@@ -387,6 +773,17 @@ class ERPStorage {
            if (tableName === 'users_profiles') {
                delete clean.password_hash;
            }
+            if (tableName === 'businesses') {
+                delete clean.last_supabase_sync;
+                delete clean.currency_symbol;
+                delete clean.auto_backup;
+                delete clean.low_stock_threshold;
+                delete clean.audit_retention_days;
+                delete clean.default_theme;
+                delete clean.enable_auto_whatsapp;
+                delete clean.enable_auto_sms;
+                delete clean.default_dispatch_zone;
+            }
            return clean;
        };
        
@@ -396,7 +793,30 @@ class ERPStorage {
            payload = cleanItem(payload);
        }
 
-       const { error } = await supabase.from(tableName).upsert(payload);
+       let upsertRes = await supabase.from(tableName).upsert(payload);
+       let error = upsertRes.error;
+       let attempts = 0;
+       while (error && error.code === 'PGRST204' && attempts < 30) {
+         attempts++;
+         const match = error.message.match(/Could not find the '([^']+)' column/i);
+         if (match && match[1]) {
+           const missingCol = match[1];
+           console.warn(`Supabase schema cache missing '${missingCol}' on '${tableName}'. Stripping column and retrying...`);
+           const stripCol = (item: any) => {
+             if (item && typeof item === 'object') {
+               const copy = { ...item };
+               delete copy[missingCol];
+               return copy;
+             }
+             return item;
+           };
+           payload = Array.isArray(payload) ? payload.map(stripCol) : stripCol(payload);
+           upsertRes = await supabase.from(tableName).upsert(payload);
+           error = upsertRes.error;
+         } else {
+           break;
+         }
+       }
        if (error) {
          console.error(`Supabase sync error on ${tableName}:`, JSON.stringify(error));
          return error;
@@ -411,6 +831,10 @@ class ERPStorage {
            const { error: err3 } = await supabase.from('purchase_order_items').upsert(purchaseItems);
            if (err3) console.error('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
        }
+    }
+    } catch (err: any) {
+      console.warn(`Supabase sync error on ${key}:`, err);
+      return err;
     }
   }
 
@@ -742,15 +1166,25 @@ class ERPStorage {
 
   // Sales Order Operations
   public getSalesOrders(businessId: string): SalesOrder[] {
+    const customers = this.getCustomers(businessId);
+    const customerMap = new Map(customers.map(c => [c.id, c]));
+
     return (this.cache.sales || [])
       .filter(s => s.business_id === businessId)
-      .map(s => ({
-        ...s,
-        items: (s.items || []).map(it => ({
-          ...it,
-          scanned_qty: typeof it.scanned_qty === 'number' && !isNaN(it.scanned_qty) ? it.scanned_qty : 0
-        }))
-      }));
+      .map(s => {
+        const cust = customerMap.get(s.customer_id);
+        const resolvedArea = s.area || cust?.area || (cust?.shipping_address ? cust.shipping_address.replace(/ Resident$/i, '').trim() : undefined) || 'Dahisar';
+        return {
+          ...s,
+          area: resolvedArea,
+          customer_name: s.customer_name || cust?.name || 'Walk-in Customer',
+          items: (s.items || []).map(it => ({
+            ...it,
+            scanned_qty: typeof it.scanned_qty === 'number' && !isNaN(it.scanned_qty) ? it.scanned_qty : 0
+          }))
+        };
+      })
+      .sort((a, b) => new Date(b.created_at || b.order_date).getTime() - new Date(a.created_at || a.order_date).getTime());
   }
 
   public createSalesOrder(so: Omit<SalesOrder, 'id' | 'created_at'>): SalesOrder {
@@ -759,7 +1193,7 @@ class ERPStorage {
       id: crypto.randomUUID(),
       created_at: new Date().toISOString()
     };
-    this.cache.sales.push(newSO);
+    this.cache.sales.unshift(newSO);
     this.save('sales', newSO);
     return newSO;
   }
@@ -1137,13 +1571,16 @@ class ERPStorage {
   }
 
   // Metrics Generator for Dashboard (isolated by business_id)
-  public getDashboardMetrics(businessId: string) {
-    const todayStr = new Date().toISOString().split('T')[0];
+  public getDashboardMetrics(
+    businessId: string, 
+    timeHorizon: 'today' | 'yesterday' | '7days' | '30days' | 'all' = 'today'
+  ) {
     const products = this.getProducts(businessId);
-    const orders = this.getSalesOrders(businessId);
+    const allOrders = this.getSalesOrders(businessId);
 
-    // Filter today's orders
-    const todayOrders = orders.filter(o => o.order_date === todayStr);
+    // Filter orders strictly by time horizon
+    const orders = allOrders.filter(o => isOrderInTimeHorizon(o, timeHorizon));
+
     const todaySalesAmount = orders
       .filter(o => o.status !== 'Cancelled')
       .reduce((sum, o) => sum + o.total_amount, 0);
@@ -1157,7 +1594,7 @@ class ERPStorage {
     const advanceBookingOrders = orders.filter(o => o.advance_booking).length;
 
     // Specific KPI values matching operational snapshot
-    const toPackToday = orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length;
+    const toPackToday = allOrders.filter(o => o.status === 'Pending' || o.status === 'Packing').length;
     const readyForDispatch = orders.filter(o => o.status === 'Packed').length;
     const deliveriesToday = orders.filter(o => o.status === 'Dispatched' || o.status === 'Delivered').length;
     const overdueOrdersCount = orders.filter(o => o.is_overdue || o.status === 'Pending').length;
@@ -1251,7 +1688,7 @@ class ERPStorage {
       totalOrdersCount,
       todaySalesAmount,
       outstandingAmount,
-      todayOrders: todayOrders.length,
+      todayOrders: orders.length,
       pendingOrders,
       packingOrders,
       packedOrders,

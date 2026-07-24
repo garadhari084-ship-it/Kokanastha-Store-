@@ -10,3 +10,65 @@
   }
 }
 
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  
+  body {
+    background-color: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide everything on screen during printing except the tax invoice */
+  body > *:not(#printable-tax-invoice-container) {
+    display: none !important;
+  }
+
+  /* If modal is open, ensure background backdrop and buttons are hidden */
+  .fixed, .backdrop-blur-xs, button, .no-print {
+    background: transparent !important;
+  }
+
+  #printable-tax-invoice {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 15px !important;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    border: none !important;
+    font-size: 11pt !important;
+    overflow: visible !important;
+  }
+
+  /* Ensure text colors are dark and high-contrast in print */
+  #printable-tax-invoice * {
+    color: black !important;
+    border-color: #cbd5e1 !important;
+    background-color: transparent !important;
+  }
+
+  #printable-tax-invoice .bg-amber-50, 
+  #printable-tax-invoice .bg-slate-50,
+  #printable-tax-invoice .bg-slate-100 {
+    background-color: #f8fafc !important;
+  }
+
+  #printable-tax-invoice .text-amber-600,
+  #printable-tax-invoice .text-amber-400 {
+    color: #b45309 !important;
+  }
+
+  /* Hide modal buttons during print */
+  button, .shrink-0 {
+    display: none !important;
+  }
+}
+

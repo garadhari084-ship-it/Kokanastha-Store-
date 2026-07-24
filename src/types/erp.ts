@@ -14,6 +14,21 @@ export interface Business {
   created_at: string;
   logo_url?: string;
   login_cover_url?: string;
+  currency_symbol?: string;
+  auto_backup?: boolean;
+  low_stock_threshold?: number;
+  audit_retention_days?: number;
+  default_theme?: string;
+  enable_auto_whatsapp?: boolean;
+  enable_auto_sms?: boolean;
+  default_dispatch_zone?: string;
+  last_supabase_sync?: string;
+  upi_id?: string;
+  upi_qr_url?: string;
+  bank_name?: string;
+  account_number?: string;
+  ifsc_code?: string;
+  account_holder?: string;
 }
 
 export interface UserProfile {

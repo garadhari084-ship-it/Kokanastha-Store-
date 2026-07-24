@@ -16,6 +16,13 @@ import {
   Building2, 
   Bell, 
   UserCircle,
+  AlertTriangle,
+  CheckCheck,
+  Filter,
+  CheckCircle2,
+  Trash2,
+  ExternalLink,
+  Check,
   ChevronRight, 
   ChevronLeft,
   PanelLeftClose,
@@ -97,6 +104,16 @@ export default function App() {
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('omnipack_read_notifications');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isAllNotificationsModalOpen, setIsAllNotificationsModalOpen] = useState(false);
+  const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'order' | 'stock' | 'system'>('all');
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const triggerToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -463,6 +480,116 @@ export default function App() {
       default:
         return false;
     }
+  };
+
+  // Dynamic Notifications Computation
+  interface AppNotification {
+    id: string;
+    title: string;
+    message: string;
+    timestamp: string;
+    type: 'order' | 'stock' | 'system' | 'info';
+    targetView: string;
+    read: boolean;
+  }
+
+  const notifications = React.useMemo(() => {
+    if (!currentBusiness) return [];
+    const bizId = currentBusiness.id;
+    const list: AppNotification[] = [];
+
+    // A. Low stock alerts
+    const products = dbStore.getProducts(bizId);
+    const lowStockProds = products.filter(p => (p.current_stock ?? 0) <= (p.minimum_stock || currentBusiness.low_stock_threshold || 10));
+    lowStockProds.forEach(p => {
+      list.push({
+        id: `stock-${p.id}`,
+        title: 'Low Stock Alert',
+        message: `SKU "${p.sku}" (${p.name}) is at ${p.current_stock ?? 0} units (Alert limit: ${p.minimum_stock || 10}).`,
+        timestamp: 'Inventory Action Needed',
+        type: 'stock',
+        targetView: 'inventory',
+        read: readNotificationIds.includes(`stock-${p.id}`)
+      });
+    });
+
+    // B. Sales orders pending / packing
+    const sales = dbStore.getSalesOrders(bizId);
+    const activeOrders = sales.filter(s => s.status === 'Pending' || s.status === 'Packing');
+    activeOrders.forEach(s => {
+      list.push({
+        id: `order-${s.id}`,
+        title: `Sales Order #${s.order_number} (${s.status})`,
+        message: `Customer ${s.customer_name} - Total ₹${s.total_amount?.toLocaleString() || 0}.`,
+        timestamp: s.created_at ? new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+        type: 'order',
+        targetView: s.status === 'Packing' ? 'packing' : 'sales',
+        read: readNotificationIds.includes(`order-${s.id}`)
+      });
+    });
+
+    // C. System Audit Log events
+    const auditLogs = dbStore.getSystemAuditLogs(bizId);
+    auditLogs.slice(0, 10).forEach(log => {
+      list.push({
+        id: `audit-${log.id}`,
+        title: `${log.action}`,
+        message: `${log.user_name} (${log.user_role}): ${log.details}`,
+        timestamp: log.created_at ? new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today',
+        type: 'system',
+        targetView: 'audit',
+        read: readNotificationIds.includes(`audit-${log.id}`)
+      });
+    });
+
+    if (list.length === 0) {
+      list.push({
+        id: 'sys-welcome',
+        title: 'System Operational',
+        message: 'All tenant nodes, Supabase databases, and dispatch hubs are functioning normally.',
+        timestamp: 'Just now',
+        type: 'info',
+        targetView: 'dashboard',
+        read: readNotificationIds.includes('sys-welcome')
+      });
+    }
+
+    return list;
+  }, [currentBusiness, readNotificationIds, syncTick]);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const handleMarkAllNotificationsRead = () => {
+    const allIds = notifications.map(n => n.id);
+    const updatedRead = Array.from(new Set([...readNotificationIds, ...allIds]));
+    setReadNotificationIds(updatedRead);
+    localStorage.setItem('omnipack_read_notifications', JSON.stringify(updatedRead));
+    triggerToast('All notifications marked as read', 'success');
+  };
+
+  const handleNotificationClick = (notification: AppNotification) => {
+    if (!readNotificationIds.includes(notification.id)) {
+      const updated = [...readNotificationIds, notification.id];
+      setReadNotificationIds(updated);
+      localStorage.setItem('omnipack_read_notifications', JSON.stringify(updated));
+    }
+    setIsNotificationMenuOpen(false);
+    setIsAllNotificationsModalOpen(false);
+
+    if (notification.targetView && hasAccessToView(notification.targetView)) {
+      setActiveView(notification.targetView);
+    }
+  };
+
+  const handleViewAllNotifications = () => {
+    setIsNotificationMenuOpen(false);
+    setIsAllNotificationsModalOpen(true);
+  };
+
+  const handleClearReadNotifications = () => {
+    setReadNotificationIds([]);
+    localStorage.removeItem('omnipack_read_notifications');
+    triggerToast('Cleared notification read memory', 'info');
   };
 
   // Define sidebar menu items
@@ -1000,37 +1127,84 @@ export default function App() {
                   setIsNotificationMenuOpen(!isNotificationMenuOpen);
                   setIsUserMenuOpen(false);
                 }}
-                className="relative p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group focus:outline-none overflow-hidden"
+                className="relative p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group focus:outline-none overflow-hidden cursor-pointer"
+                title="System Notifications"
               >
                 <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-fuchsia-500/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <Bell size={18} className="text-slate-600 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors relative z-10" />
-                <span className="absolute top-1 right-1 flex h-2.5 w-2.5 z-20">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-gradient-to-r from-rose-500 to-pink-500 border-2 border-white dark:border-slate-800 shadow-sm"></span>
-                </span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 z-20">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-[9px] font-bold items-center justify-center border border-white dark:border-slate-800 shadow-sm">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  </span>
+                )}
               </button>
               
               {/* Notification Dropdown Panel */}
               {isNotificationMenuOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
-                    <h3 className="font-semibold text-slate-800 dark:text-white text-sm">Notifications</h3>
-                    <button className="text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:underline focus:outline-none">Mark all read</button>
-                  </div>
-                  <div className="max-h-[300px] overflow-y-auto">
-                    <div className="p-4 border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer">
-                      <p className="text-sm text-slate-800 dark:text-white font-medium">New order received</p>
-                      <p className="text-xs text-slate-500 mt-1">Order #1042 needs processing.</p>
-                      <p className="text-[10px] text-slate-400 mt-1">2 mins ago</p>
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/80">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-slate-800 dark:text-white text-sm">Notifications</h3>
+                      {unreadCount > 0 && (
+                        <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-full text-[10px] font-bold">
+                          {unreadCount} new
+                        </span>
+                      )}
                     </div>
-                    <div className="p-4 border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer">
-                      <p className="text-sm text-slate-800 dark:text-white font-medium">Low stock alert</p>
-                      <p className="text-xs text-slate-500 mt-1">Product "Premium Wireless Headphones" is low on stock.</p>
-                      <p className="text-[10px] text-slate-400 mt-1">1 hour ago</p>
-                    </div>
+                    {unreadCount > 0 && (
+                      <button 
+                        onClick={handleMarkAllNotificationsRead}
+                        className="text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:underline focus:outline-none cursor-pointer flex items-center gap-1"
+                      >
+                        <CheckCheck size={12} /> Mark all read
+                      </button>
+                    )}
                   </div>
-                  <div className="p-3 text-center border-t border-slate-100 dark:border-slate-700">
-                    <button className="text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:underline focus:outline-none">View all notifications</button>
+
+                  <div className="max-h-[320px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/50">
+                    {notifications.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                        <CheckCircle2 size={24} className="mx-auto text-emerald-500 mb-2" />
+                        No notifications at this time
+                      </div>
+                    ) : (
+                      notifications.slice(0, 6).map(n => (
+                        <div 
+                          key={n.id}
+                          onClick={() => handleNotificationClick(n)}
+                          className={`p-3.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer flex gap-3 items-start ${!n.read ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : ''}`}
+                        >
+                          <div className="mt-0.5 shrink-0 p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700/80">
+                            {n.type === 'order' && <Package size={15} className="text-indigo-600 dark:text-indigo-400" />}
+                            {n.type === 'stock' && <AlertTriangle size={15} className="text-amber-500" />}
+                            {n.type === 'system' && <ShieldAlert size={15} className="text-rose-500" />}
+                            {n.type === 'info' && <Sparkles size={15} className="text-emerald-500" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <p className={`text-xs ${!n.read ? 'font-bold text-slate-900 dark:text-white' : 'font-medium text-slate-700 dark:text-slate-300'} truncate`}>
+                                {n.title}
+                              </p>
+                              {!n.read && <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0"></span>}
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2 leading-snug">{n.message}</p>
+                            <span className="text-[10px] text-slate-400 mt-1 font-mono block">{n.timestamp}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="p-2.5 text-center border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/80 flex justify-between items-center px-4">
+                    <button 
+                      onClick={handleViewAllNotifications}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline focus:outline-none cursor-pointer flex items-center gap-1 mx-auto"
+                    >
+                      <ExternalLink size={12} /> View all notifications ({notifications.length})
+                    </button>
                   </div>
                 </div>
               )}
@@ -1043,7 +1217,7 @@ export default function App() {
                   setIsUserMenuOpen(!isUserMenuOpen);
                   setIsNotificationMenuOpen(false);
                 }}
-                className="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold text-sm flex items-center justify-center border border-indigo-200 dark:border-indigo-800 focus:outline-none hover:ring-2 hover:ring-indigo-500 hover:ring-offset-1 transition-all shadow-sm"
+                className="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold text-sm flex items-center justify-center border border-indigo-200 dark:border-indigo-800 focus:outline-none hover:ring-2 hover:ring-indigo-500 hover:ring-offset-1 transition-all shadow-sm cursor-pointer"
               >
                 {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : <UserCircle size={20} />}
               </button>
@@ -1054,16 +1228,40 @@ export default function App() {
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700">
                     <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{currentUser?.name || 'Store Admin'}</p>
                     <p className="text-xs text-slate-500 truncate">{currentUser?.email || 'admin@example.com'}</p>
+                    <span className="mt-1 inline-block px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded text-[10px] font-bold">
+                      Role: {currentUser?.role}
+                    </span>
                   </div>
                   <div className="py-1">
-                    <button className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 focus:outline-none">
+                    <button 
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        if (hasAccessToView('settings')) {
+                          setActiveView('settings');
+                        } else {
+                          triggerToast('Administrator privileges required for Settings', 'error');
+                        }
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 focus:outline-none cursor-pointer"
+                    >
                       <Settings size={14} /> Account Settings
                     </button>
+                    {hasAccessToView('audit') && (
+                      <button 
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          setActiveView('audit');
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 focus:outline-none cursor-pointer"
+                      >
+                        <ShieldAlert size={14} /> Security Logs
+                      </button>
+                    )}
                   </div>
                   <div className="border-t border-slate-100 dark:border-slate-700 py-1">
                     <button 
                       onClick={handleLogout}
-                      className="w-full text-left px-4 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors flex items-center gap-2 focus:outline-none"
+                      className="w-full text-left px-4 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors flex items-center gap-2 focus:outline-none cursor-pointer"
                     >
                       <LogOut size={14} /> Sign out
                     </button>
@@ -1097,6 +1295,174 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      {/* Full Notifications Center Modal */}
+      {isAllNotificationsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/80">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-xl text-indigo-600 dark:text-indigo-400">
+                  <Bell size={20} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800 dark:text-white">Notification Center</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {unreadCount} unread of {notifications.length} total alerts
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <button 
+                    onClick={handleMarkAllNotificationsRead}
+                    className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <CheckCheck size={14} /> Mark all read
+                  </button>
+                )}
+                {readNotificationIds.length > 0 && (
+                  <button 
+                    onClick={handleClearReadNotifications}
+                    className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+                    title="Reset read notifications memory"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+                <button 
+                  onClick={() => setIsAllNotificationsModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex items-center gap-1.5 overflow-x-auto text-xs font-medium">
+              {[
+                { id: 'all', label: 'All', count: notifications.length },
+                { id: 'unread', label: 'Unread', count: unreadCount },
+                { id: 'order', label: 'Orders', count: notifications.filter(n => n.type === 'order').length },
+                { id: 'stock', label: 'Low Stock', count: notifications.filter(n => n.type === 'stock').length },
+                { id: 'system', label: 'Security & Logs', count: notifications.filter(n => n.type === 'system').length }
+              ].map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setNotificationFilter(f.id as any)}
+                  className={`px-3 py-1.5 rounded-lg transition shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                    notificationFilter === f.id
+                      ? 'bg-indigo-600 text-white font-semibold shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span>{f.label}</span>
+                  <span className={`px-1.5 py-0.2 text-[10px] rounded-full ${
+                    notificationFilter === f.id ? 'bg-indigo-700 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                  }`}>
+                    {f.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Notifications List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60 p-2 sm:p-4">
+              {notifications
+                .filter(n => {
+                  if (notificationFilter === 'unread') return !n.read;
+                  if (notificationFilter === 'order') return n.type === 'order';
+                  if (notificationFilter === 'stock') return n.type === 'stock';
+                  if (notificationFilter === 'system') return n.type === 'system';
+                  return true;
+                })
+                .length === 0 ? (
+                  <div className="p-12 text-center text-slate-400">
+                    <CheckCircle2 size={36} className="mx-auto text-emerald-500 mb-2" />
+                    <p className="text-sm font-medium">No notifications matching this filter</p>
+                  </div>
+                ) : (
+                  notifications
+                    .filter(n => {
+                      if (notificationFilter === 'unread') return !n.read;
+                      if (notificationFilter === 'order') return n.type === 'order';
+                      if (notificationFilter === 'stock') return n.type === 'stock';
+                      if (notificationFilter === 'system') return n.type === 'system';
+                      return true;
+                    })
+                    .map(n => (
+                      <div 
+                        key={n.id}
+                        className={`p-4 rounded-xl transition flex gap-3.5 items-start my-1 ${
+                          !n.read 
+                            ? 'bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40' 
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-700/40 border border-transparent'
+                        }`}
+                      >
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-700 shadow-sm shrink-0 border border-slate-100 dark:border-slate-600">
+                          {n.type === 'order' && <Package size={18} className="text-indigo-600 dark:text-indigo-400" />}
+                          {n.type === 'stock' && <AlertTriangle size={18} className="text-amber-500" />}
+                          {n.type === 'system' && <ShieldAlert size={18} className="text-rose-500" />}
+                          {n.type === 'info' && <Sparkles size={18} className="text-emerald-500" />}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <h4 className={`text-sm ${!n.read ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-800 dark:text-slate-200'}`}>
+                              {n.title}
+                            </h4>
+                            <span className="text-[11px] text-slate-400 font-mono shrink-0">{n.timestamp}</span>
+                          </div>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">{n.message}</p>
+                          
+                          <div className="mt-3 flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-700/50">
+                            <button
+                              onClick={() => handleNotificationClick(n)}
+                              className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <span>Open Module ({n.targetView.toUpperCase()})</span>
+                              <ExternalLink size={12} />
+                            </button>
+
+                            {!n.read ? (
+                              <button
+                                onClick={() => {
+                                  const updated = [...readNotificationIds, n.id];
+                                  setReadNotificationIds(updated);
+                                  localStorage.setItem('omnipack_read_notifications', JSON.stringify(updated));
+                                }}
+                                className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-medium flex items-center gap-1 cursor-pointer"
+                              >
+                                <CheckCheck size={13} /> Mark as read
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                                <Check size={12} className="text-emerald-500" /> Read
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 flex justify-end">
+              <button 
+                onClick={() => setIsAllNotificationsModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition cursor-pointer"
+              >
+                Close Notification Center
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

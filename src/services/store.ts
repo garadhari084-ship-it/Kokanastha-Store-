@@ -731,7 +731,13 @@ class ERPStorage {
   public getSalesOrders(businessId: string): SalesOrder[] {
     return (this.cache.sales || [])
       .filter(s => s.business_id === businessId)
-      .map(s => ({ ...s, items: s.items || [] }));
+      .map(s => ({
+        ...s,
+        items: (s.items || []).map(it => ({
+          ...it,
+          scanned_qty: typeof it.scanned_qty === 'number' && !isNaN(it.scanned_qty) ? it.scanned_qty : 0
+        }))
+      }));
   }
 
   public createSalesOrder(so: Omit<SalesOrder, 'id' | 'created_at'>): SalesOrder {
@@ -904,27 +910,31 @@ class ERPStorage {
 
     const item = order.items[orderItemIndex];
 
+    // Ensure item.scanned_qty and item.qty are valid numbers
+    const currentScanned = (typeof item.scanned_qty === 'number' && !isNaN(item.scanned_qty)) ? item.scanned_qty : 0;
+    const requiredQty = typeof item.qty === 'number' ? item.qty : 1;
+
     // Verify extra product or quantity overflow
-    if (item.scanned_qty >= item.qty) {
+    if (currentScanned >= requiredQty) {
       return {
         success: false,
         product,
         error_type: 'extra_product',
-        error_message: `Extra item scanned! "${product.name}" already has 100% verified quantity (${item.qty}/${item.qty}).`
+        error_message: `Extra item scanned! "${product.name}" already has 100% verified quantity (${currentScanned}/${requiredQty}).`
       };
     }
 
     // Increment scanned count
-    item.scanned_qty += 1;
+    item.scanned_qty = currentScanned + 1;
     this.save('sales');
 
-    const remaining = item.qty - item.scanned_qty;
+    const remaining = requiredQty - item.scanned_qty;
 
     return {
       success: true,
       product,
       scanned_qty: item.scanned_qty,
-      required_qty: item.qty,
+      required_qty: requiredQty,
       remaining_qty: remaining
     };
   }

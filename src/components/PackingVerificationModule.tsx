@@ -71,6 +71,11 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const [dispatchNotes, setDispatchNotes] = useState<string>('');
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const selectedOrderRef = useRef<SalesOrder | null>(selectedOrder);
+
+  useEffect(() => {
+    selectedOrderRef.current = selectedOrder;
+  }, [selectedOrder]);
 
   // Auto-refresh when orders change in store
   const reloadOrders = () => {
@@ -78,9 +83,12 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     setPendingOrders(
       allSales.filter(o => o.status === 'Pending' || o.status === 'Packing')
     );
-    if (selectedOrder) {
-      const refreshed = allSales.find(o => o.id === selectedOrder.id);
-      setSelectedOrder(refreshed || null);
+    const activeId = selectedOrderRef.current?.id;
+    if (activeId) {
+      const refreshed = allSales.find(o => o.id === activeId);
+      if (refreshed) {
+        setSelectedOrder(refreshed);
+      }
     }
   };
 

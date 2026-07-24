@@ -141,6 +141,12 @@ export interface SalesOrder {
   business_id: string;
   created_at: string;
   qr_code_data: string; // Custom string packing verification scan
+  delivery_partner?: string; // Rapido, Dunzo, Courier, In-House, etc.
+  delivery_person_name?: string;
+  delivery_person_phone?: string;
+  tracking_number?: string;
+  dispatch_notes?: string;
+  dispatched_at?: string;
 }
 
 export interface AuditLogEntry {

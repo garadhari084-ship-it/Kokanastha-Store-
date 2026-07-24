@@ -854,25 +854,51 @@ class ERPStorage {
     }
 
     const order = this.cache.sales[orderIndex];
+    const cleanCode = barcode.trim().toLowerCase();
 
-    // Find the product matching the scanned barcode in the business scope
-    const product = this.cache.products.find(p => p.business_id === businessId && p.barcode === barcode);
+    // 1. Try matching directly among items in this order first
+    let product: Product | undefined;
+    for (const item of (order.items || [])) {
+      const p = this.cache.products.find(prod => prod.id === item.product_id);
+      if (p) {
+        if (
+          p.barcode?.trim().toLowerCase() === cleanCode ||
+          p.sku?.trim().toLowerCase() === cleanCode ||
+          p.name?.trim().toLowerCase() === cleanCode ||
+          p.id === barcode.trim()
+        ) {
+          product = p;
+          break;
+        }
+      }
+    }
+
+    // 2. If not found in order items, search all products in the database
+    if (!product) {
+      product = this.cache.products.find(p => p.business_id === businessId && (
+        p.barcode?.trim().toLowerCase() === cleanCode ||
+        p.sku?.trim().toLowerCase() === cleanCode ||
+        p.name?.trim().toLowerCase() === cleanCode ||
+        p.id === barcode.trim()
+      ));
+    }
+
     if (!product) {
       return {
         success: false,
         error_type: 'wrong_product',
-        error_message: 'Wrong Barcode! Product does not exist in the database.'
+        error_message: `Unrecognized Barcode/SKU "${barcode}". Product not found in inventory.`
       };
     }
 
     // Verify if product belongs to this order
-    const orderItemIndex = order.items.findIndex(item => item.product_id === product.id);
+    const orderItemIndex = (order.items || []).findIndex(item => item.product_id === product!.id);
     if (orderItemIndex === -1) {
       return {
         success: false,
         product,
         error_type: 'wrong_product',
-        error_message: `Wrong Product! "${product.name}" is not part of this order.`
+        error_message: `Wrong Product! "${product.name}" is not part of Order #${order.order_number}.`
       };
     }
 
@@ -909,7 +935,14 @@ class ERPStorage {
     staffId: string,
     staffName: string,
     totalScans: number,
-    auditLogs: AuditLogEntry[]
+    auditLogs: AuditLogEntry[],
+    deliveryDetails?: {
+      partner?: string;
+      personName?: string;
+      personPhone?: string;
+      trackingNumber?: string;
+      notes?: string;
+    }
   ): { success: boolean; order?: SalesOrder; error?: string } {
     const orderIndex = this.cache.sales.findIndex(o => o.id === orderId && o.business_id === businessId);
     if (orderIndex === -1) {
@@ -919,7 +952,7 @@ class ERPStorage {
     const order = this.cache.sales[orderIndex];
 
     // Double check if all items are 100% verified
-    const allVerified = order.items.every(item => item.scanned_qty === item.qty);
+    const allVerified = (order.items || []).every(item => item.scanned_qty === item.qty);
     if (!allVerified) {
       return { success: false, error: 'Cannot complete packing! Some items have missing/insufficient scans.' };
     }
@@ -940,9 +973,21 @@ class ERPStorage {
     this.cache.packingSessions.push(session);
     this.save('packingSessions', session);
 
-    // Update order status to "Packed" and delivery status to "Packed"
-    order.status = 'Packed';
-    order.delivery_status = 'Packed';
+    // Update order status & delivery details
+    if (deliveryDetails && deliveryDetails.partner) {
+      order.status = 'Dispatched';
+      order.delivery_status = 'Dispatched';
+      order.delivery_partner = deliveryDetails.partner;
+      order.delivery_person_name = deliveryDetails.personName;
+      order.delivery_person_phone = deliveryDetails.personPhone;
+      order.tracking_number = deliveryDetails.trackingNumber;
+      order.dispatch_notes = deliveryDetails.notes;
+      order.dispatched_at = new Date().toISOString();
+    } else {
+      order.status = 'Packed';
+      order.delivery_status = 'Packed';
+    }
+    
     this.save('sales');
 
     // Log to system audit trail
@@ -951,7 +996,7 @@ class ERPStorage {
       staffName,
       'Packing Staff',
       'Complete Packing',
-      `Successfully completed packing & verification check for order ${order.order_number}. Total items: ${order.items.reduce((acc, it) => acc + it.qty, 0)}`,
+      `Completed packing & assigned delivery (${order.delivery_partner || 'Packed'}) for order ${order.order_number}.`,
       businessId
     );
 

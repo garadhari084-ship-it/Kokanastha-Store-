@@ -13,6 +13,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [currentFacingMode, setCurrentFacingMode] = useState<'environment' | 'user'>('environment');
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const onScanRef = useRef(onScan);
+
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
 
   useEffect(() => {
     let isMounted = true;
@@ -43,7 +48,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
 
         const onScanSuccess = (decodedText: string) => {
           if (isMounted) {
-            onScan(decodedText);
+            onScanRef.current(decodedText);
           }
         };
 
@@ -111,7 +116,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
         }
       }
     };
-  }, [currentFacingMode, onScan]);
+  }, [currentFacingMode]);
 
   const toggleCameraFacing = async () => {
     if (html5QrCodeRef.current) {

@@ -13,8 +13,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [currentFacingMode, setCurrentFacingMode] = useState<'environment' | 'user'>('environment');
   const [lastScanBanner, setLastScanBanner] = useState<{ success: boolean; message: string } | null>(null);
-  const [autoCloseOnMatch, setAutoCloseOnMatch] = useState<boolean>(false);
-  const autoCloseRef = useRef<boolean>(false);
+  const [autoCloseOnMatch, setAutoCloseOnMatch] = useState<boolean>(true);
+  const autoCloseRef = useRef<boolean>(true);
 
   useEffect(() => {
     autoCloseRef.current = autoCloseOnMatch;

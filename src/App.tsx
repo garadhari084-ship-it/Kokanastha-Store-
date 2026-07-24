@@ -219,13 +219,18 @@ export default function App() {
     }
   }, []);
 
-  // Force updates to child components when syncTick changes
+  // Live auto-sync interval across devices/browsers
   useEffect(() => {
-    // If syncTick changes, we don't necessarily need to do anything here because the state change itself causes App to re-render.
-    // However, DashboardView might not re-render if it doesn't depend on syncTick.
-    // Let's pass syncTick as a key to DashboardView so it remounts, or just let React update it if it reads from dbStore during render.
-    // Actually, components use useState for initial data. If we want them to update, they must depend on syncTick!
-  }, [syncTick]);
+    if (!currentBusiness?.id) return;
+    
+    const interval = setInterval(async () => {
+      if (isSupabaseConfigured && supabase && dbMode === 'supabase') {
+        await dbStore.syncFromSupabase(currentBusiness.id);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [currentBusiness?.id, dbMode]);
   
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -240,7 +245,6 @@ export default function App() {
         });
 
         if (error) {
-          // Fallback for users created via the UI (since they don't exist in Supabase Auth, only in users_profiles)
           // Fallback for users created via the UI (since they don't exist in Supabase Auth, only in users_profiles)
           let fallbackResult = dbStore.login(emailInput, passwordInput);
           
@@ -262,13 +266,23 @@ export default function App() {
                 .eq('id', p.business_id)
                 .limit(1);
                 
-              if (businesses && businesses.length > 0) {
-                fallbackResult = {
-                  success: true,
-                  user: p as any,
-                  business: businesses[0] as any
-                };
-              }
+              const biz = (businesses && businesses.length > 0) ? businesses[0] : dbStore.getBusinesses()[0];
+
+              const userObj = dbStore.createUser({
+                id: p.id,
+                email: p.email,
+                name: p.name,
+                role: p.role,
+                business_id: p.business_id,
+                active: p.active,
+                password_hash: passwordInput
+              });
+
+              fallbackResult = {
+                success: true,
+                user: userObj,
+                business: biz as any
+              };
             }
           }
 
@@ -282,7 +296,7 @@ export default function App() {
              return;
           }
           
-          setAuthError(error.message);
+          setAuthError(fallbackResult.error || error.message || 'Invalid credentials.');
           return;
         }
 

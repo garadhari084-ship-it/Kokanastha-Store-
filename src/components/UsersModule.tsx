@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { UserProfile, UserRole } from '../types/erp';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 interface UsersModuleProps {
   businessId: string;
@@ -63,6 +64,20 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
         active: true,
         password_hash: newUserPassword
       });
+
+      if (isSupabaseConfigured && supabase && newUserPassword) {
+        supabase.auth.signUp({
+          email: newUserEmail,
+          password: newUserPassword,
+          options: {
+            data: {
+              name: newUserName,
+              role: newUserRole,
+              business_id: businessId
+            }
+          }
+        }).catch(err => console.warn('Supabase Auth signUp notice:', err));
+      }
 
       triggerToast(`User ${newUserName} created successfully.`, 'success');
       

@@ -101,7 +101,7 @@ class ERPStorage {
   }
   private cache: {
     businesses: Business[];
-    profiles: (UserProfile & { password_hash: string })[];
+    profiles: (UserProfile & { password_hash?: string })[];
     categories: Category[];
     products: Product[];
     customers: Customer[];
@@ -113,6 +113,8 @@ class ERPStorage {
     auditLogs: SystemAuditLog[];
     packingSessions: PackingSession[];
   };
+
+  private bc: BroadcastChannel | null = null;
 
   constructor() {
     const catStr = localStorage.getItem('omnipack_erp_categories');
@@ -134,6 +136,43 @@ class ERPStorage {
       auditLogs: this.load('auditLogs', PRE_SEEDED_SYSTEM_AUDIT_LOGS),
       packingSessions: this.load('packingSessions', [])
     };
+
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        this.bc = new BroadcastChannel('omnipack_erp_sync_channel');
+        this.bc.onmessage = (event) => {
+          if (event.data && event.data.type === 'SYNC_STATE') {
+            this.reloadFromLocalStorage();
+          }
+        };
+      } catch (e) {}
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', (e) => {
+        if (e.key && e.key.startsWith('omnipack_erp_')) {
+          this.reloadFromLocalStorage();
+        }
+      });
+    }
+  }
+
+  public reloadFromLocalStorage() {
+    this.cache = {
+      businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),
+      profiles: this.load('profiles', PRE_SEEDED_PROFILES),
+      categories: this.load('categories', PRE_SEEDED_CATEGORIES),
+      products: this.load('products', PRE_SEEDED_PRODUCTS),
+      customers: this.load('customers', PRE_SEEDED_CUSTOMERS),
+      suppliers: this.load('suppliers', PRE_SEEDED_SUPPLIERS),
+      purchases: this.load('purchases', PRE_SEEDED_PURCHASES),
+      sales: this.load('sales', PRE_SEEDED_SALES),
+      settings: this.load('settings', PRE_SEEDED_SETTINGS),
+      stockLogs: this.load('stockLogs', PRE_SEEDED_STOCK_LOGS),
+      auditLogs: this.load('auditLogs', PRE_SEEDED_SYSTEM_AUDIT_LOGS),
+      packingSessions: this.load('packingSessions', [])
+    };
+    this.notify();
   }
 
   private load<T>(key: string, defaultValue: T): T {
@@ -216,8 +255,28 @@ class ERPStorage {
        
        const { data, error } = await query;
        if (!error && data && data.length > 0) {
-          (this.cache as any)[key] = data;
-          localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
+          if (key === 'profiles') {
+             const existingPasswords: Record<string, string> = {};
+             this.cache.profiles.forEach(p => {
+               if (p.email && (p as any).password_hash) {
+                 existingPasswords[p.email.toLowerCase().trim()] = (p as any).password_hash;
+               }
+             });
+             try {
+               const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+               Object.assign(existingPasswords, saved);
+             } catch(e) {}
+
+             const mergedProfiles = data.map((p: any) => ({
+               ...p,
+               password_hash: (p as any).password_hash || existingPasswords[p.email?.toLowerCase()?.trim()] || undefined
+             }));
+             this.cache.profiles = mergedProfiles;
+             localStorage.setItem(`omnipack_erp_profiles`, JSON.stringify(mergedProfiles));
+          } else {
+             (this.cache as any)[key] = data;
+             localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
+          }
        }
     }
     this.notify();
@@ -323,22 +382,39 @@ class ERPStorage {
     } catch (e) {
       console.error(`Error saving state for key ${key}`, e);
     }
+    if (this.bc) {
+      try {
+        this.bc.postMessage({ type: 'SYNC_STATE', key });
+      } catch (e) {}
+    }
     this.notify();
   }
 
   // Auth Operations
   public login(email: string, password_raw: string): { success: boolean; user?: UserProfile; business?: Business; error?: string } {
-    const profile = this.cache.profiles.find(p => p.email.toLowerCase() === email.trim().toLowerCase());
+    const cleanEmail = email.trim().toLowerCase();
+    const profile = this.cache.profiles.find(p => p.email.toLowerCase().trim() === cleanEmail);
     if (!profile) {
       return { success: false, error: 'User account not found.' };
     }
     if (!profile.active) {
       return { success: false, error: 'This user account is suspended.' };
     }
-    if (profile.password_hash !== password_raw) {
+    
+    // If password_hash is defined and doesn't match
+    if (profile.password_hash && profile.password_hash !== password_raw) {
       return { success: false, error: 'Incorrect password.' };
     }
-    const business = this.cache.businesses.find(b => b.id === profile.business_id);
+
+    // Persist password in local storage cache for seamless future syncs
+    profile.password_hash = password_raw;
+    try {
+      const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+      saved[cleanEmail] = password_raw;
+      localStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+    } catch (e) {}
+
+    const business = this.cache.businesses.find(b => b.id === profile.business_id) || this.cache.businesses[0];
     
     // Add audit log
     this.logActivity(profile.id, profile.name, profile.role, 'User Login', `Logged in successfully via email: ${email}`, profile.business_id);
@@ -370,15 +446,26 @@ class ERPStorage {
     return this.cache.profiles.filter(u => u.business_id === businessId);
   }
 
-  public createUser(user: Omit<UserProfile, 'id' | 'created_at'> & { id?: string; password_hash: string }): UserProfile {
+  public createUser(user: Omit<UserProfile, 'id' | 'created_at'> & { id?: string; password_hash?: string }): UserProfile {
+    if (user.email && user.password_hash) {
+      try {
+        const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+        saved[user.email.toLowerCase().trim()] = user.password_hash;
+        localStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+      } catch (e) {}
+    }
+
     if (user.id) {
       const existing = this.cache.profiles.find(p => p.id === user.id);
       if (existing) {
+        if (user.password_hash) {
+          (existing as any).password_hash = user.password_hash;
+        }
         return existing;
       }
     }
 
-    const newProfile: UserProfile & { password_hash: string } = {
+    const newProfile: UserProfile & { password_hash?: string } = {
       ...user,
       id: user.id || crypto.randomUUID(),
       created_at: new Date().toISOString()
@@ -388,10 +475,17 @@ class ERPStorage {
     return newProfile;
   }
 
-  public updateUser(id: string, updates: Partial<UserProfile>): UserProfile {
+  public updateUser(id: string, updates: Partial<UserProfile & { password_hash?: string }>): UserProfile {
     const index = this.cache.profiles.findIndex(p => p.id === id);
     if (index !== -1) {
       this.cache.profiles[index] = { ...this.cache.profiles[index], ...updates };
+      if (this.cache.profiles[index].email && updates.password_hash) {
+        try {
+          const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+          saved[this.cache.profiles[index].email.toLowerCase().trim()] = updates.password_hash;
+          localStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+        } catch (e) {}
+      }
       this.save('profiles', this.cache.profiles[index]);
       return this.cache.profiles[index];
     }

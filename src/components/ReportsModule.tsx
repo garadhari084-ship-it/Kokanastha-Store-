@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   FileSpreadsheet, 
   TrendingUp, 
@@ -34,9 +34,9 @@ interface ReportsModuleProps {
 }
 
 export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
-  const [sales] = useState<SalesOrder[]>(dbStore.getSalesOrders(businessId));
-  const [purchases] = useState<PurchaseOrder[]>(dbStore.getPurchaseOrders(businessId));
-  const [products] = useState<Product[]>(dbStore.getProducts(businessId));
+  const [sales, setSales] = useState<SalesOrder[]>(dbStore.getSalesOrders(businessId));
+  const [purchases, setPurchases] = useState<PurchaseOrder[]>(dbStore.getPurchaseOrders(businessId));
+  const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
   
   // Date filtering
   const [startDate, setStartDate] = useState('2026-01-01');
@@ -74,6 +74,14 @@ export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
   }));
 
   const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899'];
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setSales(dbStore.getSalesOrders(businessId));
+      setPurchases(dbStore.getPurchaseOrders(businessId));
+      setProducts(dbStore.getProducts(businessId));
+    });
+  }, [businessId]);
+
 
   return (
     <div className="space-y-6 max-w-full pb-12 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="reports-and-analytics-root">

@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   PlusCircle, 
   Search, 
@@ -41,6 +41,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [adjustQty, setAdjustQty] = useState<number>(10);
   const [adjustType, setAdjustType] = useState<StockLog['type']>('In');
   const [adjustNotes, setAdjustNotes] = useState<string>('');
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setProducts(dbStore.getProducts(businessId));
+      setStockLogs(dbStore.getStockLogs(businessId));
+    });
+  }, [businessId]);
+
 
   const handleCreateAdjustment = (e: React.FormEvent) => {
     e.preventDefault();

@@ -78,6 +78,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [currentBusiness, setCurrentBusiness] = useState<Business | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [syncTick, setSyncTick] = useState(0);
   
   // Login flow states
   const [emailInput, setEmailInput] = useState('');
@@ -173,6 +174,31 @@ export default function App() {
     
     restoreSession();
 
+    // Setup Supabase Realtime for data sync
+    let realtimeChannel: any;
+    if (isSupabaseConfigured && supabase) {
+      realtimeChannel = supabase.channel('schema-db-changes')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public' },
+          async (payload) => {
+            console.log('Realtime update received:', payload);
+            const sessionData = localStorage.getItem('omnipack_session');
+            if (sessionData) {
+              try {
+                const { businessId } = JSON.parse(sessionData);
+                if (businessId) {
+                  await dbStore.syncFromSupabase(businessId);
+                  // Force re-render of App to trickle down changes
+                  setSyncTick(prev => prev + 1);
+                }
+              } catch(e) {}
+            }
+          }
+        )
+        .subscribe();
+    }
+
     // Subscribe to supabase auth changes if supabase is configured
     if (isSupabaseConfigured && supabase) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -186,10 +212,21 @@ export default function App() {
       });
       return () => {
         subscription.unsubscribe();
+        if (realtimeChannel) {
+          supabase.removeChannel(realtimeChannel);
+        }
       };
     }
   }, []);
 
+  // Force updates to child components when syncTick changes
+  useEffect(() => {
+    // If syncTick changes, we don't necessarily need to do anything here because the state change itself causes App to re-render.
+    // However, DashboardView might not re-render if it doesn't depend on syncTick.
+    // Let's pass syncTick as a key to DashboardView so it remounts, or just let React update it if it reads from dbStore during render.
+    // Actually, components use useState for initial data. If we want them to update, they must depend on syncTick!
+  }, [syncTick]);
+  
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -204,7 +241,37 @@ export default function App() {
 
         if (error) {
           // Fallback for users created via the UI (since they don't exist in Supabase Auth, only in users_profiles)
-          const fallbackResult = dbStore.login(emailInput, passwordInput);
+          // Fallback for users created via the UI (since they don't exist in Supabase Auth, only in users_profiles)
+          let fallbackResult = dbStore.login(emailInput, passwordInput);
+          
+          if (!fallbackResult.success && isSupabaseConfigured && supabase) {
+            // Try to find them in users_profiles directly since local cache might be empty on a new device
+            const { data: profiles } = await supabase
+              .from('users_profiles')
+              .select('*')
+              .eq('email', emailInput.toLowerCase().trim())
+              .eq('active', true)
+              .limit(1);
+              
+            if (profiles && profiles.length > 0) {
+              const p = profiles[0];
+              // Fetch business
+              const { data: businesses } = await supabase
+                .from('businesses')
+                .select('*')
+                .eq('id', p.business_id)
+                .limit(1);
+                
+              if (businesses && businesses.length > 0) {
+                fallbackResult = {
+                  success: true,
+                  user: p as any,
+                  business: businesses[0] as any
+                };
+              }
+            }
+          }
+
           if (fallbackResult.success && fallbackResult.user && fallbackResult.business) {
              await dbStore.syncFromSupabase(fallbackResult.business.id);
              setCurrentUser(fallbackResult.user);
@@ -426,6 +493,7 @@ export default function App() {
       case 'dashboard':
         return (
           <DashboardView 
+            
             businessId={currentBusiness.id} 
             user={currentUser} 
             onNavigate={handleDeepLinkNavigate} 
@@ -903,7 +971,7 @@ export default function App() {
                 </strong>
                 {currentUser && (
                   <span className="text-[10px] text-slate-500 hidden sm:block font-medium">
-                    Welcome, {currentUser.name}
+                    Welcome, {currentUser.name} &bull; {dbMode === 'supabase' ? 'Cloud Synced' : 'Local Storage (Not Shared)'} &bull; {dbMode === 'supabase' ? 'Cloud Synced' : 'Local Only'}
                   </span>
                 )}
               </div>

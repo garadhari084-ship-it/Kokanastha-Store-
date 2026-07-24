@@ -34,8 +34,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const [pendingOrders, setPendingOrders] = useState<SalesOrder[]>(
     dbStore.getSalesOrders(businessId).filter(o => o.status === 'Pending' || o.status === 'Packing')
   );
-  const [products] = useState<Product[]>(dbStore.getProducts(businessId));
-  const [customers] = useState<Customer[]>(dbStore.getCustomers(businessId));
+  const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
+  const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
 
   // Scanning flow states
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(
@@ -58,6 +58,13 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       setSelectedOrder(refreshed || null);
     }
   };
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setProducts(dbStore.getProducts(businessId));
+      setCustomers(dbStore.getCustomers(businessId));
+    });
+  }, [businessId]);
+
 
   const handleSelectOrder = (order: SalesOrder) => {
     setSelectedOrder(order);

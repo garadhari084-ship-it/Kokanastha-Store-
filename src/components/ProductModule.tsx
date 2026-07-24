@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Package, 
   Search, 
@@ -36,7 +36,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   openAddModalInitially = false
 }) => {
   const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
-  const [categories] = useState<Category[]>(dbStore.getCategories(businessId));
+  const [categories, setCategories] = useState<Category[]>(dbStore.getCategories(businessId));
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedStockStatus, setSelectedStockStatus] = useState('All');
@@ -88,6 +88,13 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormActive(true);
     setEditingProduct(null);
   };
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setProducts(dbStore.getProducts(businessId));
+      setCategories(dbStore.getCategories(businessId));
+    });
+  }, [businessId]);
+
 
   const handleOpenAddModal = () => {
     resetForm();

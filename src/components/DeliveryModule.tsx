@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Truck, 
   Search, 
@@ -28,12 +28,18 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   const [orders, setOrders] = useState<SalesOrder[]>(
     dbStore.getSalesOrders(businessId).filter(o => ['Packed', 'Dispatched', 'Delivered'].includes(o.status))
   );
-  const [customers] = useState<Customer[]>(dbStore.getCustomers(businessId));
+  const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
   const [searchQuery, setSearchQuery] = useState('');
 
   const reloadOrders = () => {
     setOrders(dbStore.getSalesOrders(businessId).filter(o => ['Packed', 'Dispatched', 'Delivered'].includes(o.status)));
   };
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setCustomers(dbStore.getCustomers(businessId));
+    });
+  }, [businessId]);
+
 
   const handleUpdateStatus = (order: SalesOrder, newStatus: OrderStatus) => {
     if (newStatus === 'Delivered') {

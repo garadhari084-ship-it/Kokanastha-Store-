@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Truck, 
   Search, 
@@ -46,6 +46,12 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
     setFormAddress('');
     setEditingSupplier(null);
   };
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setSuppliers(dbStore.getSuppliers(businessId));
+    });
+  }, [businessId]);
+
 
   const handleOpenAddModal = () => {
     resetForm();

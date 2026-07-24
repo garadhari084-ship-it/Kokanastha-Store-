@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Layers, FolderPlus, Edit, Trash2, Search, X } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { Category, UserProfile } from '../types/erp';
@@ -23,6 +23,12 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
   // Form states
   const [formName, setFormName] = useState('');
   const [formParentId, setFormParentId] = useState<string>('');
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setCategories(dbStore.getCategories(businessId));
+    });
+  }, [businessId]);
+
 
   const handleOpenAddModal = () => {
     setFormName('');

@@ -91,6 +91,14 @@ const PRE_SEEDED_SYSTEM_AUDIT_LOGS: SystemAuditLog[] = [];
 // ====================================================================
 
 class ERPStorage {
+  private listeners: (() => void)[] = [];
+  public subscribe(listener: () => void) {
+    this.listeners.push(listener);
+    return () => { this.listeners = this.listeners.filter(l => l !== listener); };
+  }
+  private notify() {
+    this.listeners.forEach(l => l());
+  }
   private cache: {
     businesses: Business[];
     profiles: (UserProfile & { password_hash: string })[];
@@ -212,6 +220,7 @@ class ERPStorage {
           localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
        }
     }
+    this.notify();
   }
 
   private async syncToSupabase(key: keyof typeof this.cache, dataItem: any, isDelete = false, deleteId?: string) {
@@ -314,6 +323,7 @@ class ERPStorage {
     } catch (e) {
       console.error(`Error saving state for key ${key}`, e);
     }
+    this.notify();
   }
 
   // Auth Operations

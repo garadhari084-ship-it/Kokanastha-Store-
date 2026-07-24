@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Users, 
   Search, 
@@ -67,6 +67,12 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormCreditLimit(100000);
     setEditingCustomer(null);
   };
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setCustomers(dbStore.getCustomers(businessId));
+    });
+  }, [businessId]);
+
 
   const handleOpenAddModal = () => {
     resetForm();

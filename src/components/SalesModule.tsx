@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { 
   FileText, 
   PlusCircle, 
@@ -41,8 +41,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   selectedOrderIdInitially = null
 }) => {
   const [orders, setOrders] = useState<SalesOrder[]>(dbStore.getSalesOrders(businessId));
-  const [customers] = useState<Customer[]>(dbStore.getCustomers(businessId));
-  const [products] = useState<Product[]>(dbStore.getProducts(businessId));
+  const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
+  const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
   const [searchQuery, setSearchQuery] = useState('');
   
   // Theme & Language Settings (Dashboard UI Match)
@@ -76,6 +76,14 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setRowQty(1);
     setRowPrice(0);
   };
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setOrders(dbStore.getSalesOrders(businessId));
+      setCustomers(dbStore.getCustomers(businessId));
+      setProducts(dbStore.getProducts(businessId));
+    });
+  }, [businessId]);
+
 
   const handleOpenAddModal = () => {
     resetForm();

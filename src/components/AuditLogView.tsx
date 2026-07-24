@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ShieldAlert, Search, RefreshCw, Calendar, UserCheck } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { SystemAuditLog } from '../types/erp';
@@ -11,6 +11,12 @@ interface AuditLogViewProps {
 export const AuditLogView: React.FC<AuditLogViewProps> = ({ businessId }) => {
   const [logs, setLogs] = useState<SystemAuditLog[]>(dbStore.getSystemAuditLogs(businessId));
   const [searchQuery, setSearchQuery] = useState('');
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setLogs(dbStore.getSystemAuditLogs(businessId));
+    });
+  }, [businessId]);
+
 
   const handleRefresh = () => {
     setLogs(dbStore.getSystemAuditLogs(businessId));

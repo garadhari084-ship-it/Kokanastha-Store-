@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   ShoppingBag, 
   PlusCircle, 
@@ -28,8 +28,8 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
   triggerToast 
 }) => {
   const [purchases, setPurchases] = useState<PurchaseOrder[]>(dbStore.getPurchaseOrders(businessId));
-  const [suppliers] = useState<Supplier[]>(dbStore.getSuppliers(businessId));
-  const [products] = useState<Product[]>(dbStore.getProducts(businessId));
+  const [suppliers, setSuppliers] = useState<Supplier[]>(dbStore.getSuppliers(businessId));
+  const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -51,6 +51,14 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
     setRowQty(10);
     setRowPrice(0);
   };
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setPurchases(dbStore.getPurchaseOrders(businessId));
+      setSuppliers(dbStore.getSuppliers(businessId));
+      setProducts(dbStore.getProducts(businessId));
+    });
+  }, [businessId]);
+
 
   const handleOpenAddModal = () => {
     resetForm();

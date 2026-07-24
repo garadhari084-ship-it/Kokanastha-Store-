@@ -1,6 +1,6 @@
 import { PageHeader } from './PageHeader';
 import { Database } from 'lucide-react';
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ResponsiveContainer, 
@@ -99,6 +99,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Cash' | 'Card'>('UPI');
 
   // Fetch Database Records
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      setTick(t => t + 1);
+    });
+  }, [businessId]);
   const metrics = dbStore.getDashboardMetrics(businessId);
   const products = dbStore.getProducts(businessId);
   const customers = dbStore.getCustomers(businessId);

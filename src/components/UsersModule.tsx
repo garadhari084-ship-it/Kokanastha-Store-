@@ -49,8 +49,8 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (currentUser.role !== 'Super Admin' && currentUser.role !== 'Admin') {
-      triggerToast('Unauthorized: Only Super Admins or Admins can create users.', 'error');
+    if (currentUser.role !== 'Super Admin') {
+      triggerToast('Unauthorized: Only Super Admins can create users.', 'error');
       return;
     }
 
@@ -184,7 +184,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
         icon={Users}
         rightContent={
           <>
-{(currentUser.role === 'Super Admin' || currentUser.role === 'Admin') && (
+{(currentUser.role === 'Super Admin') && (
           <button 
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-indigo-600/20"

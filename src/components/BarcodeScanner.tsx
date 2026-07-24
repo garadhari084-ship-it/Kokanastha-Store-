@@ -13,6 +13,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [currentFacingMode, setCurrentFacingMode] = useState<'environment' | 'user'>('environment');
   const [lastScanBanner, setLastScanBanner] = useState<{ success: boolean; message: string } | null>(null);
+  const [autoCloseOnMatch, setAutoCloseOnMatch] = useState<boolean>(false);
+  const autoCloseRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    autoCloseRef.current = autoCloseOnMatch;
+  }, [autoCloseOnMatch]);
   
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const onScanRef = useRef(onScan);
@@ -63,13 +69,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
               message: msg
             });
 
-            if (isSuccess) {
-              // Barcode matched! Quantity added - close camera directly
+            if (isSuccess && autoCloseRef.current) {
               setTimeout(() => {
                 if (isMounted) {
                   onClose();
                 }
-              }, 250);
+              }, 300);
               return;
             }
           } catch (err: any) {
@@ -79,12 +84,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
             });
           }
 
-          // If barcode not matched, keep camera open & reset cooldown so user can scan correct item
+          // Reset cooldown so same or next QR code can be scanned repeatedly
           setTimeout(() => {
             if (isMounted) {
               isCoolingDownRef.current = false;
             }
-          }, 1200);
+          }, 1000);
         };
 
         const onScanFailure = () => {
@@ -231,14 +236,20 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
           )}
         </div>
 
-        {/* Footer with Done Button */}
-        <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-4">
-          <p className="text-[11px] text-slate-500 font-medium">
-            Scan same barcode multiple times for quantity
-          </p>
+        {/* Footer with Mode Toggle and Done Button */}
+        <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-4 gap-2">
+          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={autoCloseOnMatch}
+              onChange={(e) => setAutoCloseOnMatch(e.target.checked)}
+              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+            />
+            <span>Auto-close camera on scan</span>
+          </label>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-sm"
+            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-sm shrink-0"
           >
             Done Scanning
           </button>

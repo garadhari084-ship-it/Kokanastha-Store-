@@ -280,10 +280,23 @@ class ERPStorage {
                if (!itemsByOrder[item.sales_order_id]) itemsByOrder[item.sales_order_id] = [];
                itemsByOrder[item.sales_order_id].push(item);
              });
-             const mergedSales = (data || []).map((so: any) => ({
-               ...so,
-               items: (itemsByOrder[so.id] && itemsByOrder[so.id].length > 0) ? itemsByOrder[so.id] : (so.items || [])
-             }));
+             const mergedSales = (data || []).map((so: any) => {
+               const existingSO = (this.cache.sales || []).find(s => s.id === so.id);
+               const rawItems = (itemsByOrder[so.id] && itemsByOrder[so.id].length > 0) ? itemsByOrder[so.id] : (so.items || []);
+               const mergedItems = rawItems.map((rit: any) => {
+                 const existingItem = existingSO?.items?.find((eit: any) => eit.product_id === rit.product_id || eit.id === rit.id);
+                 const existingScanned = typeof existingItem?.scanned_qty === 'number' && !isNaN(existingItem.scanned_qty) ? existingItem.scanned_qty : 0;
+                 const remoteScanned = typeof rit.scanned_qty === 'number' && !isNaN(rit.scanned_qty) ? rit.scanned_qty : 0;
+                 return {
+                   ...rit,
+                   scanned_qty: Math.max(existingScanned, remoteScanned)
+                 };
+               });
+               return {
+                 ...so,
+                 items: mergedItems
+               };
+             });
              this.cache.sales = mergedSales;
              localStorage.setItem('omnipack_erp_sales', JSON.stringify(mergedSales));
           } else if (key === 'purchases') {
@@ -925,15 +938,31 @@ class ERPStorage {
     }
 
     // Increment scanned count
-    item.scanned_qty = currentScanned + 1;
-    this.save('sales');
+    const updatedScanned = currentScanned + 1;
+    const updatedItems = (order.items || []).map((it, idx) => {
+      if (idx === orderItemIndex) {
+        return {
+          ...it,
+          scanned_qty: updatedScanned
+        };
+      }
+      return { ...it };
+    });
 
-    const remaining = requiredQty - item.scanned_qty;
+    const updatedOrder = {
+      ...order,
+      items: updatedItems
+    };
+
+    this.cache.sales[orderIndex] = updatedOrder;
+    this.save('sales', updatedOrder);
+
+    const remaining = Math.max(0, requiredQty - updatedScanned);
 
     return {
       success: true,
       product,
-      scanned_qty: item.scanned_qty,
+      scanned_qty: updatedScanned,
       required_qty: requiredQty,
       remaining_qty: remaining
     };

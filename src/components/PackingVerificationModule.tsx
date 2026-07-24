@@ -87,7 +87,10 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     if (activeId) {
       const refreshed = allSales.find(o => o.id === activeId);
       if (refreshed) {
-        setSelectedOrder(refreshed);
+        setSelectedOrder({
+          ...refreshed,
+          items: refreshed.items ? refreshed.items.map(it => ({ ...it })) : []
+        });
       }
     }
   };

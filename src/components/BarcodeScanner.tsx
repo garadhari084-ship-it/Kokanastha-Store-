@@ -51,30 +51,35 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
         const onScanSuccess = (decodedText: string) => {
           if (!isMounted || isCoolingDownRef.current) return;
 
-          // Activate 1.2 second scan cooldown so same barcode can be scanned repeatedly at deliberate pace
           isCoolingDownRef.current = true;
 
           try {
             const res = onScanRef.current(decodedText);
-            if (res) {
-              setLastScanBanner({
-                success: res.success,
-                message: res.message
-              });
-            } else {
-              setLastScanBanner({
-                success: true,
-                message: `Scanned: ${decodedText}`
-              });
+            const isSuccess = res ? res.success : true;
+            const msg = res ? res.message : `Verified: ${decodedText}`;
+
+            setLastScanBanner({
+              success: isSuccess,
+              message: msg
+            });
+
+            if (isSuccess) {
+              // Barcode matched! Quantity added - close camera directly
+              setTimeout(() => {
+                if (isMounted) {
+                  onClose();
+                }
+              }, 250);
+              return;
             }
           } catch (err: any) {
             setLastScanBanner({
               success: false,
-              message: err?.message || 'Scan error'
+              message: err?.message || 'Scan error / mismatch'
             });
           }
 
-          // Reset cooldown after 1200ms for next scan
+          // If barcode not matched, keep camera open & reset cooldown so user can scan correct item
           setTimeout(() => {
             if (isMounted) {
               isCoolingDownRef.current = false;

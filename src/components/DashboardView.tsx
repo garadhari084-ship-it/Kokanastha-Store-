@@ -581,7 +581,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
         }
       />
-      {/* 2. DYNAMIC TAB CONTENT */}
+      
+      <div className="px-4 sm:px-6 space-y-6">
+        {/* 2. DYNAMIC TAB CONTENT */}
       <AnimatePresence mode="wait">
         
         {/* ================= TAB 1: LIVE OPERATIONS COMMAND ================= */}
@@ -595,7 +597,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             className="space-y-6"
           >
             {/* 8 GLOWING OPERATIONAL METRIC CARDS GRID */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
               
               {/* Metric 1 */}
               <div 
@@ -609,26 +611,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   filterValue: 'TO_PACK',
                   description: 'Orders requiring item selection, weight verification, and box sealing in the kitchen.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-amber-500/10 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 rounded-xl shadow-xs hover:shadow-amber-500/10 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                      TO PACK TODAY
-                    </span>
-                    
-                  </div>
-                  <div className="p-3 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <ShoppingBag size={22} />
+                  <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform">
+                    <ShoppingBag size={14} />
                   </div>
                 </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                    {metrics.toPackToday}
+                <div className="mt-2">
+                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
+                    TO PACK
                   </span>
-                  <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
-                    Kitchen Queue
-                  </span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">
+                      {metrics.toPackToday}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -644,26 +642,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   filterValue: 'PACKED',
                   description: 'Orders sealed, box-tagged, and ready at the dispatch counter.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-yellow-500/10 hover:border-yellow-400 dark:hover:border-yellow-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 rounded-xl shadow-xs hover:shadow-yellow-500/10 hover:border-yellow-400 dark:hover:border-yellow-600 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                      READY FOR DISPATCH
-                    </span>
-                    
-                  </div>
-                  <div className="p-3 bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <Truck size={22} />
+                  <div className="p-1.5 bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded-lg group-hover:scale-110 transition-transform">
+                    <Truck size={14} />
                   </div>
                 </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                    {metrics.readyForDispatch}
+                <div className="mt-2">
+                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
+                    READY
                   </span>
-                  <span className="text-[10px] font-bold text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-950/50 px-2.5 py-1 rounded-full border border-yellow-200 dark:border-yellow-800">
-                    Sealed Boxes
-                  </span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">
+                      {metrics.readyForDispatch}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -679,26 +673,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   filterValue: 'DISPATCHED',
                   description: 'Orders actively assigned to field couriers or driver routes.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-indigo-500/10 hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 rounded-xl shadow-xs hover:shadow-indigo-500/10 hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                      DELIVERIES TODAY
-                    </span>
-                    
-                  </div>
-                  <div className="p-3 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <Clock size={22} />
+                  <div className="p-1.5 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform">
+                    <Clock size={14} />
                   </div>
                 </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                    {metrics.deliveriesToday}
+                <div className="mt-2">
+                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
+                    IN TRANSIT
                   </span>
-                  <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 rounded-full border border-indigo-200 dark:border-indigo-800">
-                    In Transit
-                  </span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">
+                      {metrics.deliveriesToday}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -713,26 +703,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'overdue',
                   description: 'Prioritize these orders to avoid customer delivery delay.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-rose-500/10 hover:border-rose-400 dark:hover:border-rose-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 rounded-xl shadow-xs hover:shadow-rose-500/10 hover:border-rose-400 dark:hover:border-rose-600 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                      OVERDUE ORDERS
-                    </span>
-                    
-                  </div>
-                  <div className="p-3 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <AlertTriangle size={22} />
+                  <div className="p-1.5 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform">
+                    <AlertTriangle size={14} />
                   </div>
                 </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
-                    {metrics.overdueOrdersCount}
+                <div className="mt-2">
+                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
+                    OVERDUE
                   </span>
-                  <span className="text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 px-2.5 py-1 rounded-full border border-rose-200 dark:border-rose-800">
-                    Priority
-                  </span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-base font-black text-rose-600 dark:text-rose-400 tracking-tight">
+                      {metrics.overdueOrdersCount}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -747,26 +733,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'payment',
                   description: 'View unpaid customer orders. Collect payment or dispatch WhatsApp reminders.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-amber-500/10 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 rounded-xl shadow-xs hover:shadow-amber-500/10 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                      PENDING PAYMENTS
-                    </span>
-                    
-                  </div>
-                  <div className="p-3 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <DollarSign size={22} />
+                  <div className="p-2 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform">
+                    <DollarSign size={16} />
                   </div>
                 </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                    {metrics.pendingPaymentsCount}
+                <div className="mt-3">
+                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
+                    PAYMENTS
                   </span>
-                  <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
-                    Collect
-                  </span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                      {metrics.pendingPaymentsCount}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -781,26 +763,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'all',
                   description: 'Master operational view of all active sales transactions.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-sky-500/10 hover:border-sky-400 dark:hover:border-sky-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 rounded-xl shadow-xs hover:shadow-sky-500/10 hover:border-sky-400 dark:hover:border-sky-600 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                      TOTAL ORDERS
-                    </span>
-                    
-                  </div>
-                  <div className="p-3 bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <ShoppingBag size={22} />
+                  <div className="p-2 bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 rounded-lg group-hover:scale-110 transition-transform">
+                    <ShoppingBag size={16} />
                   </div>
                 </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                    {metrics.totalOrdersCount}
+                <div className="mt-3">
+                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
+                    TOTAL
                   </span>
-                  <span className="text-[10px] font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/50 px-2.5 py-1 rounded-full border border-sky-200 dark:border-sky-800">
-                    All Channels
-                  </span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                      {metrics.totalOrdersCount}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -815,26 +793,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'revenue',
                   description: 'Financial ledger summarizing completed sales and collected revenue.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-emerald-500/10 hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 rounded-xl shadow-xs hover:shadow-emerald-500/10 hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                      TOTAL SALES
-                    </span>
-                    
-                  </div>
-                  <div className="p-3 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <TrendingUp size={22} />
+                  <div className="p-2 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
+                    <TrendingUp size={16} />
                   </div>
                 </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                    ₹{metrics.todaySalesAmount.toLocaleString()}
+                <div className="mt-3">
+                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
+                    REVENUE
                   </span>
-                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-0.5">
-                    <ArrowUpRight size={12} /> +14.2%
-                  </span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">
+                      ₹{metrics.todaySalesAmount.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -849,26 +823,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'receivables',
                   description: 'Track outstanding balances and send instant payment follow-up alerts.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-orange-500/10 hover:border-orange-400 dark:hover:border-orange-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 rounded-xl shadow-xs hover:shadow-orange-500/10 hover:border-orange-400 dark:hover:border-orange-600 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                      OUTSTANDING DUES
-                    </span>
-                    
-                  </div>
-                  <div className="p-3 bg-orange-500/10 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-xl group-hover:scale-110 transition-transform">
-                    <Clock size={22} />
+                  <div className="p-2 bg-orange-500/10 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg group-hover:scale-110 transition-transform">
+                    <Clock size={16} />
                   </div>
                 </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                    ₹{metrics.outstandingAmount.toLocaleString()}
+                <div className="mt-3">
+                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
+                    OUTSTANDING
                   </span>
-                  <span className="text-[10px] font-bold text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950/50 px-2.5 py-1 rounded-full border border-orange-200 dark:border-orange-800">
-                    Receivables
-                  </span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">
+                      ₹{metrics.outstandingAmount.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -2431,6 +2401,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         );
       })()}
 
-</div>
+      </div>
+    </div>
   );
 };

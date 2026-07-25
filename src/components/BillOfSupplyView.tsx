@@ -61,7 +61,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const accountHolder = businessObj?.account_holder || bName;
 
   return (
-    <div className="bg-white text-slate-900 p-6 sm:p-8 font-sans text-[11px] leading-relaxed shadow-lg max-w-2xl mx-auto rounded-xl border border-slate-200">
+    <div className="bg-white text-slate-900 px-4 sm:px-6 py-6 sm:py-8 font-sans text-[11px] leading-relaxed shadow-lg max-w-2xl mx-auto rounded-xl border border-slate-200">
       
       {/* Header */}
       <div className="flex justify-between items-start mb-3">

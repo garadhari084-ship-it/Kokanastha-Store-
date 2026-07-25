@@ -21,7 +21,11 @@ import {
   Languages,
   Clock,
   Trash2,
-  Download
+  Download,
+  Package,
+  CheckCircle2,
+  CreditCard,
+  FileDown
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
@@ -62,7 +66,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   );
 
   // New Order Form States
-  const [selectedCustomerId, setSelectedCustomerId] = useState(customers[0]?.id || '');
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [selectedArea, setSelectedArea] = useState('Dahisar');
   const [isAdvanceBooking, setIsAdvanceBooking] = useState(false);
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
@@ -73,7 +77,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [rowPrice, setRowPrice] = useState(0);
 
   const resetForm = () => {
-    setSelectedCustomerId(customers[0]?.id || '');
+    setSelectedCustomerId('');
     setIsAdvanceBooking(false);
     setOrderItems([]);
     setRowProductId('');
@@ -143,12 +147,46 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       return;
     }
 
+    // Handle Walk-in customer dynamic creation
+    let finalCustomerId = selectedCustomerId;
+    let finalCustomerName = 'Walk-in Customer';
+    let finalCustomerArea = selectedArea || 'Dahisar';
+    
+    if (selectedCustomerId === 'WALK_IN') {
+       let walkIn = customers.find(c => c.name === 'Walk-in Customer');
+       if (!walkIn) {
+          walkIn = dbStore.createCustomer({
+             name: 'Walk-in Customer',
+             group: 'Retail',
+             area: 'Other',
+             gstin: '',
+             pan: '',
+             billing_address: 'Retail POS',
+             shipping_address: 'Retail POS',
+             email: '',
+             phone: '',
+             credit_limit: 0,
+             business_id: businessId,
+             active: true
+          });
+       }
+       finalCustomerId = walkIn.id;
+       finalCustomerName = walkIn.name;
+       finalCustomerArea = walkIn.area || selectedArea || 'Other';
+    } else {
+       const cObj = customers.find(c => c.id === selectedCustomerId);
+       if (cObj) {
+         finalCustomerName = cObj.name;
+         finalCustomerArea = selectedArea || cObj.area || 'Dahisar';
+       }
+    }
+
     // Verify credit limits
-    const customerObj = customers.find(c => c.id === selectedCustomerId);
+    const customerObj = customers.find(c => c.id === finalCustomerId);
     const subtotal = orderItems.reduce((acc, it) => acc + (it.qty * it.selling_price * (1 + it.gst_rate/100)), 0);
     const finalAmount = Math.round(subtotal);
 
-    if (customerObj && (customerObj.outstanding_amount + finalAmount > customerObj.credit_limit)) {
+    if (customerObj && (customerObj.name !== 'Walk-in Customer') && (customerObj.outstanding_amount + finalAmount > customerObj.credit_limit)) {
       const confirmed = window.confirm(
         `CREDIT LIMIT WARNING!\nThis transaction will breach customer's authorized limit of ₹${customerObj.credit_limit.toLocaleString()}.\nDo you want to override and bypass credit check?`
       );
@@ -161,10 +199,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     try {
       const createdOrder = dbStore.createSalesOrder({
         order_number: orderNum,
-        customer_id: selectedCustomerId,
-        customer_name: customerObj?.name || 'Walk-in Customer',
-        area: selectedArea || customerObj?.area || 'Dahisar',
-        channel: 'Direct Order',
+        customer_id: finalCustomerId,
+        customer_name: finalCustomerName,
+        area: finalCustomerArea,
+        channel: selectedCustomerId === 'WALK_IN' ? 'Walk-in' : 'Direct Order',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         order_date: new Date().toISOString().split('T')[0],
         status: 'Pending',
@@ -173,13 +211,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         items: orderItems,
         advance_booking: isAdvanceBooking,
         total_amount: finalAmount,
-        qr_code_data: `${orderNum}|${selectedCustomerId}|${customerObj?.name || 'Customer'}|${orderItems.length} items`,
+        qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
         business_id: businessId
       });
 
       // Update customer outstanding debt
       if (customerObj) {
-        dbStore.updateCustomer(selectedCustomerId, {
+        dbStore.updateCustomer(finalCustomerId, {
           outstanding_amount: customerObj.outstanding_amount + finalAmount
         });
       }
@@ -357,7 +395,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
 
   return (
-    <div className="space-y-6 max-w-full pb-12 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="sales-module-root">
+    <div className="space-y-4 max-w-full pb-8 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="sales-module-root">
       <PageHeader
         title="Sales & Bookings Master"
         subtitle="Manage B2B/B2C pipelines, bulk orders, and corporate billing cycles"
@@ -397,65 +435,64 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         }
       />
 
-
-
-      {/* Metric Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="px-4 sm:px-6 space-y-4">
+        {/* Metric Cards Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Total Orders */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-amber-500/10 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-slate-500 font-bold text-[11px] uppercase tracking-wider">Total Sales</span>
-            <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl group-hover:scale-110 transition-transform">
-              <FileText size={18} className="text-indigo-500" />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-3.5 rounded-xl shadow-sm hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-slate-500 font-bold text-[10px] uppercase tracking-widest">Total Sales</span>
+            <div className="p-1.5 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg group-hover:scale-110 transition-transform">
+              <FileText size={16} className="text-indigo-500" />
             </div>
           </div>
           <div>
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white">{adjustedTotalOrders.toLocaleString()}</h3>
-            <p className="text-[10px] text-slate-400 mt-1">Total orders processed</p>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">{adjustedTotalOrders.toLocaleString()}</h3>
+            <p className="text-[9px] text-slate-400 mt-0.5">Total orders processed</p>
           </div>
         </div>
 
         {/* Pending Orders */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-amber-500/10 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-slate-500 font-bold text-[11px] uppercase tracking-wider">Pending Orders</span>
-            <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl group-hover:scale-110 transition-transform">
-              <Clock size={18} className="text-amber-500" />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-3.5 rounded-xl shadow-sm hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-slate-500 font-bold text-[10px] uppercase tracking-widest">Pending Orders</span>
+            <div className="p-1.5 bg-amber-50 dark:bg-amber-900/20 rounded-lg group-hover:scale-110 transition-transform">
+              <Clock size={16} className="text-amber-500" />
             </div>
           </div>
           <div>
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white">{adjustedPending.toLocaleString()}</h3>
-            <p className="text-[10px] text-slate-400 mt-1">Awaiting processing</p>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">{adjustedPending.toLocaleString()}</h3>
+            <p className="text-[9px] text-slate-400 mt-0.5">Awaiting processing</p>
           </div>
         </div>
 
         {/* Completed Orders */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-amber-500/10 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-slate-500 font-bold text-[11px] uppercase tracking-wider">Completed</span>
-            <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl group-hover:scale-110 transition-transform">
-              <Check size={18} className="text-emerald-500" />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-3.5 rounded-xl shadow-sm hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-slate-500 font-bold text-[10px] uppercase tracking-widest">Completed</span>
+            <div className="p-1.5 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg group-hover:scale-110 transition-transform">
+              <CheckCircle2 size={16} className="text-emerald-500" />
             </div>
           </div>
           <div>
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white">{adjustedCompleted.toLocaleString()}</h3>
-            <p className="text-[10px] text-slate-400 mt-1">Successfully fulfilled</p>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">{adjustedCompleted.toLocaleString()}</h3>
+            <p className="text-[9px] text-slate-400 mt-0.5">Successfully fulfilled</p>
           </div>
         </div>
 
         {/* Total Revenue */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-amber-500/10 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-slate-500 font-bold text-[11px] uppercase tracking-wider">Total Value</span>
-            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl group-hover:scale-110 transition-transform">
-              <DollarSign size={18} className="text-blue-500" />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-3.5 rounded-xl shadow-sm hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-slate-500 font-bold text-[10px] uppercase tracking-widest">Total Value</span>
+            <div className="p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg group-hover:scale-110 transition-transform">
+              <CreditCard size={16} className="text-blue-500" />
             </div>
           </div>
           <div>
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">
               ₹{adjustedTotalRevenue.toLocaleString()}
             </h3>
-            <p className="text-[10px] text-slate-400 mt-1">Gross total sales</p>
+            <p className="text-[9px] text-slate-400 mt-0.5">Gross total sales</p>
           </div>
         </div>
       </div>
@@ -483,62 +520,123 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       </div>
 
       {/* Primary orders table */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto overflow-y-hidden">
-        <table className="w-full text-left">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+        <table className="w-full text-left table-auto">
           <thead>
-            <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 text-[10px] font-extrabold uppercase text-slate-500 tracking-wider">
-              <th className="p-4">Order Number</th>
-              <th className="p-4">Customer Party</th>
-              <th className="p-4">Fulfillment Status</th>
-              <th className="p-4">Grand Total</th>
-              <th className="p-4 text-center">Receipt Documents</th>
+            <tr className="bg-slate-100/60 dark:bg-slate-800/80 border-b-2 border-slate-200/50 dark:border-slate-700/50 text-[10px] font-black uppercase text-slate-600 dark:text-slate-400 tracking-widest">
+              <th className="px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <Package size={14} className="text-slate-400" />
+                  <span>Order Info</span>
+                </div>
+              </th>
+              <th className="px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <User size={14} className="text-slate-400" />
+                  <span>Customer / Entity</span>
+                </div>
+              </th>
+              <th className="px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={14} className="text-slate-400" />
+                  <span>Status & Payment</span>
+                </div>
+              </th>
+              <th className="px-6 py-4 text-right">
+                <div className="flex items-center justify-end gap-2">
+                  <CreditCard size={14} className="text-slate-400" />
+                  <span>Grand Total</span>
+                </div>
+              </th>
+              <th className="px-6 py-4 text-center">
+                <div className="flex items-center justify-center gap-2">
+                  <FileDown size={14} className="text-slate-400" />
+                  <span>Receipts</span>
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px]">
             {filteredOrders.map((o, idx) => {
               const cust = customers.find(c => c.id === o.customer_id);
               return (
-                <tr key={`${o.id}-${idx}`} className="hover:bg-slate-50/50 text-slate-700 dark:text-slate-300">
-                  <td className="p-4 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <strong className="text-slate-950 dark:text-white font-bold">{o.order_number}</strong>
-                      {o.advance_booking && (
-                        <span className="text-[8px] font-extrabold text-cyan-600 bg-cyan-50 dark:bg-cyan-950/20 px-1 py-0.2 rounded uppercase">
-                          ADVANCE BOOKING
+                <tr key={`${o.id}-${idx}`} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                  <td className="px-6 py-3.5 whitespace-nowrap">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-950 dark:text-white font-black text-[12px] tracking-tight bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 group-hover:border-indigo-200 dark:group-hover:border-indigo-900 transition-colors shadow-sm">
+                          {o.order_number}
                         </span>
-                      )}
+                        {o.advance_booking && (
+                          <span className="text-[8px] font-black text-indigo-600 bg-indigo-50 dark:bg-indigo-950/30 px-1.5 py-0.5 rounded-sm uppercase tracking-tighter border border-indigo-100 dark:border-indigo-900/50">
+                            ADVANCE
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-slate-400 font-medium text-[10px]">
+                        <Calendar size={12} className="shrink-0" />
+                        <span>{o.order_date}</span>
+                        <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700"></span>
+                        <Clock size={12} className="shrink-0" />
+                        <span>{o.time || '00:00'}</span>
+                      </div>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1"><Calendar size={12} /> {o.order_date}</span>
                   </td>
-                  <td className="p-4">
-                    <div className="space-y-0.5">
-                      <strong className="text-slate-900 dark:text-slate-200">{cust ? cust.name : 'Unknown Party'}</strong>
-                      {cust && <span className="text-[10px] text-slate-400 block">{cust.phone}</span>}
+                  <td className="px-6 py-3.5">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-slate-900 dark:text-slate-200 font-bold leading-tight truncate max-w-[180px] block">
+                        {cust ? cust.name : 'Unknown Party'}
+                      </span>
+                      <div className="flex items-center gap-1.5 text-slate-400 text-[10px]">
+                        <User size={10} className="shrink-0" />
+                        <span className="truncate max-w-[150px]">{cust?.phone || 'No Contact'}</span>
+                      </div>
                     </div>
                   </td>
-                  <td className="p-4 space-y-1">
-                    <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                      o.status === 'Delivered' ? 'text-emerald-700 bg-emerald-50' :
-                      o.status === 'Packed' ? 'text-indigo-700 bg-indigo-50' :
-                      o.status === 'Packing' ? 'text-amber-700 bg-amber-50' :
-                      o.status === 'Cancelled' ? 'text-rose-700 bg-rose-50' :
-                      'text-slate-700 bg-slate-100 dark:bg-slate-800'
-                    }`}>
-                      {o.status}
-                    </span>
-                    <span className="text-[10px] text-slate-400 block">Payment: <strong>{o.payment_status}</strong></span>
+                  <td className="px-6 py-3.5 whitespace-nowrap">
+                    <div className="flex flex-col gap-1.5">
+                      <span className={`w-fit inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full border ${
+                        o.status === 'Delivered' ? 'text-emerald-700 bg-emerald-50 border-emerald-100' :
+                        o.status === 'Packed' ? 'text-indigo-700 bg-indigo-50 border-indigo-100' :
+                        o.status === 'Packing' ? 'text-amber-700 bg-amber-50 border-amber-100' :
+                        o.status === 'Cancelled' ? 'text-rose-700 bg-rose-50 border-rose-100' :
+                        'text-slate-600 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                      }`}>
+                        <div className={`w-1 h-1 rounded-full ${
+                          o.status === 'Delivered' ? 'bg-emerald-500' :
+                          o.status === 'Packed' ? 'bg-indigo-500' :
+                          o.status === 'Packing' ? 'bg-amber-500' :
+                          o.status === 'Cancelled' ? 'bg-rose-500' :
+                          'bg-slate-400'
+                        }`}></div>
+                        {o.status}
+                      </span>
+                      <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
+                        <span>Payment:</span>
+                        <strong className={`font-bold ${
+                          o.payment_status === 'Paid' ? 'text-emerald-600' : 
+                          o.payment_status === 'Partial' ? 'text-amber-600' : 
+                          'text-slate-500'
+                        }`}>{o.payment_status}</strong>
+                      </div>
+                    </div>
                   </td>
-                  <td className="p-4 font-mono font-bold text-slate-900 dark:text-white">
-                    ₹{o.total_amount.toLocaleString()}
+                  <td className="px-6 py-3.5 text-right">
+                    <div className="flex flex-col items-end">
+                      <span className="text-[13px] font-black text-slate-950 dark:text-white tabular-nums">
+                        ₹{o.total_amount.toLocaleString()}
+                      </span>
+                      <span className="text-[9px] text-slate-400 uppercase font-bold tracking-tight">Incl. Taxes</span>
+                    </div>
                   </td>
-                  <td className="p-4 text-center">
+                  <td className="px-6 py-3.5 text-center">
                     <button 
                       onClick={() => setViewingInvoiceOrder(o)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg text-[10px] font-bold border border-slate-200 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-900 transition-all shadow-xs cursor-pointer active:scale-95"
                     >
-                      <Eye size={13} />
-                      <span>View Invoice</span>
+                      <Eye size={12} />
+                      <span>Explore Invoice</span>
                     </button>
                   </td>
                 </tr>
@@ -546,7 +644,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             })}
             {filteredOrders.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center py-10 text-slate-400">No matching sales records registered.</td>
+                <td colSpan={5} className="text-center py-12 text-slate-400 italic">No matching sales records registered in this cycle.</td>
               </tr>
             )}
           </tbody>
@@ -639,6 +737,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         );
       })()}
 
+      </div>
+
       {/* Sales Order Placement modal dialog */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
@@ -664,6 +764,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     }}
                     className="w-full px-3 py-2 bg-slate-50 text-[11px] rounded-lg border focus:outline-hidden"
                   >
+                    <option value="" disabled>-- Select Customer --</option>
+                    <option value="WALK_IN">Walk-in Customer (Instant POS)</option>
                     {customers.map((c, idx) => (
                       <option key={`${c.id}-${idx}`} value={c.id}>{c.name} (Credit outstanding: ₹{c.outstanding_amount.toLocaleString()})</option>
                     ))}

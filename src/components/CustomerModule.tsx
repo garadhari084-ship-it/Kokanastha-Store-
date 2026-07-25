@@ -19,6 +19,8 @@ import {
   CheckCircle,
   ExternalLink
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { dbStore } from '../services/store';
 import { Customer, SalesOrder, UserProfile } from '../types/erp';
 
@@ -202,7 +204,111 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   // Export PDF simulation
   const handleExportPDF = () => {
     dbStore.logActivity(user.id, user.name, user.role, 'Export PDF', 'Exported Customer credit report to PDF', businessId);
-    triggerToast('Customer ledger PDF generation complete. Download initiated.', 'success');
+    
+    try {
+      const doc = new jsPDF();
+      
+      // Header
+      doc.setFontSize(18);
+      doc.setTextColor(30, 41, 59); // slate-800
+      doc.text('Customer Credit Management Report', 14, 22);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139); // slate-500
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+      doc.text(`Business ID: ${businessId}`, 14, 35);
+      doc.text(`Exported by: ${user.name} (${user.role})`, 14, 40);
+      
+      const tableColumn = ["Customer Name", "Group", "Phone", "Credit Limit", "Outstanding", "Available"];
+      const tableRows = filteredCustomers.map(c => [
+        c.name,
+        c.group,
+        c.phone,
+        `Rs. ${c.credit_limit.toLocaleString()}`,
+        `Rs. ${c.outstanding_amount.toLocaleString()}`,
+        `Rs. ${(c.credit_limit - c.outstanding_amount).toLocaleString()}`
+      ]);
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 48,
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229], textColor: 255, fontSize: 10, fontStyle: 'bold' }, // indigo-600
+        bodyStyles: { fontSize: 9 },
+        alternateRowStyles: { fillColor: [248, 250, 252] }, // slate-50
+        margin: { top: 48 }
+      });
+
+      doc.save(`customer_credit_report_${businessId}_${new Date().toISOString().split('T')[0]}.pdf`);
+      
+      // Verification delay to ensure browser handles the download stream
+      setTimeout(() => {
+        triggerToast('Customer ledger PDF generation complete. Download initiated.', 'success');
+      }, 500);
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
+      triggerToast('Failed to generate PDF. Please try again.', 'error');
+    }
+  };
+
+  const handlePrintIndividualLedger = (cust: Customer) => {
+    dbStore.logActivity(user.id, user.name, user.role, 'Print Ledger', `Printed individual ledger for ${cust.name}`, businessId);
+    
+    try {
+      const doc = new jsPDF();
+      const history = getCustomerHistory(cust.id);
+      
+      // Header
+      doc.setFontSize(18);
+      doc.setTextColor(30, 41, 59); // slate-800
+      doc.text('Customer Ledger Statement', 14, 22);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139); // slate-500
+      doc.text(`Customer: ${cust.name}`, 14, 30);
+      doc.text(`Phone: ${cust.phone}`, 14, 35);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 40);
+      doc.text(`Business ID: ${businessId}`, 14, 45);
+      
+      // Summary Box
+      autoTable(doc, {
+        body: [
+          ['Total Outstanding Balance', `Rs. ${cust.outstanding_amount.toLocaleString()}`],
+          ['Authorized Credit Limit', `Rs. ${cust.credit_limit.toLocaleString()}`],
+          ['Available Credit Headroom', `Rs. ${(cust.credit_limit - cust.outstanding_amount).toLocaleString()}`]
+        ],
+        startY: 50,
+        theme: 'grid',
+        styles: { fontSize: 9, cellPadding: 3 },
+        columnStyles: { 0: { fontStyle: 'bold', fillColor: [248, 250, 252], cellWidth: 60 } }
+      });
+
+      const tableColumn = ["Order Number", "Order Date", "Delivery Status", "Invoice Amount", "Payment Status"];
+      const tableRows = history.map(o => [
+        o.order_number,
+        o.order_date,
+        o.status,
+        `Rs. ${o.total_amount.toLocaleString()}`,
+        o.payment_status
+      ]);
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: (doc as any).lastAutoTable.finalY + 10,
+        theme: 'striped',
+        headStyles: { fillColor: [51, 65, 85], textColor: 255, fontSize: 9 }, // slate-700
+        bodyStyles: { fontSize: 8 },
+        alternateRowStyles: { fillColor: [248, 250, 252] }
+      });
+
+      doc.save(`ledger_${cust.name.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.pdf`);
+      triggerToast('Individual ledger PDF generated successfully.', 'success');
+    } catch (err) {
+      console.error('Individual PDF Error:', err);
+      triggerToast('Failed to generate ledger PDF.', 'error');
+    }
   };
 
   // Filter & Search
@@ -260,6 +366,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
         }
       />
 
+      <div className="px-4 sm:px-6 space-y-6">
       {/* Filter and Search Bar */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-center gap-4">
         <div className="relative w-full md:flex-1">
@@ -386,11 +493,13 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
         </div>
       </div>
 
+      </div>
+
       {/* Customer Add / Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl overflow-hidden shadow-xl animate-in fade-in zoom-in duration-150">
-            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-xl animate-in fade-in zoom-in duration-150">
+            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
               <h2 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                 {editingCustomer ? 'Modify Customer Profile' : 'Register New Customer Account'}
               </h2>
@@ -399,7 +508,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
               </button>
             </div>
             
-            <form onSubmit={handleSaveCustomer} className="p-6 space-y-4">
+            <form onSubmit={handleSaveCustomer} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1 col-span-2">
                   <label className="text-[11px] font-bold text-slate-500 uppercase">Company Name / Trade Name *</label>
@@ -604,7 +713,14 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex justify-between gap-2">
+              <button 
+                onClick={() => handlePrintIndividualLedger(viewingHistoryCustomer)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold rounded-lg cursor-pointer flex items-center gap-1.5 shadow-xs transition-colors"
+              >
+                <FileText size={14} />
+                <span>Print Statement PDF</span>
+              </button>
               <button 
                 onClick={() => setViewingHistoryCustomer(null)}
                 className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-[11px] font-semibold rounded-lg cursor-pointer hover:bg-slate-300"

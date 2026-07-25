@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { 
   Package, 
   Search, 
@@ -14,6 +14,8 @@ import {
   AlertTriangle, 
   X,
   Upload,
+  Image as ImageIcon,
+  Loader2,
   Layers,
   Sparkles
 } from 'lucide-react';
@@ -58,13 +60,44 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [formUnit, setFormUnit] = useState('Pcs');
   const [formHsn, setFormHsn] = useState('');
   const [formGst, setFormGst] = useState(18);
-  const [formPurchasePrice, setFormPurchasePrice] = useState(0);
-  const [formSellingPrice, setFormSellingPrice] = useState(0);
-  const [formMrp, setFormMrp] = useState(0);
-  const [formOpeningStock, setFormOpeningStock] = useState(0);
-  const [formMinStock, setFormMinStock] = useState(5);
-  const [formMaxStock, setFormMaxStock] = useState(1000);
+  const [formPurchasePrice, setFormPurchasePrice] = useState<number | string>('');
+  const [formSellingPrice, setFormSellingPrice] = useState<number | string>('');
+  const [formMrp, setFormMrp] = useState<number | string>('');
+  const [formOpeningStock, setFormOpeningStock] = useState<number | string>('');
+  const [formMinStock, setFormMinStock] = useState<number | string>('');
+  const [formMaxStock, setFormMaxStock] = useState<number | string>('');
   const [formImage, setFormImage] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file (PNG, JPG, etc)');
+      return;
+    }
+
+    // Limit size to ~2MB for localStorage safety
+    if (file.size > 2 * 1024 * 1024) {
+      alert('File size too large. Please upload an image under 2MB.');
+      return;
+    }
+
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setFormImage(base64);
+      setIsUploading(false);
+    };
+    reader.onerror = () => {
+      alert('Failed to read file');
+      setIsUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
   const [formDescription, setFormDescription] = useState('');
   const [formActive, setFormActive] = useState(true);
 
@@ -77,12 +110,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormUnit('Pcs');
     setFormHsn('');
     setFormGst(18);
-    setFormPurchasePrice(0);
-    setFormSellingPrice(0);
-    setFormMrp(0);
-    setFormOpeningStock(0);
-    setFormMinStock(5);
-    setFormMaxStock(1000);
+    setFormPurchasePrice('');
+    setFormSellingPrice('');
+    setFormMrp('');
+    setFormOpeningStock('');
+    setFormMinStock('');
+    setFormMaxStock('');
     setFormImage('');
     setFormDescription('');
     setFormActive(true);
@@ -132,6 +165,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     }
 
     try {
+      const getAutoImage = (name: string) => {
+        const keywords = name.toLowerCase().split(' ').slice(0, 3).join(',');
+        return `https://loremflickr.com/400/400/${keywords}?lock=${Math.floor(Math.random() * 1000)}`;
+      };
+
       if (editingProduct) {
         dbStore.updateProduct(editingProduct.id, {
           name: formName.trim(),
@@ -147,7 +185,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           mrp: Number(formMrp),
           minimum_stock: Number(formMinStock),
           maximum_stock: Number(formMaxStock),
-          image_url: formImage.trim() || 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=300&q=80',
+          image_url: formImage.trim() || getAutoImage(formName.trim()),
           description: formDescription.trim(),
           active: formActive
         });
@@ -172,7 +210,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           opening_stock: Number(formOpeningStock),
           minimum_stock: Number(formMinStock),
           maximum_stock: Number(formMaxStock),
-          image_url: formImage.trim() || 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=300&q=80',
+          image_url: formImage.trim() || getAutoImage(formName.trim()),
           description: formDescription.trim(),
           active: formActive,
           business_id: businessId
@@ -429,6 +467,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         }
       />
 
+      <div className="px-4 sm:px-6 space-y-6">
       {/* Filter and Search Layout */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="md:col-span-2 relative">
@@ -470,125 +509,116 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       </div>
 
       {/* Main Catalog Cards / Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
         {filteredProducts.map((prod, idx) => {
           const category = categories.find(c => c.id === prod.category_id);
           const isLow = prod.current_stock > 0 && prod.current_stock <= dbStore.getSettings(businessId).low_stock_limit;
           const isOut = prod.current_stock === 0;
 
+          // Detect placeholder and use dynamic one if needed
+          const displayImage = (!prod.image_url || prod.image_url.includes('1544244015-0df4b3ffc6b0'))
+            ? `https://loremflickr.com/400/400/${prod.name.toLowerCase().split(' ')[0]}?lock=${prod.id.length}`
+            : prod.image_url;
+
           return (
             <div 
               key={`${prod.id}-${idx}`} 
-              className={`bg-white dark:bg-slate-900 rounded-xl overflow-x-auto border transition-all duration-150 relative ${
+              className={`bg-white dark:bg-slate-900 rounded-lg overflow-hidden border transition-all duration-150 relative ${
                 isOut ? 'border-rose-100 dark:border-rose-950/20 shadow-xs ring-1 ring-rose-50' : 
                 isLow ? 'border-amber-100 dark:border-amber-950/20 shadow-xs ring-1 ring-amber-50' : 
                 'border-slate-100 dark:border-slate-800 hover:shadow-md'
               }`}
             >
               {/* Image thumbnail and status tags */}
-              <div className="h-40 bg-slate-100 dark:bg-slate-800 relative">
+              <div className="h-16 bg-slate-100 dark:bg-slate-800 relative">
                 <img 
-                  src={prod.image_url} 
+                  src={displayImage} 
                   alt={prod.name} 
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />
                 
                 {/* Out / Low labels */}
-                {isOut && (
-                  <span className="absolute top-2 left-2 bg-rose-600 text-white text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-                    <AlertTriangle size={10} /> OUT OF STOCK
-                  </span>
-                )}
-                {isLow && (
-                  <span className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-                    <AlertTriangle size={10} /> LOW STOCK ({prod.current_stock})
-                  </span>
-                )}
-                {!isOut && !isLow && (
-                  <span className="absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-                    <CheckCircle size={10} /> HEALTHY ({prod.current_stock})
-                  </span>
-                )}
+                <div className="absolute top-1 left-1 flex flex-col gap-0.5">
+                  {isOut && (
+                    <span className="bg-rose-600 text-white text-[6px] font-black px-1 py-0.5 rounded flex items-center gap-0.5 shadow-sm">
+                      <AlertTriangle size={6} /> OUT
+                    </span>
+                  )}
+                  {isLow && (
+                    <span className="bg-amber-500 text-white text-[6px] font-black px-1 py-0.5 rounded flex items-center gap-0.5 shadow-sm">
+                      <AlertTriangle size={6} /> LOW
+                    </span>
+                  )}
+                </div>
 
-                <span className="absolute bottom-2 right-2 bg-slate-950/70 text-white text-[10px] font-mono px-2 py-0.5 rounded">
+                <span className="absolute bottom-1 right-1 bg-slate-950/60 text-white text-[6px] font-bold px-1 py-0.5 rounded backdrop-blur-xs">
                   {prod.unit}
                 </span>
               </div>
 
               {/* Product Info details */}
-              <div className="p-4 space-y-3">
-                <div className="space-y-1">
+              <div className="p-1.5 space-y-1">
+                <div className="space-y-0">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold uppercase">{category?.name || 'General'}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">{prod.brand}</span>
+                    <span className="text-[6px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-tight truncate max-w-[60%]">{category?.name || 'General'}</span>
                   </div>
-                  <h3 className="text-[11px] font-bold text-slate-900 dark:text-slate-100 line-clamp-1" title={prod.name}>
+                  <h3 className="text-[8px] font-black text-slate-900 dark:text-slate-100 line-clamp-1 leading-tight" title={prod.name}>
                     {prod.name}
                   </h3>
-                  <p className="text-[10px] text-slate-500 line-clamp-1">{prod.description}</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 border-t border-b border-slate-100 dark:border-slate-800 py-2 font-mono text-[11px]">
-                  <div>
-                    <span className="text-[9px] text-slate-400 block uppercase">SKU:</span>
-                    <strong className="text-slate-700 dark:text-slate-200">{prod.sku}</strong>
+                <div className="grid grid-cols-2 gap-1 border-t border-slate-50 dark:border-slate-800 pt-1 font-mono text-[7px]">
+                  <div className="min-w-0">
+                    <strong className="text-slate-700 dark:text-slate-200 truncate block">{prod.sku}</strong>
                   </div>
-                  <div>
-                    <span className="text-[9px] text-slate-400 block uppercase">BARCODE:</span>
-                    <strong className="text-slate-700 dark:text-slate-200">{prod.barcode}</strong>
+                  <div className="min-w-0 text-right">
+                    <strong className="text-slate-500 truncate block">Stock: {prod.current_stock}</strong>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] pt-1">
-                  <div>
-                    <span className="text-[9px] text-slate-400 block uppercase">Purchase Price:</span>
-                    <span className="font-mono text-slate-500">₹{prod.purchase_price.toLocaleString()}</span>
+                <div className="flex items-center justify-between border-t border-slate-50 dark:border-slate-800 pt-1">
+                  <strong className="text-[8px] font-mono text-indigo-600 dark:text-indigo-400 font-black">₹{prod.selling_price.toLocaleString()}</strong>
+                  <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => {
+                        setEditingProduct(prod);
+                        setFormName(prod.name);
+                        setFormSku(prod.sku);
+                        setFormBarcode(prod.barcode);
+                        setFormCategory(prod.category_id);
+                        setFormUnit(prod.unit);
+                        setFormHsn(prod.hsn_code);
+                        setFormPurchasePrice(prod.purchase_price);
+                        setFormSellingPrice(prod.selling_price);
+                        setFormMrp(prod.mrp);
+                        setFormOpeningStock(prod.current_stock);
+                        setFormMinStock(prod.minimum_stock);
+                        setFormMaxStock(prod.maximum_stock);
+                        setFormImage(prod.image_url);
+                        setFormDescription(prod.description);
+                        setFormActive(prod.active);
+                        setIsModalOpen(true);
+                      }}
+                      className="p-1 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors"
+                    >
+                      <Edit size={10} />
+                    </button>
+                    <button 
+                      onClick={() => setPrintingBarcodeProduct(prod)}
+                      className="p-1 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900/30 rounded-md transition-colors"
+                    >
+                      <Barcode size={10} />
+                    </button>
                   </div>
-                  <div>
-                    <span className="text-[9px] text-slate-400 block uppercase">Selling Price:</span>
-                    <strong className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">₹{prod.selling_price.toLocaleString()}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-slate-400 block uppercase">MRP:</span>
-                    <span className="font-mono text-slate-500 line-through">₹{prod.mrp.toLocaleString()}</span>
-                  </div>
-                </div>
-
-                {/* Print Barcodes Button & Catalog controls */}
-                <div className="flex items-center gap-1.5 pt-3 border-t border-slate-100 dark:border-slate-800">
-                  <button 
-                    onClick={() => setPrintingBarcodeProduct(prod)}
-                    className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold transition border border-slate-200 dark:border-slate-700 cursor-pointer"
-                  >
-                    <Barcode size={14} className="text-slate-500" />
-                    <span>Barcode Sheet</span>
-                  </button>
-                  {user.role !== 'Viewer' && (
-                    <>
-                      <button 
-                        onClick={() => handleOpenEditModal(prod)}
-                        className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg cursor-pointer"
-                        title="Edit"
-                      >
-                        <Edit size={14} />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteProduct(prod.id, prod.name)}
-                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg cursor-pointer"
-                        title="Delete"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </>
-                  )}
                 </div>
               </div>
             </div>
           );
         })}
-
-        {filteredProducts.length === 0 && (
+      </div>
+      
+      {filteredProducts.length === 0 && (
           <div className="col-span-full text-center py-20 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
             <Package size={48} className="mx-auto mb-3 text-slate-300" />
             <p className="text-slate-400 text-xs">No items matching current filter conditions exist in your inventory.</p>
@@ -698,8 +728,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       {/* Main Add/Edit Form Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-3xl overflow-hidden shadow-xl animate-in zoom-in duration-150">
-            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden shadow-xl animate-in zoom-in duration-150">
+            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
               <h2 className="text-xs font-bold uppercase tracking-wider">
                 {editingProduct ? 'Update Inventory Catalog details' : 'Register New Catalog Item'}
               </h2>
@@ -708,7 +738,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+            <form onSubmit={handleSaveProduct} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-[11px] font-bold text-slate-500 uppercase">Product Name / Trade Title *</label>
@@ -838,7 +868,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     type="number" 
                     required
                     value={formPurchasePrice}
-                    onChange={(e) => setFormPurchasePrice(Number(e.target.value))}
+                    onChange={(e) => setFormPurchasePrice(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
                   />
                 </div>
@@ -849,7 +879,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     type="number" 
                     required
                     value={formSellingPrice}
-                    onChange={(e) => setFormSellingPrice(Number(e.target.value))}
+                    onChange={(e) => setFormSellingPrice(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
                   />
                 </div>
@@ -860,7 +890,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     type="number" 
                     required
                     value={formMrp}
-                    onChange={(e) => setFormMrp(Number(e.target.value))}
+                    onChange={(e) => setFormMrp(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
                   />
                 </div>
@@ -871,7 +901,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     <input 
                       type="number" 
                       value={formOpeningStock}
-                      onChange={(e) => setFormOpeningStock(Number(e.target.value))}
+                      onChange={(e) => setFormOpeningStock(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
                     />
                   </div>
@@ -882,7 +912,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   <input 
                     type="number" 
                     value={formMinStock}
-                    onChange={(e) => setFormMinStock(Number(e.target.value))}
+                    onChange={(e) => setFormMinStock(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
                   />
                 </div>
@@ -892,20 +922,76 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   <input 
                     type="number" 
                     value={formMaxStock}
-                    onChange={(e) => setFormMaxStock(Number(e.target.value))}
+                    onChange={(e) => setFormMaxStock(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
                   />
                 </div>
 
                 <div className="space-y-1 col-span-3">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Product Image URL</label>
-                  <input 
-                    type="url" 
-                    value={formImage}
-                    onChange={(e) => setFormImage(e.target.value)}
-                    placeholder="https://images.unsplash.com/..."
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
-                  />
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Product Image</label>
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`group relative border-2 border-dashed rounded-xl transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center min-h-[120px] ${
+                      formImage 
+                        ? 'border-indigo-200 bg-indigo-50/10' 
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-indigo-400 hover:bg-indigo-50/30'
+                    }`}
+                  >
+                    <input 
+                      type="file" 
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    
+                    {isUploading ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="text-indigo-500 animate-spin" size={24} />
+                        <span className="text-[10px] font-bold text-slate-500">Processing...</span>
+                      </div>
+                    ) : formImage ? (
+                      <div className="w-full h-full relative group">
+                        <img 
+                          src={formImage} 
+                          alt="Preview" 
+                          className="w-full h-32 object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                          <div className="flex items-center gap-2 bg-white/90 dark:bg-slate-900/90 px-3 py-1.5 rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform">
+                            <Upload size={14} className="text-indigo-600" />
+                            <span className="text-[10px] font-black text-slate-900 dark:text-white uppercase">Change Photo</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 py-4">
+                        <div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-full shadow-sm flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Upload size={20} className="text-slate-400 group-hover:text-indigo-500" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] font-bold text-slate-900 dark:text-white">Click to upload product photo</p>
+                          <p className="text-[9px] text-slate-500">Drag and drop also supported (Max 2MB)</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="mt-2">
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const url = window.prompt('Paste external Image URL:', formImage.startsWith('data:') ? '' : formImage);
+                        if (url !== null) setFormImage(url);
+                      }}
+                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 uppercase tracking-tight transition-colors"
+                    >
+                      <ImageIcon size={12} />
+                      Or use image URL instead
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-1 col-span-3">

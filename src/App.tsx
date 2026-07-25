@@ -36,6 +36,7 @@ import {
   CloudLightning,
   Sparkles,
   Loader2,
+  MessageSquare,
 } from 'lucide-react';
 import { dbStore } from './services/store';
 import { UserProfile, Business, UserRole } from './types/erp';
@@ -56,6 +57,7 @@ import { ReportsModule } from './components/ReportsModule';
 import { AuditLogView } from './components/AuditLogView';
 import { SettingsModule } from './components/SettingsModule';
 import { UsersModule } from './components/UsersModule';
+import { InboxModule } from './components/InboxModule';
 
 interface Toast {
   id: string;
@@ -103,6 +105,19 @@ export default function App() {
   const [activeView, setActiveView] = useState<string>('dashboard');
   const [deepLinkData, setDeepLinkData] = useState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobileMenuOpen]);
+
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
@@ -115,6 +130,7 @@ export default function App() {
     }
   });
   const [isAllNotificationsModalOpen, setIsAllNotificationsModalOpen] = useState(false);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'order' | 'stock' | 'system'>('all');
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -148,8 +164,12 @@ export default function App() {
   useEffect(() => {
     return dbStore.subscribe(() => {
       setSyncTick(prev => prev + 1);
+      if (currentBusiness && currentUser) {
+        const messages = dbStore.getMessages(currentBusiness.id);
+        setUnreadMessagesCount(messages.filter(m => m.receiver_id === currentUser.id && !m.is_read).length);
+      }
     });
-  }, []);
+  }, [currentBusiness?.id, currentUser?.id]);
 
   // Restore session on mount
   useEffect(() => {
@@ -616,12 +636,13 @@ export default function App() {
   // Define sidebar menu items
   const menuItems = [
     { id: 'dashboard', label: 'Executive Desk', icon: LayoutDashboard },
+    { id: 'inbox', label: 'Inbox', icon: MessageSquare },
     { id: 'sales', label: 'Sales & Bookings', icon: FileText },
     { id: 'packing', label: 'Packing Verification', icon: ClipboardCheck, highlight: true },
     { id: 'delivery', label: 'Delivery & Dispatch', icon: Truck },
     { id: 'inventory', label: 'Inventory Ledger', icon: Layers },
-    { id: 'products', label: 'Catalog SKUs', icon: Package },
-    { id: 'categories', label: 'SKU Categories', icon: Layers },
+    { id: 'products', label: 'Product Catalog', icon: Package },
+    { id: 'categories', label: 'Inventory Categories', icon: Layers },
     { id: 'customers', label: 'Customers Master', icon: Users },
     { id: 'suppliers', label: 'Suppliers directory', icon: Truck },
     { id: 'purchases', label: 'Procurements', icon: ShoppingBag },
@@ -748,6 +769,13 @@ export default function App() {
             businessId={currentBusiness.id} 
           />
         );
+      case 'inbox':
+        return (
+          <InboxModule 
+            currentUser={currentUser} 
+            businessId={currentBusiness.id} 
+          />
+        );
       case 'settings':
         return (
           <SettingsModule 
@@ -768,6 +796,7 @@ export default function App() {
         return (
           <AuditLogView 
             businessId={currentBusiness.id} 
+            triggerToast={triggerToast}
           />
         );
       default:
@@ -1010,12 +1039,12 @@ export default function App() {
       )}
 
       {/* Sidebar navigation */}
-      <aside className={`fixed inset-y-0 left-0 z-40 bg-slate-900 text-white transform transition-all duration-300 lg:translate-x-0 ${
+      <aside className={`fixed inset-y-0 left-0 z-40 bg-slate-900 text-white transform transition-all duration-300 lg:translate-x-0 overscroll-contain ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
       } w-56 ${isSidebarMinimized ? 'lg:w-20' : 'lg:w-56'} flex flex-col border-r border-slate-800`}>
         
         {/* Brand Header */}
-        <div className={`h-14 border-b border-slate-800 flex items-center justify-between px-6 ${isSidebarMinimized ? 'lg:px-0 lg:justify-center' : ''}`}>
+        <div className={`h-14 border-b border-slate-800 flex items-center justify-between px-6 shrink-0 ${isSidebarMinimized ? 'lg:px-0 lg:justify-center' : ''}`}>
           <div className={`flex items-center gap-2 ${isSidebarMinimized ? 'lg:justify-center lg:w-full' : ''}`}>
             <div className="p-1 bg-white rounded-lg flex items-center justify-center overflow-hidden h-7 w-7 shrink-0">
               <img 
@@ -1038,7 +1067,7 @@ export default function App() {
           </button>
         </div>
         {/* Navigation Items list */}
-        <nav className={`flex-1 overflow-y-auto py-6 space-y-1 px-4 ${isSidebarMinimized ? 'lg:px-3' : ''}`}>
+        <nav className={`flex-1 overflow-y-auto py-6 space-y-1 px-4 overscroll-contain scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent ${isSidebarMinimized ? 'lg:px-3' : ''}`}>
           {menuItems.map(item => {
             const isAuthorized = hasAccessToView(item.id);
             const isActive = activeView === item.id;
@@ -1065,9 +1094,21 @@ export default function App() {
                 title={isSidebarMinimized ? item.label : undefined}
               >
                 <div className={`flex items-center gap-2.5 ${isSidebarMinimized ? 'lg:justify-center' : ''}`}>
-                  <item.icon size={16} className={`${isActive ? 'text-white' : 'text-slate-400'} ${isSidebarMinimized ? 'lg:w-5 lg:h-5' : ''}`} />
+                  <div className="relative">
+                    <item.icon size={16} className={`${isActive ? 'text-white' : 'text-slate-400'} ${isSidebarMinimized ? 'lg:w-5 lg:h-5' : ''}`} />
+                    {item.id === 'inbox' && unreadMessagesCount > 0 && isSidebarMinimized && (
+                      <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full font-black shadow-sm ring-1 ring-slate-900 animate-in zoom-in duration-150">
+                        {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                      </span>
+                    )}
+                  </div>
                   <span className={isSidebarMinimized ? 'lg:hidden' : ''}>{item.label}</span>
                 </div>
+                {item.id === 'inbox' && unreadMessagesCount > 0 && !isSidebarMinimized && (
+                  <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black min-w-[18px] text-center shadow-sm animate-in zoom-in duration-150">
+                    {unreadMessagesCount}
+                  </span>
+                )}
                 {!isAuthorized && <Lock size={12} className={`text-slate-600 ${isSidebarMinimized ? 'lg:hidden' : ''}`} />}
                 {item.highlight && isAuthorized && <span className={`w-2 h-2 rounded-full bg-emerald-500 animate-ping ${isSidebarMinimized ? 'lg:absolute lg:right-4 lg:top-4' : ''}`} />}
               </button>
@@ -1076,7 +1117,7 @@ export default function App() {
         </nav>
 
         {/* Signed-in identity panel info footer */}
-        <div className={`p-4 border-t border-slate-800 space-y-3 bg-slate-950/60 px-4 ${isSidebarMinimized ? 'lg:px-2' : ''}`}>
+        <div className={`p-4 border-t border-slate-800 space-y-3 bg-slate-950/60 px-4 shrink-0 ${isSidebarMinimized ? 'lg:px-2' : ''}`}>
           <div className={`flex items-center gap-2.5 ${isSidebarMinimized ? 'lg:hidden' : ''}`}>
             <div className="w-8 h-8 rounded-full bg-indigo-700 border flex items-center justify-center font-bold text-xs uppercase text-white shrink-0">
               {currentUser.name.charAt(0)}
@@ -1157,10 +1198,10 @@ export default function App() {
                   setIsNotificationMenuOpen(!isNotificationMenuOpen);
                   setIsUserMenuOpen(false);
                 }}
-                className="relative p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group focus:outline-none overflow-hidden cursor-pointer"
+                className="relative p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group focus:outline-none cursor-pointer"
                 title="System Notifications"
               >
-                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-fuchsia-500/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-fuchsia-500/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"></div>
                 <Bell size={18} className="text-slate-600 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors relative z-10" />
                 {unreadCount > 0 && (
                   <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 z-20">
@@ -1304,7 +1345,7 @@ export default function App() {
         </header>
 
         {/* Dynamic active view body */}
-        <main className="flex-1 px-0.5 pt-1 pb-4 sm:px-1 lg:px-1 sm:pt-2 sm:pb-6 w-full min-w-0 overflow-x-hidden space-y-6">
+        <main className="flex-1 px-0 pt-0.5 pb-4 sm:px-0 lg:px-0 sm:pt-1 sm:pb-6 w-full min-w-0 overflow-x-hidden space-y-4">
           {renderActiveModule()}
         </main>
 

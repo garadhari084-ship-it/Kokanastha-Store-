@@ -162,6 +162,8 @@ export interface SalesOrder {
   tracking_number?: string;
   dispatch_notes?: string;
   dispatched_at?: string;
+  packing_started_at?: string;
+  packing_completed_at?: string;
 }
 
 export interface AuditLogEntry {
@@ -203,6 +205,16 @@ export interface SystemAuditLog {
   action: string; // e.g. 'Login', 'Create Customer', 'Scan Barcode', 'Complete Packing'
   details: string;
   created_at: string;
+  business_id: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  created_at: string;
+  is_read: boolean;
   business_id: string;
 }
 

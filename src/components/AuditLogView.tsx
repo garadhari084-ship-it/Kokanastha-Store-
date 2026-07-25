@@ -6,11 +6,14 @@ import { SystemAuditLog } from '../types/erp';
 
 interface AuditLogViewProps {
   businessId: string;
+  triggerToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export const AuditLogView: React.FC<AuditLogViewProps> = ({ businessId }) => {
+export const AuditLogView: React.FC<AuditLogViewProps> = ({ businessId, triggerToast }) => {
   const [logs, setLogs] = useState<SystemAuditLog[]>(dbStore.getSystemAuditLogs(businessId));
   const [searchQuery, setSearchQuery] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   useEffect(() => {
     return dbStore.subscribe(() => {
       setLogs(dbStore.getSystemAuditLogs(businessId));
@@ -18,8 +21,21 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({ businessId }) => {
   }, [businessId]);
 
 
-  const handleRefresh = () => {
-    setLogs(dbStore.getSystemAuditLogs(businessId));
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      // Simulated delay for visual feedback of "Immutable Feed Refresh"
+      await new Promise(resolve => setTimeout(resolve, 800));
+      await dbStore.syncFromSupabase(businessId);
+      const updatedLogs = dbStore.getSystemAuditLogs(businessId);
+      setLogs(updatedLogs);
+      
+      triggerToast('Security audit trail synchronized successfully.', 'success');
+    } catch (error) {
+      console.error('Failed to refresh audit logs:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const filteredLogs = logs.filter(l => 
@@ -37,17 +53,19 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({ businessId }) => {
         icon={ShieldAlert}
         rightContent={
           <>
-<button 
+        <button 
           onClick={handleRefresh}
-          className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer"
+          disabled={isRefreshing}
+          className={`flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer transition-all ${isRefreshing ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          <RefreshCw size={14} />
-          <span>Refresh Feed</span>
+          <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+          <span>{isRefreshing ? 'Refreshing...' : 'Refresh Feed'}</span>
         </button>
           </>
         }
       />
 
+      <div className="px-4 sm:px-6 space-y-6">
       {/* Filter and stats */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="relative w-full md:w-[350px]">
@@ -123,6 +141,7 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({ businessId }) => {
             </tbody>
           </table>
         </div>
+      </div>
       </div>
     </div>
   );

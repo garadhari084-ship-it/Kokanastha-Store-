@@ -85,18 +85,19 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     setPendingOrders(
       allSales.filter(o => o.status === 'Pending' || o.status === 'Packing')
     );
-    const activeId = selectedOrderRef.current?.id;
-    if (activeId) {
-      const refreshed = allSales.find(o => o.id === activeId);
+    
+    // Refresh current selected order data if it exists in the new list
+    setSelectedOrder(prev => {
+      if (!prev) return null;
+      const refreshed = allSales.find(o => o.id === prev.id);
       if (refreshed && (refreshed.status === 'Pending' || refreshed.status === 'Packing')) {
-        setSelectedOrder({
+        return {
           ...refreshed,
           items: refreshed.items ? refreshed.items.map(it => ({ ...it })) : []
-        });
-      } else {
-        setSelectedOrder(null);
+        };
       }
-    }
+      return null;
+    });
   };
 
   useEffect(() => {
@@ -109,7 +110,9 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
   // Open specific order packing view
   const handleOpenPackingStation = (order: SalesOrder) => {
+    // Set selected order first
     setSelectedOrder(order);
+    
     setBarcodeInput('');
     setRecentScanLog(null);
     setPersonName(order.delivery_person_name || '');
@@ -120,8 +123,13 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
     // Update status to 'Packing' if it was 'Pending'
     if (order.status === 'Pending') {
-      dbStore.updateSalesOrder(order.id, { status: 'Packing' });
+      dbStore.updateSalesOrder(order.id, { 
+        status: 'Packing',
+        packing_started_at: new Date().toISOString()
+      });
     }
+    
+    // Call reload to ensure state consistency with database
     reloadOrders();
   };
 
@@ -130,7 +138,12 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     setSelectedOrder(null);
     setIsScannerOpen(false);
     setRecentScanLog(null);
-    reloadOrders();
+    // reloadOrders will be called by the subscriber or we can call it manually
+    // but setSelectedOrder(null) is the primary action here
+    const allSales = dbStore.getSalesOrders(businessId);
+    setPendingOrders(
+      allSales.filter(o => o.status === 'Pending' || o.status === 'Packing')
+    );
   };
 
   // Barcode Submission Handler
@@ -309,6 +322,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         }
       />
 
+      <div className="px-4 sm:px-6 space-y-6">
       {/* ========================================================================= */}
       {/* PAGE VIEW A: DEDICATED PACKING STATION FOR A SELECTED ORDER               */}
       {/* ========================================================================= */}
@@ -319,7 +333,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
           <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <button
               onClick={handleBackToQueue}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
             >
               <ArrowLeft size={16} />
               <span>Back to Orders Queue</span>
@@ -331,7 +345,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               </span>
               <button 
                 onClick={handleResetOrderScans}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:hover:bg-rose-900/40 dark:text-rose-400 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:hover:bg-rose-900/40 dark:text-rose-400 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
               >
                 <RotateCcw size={14} />
                 <span>Reset Scans</span>
@@ -408,7 +422,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               </h3>
               <button
                 onClick={() => setIsScannerOpen(true)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center gap-2 shadow-md shadow-indigo-600/20 transition-all"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center gap-2 shadow-md shadow-indigo-600/20 transition-all active:scale-95"
               >
                 <Camera size={16} />
                 <span>Open Back Camera Scanner</span>
@@ -437,7 +451,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               </div>
               <button 
                 type="submit"
-                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer shrink-0 transition-all"
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer shrink-0 transition-all active:scale-95"
               >
                 Verify Item
               </button>
@@ -557,7 +571,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                               <button
                                 type="button"
                                 onClick={() => processBarcodeScan(p.barcode || p.sku || p.id)}
-                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg transition-all cursor-pointer active:scale-95"
                                 title="Scan 1 unit"
                               >
                                 +1 Scan
@@ -566,7 +580,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                 <button
                                   type="button"
                                   onClick={() => handleScanAllForProduct(p.barcode || p.sku || p.id, pending)}
-                                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[11px] font-extrabold rounded-lg transition-colors cursor-pointer"
+                                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer active:scale-95"
                                   title={`Verify all ${pending} remaining units at once`}
                                 >
                                   Verify All ({pending})
@@ -763,7 +777,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
           </div>
 
           {/* Orders Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {filteredQueue.map((o) => {
               const customer = customers.find(c => c.id === o.customer_id);
               const items = o.items || [];
@@ -776,72 +790,70 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               return (
                 <div 
                   key={o.id}
-                  className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                  onClick={() => handleOpenPackingStation(o)}
+                  className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800 p-2.5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-2.5 cursor-pointer group hover:border-indigo-300"
                 >
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="text-[10px] font-bold text-slate-400 font-mono block">ORDER NUMBER</span>
-                        <strong className="text-base font-extrabold text-slate-900 dark:text-slate-100">
+                        <span className="text-[8px] font-bold text-slate-400 font-mono block uppercase tracking-tight">Order Number</span>
+                        <strong className="text-xs font-black text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors">
                           #{o.order_number}
                         </strong>
                       </div>
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold font-mono ${
+                      <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-black font-mono tracking-tighter ${
                         isDone 
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' 
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/50' 
                           : o.status === 'Packing' 
-                          ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300' 
-                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                          ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/50' 
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/50'
                       }`}>
                         {isDone ? 'VERIFIED' : o.status.toUpperCase()}
                       </span>
                     </div>
 
-                    <div className="text-xs space-y-1 text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3">
-                      <p className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                        <User size={14} className="text-indigo-600" />
-                        <span>{customer ? customer.name : 'Walk-in Customer'}</span>
+                    <div className="text-[10px] space-y-0.5 text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-2">
+                      <p className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1 truncate">
+                        <User size={12} className="text-indigo-600 shrink-0" />
+                        <span className="truncate">{customer ? customer.name : 'Walk-in Customer'}</span>
                       </p>
                       {customer?.phone && (
-                        <p className="text-[11px] text-slate-400 pl-5">{customer.phone}</p>
-                      )}
-                      {o.area && (
-                        <p className="text-[11px] text-slate-500 pl-5 flex items-center gap-1">
-                          <MapPin size={11} /> Area: {o.area}
+                        <p className="text-[9px] text-slate-400 pl-4 flex items-center gap-1">
+                          <Phone size={9} /> {customer.phone}
                         </p>
                       )}
                     </div>
 
                     {/* Progress details */}
-                    <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2">
-                      <div className="flex justify-between items-center text-xs font-bold font-mono">
-                        <span className="text-slate-500">Items Scan Progress</span>
+                    <div className="bg-slate-50/50 dark:bg-slate-800/40 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800/80 space-y-1">
+                      <div className="flex justify-between items-center text-[9px] font-bold font-mono">
+                        <span className="text-slate-400 uppercase tracking-tighter">Scan Progress</span>
                         <span className={isDone ? 'text-emerald-600' : 'text-indigo-600'}>{pct}%</span>
                       </div>
 
-                      <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                      <div className="w-full bg-slate-200 dark:bg-slate-700 h-1 rounded-full overflow-hidden">
                         <div 
-                          className={`h-full rounded-full ${isDone ? 'bg-emerald-500' : 'bg-indigo-600'}`} 
+                          className={`h-full rounded-full transition-all duration-500 ${isDone ? 'bg-emerald-500' : 'bg-indigo-600'}`} 
                           style={{ width: `${pct}%` }} 
                         />
                       </div>
 
-                      <div className="flex justify-between text-[11px] font-semibold text-slate-500 pt-0.5">
-                        <span>{packedCount} Scanned</span>
-                        <span className={pendingCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}>
-                          {pendingCount} Pending
-                        </span>
+                      <div className="flex justify-between text-[8px] font-bold text-slate-400 pt-0.5 tracking-tighter uppercase">
+                        <span>{packedCount} Done</span>
                         <span>{itemsCount} Total</span>
                       </div>
                     </div>
                   </div>
 
                   <button
-                    onClick={() => handleOpenPackingStation(o)}
-                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors flex items-center justify-center gap-2 shadow-md shadow-indigo-600/20"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenPackingStation(o);
+                    }}
+                    className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[9px] font-black cursor-pointer transition-all flex items-center justify-center gap-2 shadow-sm shadow-indigo-600/20 active:scale-[0.98]"
                   >
-                    <Scan size={15} />
-                    <span>Open Packing Station Page</span>
+                    <Scan size={12} />
+                    <span>Packing Station</span>
                   </button>
                 </div>
               );
@@ -858,6 +870,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
         </div>
       )}
+
+      </div>
 
       {/* CAMERA SCANNER MODAL */}
       {isScannerOpen && (

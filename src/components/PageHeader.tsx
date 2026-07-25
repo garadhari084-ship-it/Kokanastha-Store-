@@ -58,7 +58,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   }, [selectedTheme]);
 
   return (
-    <div className={`relative rounded-none px-6 pt-3 pb-3 md:px-8 md:pt-4 md:pb-4 bg-gradient-to-r ${themeStyles.banner} border shadow-2xl transition-all duration-300 mb-6`}>
+    <div className={`relative rounded-none px-4 pt-2.5 pb-2.5 md:px-5 md:pt-3 md:pb-3 bg-gradient-to-r ${themeStyles.banner} border shadow-2xl transition-all duration-300 mb-4`}>
       {badgeText && (
         <div className="absolute top-0 right-0 z-20">
           <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 rounded-none border-l border-b text-[10px] md:text-[11px] font-bold backdrop-blur-md ${themeStyles.badge}`}>

@@ -269,6 +269,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         }
       />
 
+      <div className="px-4 sm:px-6 space-y-6">
       {/* ================= 1. SUPABASE CLOUD SYNC CONTROL HUB ================= */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl border border-indigo-500/30 shadow-xl relative overflow-hidden">
         <div className="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
@@ -795,6 +796,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
           </div>
         </div>
       )}
+
+      </div>
 
       {/* Factory Reset Confirmation Modal */}
       {showResetConfirm && (

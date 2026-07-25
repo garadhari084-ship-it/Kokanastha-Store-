@@ -149,6 +149,7 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
         }
       />
 
+      <div className="px-4 sm:px-6 space-y-6">
       {/* Filters */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex items-center gap-3">
         <Search size={16} className="text-slate-400" />
@@ -216,15 +217,17 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
         </table>
       </div>
 
+      </div>
+
       {/* Modal form */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg shadow-xl animate-in zoom-in duration-150 overflow-hidden">
-            <div className="bg-slate-50 px-6 py-4 border-b flex items-center justify-between">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-xl animate-in zoom-in duration-150 overflow-hidden">
+            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
               <h2 className="text-[11px] font-bold uppercase tracking-wider">{editingSupplier ? 'Modify Vendor Account' : 'Register Vendor Account'}</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400"><X size={18} /></button>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X size={18} /></button>
             </div>
-            <form onSubmit={handleSaveSupplier} className="p-6 space-y-4">
+            <form onSubmit={handleSaveSupplier} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="space-y-1 col-span-2">
                 <label className="text-[11px] font-bold text-slate-500 uppercase">Vendor/Trade Name *</label>
                 <input 

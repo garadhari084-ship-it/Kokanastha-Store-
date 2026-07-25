@@ -192,7 +192,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-full pb-12 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden">
       <PageHeader
         title="User Management"
         subtitle="Manage organization users, roles, and access controls."
@@ -212,6 +212,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
         }
       />
 
+      <div className="px-4 sm:px-6 space-y-6">
       {/* Toolbar */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
@@ -304,6 +305,8 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
             </tbody>
           </table>
         </div>
+      </div>
+
       </div>
 
       {/* Edit User Modal */}

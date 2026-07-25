@@ -113,7 +113,8 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
         }
       />
 
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex items-center gap-3">
+      <div className="px-4 sm:px-6 space-y-6">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex items-center gap-3">
         <Search size={16} className="text-slate-400" />
         <input 
           type="text" 
@@ -164,6 +165,8 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
             )}
           </tbody>
         </table>
+      </div>
+
       </div>
 
       {isModalOpen && (

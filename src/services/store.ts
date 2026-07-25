@@ -14,7 +14,8 @@ import {
   BusinessSettings,
   UserRole,
   OrderStatus,
-  AuditLogEntry
+  AuditLogEntry,
+  ChatMessage
 } from '../types/erp';
 
 // ====================================================================
@@ -78,7 +79,7 @@ const PRE_SEEDED_PRODUCTS: Product[] = [
     brand: 'Kokanastha',
     hsn_code: '2106',
     qr_code: '8901234567101',
-    image_url: '',
+    image_url: 'https://images.unsplash.com/photo-1626132647523-66f5bf380027?auto=format&fit=crop&q=80&w=400&h=400',
     description: 'Fresh authentic Ukadiche Modak',
     business_id: BIZ_ID,
     active: true,
@@ -102,7 +103,7 @@ const PRE_SEEDED_PRODUCTS: Product[] = [
     brand: 'Kokanastha',
     hsn_code: '2106',
     qr_code: '8901234567102',
-    image_url: '',
+    image_url: 'https://images.unsplash.com/photo-1599599810769-bcde5a160d32?auto=format&fit=crop&q=80&w=400&h=400',
     description: 'Rich Cashew Katli',
     business_id: BIZ_ID,
     active: true,
@@ -126,7 +127,7 @@ const PRE_SEEDED_PRODUCTS: Product[] = [
     brand: 'Kokanastha',
     hsn_code: '2106',
     qr_code: '8901234567103',
-    image_url: '',
+    image_url: 'https://images.unsplash.com/photo-1589114473223-c091bc90a071?auto=format&fit=crop&q=80&w=400&h=400',
     description: 'Assorted Diwali Faral Snacks',
     business_id: BIZ_ID,
     active: true,
@@ -471,6 +472,7 @@ class ERPStorage {
     stockLogs: StockLog[];
     auditLogs: SystemAuditLog[];
     packingSessions: PackingSession[];
+    messages: ChatMessage[];
   };
 
   private bc: BroadcastChannel | null = null;
@@ -493,7 +495,8 @@ class ERPStorage {
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', PRE_SEEDED_STOCK_LOGS),
       auditLogs: this.load('auditLogs', PRE_SEEDED_SYSTEM_AUDIT_LOGS),
-      packingSessions: this.load('packingSessions', [])
+      packingSessions: this.load('packingSessions', []),
+      messages: this.load('messages', [])
     };
 
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -529,7 +532,8 @@ class ERPStorage {
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', PRE_SEEDED_STOCK_LOGS),
       auditLogs: this.load('auditLogs', PRE_SEEDED_SYSTEM_AUDIT_LOGS),
-      packingSessions: this.load('packingSessions', [])
+      packingSessions: this.load('packingSessions', []),
+      messages: this.load('messages', [])
     };
     this.notify();
   }
@@ -602,7 +606,8 @@ class ERPStorage {
        packingSessions: 'packing_sessions',
        stockLogs: 'stock_logs',
        auditLogs: 'system_audit_logs',
-       settings: 'business_settings'
+       settings: 'business_settings',
+       messages: 'chat_messages'
     };
     
     for (const [key, table] of Object.entries(tables)) {
@@ -778,7 +783,8 @@ class ERPStorage {
        packingSessions: 'packing_sessions',
        stockLogs: 'stock_logs',
        auditLogs: 'system_audit_logs',
-       settings: 'business_settings'
+       settings: 'business_settings',
+       messages: 'chat_messages'
     };
     
     const tableName = tables[key];
@@ -1625,6 +1631,7 @@ class ERPStorage {
     localStorage.removeItem('omnipack_erp_stockLogs');
     localStorage.removeItem('omnipack_erp_auditLogs');
     localStorage.removeItem('omnipack_erp_packingSessions');
+    localStorage.removeItem('omnipack_erp_messages');
 
     this.cache = {
       businesses: PRE_SEEDED_BUSINESSES,
@@ -1638,7 +1645,8 @@ class ERPStorage {
       settings: PRE_SEEDED_SETTINGS,
       stockLogs: PRE_SEEDED_STOCK_LOGS,
       auditLogs: PRE_SEEDED_SYSTEM_AUDIT_LOGS,
-      packingSessions: []
+      packingSessions: [],
+      messages: []
     };
   }
 
@@ -1778,6 +1786,44 @@ class ERPStorage {
       topProducts,
       recentOrders: orders.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 10)
     };
+  }
+
+  // Chat Operations
+  public getMessages(businessId: string): ChatMessage[] {
+    return (this.cache.messages || []).filter(m => m.business_id === businessId);
+  }
+
+  public sendMessage(msg: Omit<ChatMessage, 'id' | 'created_at' | 'is_read'>): ChatMessage {
+    const newMsg: ChatMessage = {
+      ...msg,
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString(),
+      is_read: false
+    };
+    this.cache.messages.push(newMsg);
+    this.save('messages', newMsg);
+    return newMsg;
+  }
+
+  public markMessageAsRead(id: string) {
+    const index = this.cache.messages.findIndex(m => m.id === id);
+    if (index !== -1) {
+      this.cache.messages[index].is_read = true;
+      this.save('messages', this.cache.messages[index]);
+    }
+  }
+
+  public markConversationRead(senderId: string, receiverId: string) {
+    let changed = false;
+    this.cache.messages.forEach(m => {
+      if (m.sender_id === senderId && m.receiver_id === receiverId && !m.is_read) {
+        m.is_read = true;
+        changed = true;
+      }
+    });
+    if (changed) {
+      this.save('messages', this.cache.messages);
+    }
   }
 }
 

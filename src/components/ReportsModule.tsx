@@ -112,6 +112,7 @@ export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
         }
       />
 
+      <div className="px-4 sm:px-6 space-y-6">
       {/* KPI Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
@@ -239,7 +240,7 @@ export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
           The calculated tax ledger accounts represent a live compliance feed. The net IGST/CGST split-factor corresponds to Indian Interstate Supply and Intrastate transactions. When drafting GSTR-3B, download your monthly sales csv and verify ITC (Input Tax Credits) against matches in GSTR-2B.
         </p>
       </div>
-
+      </div>
     </div>
   );
 };

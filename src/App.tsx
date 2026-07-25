@@ -1028,7 +1028,7 @@ export default function App() {
 
   // Main system portal dashboard layout
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex font-sans antialiased text-slate-800 dark:text-slate-100" id="portal-root">
+    <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 flex font-sans antialiased text-slate-800 dark:text-slate-100" id="portal-root">
       
       {/* Mobile/Tablet Backdrop Overlay */}
       {isMobileMenuOpen && (
@@ -1162,7 +1162,7 @@ export default function App() {
       </aside>
 
       {/* Main Panel Content container */}
-      <div className={`flex-1 transition-all duration-300 ${isSidebarMinimized ? 'lg:pl-20' : 'lg:pl-56'} flex flex-col min-h-screen min-w-0 overflow-x-hidden`}>
+      <div className={`flex-1 transition-all duration-300 ${isSidebarMinimized ? 'lg:pl-20' : 'lg:pl-56'} flex flex-col h-screen min-w-0 overflow-y-auto overflow-x-hidden`}>
         
         {/* Top interactive Header bar */}
         {/* Header content */}

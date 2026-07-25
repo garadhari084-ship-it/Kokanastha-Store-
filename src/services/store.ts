@@ -801,6 +801,7 @@ class ERPStorage {
     if (isDelete && deleteId) {
        const { error } = await supabase.from(tableName).delete().eq(tableName === 'business_settings' ? 'business_id' : 'id', deleteId);
        if (error) {
+         if (error.code === 'PGRST205') return; // Ignore missing table
          console.error(`Supabase delete error on ${tableName}:`, JSON.stringify(error));
          return error;
        }
@@ -884,18 +885,22 @@ class ERPStorage {
          }
        }
        if (error) {
+         if (error.code === 'PGRST205') {
+           // Table doesn't exist in Supabase schema (likely a local-only feature for this user)
+           return;
+         }
          console.error(`Supabase sync error on ${tableName}:`, JSON.stringify(error));
          return error;
        }
        
        if (tableName === 'sales_orders' && salesItems.length > 0) {
            const { error: err2 } = await supabase.from('sales_order_items').upsert(salesItems);
-           if (err2) console.error('Supabase sync error on sales_order_items:', JSON.stringify(err2));
+           if (err2 && err2.code !== 'PGRST205') console.error('Supabase sync error on sales_order_items:', JSON.stringify(err2));
        }
        
        if (tableName === 'purchase_orders' && purchaseItems.length > 0) {
            const { error: err3 } = await supabase.from('purchase_order_items').upsert(purchaseItems);
-           if (err3) console.error('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
+           if (err3 && err3.code !== 'PGRST205') console.error('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
        }
        
        if (dataItem) {

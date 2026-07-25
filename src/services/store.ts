@@ -450,6 +450,7 @@ export function isOrderInTimeHorizon(order: SalesOrder, horizon: 'today' | 'yest
 
 class ERPStorage {
   private listeners: (() => void)[] = [];
+  private pendingUploads = new Set<string>();
   public subscribe(listener: () => void) {
     this.listeners.push(listener);
     return () => { this.listeners = this.listeners.filter(l => l !== listener); };
@@ -642,6 +643,7 @@ class ERPStorage {
              });
              const mergedSales = (data || []).map((so: any) => {
                const existingSO = (this.cache.sales || []).find(s => s.id === so.id);
+               if (existingSO && this.pendingUploads.has(existingSO.id)) return existingSO;
                const rawItems = (itemsByOrder[so.id] && itemsByOrder[so.id].length > 0) ? itemsByOrder[so.id] : (so.items || []);
                const mergedItems = rawItems.map((rit: any) => {
                  const existingItem = existingSO?.items?.find((eit: any) => eit.product_id === rit.product_id || eit.id === rit.id);
@@ -782,6 +784,14 @@ class ERPStorage {
     const tableName = tables[key];
     if (!tableName) return;
 
+    if (dataItem) {
+        if (Array.isArray(dataItem)) {
+            dataItem.forEach((item: any) => { if (item && item.id) this.pendingUploads.add(item.id) });
+        } else if (dataItem.id) {
+            this.pendingUploads.add(dataItem.id);
+        }
+    }
+    
     if (isDelete && deleteId) {
        const { error } = await supabase.from(tableName).delete().eq(tableName === 'business_settings' ? 'business_id' : 'id', deleteId);
        if (error) {
@@ -833,14 +843,6 @@ class ERPStorage {
            }
             if (tableName === 'businesses') {
                 delete clean.last_supabase_sync;
-                delete clean.currency_symbol;
-                delete clean.auto_backup;
-                delete clean.low_stock_threshold;
-                delete clean.audit_retention_days;
-                delete clean.default_theme;
-                delete clean.enable_auto_whatsapp;
-                delete clean.enable_auto_sms;
-                delete clean.default_dispatch_zone;
             }
            return clean;
        };
@@ -888,6 +890,14 @@ class ERPStorage {
        if (tableName === 'purchase_orders' && purchaseItems.length > 0) {
            const { error: err3 } = await supabase.from('purchase_order_items').upsert(purchaseItems);
            if (err3) console.error('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
+       }
+       
+       if (dataItem) {
+           if (Array.isArray(dataItem)) {
+               dataItem.forEach((item: any) => { if (item && item.id) this.pendingUploads.delete(item.id) });
+           } else if (dataItem.id) {
+               this.pendingUploads.delete(dataItem.id);
+           }
        }
     }
     } catch (err: any) {
@@ -1043,7 +1053,7 @@ class ERPStorage {
     const index = this.cache.categories.findIndex(c => c.id === id);
     if (index !== -1) {
       this.cache.categories[index] = { ...this.cache.categories[index], ...updates };
-      this.save('categories');
+      this.save('categories', this.cache.categories[index]);
       return this.cache.categories[index];
     }
     throw new Error('Category not found');
@@ -1086,7 +1096,7 @@ class ERPStorage {
     const index = this.cache.products.findIndex(p => p.id === id);
     if (index !== -1) {
       this.cache.products[index] = { ...this.cache.products[index], ...updates };
-      this.save('products');
+      this.save('products', this.cache.products[index]);
       return this.cache.products[index];
     }
     throw new Error('Product not found');
@@ -1123,7 +1133,7 @@ class ERPStorage {
     const index = this.cache.customers.findIndex(c => c.id === id);
     if (index !== -1) {
       this.cache.customers[index] = { ...this.cache.customers[index], ...updates };
-      this.save('customers');
+      this.save('customers', this.cache.customers[index]);
       return this.cache.customers[index];
     }
     throw new Error('Customer not found');
@@ -1160,7 +1170,7 @@ class ERPStorage {
     const index = this.cache.suppliers.findIndex(s => s.id === id);
     if (index !== -1) {
       this.cache.suppliers[index] = { ...this.cache.suppliers[index], ...updates };
-      this.save('suppliers');
+      this.save('suppliers', this.cache.suppliers[index]);
       return this.cache.suppliers[index];
     }
     throw new Error('Supplier not found');
@@ -1208,7 +1218,7 @@ class ERPStorage {
       const oldPO = this.cache.purchases[index];
       const newPO = { ...oldPO, ...updates };
       this.cache.purchases[index] = newPO;
-      this.save('purchases');
+      this.save('purchases', newPO);
 
       // Check transition from non-received to received
       if (oldPO.status !== 'Received' && newPO.status === 'Received') {
@@ -1272,7 +1282,7 @@ class ERPStorage {
       const oldSO = this.cache.sales[index];
       const newSO = { ...oldSO, ...updates };
       this.cache.sales[index] = newSO;
-      this.save('sales');
+      this.save('sales', newSO);
 
       // Handle stock out when order becomes Dispatched or Delivered
       const isDispatched = (status: OrderStatus) => status === 'Dispatched' || status === 'Delivered';
@@ -1315,11 +1325,11 @@ class ERPStorage {
     const productIndex = this.cache.products.findIndex(p => p.id === productId);
     if (productIndex !== -1) {
       this.cache.products[productIndex].current_stock += changeQty;
-      this.save('products');
+      this.save('products', this.cache.products[productIndex]);
     }
 
     this.cache.stockLogs.push(newLog);
-    this.save('stockLogs');
+    this.save('stockLogs', newLog);
     return newLog;
   }
 
@@ -1505,21 +1515,25 @@ class ERPStorage {
     this.save('packingSessions', session);
 
     // Update order status & delivery details
+    let finalPartner = 'Packed';
     if (deliveryDetails && deliveryDetails.partner) {
-      order.status = 'Dispatched';
-      order.delivery_status = 'Dispatched';
-      order.delivery_partner = deliveryDetails.partner;
-      order.delivery_person_name = deliveryDetails.personName;
-      order.delivery_person_phone = deliveryDetails.personPhone;
-      order.tracking_number = deliveryDetails.trackingNumber;
-      order.dispatch_notes = deliveryDetails.notes;
-      order.dispatched_at = new Date().toISOString();
+      finalPartner = deliveryDetails.partner;
+      this.updateSalesOrder(orderId, {
+        status: 'Dispatched',
+        delivery_status: 'Dispatched',
+        delivery_partner: deliveryDetails.partner,
+        delivery_person_name: deliveryDetails.personName,
+        delivery_person_phone: deliveryDetails.personPhone,
+        tracking_number: deliveryDetails.trackingNumber,
+        dispatch_notes: deliveryDetails.notes,
+        dispatched_at: new Date().toISOString()
+      });
     } else {
-      order.status = 'Packed';
-      order.delivery_status = 'Packed';
+      this.updateSalesOrder(orderId, {
+        status: 'Packed',
+        delivery_status: 'Packed'
+      });
     }
-    
-    this.save('sales');
 
     // Log to system audit trail
     this.logActivity(
@@ -1527,7 +1541,7 @@ class ERPStorage {
       staffName,
       'Packing Staff',
       'Complete Packing',
-      `Completed packing & assigned delivery (${order.delivery_partner || 'Packed'}) for order ${order.order_number}.`,
+      `Completed packing & assigned delivery (${finalPartner}) for order ${order.order_number}.`,
       businessId
     );
 
@@ -1551,7 +1565,7 @@ class ERPStorage {
       business_id: businessId
     };
     this.cache.auditLogs.unshift(newLog); // newer logs first
-    this.save('auditLogs');
+    this.save('auditLogs', newLog);
   }
 
   public getSystemAuditLogs(businessId: string): SystemAuditLog[] {
@@ -1586,13 +1600,13 @@ class ERPStorage {
     const index = this.cache.settings.findIndex(s => s.business_id === businessId);
     if (index !== -1) {
       this.cache.settings[index] = { ...this.cache.settings[index], ...updates };
-      this.save('settings');
+      this.save('settings', this.cache.settings[index]);
       return this.cache.settings[index];
     } else {
       const current = this.getSettings(businessId);
       const merged = { ...current, ...updates };
       this.cache.settings.push(merged);
-      this.save('settings');
+      this.save('settings', merged);
       return merged;
     }
   }

@@ -17,7 +17,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   products = []
 }) => {
   const items = order.items || [];
-  const subTotal = items.reduce((sum, it) => sum + (it.qty * it.selling_price), 0);
+  const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const delivery = order.total_amount > subTotal ? (order.total_amount - subTotal) : 0;
   const totalAmount = order.total_amount || (subTotal + delivery);
   const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
@@ -52,7 +52,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
     gstin: businessObj?.gstin
   });
 
-  const upiQrImgSrc = businessObj?.upi_qr_url || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
+  const upiQrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
   const billQrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(billString)}`;
 
   const bankName = businessObj?.bank_name || 'NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN';
@@ -63,19 +63,28 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   return (
     <div className="bg-white text-slate-900 p-6 sm:p-8 font-sans text-[11px] leading-relaxed shadow-lg max-w-2xl mx-auto rounded-xl border border-slate-200">
       
-      {/* Top Label */}
-      <div className="text-right text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-        ORIGINAL FOR RECIPIENT
-      </div>
-
       {/* Header */}
-      <div className="text-center mb-3">
-        <h1 className="text-xl font-black tracking-wide text-slate-950 uppercase m-0">
-          {bName}
-        </h1>
-        <p className="text-[10px] text-slate-600 font-medium max-w-xl mx-auto mt-1 leading-tight">
-          {bAddress}
-        </p>
+      <div className="flex justify-between items-start mb-3">
+        <div className="flex items-center gap-4">
+          {businessObj?.logo_url && (
+            <img 
+              src={businessObj.logo_url} 
+              alt={bName} 
+              className="w-24 h-auto max-h-24 object-contain" 
+            />
+          )}
+          <div className="text-left space-y-1">
+            <h1 className="text-xl font-black tracking-wide text-slate-950 uppercase m-0 leading-tight">
+              {bName}
+            </h1>
+            <p className="text-[10px] text-slate-600 font-medium max-w-sm leading-tight">
+              {bAddress}
+            </p>
+          </div>
+        </div>
+        <div className="text-right text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+          ORIGINAL FOR RECIPIENT
+        </div>
       </div>
 
       {/* Double Border Divider */}
@@ -142,16 +151,18 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               const p = products.find(prod => prod.id === it.product_id);
               const itemCode = p?.barcode || p?.sku || p?.hsn_code || '38655039462';
               const itemName = p?.name || 'Faral / Sweet Item';
-              const amount = it.qty * it.selling_price;
+              const price = it.selling_price || 0;
+              const qty = it.qty || 1;
+              const amount = qty * price;
 
               return (
                 <tr key={idx} className="hover:bg-slate-50">
                   <td className="py-1.5 px-1 text-center font-mono text-slate-500">{idx + 1}</td>
                   <td className="py-1.5 px-2 font-extrabold text-slate-900 uppercase">{itemName}</td>
                   <td className="py-1.5 px-2 text-center font-mono text-slate-600">{itemCode}</td>
-                  <td className="py-1.5 px-2 text-center font-bold text-slate-900">{it.qty}</td>
-                  <td className="py-1.5 px-2 text-right font-mono">₹ {it.selling_price.toFixed(2)}</td>
-                  <td className="py-1.5 px-2 text-right font-mono">{it.selling_price.toFixed(2)}</td>
+                  <td className="py-1.5 px-2 text-center font-bold text-slate-900">{qty}</td>
+                  <td className="py-1.5 px-2 text-right font-mono">₹ {price.toFixed(2)}</td>
+                  <td className="py-1.5 px-2 text-right font-mono">{price.toFixed(2)}</td>
                   <td className="py-1.5 px-2 text-right font-mono font-black text-slate-950">₹ {amount.toFixed(2)}</td>
                 </tr>
               );

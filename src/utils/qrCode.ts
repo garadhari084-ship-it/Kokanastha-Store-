@@ -52,6 +52,8 @@ export async function generateQRCodeSvg(text: string, options?: QRCodeOptions): 
 
 /**
  * Constructs a standard UPI Pay URL string for scanning with BHIM, GPay, PhonePe, Paytm, etc.
+ * Formats parameters strictly according to NPCI UPI specifications so that
+ * all UPI scanner apps automatically pre-fill the exact invoice payment amount.
  */
 export function buildUpiPayString(params: {
   upiId: string;
@@ -60,12 +62,14 @@ export function buildUpiPayString(params: {
   orderNumber: string;
 }): string {
   const { upiId, businessName, amount, orderNumber } = params;
-  const cleanUpi = upiId.trim();
-  const cleanName = encodeURIComponent(businessName.trim());
-  const formattedAmount = amount.toFixed(2);
-  const note = encodeURIComponent(`Order ${orderNumber}`);
-  
-  return `upi://pay?pa=${cleanUpi}&pn=${cleanName}&am=${formattedAmount}&tn=${note}&cu=INR`;
+  const cleanUpi = (upiId || '').trim();
+  const cleanName = (businessName || 'Merchant').trim().replace(/[^\w\s]/gi, '');
+  const numAmount = Number(amount) || 0;
+  const formattedAmount = numAmount > 0 ? numAmount.toFixed(2) : '0.00';
+  const cleanOrderNo = (orderNumber || '').trim().replace(/[^\w\s-]/gi, '');
+  const note = cleanOrderNo ? `INV-${cleanOrderNo}` : 'Invoice Payment';
+
+  return `upi://pay?pa=${cleanUpi}&pn=${encodeURIComponent(cleanName)}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
 }
 
 /**

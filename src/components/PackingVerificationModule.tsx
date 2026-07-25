@@ -35,13 +35,15 @@ interface PackingVerificationModuleProps {
   user: UserProfile;
   triggerToast: (msg: string, type: 'success' | 'error' | 'info') => void;
   openOrderIdInitially?: string | null;
+  onNavigate?: (view: string, data?: any) => void;
 }
 
 export const PackingVerificationModule: React.FC<PackingVerificationModuleProps> = ({
   businessId,
   user,
   triggerToast,
-  openOrderIdInitially = null
+  openOrderIdInitially = null,
+  onNavigate
 }) => {
   const [pendingOrders, setPendingOrders] = useState<SalesOrder[]>(
     dbStore.getSalesOrders(businessId).filter(o => o.status === 'Pending' || o.status === 'Packing')
@@ -86,11 +88,13 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     const activeId = selectedOrderRef.current?.id;
     if (activeId) {
       const refreshed = allSales.find(o => o.id === activeId);
-      if (refreshed) {
+      if (refreshed && (refreshed.status === 'Pending' || refreshed.status === 'Packing')) {
         setSelectedOrder({
           ...refreshed,
           items: refreshed.items ? refreshed.items.map(it => ({ ...it })) : []
         });
+      } else {
+        setSelectedOrder(null);
       }
     }
   };
@@ -246,10 +250,14 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         throw new Error(res.error || 'Failed to complete dispatch.');
       }
 
+      
       triggerToast(`Order #${selectedOrder.order_number} successfully packed & assigned to ${deliveryPartner}!`, 'success');
       setSelectedOrder(null);
       setRecentScanLog(null);
       reloadOrders();
+      if (onNavigate) {
+        onNavigate('delivery');
+      }
     } catch (err: any) {
       triggerToast(err.message || 'Dispatch assignment failed.', 'error');
     }
@@ -860,7 +868,6 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
           }}
         />
       )}
-
     </div>
   );
 };

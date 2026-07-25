@@ -34,7 +34,8 @@ import {
   LockOpen,
   Database,
   CloudLightning,
-  Sparkles
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { dbStore } from './services/store';
 import { UserProfile, Business, UserRole } from './types/erp';
@@ -91,6 +92,7 @@ export default function App() {
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
 
@@ -266,6 +268,8 @@ export default function App() {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
+    setIsLoggingIn(true);
+    try {
     
     if (dbMode === 'supabase' && supabase) {
       try {
@@ -416,6 +420,9 @@ export default function App() {
       } else {
         setAuthError(result.error || 'Authentication failed.');
       }
+    }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -672,6 +679,7 @@ export default function App() {
             user={currentUser} 
             triggerToast={triggerToast}
             openOrderIdInitially={deepLinkData?.orderId || null}
+            onNavigate={handleDeepLinkNavigate}
           />
         );
       case 'delivery':
@@ -922,9 +930,17 @@ export default function App() {
 
                 <button 
                   type="submit"
-                  className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors cursor-pointer shadow-lg shadow-indigo-600/30 mt-4 flex justify-center items-center gap-2"
+                  disabled={isLoggingIn}
+                  className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors cursor-pointer shadow-lg shadow-indigo-600/30 mt-4 flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-wait"
                 >
-                  Sign In to Operations
+                  {isLoggingIn ? (
+                    <>
+                      <Loader2 className="animate-spin" size={18} />
+                      Authenticating...
+                    </>
+                  ) : (
+                    'Sign In to Operations'
+                  )}
                 </button>
               </form>
 

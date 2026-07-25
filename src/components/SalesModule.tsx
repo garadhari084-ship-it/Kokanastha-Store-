@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
-import { generateBillOfSupplyHTML } from '../utils/invoiceTemplate';
+import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
 import { BillOfSupplyView } from './BillOfSupplyView';
 
 interface SalesModuleProps {
@@ -264,6 +264,39 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       console.error('Print error:', err);
       window.print();
     }
+  };
+
+  const handleDownload3InchBill = (order: SalesOrder) => {
+    const cust = customers.find(c => c.id === order.customer_id);
+    const businessObj = dbStore.getBusiness(businessId);
+    const fullHtml = generate3InchBillHTML(order, cust, businessObj, products);
+
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    
+    // Download as HTML (similar to standard PDF download feature which uses HTML)
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `3_Inch_Bill_${order.order_number}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    // Also open print window directly for convenience
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.open();
+      printWindow.document.write(fullHtml);
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 500);
+    }
+
+    triggerToast(`3-Inch Bill for "${order.order_number}" downloaded & opened for printing!`, 'success');
+    dbStore.logActivity(user.id, user.name, user.role, 'Download 3-Inch Bill', `Downloaded 3-Inch bill for ${order.order_number}`, businessId);
   };
 
   const handleDownloadPDFInvoice = (order: SalesOrder) => {
@@ -537,139 +570,34 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 <button onClick={() => setViewingInvoiceOrder(null)} className="text-slate-300 hover:text-white cursor-pointer">
                   <X size={18} />
                 </button>
-              </div>
-
-              {/* Printable Area block */}
-              <div className="flex-1 overflow-y-auto p-8 space-y-6 text-[11px] text-slate-700 dark:text-slate-300" id="printable-tax-invoice">
-                {/* Invoice Header */}
-                <div className="flex justify-between items-start border-b border-slate-200 pb-4">
-                  <div className="space-y-1">
-                    <h1 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase">{businessObj?.name}</h1>
-                    <p className="text-[11px] text-slate-400">{businessObj?.billing_address}</p>
-                    <p className="text-[10px] font-mono text-slate-400">GSTIN: {businessObj?.gstin}</p>
-                  </div>
-                  <div className="text-right space-y-0.5">
-                    <span className="text-[11px] font-bold text-indigo-600 block uppercase">ORIGINAL FOR RECIPIENT</span>
-                    <p className="font-semibold font-mono">{viewingInvoiceOrder.order_number}</p>
-                    <p className="text-slate-400 font-mono">Date: {viewingInvoiceOrder.order_date}</p>
-                  </div>
-                </div>
-
-                {/* Billed To / Shipped To grids */}
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-1">
-                    <h3 className="font-bold text-slate-400 uppercase text-[9px]">Billed Party Details</h3>
-                    <strong className="text-slate-900 dark:text-white font-bold block">{custObj?.name}</strong>
-                    <p className="text-slate-500">{custObj?.billing_address}</p>
-                    <p className="font-mono text-slate-400">Phone: {custObj?.phone}</p>
-                    {custObj?.gstin && <p className="font-mono text-slate-400">GSTIN: {custObj.gstin}</p>}
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="font-bold text-slate-400 uppercase text-[9px]">Shipping Destination</h3>
-                    <strong className="text-slate-900 dark:text-white font-bold block">{custObj?.name}</strong>
-                    <p className="text-slate-500">{custObj?.shipping_address}</p>
-                  </div>
-                </div>
-
-                {/* Items Grid Table */}
-                <div className="border border-slate-200 rounded-lg overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase text-slate-500">
-                        <th className="p-2.5">S.No</th>
-                        <th className="p-2.5">Description of Goods</th>
-                        <th className="p-2.5 font-mono text-right">HSN</th>
-                        <th className="p-2.5 font-mono text-right">Qty</th>
-                        <th className="p-2.5 font-mono text-right">Rate</th>
-                        <th className="p-2.5 font-mono text-right">GST %</th>
-                        <th className="p-2.5 font-mono text-right">Taxable Val</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                      {(viewingInvoiceOrder.items || []).map((it, idx) => {
-                        const p = products.find(prod => prod.id === it.product_id);
-                        const sub = it.qty * it.selling_price;
-                        return (
-                          <tr key={idx}>
-                            <td className="p-2.5 text-center font-sans">{idx + 1}</td>
-                            <td className="p-2.5 font-sans font-semibold text-slate-900 dark:text-white">{p?.name || 'Unknown Item'}</td>
-                            <td className="p-2.5 text-right">{p?.hsn_code || 'N/A'}</td>
-                            <td className="p-2.5 text-right font-bold font-sans">{it.qty} {p?.unit}</td>
-                            <td className="p-2.5 text-right">₹{it.selling_price.toLocaleString()}</td>
-                            <td className="p-2.5 text-right">{it.gst_rate}%</td>
-                            <td className="p-2.5 text-right font-sans font-bold">₹{sub.toLocaleString()}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Tax summary breakdown calculations */}
-                <div className="flex justify-between items-start pt-2 border-t border-slate-100">
-                  <div className="space-y-1">
-                    <h4 className="font-bold text-slate-400 uppercase text-[9px]">Packing Scan Verification QR</h4>
-                    {/* Simulated packing verification QR image */}
-                    <div className="w-24 h-24 bg-white p-2 border border-slate-200 flex items-center justify-center relative">
-                      {/* Generates a neat vector-styled QR graphic representing order verification data */}
-                      <div className="grid grid-cols-6 gap-0.5 w-full h-full opacity-70">
-                        {Array.from({ length: 36 }).map((_, idx) => (
-                          <div 
-                            key={idx} 
-                            className={`${(idx % 2 === 0 || idx < 6 || idx % 6 === 0 || idx > 29) ? 'bg-black' : 'bg-white'}`}
-                          />
-                        ))}
-                      </div>
-                      <span className="absolute bottom-0 inset-x-0 bg-slate-950 text-white text-[8px] font-mono text-center opacity-80 uppercase font-bold py-0.5">
-                        SCAN ME
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="w-1/2 space-y-1.5 font-mono text-right text-[11px]">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400 font-sans">Total Taxable Value:</span>
-                      <span>₹{(viewingInvoiceOrder.items || []).reduce((sum, it) => sum + (it.qty * it.selling_price), 0).toLocaleString()}</span>
-                    </div>
-                    {/* CGST/SGST splitting */}
-                    <div className="flex justify-between text-slate-400">
-                      <span className="font-sans">Simulated CGST (9.0%):</span>
-                      <span>₹{Math.round((viewingInvoiceOrder.items || []).reduce((sum, it) => sum + (it.qty * it.selling_price * ((it.gst_rate || 0)/200)), 0)).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-400">
-                      <span className="font-sans">Simulated SGST (9.0%):</span>
-                      <span>₹{Math.round((viewingInvoiceOrder.items || []).reduce((sum, it) => sum + (it.qty * it.selling_price * ((it.gst_rate || 0)/200)), 0)).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between border-t border-slate-200 pt-2 text-[11px] font-bold font-sans text-slate-900 dark:text-white">
-                      <span>Total Invoice Amount (Rounded):</span>
-                      <span>₹{viewingInvoiceOrder.total_amount.toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Declarations & Bank info footer */}
-                <div className="pt-4 border-t border-dashed border-slate-200 grid grid-cols-2 text-[10px] text-slate-400">
-                  <div className="space-y-0.5">
-                    <p className="font-semibold text-slate-500">Declaration Terms & Conditions:</p>
-                    <p>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>
-                  </div>
-                  <div className="text-right flex flex-col justify-end">
-                    <p className="font-bold text-slate-500 uppercase">For {businessObj?.name}:</p>
-                    <p className="mt-8 font-semibold uppercase text-slate-700 dark:text-slate-300">Authorized Signatory</p>
-                  </div>
-                </div>
+              </div>              {/* Printable Area block */}
+              <div className="flex-1 overflow-y-auto p-4 bg-slate-100 dark:bg-slate-950" id="printable-tax-invoice">
+                <BillOfSupplyView 
+                  order={viewingInvoiceOrder} 
+                  customer={custObj} 
+                  businessObj={businessObj} 
+                  products={products} 
+                />
               </div>
 
               {/* Action buttons */}
               <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t flex justify-between gap-2">
                 <div className="flex gap-2">
-                  <button 
+                  <button
                     onClick={() => handleDownloadPDFInvoice(viewingInvoiceOrder)}
                     className="px-3.5 py-2 bg-emerald-600 text-white rounded-lg text-[11px] font-semibold hover:bg-emerald-500 cursor-pointer flex items-center gap-1.5 shadow-xs"
                     title="Save/Download PDF Invoice Copy"
                   >
                     <Download size={14} />
                     <span>Save / Download PDF</span>
+                  </button>
+                  <button
+                    onClick={() => handleDownload3InchBill(viewingInvoiceOrder)}
+                    className="px-3.5 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold hover:bg-indigo-500 cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    title="Download 3-Inch Thermal Bill"
+                  >
+                    <Printer size={14} />
+                    <span>3" Bill</span>
                   </button>
                   <button 
                     onClick={() => handleEmailInvoice(viewingInvoiceOrder.order_number, custObj?.email || 'customer@omnipack.com')}

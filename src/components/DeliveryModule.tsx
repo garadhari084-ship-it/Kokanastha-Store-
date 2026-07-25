@@ -37,6 +37,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   useEffect(() => {
     return dbStore.subscribe(() => {
       setCustomers(dbStore.getCustomers(businessId));
+      reloadOrders();
     });
   }, [businessId]);
 

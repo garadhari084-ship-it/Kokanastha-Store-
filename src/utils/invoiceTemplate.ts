@@ -29,7 +29,7 @@ export function generateBillOfSupplyHTML(
   products: Product[] = []
 ): string {
   const items = order.items || [];
-  const subTotal = items.reduce((sum, it) => sum + (it.qty * it.selling_price), 0);
+  const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const delivery = order.total_amount > subTotal ? (order.total_amount - subTotal) : 0;
   const totalAmount = order.total_amount || (subTotal + delivery);
   const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
@@ -64,7 +64,7 @@ export function generateBillOfSupplyHTML(
     gstin: businessObj?.gstin
   });
 
-  const upiQrImgSrc = businessObj?.upi_qr_url || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
+  const upiQrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
   const billQrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(billString)}`;
 
   const bankName = businessObj?.bank_name || 'NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN';
@@ -76,9 +76,9 @@ export function generateBillOfSupplyHTML(
     const p = products.find(prod => prod.id === it.product_id);
     const itemCode = p?.barcode || p?.sku || p?.hsn_code || '';
     const itemName = p?.name || 'Faral Item';
-    const priceUnit = it.selling_price;
-    const finalRate = it.selling_price;
-    const itemAmount = it.qty * it.selling_price;
+    const priceUnit = it.selling_price || 0;
+    const finalRate = it.selling_price || 0;
+    const itemAmount = (it.qty || 1) * (it.selling_price || 0);
 
     return `
       <tr>
@@ -281,11 +281,17 @@ export function generateBillOfSupplyHTML(
   </style>
 </head>
 <body>
-  <div class="top-label">ORIGINAL FOR RECIPIENT</div>
-
-  <div class="header-box">
-    <h1 class="company-title">${bName}</h1>
-    <div class="company-address">${bAddress}</div>
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 16px;">
+    <div style="display: flex; align-items: center; gap: 16px;">
+      ${businessObj?.logo_url ? `<img src="${businessObj.logo_url}" alt="${bName}" style="max-height: 100px; width: auto; object-fit: contain;" />` : ""}
+      <div style="text-align: left;">
+        <h1 class="company-title" style="margin: 0 0 4px 0; font-size: 20pt; text-align: left;">${bName}</h1>
+        <div class="company-address" style="text-align: left; margin: 0;">${bAddress}</div>
+      </div>
+    </div>
+    <div style="text-align: right;">
+      <div class="top-label" style="margin-bottom: 8px; text-align: right;">ORIGINAL FOR RECIPIENT</div>
+    </div>
   </div>
 
   <div class="divider-double"></div>
@@ -449,6 +455,243 @@ export function generateBillOfSupplyHTML(
     </tr>
   </table>
 
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 300);
+    };
+  </script>
+</body>
+</html>
+  `;
+}
+
+
+export function generate3InchBillHTML(
+  order: any,
+  customerObj: any,
+  businessObj: any,
+  products: any[]
+): string {
+  const bName = businessObj?.name || "KOKANASTHA";
+  const bAddress = businessObj?.billing_address || "SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLA\nBH ROAD ASHOKVAN DAHISAR E MUMBAI 68";
+  const phone = businessObj?.phone || "8779792825";
+  const email = businessObj?.email || "contact@kokanastha.in";
+
+  const custName = customerObj?.name || "Customer";
+  const custPhone = customerObj?.phone || "";
+  const custAddress = customerObj?.billing_address || "";
+
+  const orderDate = new Date(order.order_date).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  });
+  const orderTime = new Date(order.created_at || order.order_date).toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true
+  });
+  const invoiceNo = order.order_number;
+
+  let totalQty = 0;
+  let itemsHtml = "";
+  (order.items || []).forEach((it: any, index: number) => {
+    const p = products.find((prod) => prod.id === it.product_id);
+    const itemName = p?.name || "Unknown Item";
+    const qty = it.qty || 1;
+    const price = it.selling_price || 0;
+    const amount = qty * price;
+    totalQty += qty;
+
+    itemsHtml += `
+      <tr>
+        <td style="vertical-align: top; width: 15px;">${index + 1}</td>
+        <td colspan="3">${itemName}</td>
+      </tr>
+      <tr>
+        <td></td>
+        <td style="width: 30px;">${qty}</td>
+        <td style="text-align: right;">${price.toFixed(2)}</td>
+        <td style="text-align: right;">${amount.toFixed(2)}</td>
+      </tr>
+    `;
+  });
+
+  const subTotal = (order.items || []).reduce((sum: number, it: any) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
+  const delivery = order.shipping_charges || 0;
+  const total = order.total_amount || (subTotal + delivery);
+
+  const bankName = businessObj?.bank_name || "NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN";
+  const accountNo = businessObj?.account_number || "092110100000085";
+  const ifscCode = businessObj?.ifsc_code || "NKGS0000092";
+  const accountHolder = businessObj?.account_holder || bName;
+
+  const upiId = businessObj?.upi_id || "9820769697@okicici";
+  const upiString = buildUpiPayString({
+    upiId,
+    businessName: bName,
+    amount: total,
+    orderNumber: invoiceNo
+  });
+  
+  // Using encodeURIComponent to ensure special chars are handled
+  const upiQrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
+  
+  const billString = buildBillVerificationString({
+    orderNumber: invoiceNo,
+    amount: total,
+    customerName: custName,
+    orderDate: order.order_date,
+    gstin: businessObj?.gstin
+  });
+  const billQrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(billString)}`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>3-Inch Bill</title>
+  <style>
+    @page { margin: 0; }
+    body {
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.2;
+      width: 78mm;
+      margin: 0 auto;
+      padding: 2mm 4mm;
+      color: #000;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .text-center { text-align: center; }
+    .text-left { text-align: left; }
+    .text-right { text-align: right; }
+    .bold { font-weight: bold; }
+    .dashed-line {
+      border-top: 1px dashed #000;
+      margin: 5px 0;
+    }
+    .header p { margin: 2px 0; }
+    .info-table { width: 100%; font-size: 11px; margin-bottom: 5px; }
+    .info-table td { vertical-align: top; }
+    .items-table { width: 100%; font-size: 11px; margin-bottom: 5px; }
+    .items-table td { vertical-align: top; padding: 2px 0; }
+    .totals-table { width: 100%; font-size: 12px; font-weight: bold; margin-bottom: 5px; }
+    .totals-table td { padding: 2px 0; }
+    .qr-container { display: flex; justify-content: space-around; margin: 10px 0; }
+    .qr-box { text-align: center; }
+    .qr-box img { width: 65px; height: 65px; margin: 0 auto; display: block; }
+    .qr-box div { font-size: 10px; margin-top: 2px; }
+    .footer { font-size: 10px; margin-top: 5px; }
+    .footer p { margin: 2px 0; }
+  </style>
+</head>
+<body>
+  <div class="header text-center bold">
+    <div style="font-size: 16px; margin-bottom: 2px;">${bName}</div>
+    <p style="font-size: 10px;">${bAddress.replace(/\n/g, "<br>")}</p>
+    <p style="font-size: 10px;">Ph. No.: ${phone}</p>
+    <p style="font-size: 10px;">Email: ${email}</p>
+    <div style="margin: 5px 0;">Bill of Supply</div>
+  </div>
+
+  <table class="info-table">
+    <tr>
+      <td style="width: 50%;">
+        <div>${custName}</div>
+        <div>Ph. No: ${custPhone}</div>
+        <div>Bill To:</div>
+        <div>${custAddress}</div>
+      </td>
+      <td style="width: 50%; text-align: right;">
+        <div>Date: ${orderDate}</div>
+        <div>Time: ${orderTime}</div>
+        <div>Invoice No.: ${invoiceNo}</div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="dashed-line"></div>
+  <table class="items-table">
+    <tr class="bold">
+      <td style="width: 15px;">#</td>
+      <td>Item Name</td>
+      <td style="width: 30px; text-align: right;"></td>
+      <td style="text-align: right;">Price</td>
+      <td style="text-align: right;">Amount</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td>Qty</td>
+      <td colspan="3"></td>
+    </tr>
+    <div class="dashed-line"></div>
+    ${itemsHtml}
+  </table>
+  <div class="dashed-line"></div>
+
+  <table class="totals-table">
+    <tr>
+      <td>Qty: ${totalQty}</td>
+      <td style="text-align: right; font-weight: normal;">DELIVERY</td>
+      <td style="text-align: right; width: 60px;">${delivery.toFixed(2)}</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td style="text-align: right;">Total</td>
+      <td style="text-align: right;">${total.toFixed(2)}</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td style="text-align: right; font-weight: normal;">Received</td>
+      <td style="text-align: right;">0.00</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td style="text-align: right;">Balance</td>
+      <td style="text-align: right;">${total.toFixed(2)}</td>
+    </tr>
+  </table>
+  <div class="dashed-line"></div>
+  <div class="text-center bold" style="margin-top: 5px;">
+    Available Points &nbsp;&nbsp;&nbsp;&nbsp; 0.00
+  </div>
+
+  <div class="qr-container">
+    <div class="qr-box">
+      <img src="${upiQrImgSrc}" alt="UPI QR" />
+      <div>Scan to pay (UPI)</div>
+    </div>
+    <div class="qr-box">
+      <img src="${billQrImgSrc}" alt="Bill QR" />
+      <div>Scan for Bill</div>
+    </div>
+  </div>
+
+  <div class="dashed-line"></div>
+  <div class="footer bold">
+    <div>Bank Details</div>
+    <div style="font-weight: normal;">
+      Bank Name: ${bankName}<br>
+      A/C Holder: ${accountHolder}<br>
+      A/C No: ${accountNo}<br>
+      IFSC Code: ${ifscCode}
+    </div>
+  </div>
+
+  <div class="dashed-line"></div>
+  <div class="footer bold">
+    <div>Terms & Conditions</div>
+    <div style="font-weight: normal;">
+      Thanks for doing business with us!<br>
+      NO REPLACEMENT AND NO REFUND FOR FOOD PRODUCTS<br>
+      STAY SAFE AND STAY HOME
+    </div>
+  </div>
   <script>
     window.onload = function() {
       setTimeout(function() {

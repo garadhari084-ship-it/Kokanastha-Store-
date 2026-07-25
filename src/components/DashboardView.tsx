@@ -68,7 +68,7 @@ import {
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon } from '../services/store';
 import { SalesOrder, UserProfile, OrderStatus } from '../types/erp';
-import { generateBillOfSupplyHTML } from '../utils/invoiceTemplate';
+import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
 import { BillOfSupplyView } from './BillOfSupplyView';
 
 interface DashboardViewProps {
@@ -149,6 +149,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       console.error('Print error:', err);
       window.print();
     }
+  };
+
+  const handleDownload3InchBill = (order: SalesOrder) => {
+    const cust = customers.find(c => c.id === order.customer_id);
+    const businessObj = dbStore.getBusiness(businessId);
+    const fullHtml = generate3InchBillHTML(order, cust, businessObj, products);
+
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    
+    // Download as HTML
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `3_Inch_Bill_${order.order_number}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    // Open print window directly
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.open();
+      printWindow.document.write(fullHtml);
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 500);
+    }
+
+    triggerToast(`3-Inch Bill for "${order.order_number}" downloaded & opened for printing!`, 'success');
+    dbStore.logActivity(user.id, user.name, user.role, 'Download 3-Inch Bill', `Downloaded 3-Inch bill for ${order.order_number}`, businessId);
   };
 
   const handleSavePDFInvoice = (order: SalesOrder) => {
@@ -2033,7 +2066,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               >
                 <Printer size={16} /> Preview & Print Tax Invoice
               </button>
-              <button 
+                            <button
+                onClick={() => handleDownload3InchBill(selectedOrderForDetail)}
+                className="w-full sm:w-auto py-3 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-extrabold text-[11px] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                title="Download 3-Inch Thermal Bill"
+              >
+                <Printer size={15} /> 3" Bill
+              </button>
+              <button
                 onClick={() => handleSavePDFInvoice(selectedOrderForDetail)}
                 className="w-full sm:w-auto py-3 px-3 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white rounded-xl font-extrabold text-[11px] transition flex items-center justify-center gap-1.5 cursor-pointer"
                 title="Save & Download Tax Invoice PDF"
@@ -2375,6 +2415,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   >
                     <Printer size={15} />
                     <span>Confirm & Print Bill</span>
+                  </button>
+                  <button 
+                    onClick={() => handleDownload3InchBill(viewingInvoiceOrder)}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[11px] font-black transition cursor-pointer flex items-center gap-1.5 shadow-md"
+                    title="Print 3-Inch Thermal Bill"
+                  >
+                    <Printer size={15} />
+                    <span>Print 3" Bill</span>
                   </button>
                 </div>
               </div>

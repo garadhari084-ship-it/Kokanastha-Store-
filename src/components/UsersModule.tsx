@@ -188,7 +188,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.role.toLowerCase().includes(searchTerm.toLowerCase())
+    (u.role && u.role.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (

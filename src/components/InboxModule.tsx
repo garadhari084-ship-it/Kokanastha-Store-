@@ -62,7 +62,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    u.role.toLowerCase().includes(searchQuery.toLowerCase())
+    (u.role && u.role.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const conversationMessages = messages.filter(m => 

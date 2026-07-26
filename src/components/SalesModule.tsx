@@ -196,7 +196,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     // Add notification
     const orderNum = orders.find(o => o.id === orderId)?.order_number || orderId;
     const allUsers = dbStore.getUsers(businessId);
-    const packingStaff = allUsers.filter(u => u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack'));
+    const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
     
     if (packingStaff.length > 0) {
       packingStaff.forEach(staff => {
@@ -459,7 +459,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
         // Send message to packaging users for any edit
         const allUsers = dbStore.getUsers(businessId);
-        const packingStaff = allUsers.filter(u => u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack'));
+        const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
         
         if (packingStaff.length > 0) {
           packingStaff.forEach(staff => {
@@ -525,6 +525,21 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           `Placed Sales Order: ${orderNum} totaling ${currencySymbol}${finalAmount.toLocaleString()} (${isAdvanceBooking ? 'Advance Booking' : 'Standard Delivery'})`,
           businessId
         );
+
+        // Send message to packaging users for new order
+        const allUsers = dbStore.getUsers(businessId);
+        const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
+        
+        if (packingStaff.length > 0) {
+          packingStaff.forEach(staff => {
+            dbStore.sendMessage({
+              sender_id: user.id,
+              receiver_id: staff.id,
+              content: `New Sales Order ${orderNum} has been placed. Please prepare for packing.`,
+              business_id: businessId
+            });
+          });
+        }
 
         triggerToast(`Order ${orderNum} compiled. Added to pending packing list.`, 'success');
       }

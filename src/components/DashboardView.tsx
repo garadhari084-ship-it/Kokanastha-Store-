@@ -380,7 +380,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       triggerToast(`Order status updated to "${newStatus}".`, 'success');
       
       const allUsers = dbStore.getUsers(businessId);
-      const packingStaff = allUsers.filter(u => u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack'));
+      const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
       const orderNum = allOrders.find(o => o.id === orderId)?.order_number || orderId;
       
       if (packingStaff.length > 0) {
@@ -404,7 +404,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     if (selectedOrderIds.length === 0) return;
     
     const allUsers = dbStore.getUsers(businessId);
-    const packingStaff = allUsers.filter(u => u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack'));
+    const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
     
     selectedOrderIds.forEach(id => {
       dbStore.updateSalesOrder(id, { status, delivery_status: status });

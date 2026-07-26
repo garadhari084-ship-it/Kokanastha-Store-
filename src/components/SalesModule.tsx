@@ -548,7 +548,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       setIsCreateModalOpen(false);
       resetForm();
     } catch (err: any) {
-      triggerToast(err.message || 'Error occurred.', 'error');
+      console.error(err); triggerToast(err.message || 'Error occurred.', 'error');
     }
   };
 

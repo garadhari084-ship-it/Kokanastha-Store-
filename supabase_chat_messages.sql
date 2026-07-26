@@ -9,19 +9,7 @@ CREATE TABLE IF NOT EXISTS public.chat_messages (
 );
 
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY dev_public_chat_messages ON public.chat_messages FOR ALL USING (true);
 
-CREATE POLICY "Enable read access for users based on business_id" ON public.chat_messages
-  FOR SELECT
-  USING (true);
-
-CREATE POLICY "Enable insert for authenticated users" ON public.chat_messages
-  FOR INSERT
-  WITH CHECK (true);
-
-CREATE POLICY "Enable update for users" ON public.chat_messages
-  FOR UPDATE
-  USING (true);
-
-CREATE POLICY "Enable delete for users" ON public.chat_messages
-  FOR DELETE
-  USING (true);
+-- Enable Realtime replication for this table so the app gets instant messages
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;

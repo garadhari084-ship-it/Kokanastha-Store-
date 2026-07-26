@@ -310,6 +310,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     // Filter order stream for active metric modal
     let filtered = allOrders;
 
+    // Apply time horizon ONLY for time-dependent metrics
+    if (activeMetricModal.type === 'revenue' || activeMetricModal.type === 'all' || activeMetricModal.type === 'area') {
+      filtered = allOrders.filter(o => isOrderInTimeHorizon(o, timeHorizon, customStartDate, customEndDate));
+    }
+
     if (activeMetricModal.type === 'to_pack') {
       filtered = filtered.filter(o => o.status === 'Pending' || o.status === 'Packing');
     } else if (activeMetricModal.type === 'deliveries_today') {
@@ -327,7 +332,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     } else if (activeMetricModal.type === 'receivables') {
       filtered = filtered.filter(o => o.payment_status !== 'Paid');
     } else if (activeMetricModal.type === 'revenue') {
-      filtered = filtered.filter(o => o.payment_status === 'Paid' || o.status === 'Delivered');
+      filtered = filtered.filter(o => o.status !== 'Cancelled');
     }
 
     if (query) {

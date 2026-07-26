@@ -495,6 +495,7 @@ export default function App() {
     
     switch (view) {
       case 'dashboard':
+      case 'inbox':
         return true;
       case 'sales':
         return role === 'Manager' || role === 'Sales Staff' || role === 'Viewer';

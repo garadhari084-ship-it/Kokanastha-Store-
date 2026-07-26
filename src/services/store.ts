@@ -1770,14 +1770,14 @@ class ERPStorage {
 
     // Specific KPI values matching operational snapshot
     const toPackToday = allOrders.filter(o => o.status === 'Pending' || o.status === 'Packing').length;
-    const readyForDispatch = orders.filter(o => o.status === 'Packed').length;
-    const deliveriesToday = orders.filter(o => o.status === 'Dispatched' || o.status === 'Delivered').length;
-    const overdueOrdersCount = orders.filter(o => o.is_overdue || o.status === 'Pending').length;
-    const pendingPaymentsCount = orders.filter(o => o.payment_status === 'Unpaid' || o.payment_status === 'Partial').length;
+    const readyForDispatch = allOrders.filter(o => o.status === 'Packed').length;
+    const deliveriesToday = allOrders.filter(o => o.status === 'Dispatched' || o.status === 'Delivered').length;
+    const overdueOrdersCount = allOrders.filter(o => o.is_overdue || o.status === 'Pending' || o.status === 'Packing').length;
+    const pendingPaymentsCount = allOrders.filter(o => o.payment_status === 'Unpaid' || o.payment_status === 'Partial').length;
     const totalOrdersCount = orders.length;
-    const outstandingAmount = orders
+    const outstandingAmount = allOrders
       .filter(o => o.payment_status === 'Unpaid' || o.payment_status === 'Partial')
-      .reduce((sum, o) => sum + (o.payment_status === 'Partial' ? o.total_amount * 0.5 : o.total_amount), 0);
+      .reduce((sum, o) => sum + Math.max(0, o.total_amount - (o.paid_amount || 0)), 0);
 
     // Pipeline counts
     const statusPipeline = {
@@ -1895,7 +1895,7 @@ class ERPStorage {
       created_at: new Date().toISOString(),
       is_read: false
     };
-    this.cache.messages.push(newMsg);
+    if (!this.cache.messages) this.cache.messages = []; this.cache.messages.push(newMsg);
     this.save('messages', newMsg);
     return newMsg;
   }

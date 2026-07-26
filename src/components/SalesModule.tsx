@@ -31,7 +31,8 @@ import {
   Send,
   ShoppingBag,
   MapPin,
-  TrendingUp
+  TrendingUp,
+  Edit
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
@@ -165,6 +166,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [selectedOrderForNotify, setSelectedOrderForNotify] = useState<SalesOrder | null>(null);
 
+  useEffect(() => {
+    if (openAddModalInitially && selectedOrderIdInitially) {
+      const orderToEdit = orders.find(o => o.id === selectedOrderIdInitially);
+      if (orderToEdit) {
+        handleOpenEditModal(orderToEdit);
+        setViewingInvoiceOrder(null);
+      }
+    }
+  }, []);
+
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
       setSelectedOrderIds(filteredOrders.map(o => o.id));
@@ -188,14 +199,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   
   
   // Modal states
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(openAddModalInitially);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(openAddModalInitially && !selectedOrderIdInitially);
   const [invoiceToDelete, setInvoiceToDelete] = useState<{id: string, orderNumber: string} | null>(null);
+  const [invoiceToEdit, setInvoiceToEdit] = useState<SalesOrder | null>(null);
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<SalesOrder | null>(null);
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<SalesOrder | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Cash' | 'Card'>('UPI');
   const [viewingInvoiceOrder, setViewingInvoiceOrder] = useState<SalesOrder | null>(
-    selectedOrderIdInitially ? orders.find(o => o.id === selectedOrderIdInitially) || null : null
+    selectedOrderIdInitially && !openAddModalInitially ? orders.find(o => o.id === selectedOrderIdInitially) || null : null
   );
 
   // New Order Form States
@@ -224,6 +236,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [paidAmount, setPaidAmount] = useState<number | string>('');
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
 
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  
   // Quick line-item row helper
   const [rowProductId, setRowProductId] = useState('');
   const [rowQty, setRowQty] = useState(1);
@@ -231,6 +245,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [rowTaxRate, setRowTaxRate] = useState<number>(defaultTenantTax);
 
   const resetForm = () => {
+    setEditingOrderId(null);
     const biz = dbStore.getBusiness(businessId);
     setSelectedCustomerId('');
     setSelectedArea(biz?.default_dispatch_zone || 'Dahisar');
@@ -259,6 +274,34 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const handleOpenAddModal = () => {
     resetForm();
     setIsCreateModalOpen(true);
+  };
+
+  const handleOpenEditModal = (order: SalesOrder) => {
+    if (order.delivery_status === 'Delivered') {
+      triggerToast('Cannot edit an order that is already delivered.', 'error');
+      return;
+    }
+    if (order.status === 'Packed') {
+      triggerToast('Note: Editing a packed order will revert its status to Pending.', 'info');
+    }
+    
+    setEditingOrderId(order.id);
+    setSelectedCustomerId(order.customer_id);
+    setSelectedArea(order.area || 'Dahisar');
+    setOrderDate(order.order_date || getLocalTodayDate());
+    setOrderTime(order.time || getLocalCurrentTimeInput());
+    setDeliveryDate(order.delivery_date || getLocalTodayDate());
+    setIsAdvanceBooking(order.advance_booking || false);
+    setPaymentStatus(order.payment_status);
+    setPaymentMode(order.payment_mode || 'Cash');
+    setPaidAmount(order.paid_amount || 0);
+    setOrderItems([...order.items]);
+    setIsCreateModalOpen(true);
+    
+    // reset row item inputs
+    setRowProductId('');
+    setRowQty(1);
+    setRowPrice(0);
   };
 
   const handleAddLineItem = () => {
@@ -371,50 +414,105 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       if (!confirmed) return;
     }
 
-    const currentBiz = dbStore.getBusiness(businessId);
-    const prefix = currentBiz?.invoice_prefix ? currentBiz.invoice_prefix.trim() : 'SO-2026-';
-    const randNum = Math.floor(1000 + Math.random() * 9000);
-    const orderNum = isAdvanceBooking ? `${prefix}AB-${randNum}` : `${prefix}${randNum}`;
-
     try {
-      const createdOrder = dbStore.createSalesOrder({
-        order_number: orderNum,
-        customer_id: finalCustomerId,
-        customer_name: finalCustomerName,
-        area: finalCustomerArea,
-        channel: selectedCustomerId === 'WALK_IN' ? 'Walk-in' : 'Direct Order',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        order_date: getLocalTodayDate(),
-        ...(selectedCustomerId !== 'WALK_IN' && deliveryDate ? { delivery_date: deliveryDate } : {}),
-        status: 'Pending',
-        payment_status: paymentStatus,
-        payment_mode: paymentMode,
-        paid_amount: actualPaid,
-        delivery_status: 'Pending',
-        items: orderItems,
-        advance_booking: isAdvanceBooking,
-        total_amount: finalAmount,
-        qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
-        business_id: businessId
-      });
-
-      // Update customer outstanding debt with the remaining unpaid balance!
-      if (customerObj && finalCustomerId !== 'WALK_IN') {
-        dbStore.updateCustomer(finalCustomerId, {
-          outstanding_amount: Math.max(0, customerObj.outstanding_amount + unpaidBalance)
+      if (editingOrderId) {
+        // Edit flow
+        const existingOrder = orders.find(o => o.id === editingOrderId);
+        const orderNum = existingOrder ? existingOrder.order_number : `${currentBiz?.invoice_prefix || 'SO-'}${Math.floor(1000 + Math.random() * 9000)}`;
+        
+        dbStore.updateSalesOrder(editingOrderId, {
+          customer_id: finalCustomerId,
+          customer_name: finalCustomerName,
+          area: finalCustomerArea,
+          channel: selectedCustomerId === 'WALK_IN' ? 'Walk-in' : 'Direct Order',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          order_date: getLocalTodayDate(),
+          ...(selectedCustomerId !== 'WALK_IN' && deliveryDate ? { delivery_date: deliveryDate } : {}),
+          status: existingOrder?.status === 'Packed' ? 'Pending' : (existingOrder?.status || 'Pending'),
+          payment_status: paymentStatus,
+          payment_mode: paymentMode,
+          paid_amount: actualPaid,
+          items: orderItems,
+          advance_booking: isAdvanceBooking,
+          total_amount: finalAmount,
+          is_updated: true,
+          qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
         });
+
+        // Send message to packaging users only if it's for delivery
+        if (selectedCustomerId !== 'WALK_IN') {
+          const allUsers = dbStore.getUsers(businessId);
+          const packingStaff = allUsers.filter(u => u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack'));
+          
+          if (packingStaff.length > 0) {
+            packingStaff.forEach(staff => {
+              dbStore.sendMessage({
+                sender_id: user.id,
+                receiver_id: staff.id,
+                content: `Sales Order ${orderNum} has been updated. Please check the new details.`,
+                business_id: businessId
+              });
+            });
+            triggerToast(`Notification sent to ${packingStaff.length} packaging staff member(s).`, 'success');
+          }
+        }
+
+        dbStore.logActivity(
+          user.id,
+          user.name,
+          user.role,
+          'Edit Order',
+          `Updated Sales Order: ${orderNum} totaling ${currencySymbol}${finalAmount.toLocaleString()}`,
+          businessId
+        );
+
+        triggerToast(`Order ${orderNum} updated successfully.`, 'success');
+      } else {
+        // Create flow
+        const prefix = currentBiz?.invoice_prefix ? currentBiz.invoice_prefix.trim() : 'SO-2026-';
+        const randNum = Math.floor(1000 + Math.random() * 9000);
+        const orderNum = isAdvanceBooking ? `${prefix}AB-${randNum}` : `${prefix}${randNum}`;
+
+        const createdOrder = dbStore.createSalesOrder({
+          order_number: orderNum,
+          customer_id: finalCustomerId,
+          customer_name: finalCustomerName,
+          area: finalCustomerArea,
+          channel: selectedCustomerId === 'WALK_IN' ? 'Walk-in' : 'Direct Order',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          order_date: getLocalTodayDate(),
+          ...(selectedCustomerId !== 'WALK_IN' && deliveryDate ? { delivery_date: deliveryDate } : {}),
+          status: 'Pending',
+          payment_status: paymentStatus,
+          payment_mode: paymentMode,
+          paid_amount: actualPaid,
+          delivery_status: 'Pending',
+          items: orderItems,
+          advance_booking: isAdvanceBooking,
+          total_amount: finalAmount,
+          qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
+          business_id: businessId
+        });
+
+        // Update customer outstanding debt with the remaining unpaid balance!
+        if (customerObj && finalCustomerId !== 'WALK_IN') {
+          dbStore.updateCustomer(finalCustomerId, {
+            outstanding_amount: Math.max(0, customerObj.outstanding_amount + unpaidBalance)
+          });
+        }
+
+        dbStore.logActivity(
+          user.id,
+          user.name,
+          user.role,
+          'Create Order',
+          `Placed Sales Order: ${orderNum} totaling ${currencySymbol}${finalAmount.toLocaleString()} (${isAdvanceBooking ? 'Advance Booking' : 'Standard Delivery'})`,
+          businessId
+        );
+
+        triggerToast(`Order ${orderNum} compiled. Added to pending packing list.`, 'success');
       }
 
-      dbStore.logActivity(
-        user.id,
-        user.name,
-        user.role,
-        'Create Order',
-        `Placed Sales Order: ${orderNum} totaling ₹${finalAmount.toLocaleString()} (${isAdvanceBooking ? 'Advance Booking' : 'Standard Delivery'})`,
-        businessId
-      );
-
-      triggerToast(`Order ${orderNum} compiled. Added to pending packing list.`, 'success');
       setOrders(dbStore.getSalesOrders(businessId));
       setIsCreateModalOpen(false);
       resetForm();
@@ -792,6 +890,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           Advance
                         </span>
                       )}
+                      {o.is_updated && (
+                        <span className="px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400 text-[9px] font-extrabold border border-sky-200/80 dark:border-sky-800/60">
+                          Updated
+                        </span>
+                      )}
                     </div>
                   </td>
 
@@ -1006,6 +1109,31 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               >
                 <DollarSign size={16} /> Collect Payment
               </button>
+
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 mt-2">
+                <button
+                  onClick={() => {
+                    if (selectedOrderForDetail.delivery_status === 'Delivered') {
+                      triggerToast('Cannot edit an order that is already delivered.', 'error');
+                      return;
+                    }
+                    setInvoiceToEdit(selectedOrderForDetail);
+                    setSelectedOrderForDetail(null);
+                  }}
+                  className={`w-full py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${selectedOrderForDetail.delivery_status === 'Delivered' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/40 dark:hover:bg-sky-900/60 dark:text-sky-300 cursor-pointer'}`}
+                >
+                  <Edit size={14} /> Edit / Update
+                </button>
+                <button
+                  onClick={() => {
+                    setInvoiceToDelete({ id: selectedOrderForDetail.id, orderNumber: selectedOrderForDetail.order_number });
+                    setSelectedOrderForDetail(null);
+                  }}
+                  className="w-full py-3 bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 size={14} /> Delete Invoice
+                </button>
+              </div>
             </div>
 
           </div>
@@ -1138,7 +1266,22 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 </div>
 
                 {/* Row 2 */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
+                  <button 
+                    onClick={() => {
+                      if (viewingInvoiceOrder.delivery_status === 'Delivered') {
+                        triggerToast('Cannot edit an order that is already delivered.', 'error');
+                        return;
+                      }
+                      setInvoiceToEdit(viewingInvoiceOrder);
+                      setViewingInvoiceOrder(null);
+                    }}
+                    className={`py-2 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition ${viewingInvoiceOrder.delivery_status === 'Delivered' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 dark:bg-sky-950/60 hover:bg-sky-200 dark:hover:bg-sky-900/80 text-sky-700 dark:text-sky-300 cursor-pointer'}`}
+                    title="Edit Invoice"
+                  >
+                    <Edit size={14} className="shrink-0" />
+                    <span className="truncate">Edit</span>
+                  </button>
                   {user.role === 'Super Admin' ? (
                     <button 
                       onClick={() => handleDeleteInvoice(viewingInvoiceOrder.id, viewingInvoiceOrder.order_number)}
@@ -1156,7 +1299,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     className="py-2 px-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5 transition"
                   >
                     <X size={14} className="shrink-0" />
-                    <span className="truncate">Close Invoice</span>
+                    <span className="truncate">Close</span>
                   </button>
                   <button 
                     onClick={() => handlePrintInvoice(viewingInvoiceOrder)}
@@ -1182,7 +1325,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               <div>
                 <h2 className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-slate-900 dark:text-white">
                   <PlusCircle className="text-amber-500" />
-                  <span>Compile New Sales Order Invoice</span>
+                  <span>{editingOrderId ? 'Update Sales Order Invoice' : 'Compile New Sales Order Invoice'}</span>
                 </h2>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-[10px] bg-indigo-50 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 font-extrabold px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
@@ -1589,7 +1732,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       onClick={handleCreateSalesOrder}
                       className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow-md cursor-pointer transition"
                     >
-                      Compile & Place Sales Order
+                      {editingOrderId ? 'Update Sales Order' : 'Compile & Place Sales Order'}
                     </button>
                   </div>
                 </div>
@@ -1601,23 +1744,58 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       {/* Delete Confirmation Modal */}
       {invoiceToDelete && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-150">
+            <div className="w-16 h-16 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 size={32} />
+            </div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Delete Invoice</h3>
             <p className="text-[13px] text-slate-500 mb-6">
               Are you sure you want to delete invoice <strong>{invoiceToDelete.orderNumber}</strong>? This action cannot be undone.
             </p>
-            <div className="flex justify-end gap-3">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setInvoiceToDelete(null)}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[13px] rounded-xl transition cursor-pointer"
               >
-                No
+                No, Cancel
               </button>
               <button
                 onClick={confirmDeleteInvoice}
-                className="px-4 py-2 bg-rose-600 text-white rounded-lg text-xs font-semibold hover:bg-rose-700 cursor-pointer"
+                className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[13px] rounded-xl shadow-md transition cursor-pointer"
               >
                 Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Confirmation Modal */}
+      {invoiceToEdit && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-150">
+            <div className="w-16 h-16 bg-sky-100 dark:bg-sky-900/30 text-sky-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Edit size={32} />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Edit Invoice</h3>
+            <p className="text-[13px] text-slate-500 mb-6">
+              Do you want to edit or update invoice <strong>{invoiceToEdit.order_number}</strong>?
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setInvoiceToEdit(null)}
+                className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[13px] rounded-xl transition cursor-pointer"
+              >
+                No, Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleOpenEditModal(invoiceToEdit);
+                  setInvoiceToEdit(null);
+                }}
+                className="flex-1 py-3 px-4 bg-sky-600 hover:bg-sky-500 text-white font-bold text-[13px] rounded-xl shadow-md transition cursor-pointer"
+              >
+                Yes, Edit
               </button>
             </div>
           </div>

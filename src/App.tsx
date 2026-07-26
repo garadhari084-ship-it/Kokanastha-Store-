@@ -636,7 +636,6 @@ export default function App() {
   // Define sidebar menu items
   const menuItems = [
     { id: 'dashboard', label: 'Executive Desk', icon: LayoutDashboard },
-    { id: 'inbox', label: 'Inbox', icon: MessageSquare },
     { id: 'sales', label: 'Sales & Bookings', icon: FileText },
     { id: 'packing', label: 'Packing Verification', icon: ClipboardCheck, highlight: true },
     { id: 'delivery', label: 'Delivery & Dispatch', icon: Truck },
@@ -774,6 +773,7 @@ export default function App() {
           <InboxModule 
             currentUser={currentUser} 
             businessId={currentBusiness.id} 
+            onClose={() => setActiveView('dashboard')}
           />
         );
       case 'settings':
@@ -1190,7 +1190,22 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4 relative header-dropdown-container">
+          <div className="flex items-center gap-2 sm:gap-4 relative header-dropdown-container">
+            {/* Inbox / Chat Icon */}
+            <button 
+              onClick={() => setActiveView('inbox')}
+              className="relative p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group focus:outline-none cursor-pointer"
+              title="Messages & Inbox"
+            >
+              <div className="absolute inset-0 bg-gradient-to-tr from-sky-500/20 to-blue-500/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"></div>
+              <MessageSquare size={18} className="text-slate-600 dark:text-slate-300 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors relative z-10" />
+              {unreadMessagesCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white dark:border-slate-900 z-20">
+                  {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                </span>
+              )}
+            </button>
+
             {/* Notification Dropdown Container */}
             <div className="relative">
               <button 

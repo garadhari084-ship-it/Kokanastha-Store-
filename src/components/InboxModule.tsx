@@ -10,7 +10,8 @@ import {
   Clock,
   Check,
   CheckCheck,
-  ArrowLeft
+  ArrowLeft,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { dbStore } from '../services/store';
@@ -19,9 +20,10 @@ import { UserProfile, ChatMessage } from '../types/erp';
 interface InboxModuleProps {
   currentUser: UserProfile;
   businessId: string;
+  onClose?: () => void;
 }
 
-export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessId }) => {
+export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessId, onClose }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -104,7 +106,17 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
       {/* Sidebar - User List */}
       <div className={`${isMobileListVisible ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-80 border-r border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50`}>
         <div className="p-4 border-b border-slate-200 dark:border-slate-800">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Internal Communications</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Internal Communications</h2>
+            {onClose && (
+              <button 
+                onClick={onClose}
+                className="md:hidden p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
@@ -207,6 +219,14 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                 <button className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition">
                   <MoreVertical size={18} />
                 </button>
+                {onClose && (
+                  <button 
+                    onClick={onClose}
+                    className="ml-2 p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -269,7 +289,15 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/20 dark:bg-slate-900/20">
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/20 dark:bg-slate-900/20 relative">
+            {onClose && (
+              <button 
+                onClick={onClose}
+                className="absolute top-4 right-4 p-2 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            )}
             <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400 rounded-full flex items-center justify-center mb-4">
               <MessageSquare size={32} />
             </div>

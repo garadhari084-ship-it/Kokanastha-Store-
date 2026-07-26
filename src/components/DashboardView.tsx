@@ -68,7 +68,8 @@ import {
   Eye,
   Share2,
   Calendar,
-  CalendarDays
+  CalendarDays,
+  Edit
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
 import { SalesOrder, UserProfile, OrderStatus } from '../types/erp';
@@ -112,6 +113,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<SalesOrder | null>(null);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<SalesOrder | null>(null);
+  const [invoiceToEdit, setInvoiceToEdit] = useState<SalesOrder | null>(null);
+
+  const handleDeleteInvoiceConfirm = (id: string, orderNumber: string) => {
+    dbStore.deleteSalesOrder(id);
+    triggerToast(`Invoice ${orderNumber} deleted successfully.`, 'success');
+    setInvoiceToDelete(null);
+  };
+
+  const handleEditInvoiceConfirm = (order: SalesOrder) => {
+    // Navigate to sales module with the order ID
+    onNavigate('sales', { orderId: order.id, openAddModal: true });
+    setInvoiceToEdit(null);
+  };
 
   // Invoice Handlers
   const handlePrintInvoice = (order: SalesOrder) => {
@@ -1631,6 +1646,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             Advance
                           </span>
                         )}
+                        {o.is_updated && (
+                          <span className="px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400 text-[9px] font-extrabold border border-sky-200/80 dark:border-sky-800/60">
+                            Updated
+                          </span>
+                        )}
                       </div>
                     </td>
 
@@ -2130,6 +2150,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               >
                 <DollarSign size={16} /> Collect Payment
               </button>
+
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 mt-2">
+                <button
+                  onClick={() => {
+                    if (selectedOrderForDetail.delivery_status === 'Delivered') {
+                      triggerToast('Cannot edit an order that is already delivered.', 'error');
+                      return;
+                    }
+                    setInvoiceToEdit(selectedOrderForDetail);
+                    setSelectedOrderForDetail(null);
+                  }}
+                  className={`w-full py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${selectedOrderForDetail.delivery_status === 'Delivered' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/40 dark:hover:bg-sky-900/60 dark:text-sky-300 cursor-pointer'}`}
+                >
+                  <Edit size={14} /> Edit / Update
+                </button>
+                <button
+                  onClick={() => {
+                    setInvoiceToDelete(selectedOrderForDetail);
+                    setSelectedOrderForDetail(null);
+                  }}
+                  className="w-full py-3 bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 size={14} /> Delete Invoice
+                </button>
+              </div>
             </div>
 
           </div>
@@ -2367,6 +2412,64 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         );
       })()}
+
+      {/* ================= MODAL: DELETE INVOICE CONFIRMATION ================= */}
+      {invoiceToDelete && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-150">
+            <div className="w-16 h-16 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 size={32} />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Delete Invoice</h3>
+            <p className="text-[13px] text-slate-500 mb-6">
+              Are you sure you want to delete invoice <strong>{invoiceToDelete.order_number}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setInvoiceToDelete(null)}
+                className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[13px] rounded-xl transition"
+              >
+                No, Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteInvoiceConfirm(invoiceToDelete.id, invoiceToDelete.order_number)}
+                className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[13px] rounded-xl shadow-md transition"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: EDIT INVOICE CONFIRMATION ================= */}
+      {invoiceToEdit && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-150">
+            <div className="w-16 h-16 bg-sky-100 dark:bg-sky-900/30 text-sky-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Edit size={32} />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Edit Invoice</h3>
+            <p className="text-[13px] text-slate-500 mb-6">
+              Do you want to edit or update invoice <strong>{invoiceToEdit.order_number}</strong>?
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setInvoiceToEdit(null)}
+                className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[13px] rounded-xl transition"
+              >
+                No, Cancel
+              </button>
+              <button
+                onClick={() => handleEditInvoiceConfirm(invoiceToEdit)}
+                className="flex-1 py-3 px-4 bg-sky-600 hover:bg-sky-500 text-white font-bold text-[13px] rounded-xl shadow-md transition"
+              >
+                Yes, Edit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       </div>
     </div>

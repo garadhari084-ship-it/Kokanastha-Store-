@@ -36,6 +36,15 @@ const PRE_SEEDED_BUSINESSES: Business[] = [
     phone: '+91 98200 12345',
     invoice_prefix: 'KF-',
     tax_rate_default: 5.00,
+    currency_symbol: '₹',
+    auto_backup: true,
+    low_stock_threshold: 20,
+    audit_retention_days: 90,
+    default_theme: 'midnight-gold',
+    enable_auto_whatsapp: true,
+    enable_auto_sms: true,
+    default_dispatch_zone: 'Dahisar',
+    area_zones: ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'],
     upi_id: '9820769697@okicici',
     bank_name: 'NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN',
     account_number: '092110100000085',
@@ -395,10 +404,15 @@ const PRE_SEEDED_STOCK_LOGS: StockLog[] = [];
 
 const PRE_SEEDED_SYSTEM_AUDIT_LOGS: SystemAuditLog[] = [];
 
-export function isOrderInTimeHorizon(order: SalesOrder, horizon: 'today' | 'yesterday' | '7days' | '30days' | 'all'): boolean {
-  if (horizon === 'all') return true;
+export type TimeHorizon = 'today' | 'yesterday' | '7days' | '30days' | 'all' | 'custom';
 
-  const rawDateStr = order.order_date || (order.created_at ? order.created_at.split('T')[0] : '');
+export function isOrderInTimeHorizon(
+  order: SalesOrder, 
+  horizon: TimeHorizon,
+  customStartDate?: string,
+  customEndDate?: string
+): boolean {
+  if (horizon === 'all') return true;
 
   const now = new Date();
   const year = now.getFullYear();
@@ -410,8 +424,35 @@ export function isOrderInTimeHorizon(order: SalesOrder, horizon: 'today' | 'yest
   const yesterdayDate = new Date(year, month, date - 1);
   const yesterdayStr = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
 
+  // Normalize order date to YYYY-MM-DD
+  let rawDateStr = '';
+  if (order.order_date) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(order.order_date)) {
+      rawDateStr = order.order_date;
+    } else {
+      const d = new Date(order.order_date);
+      if (!isNaN(d.getTime())) {
+        rawDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      } else {
+        rawDateStr = order.order_date.split('T')[0];
+      }
+    }
+  } else if (order.created_at) {
+    const d = new Date(order.created_at);
+    if (!isNaN(d.getTime())) {
+      rawDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    } else {
+      rawDateStr = order.created_at.split('T')[0];
+    }
+  }
+
   if (!rawDateStr) {
     return horizon === 'today';
+  }
+
+  if (horizon === 'custom') {
+    if (!customStartDate || !customEndDate) return true;
+    return rawDateStr >= customStartDate && rawDateStr <= customEndDate;
   }
 
   if (horizon === 'today') {
@@ -696,15 +737,27 @@ class ERPStorage {
              localStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
           } else if (key === 'businesses') {
              const mergedBusinesses = (data || []).map((b: any) => {
-               const existing = (this.cache.businesses || []).find(eb => eb.id === b.id);
-               return {
-                 ...existing,
-                 ...b,
-                 logo_url: b.logo_url || existing?.logo_url || undefined,
-                 login_cover_url: b.login_cover_url || existing?.login_cover_url || undefined,
-                 upi_qr_url: b.upi_qr_url || existing?.upi_qr_url || undefined,
-               };
-             });
+                const existing = (this.cache.businesses || []).find(eb => eb.id === b.id);
+                if (!existing) return b;
+                const merged: any = { ...b, ...existing };
+                for (const k of Object.keys(b)) {
+                  if (b[k] !== null && b[k] !== undefined) {
+                    if (Array.isArray(b[k]) && b[k].length === 0 && Array.isArray(existing[k]) && (existing[k] as any[]).length > 0) {
+                      merged[k] = existing[k];
+                      continue;
+                    }
+                    if (existing[k] !== undefined && existing[k] !== null && existing[k] !== '') {
+                      merged[k] = existing[k];
+                    } else {
+                      merged[k] = b[k];
+                    }
+                  }
+                }
+                if (!merged.logo_url && existing?.logo_url) merged.logo_url = existing.logo_url;
+                if (!merged.login_cover_url && existing?.login_cover_url) merged.login_cover_url = existing.login_cover_url;
+                if (!merged.upi_qr_url && existing?.upi_qr_url) merged.upi_qr_url = existing.upi_qr_url;
+                return merged;
+              });
              this.cache.businesses = mergedBusinesses.length > 0 ? mergedBusinesses : this.cache.businesses;
              localStorage.setItem('omnipack_erp_businesses', JSON.stringify(this.cache.businesses));
           } else {
@@ -847,6 +900,16 @@ class ERPStorage {
            }
            if (tableName === 'users_profiles') {
                delete clean.password_hash;
+           }
+           if (tableName === 'stock_logs') {
+               if (clean.created_by === 'System' || clean.created_by === 'sys') {
+                   clean.created_by = null;
+               }
+           }
+           if (tableName === 'system_audit_logs') {
+               if (clean.user_id === 'System' || clean.user_id === 'sys') {
+                   clean.user_id = null;
+               }
            }
             if (tableName === 'businesses') {
                 delete clean.last_supabase_sync;
@@ -1252,7 +1315,11 @@ class ERPStorage {
       .filter(s => s.business_id === businessId)
       .map(s => {
         const cust = customerMap.get(s.customer_id);
-        const resolvedArea = s.area || cust?.area || (cust?.shipping_address ? cust.shipping_address.replace(/ Resident$/i, '').trim() : undefined) || 'Dahisar';
+        const resolvedArea = (s.area && s.area !== 'Other') 
+          ? s.area 
+          : (cust?.area && cust.area !== 'Other') 
+          ? cust.area 
+          : (cust?.shipping_address && !/Other/i.test(cust.shipping_address) ? cust.shipping_address.replace(/ Resident$/i, '').trim() : undefined) || 'Dahisar';
         return {
           ...s,
           area: resolvedArea,
@@ -1267,10 +1334,31 @@ class ERPStorage {
   }
 
   public createSalesOrder(so: Omit<SalesOrder, 'id' | 'created_at'>): SalesOrder {
+    let createdAtStr = new Date().toISOString();
+    if (so.order_date) {
+      const timeParts = (so.time || '12:00').match(/(\d+):(\d+)\s*(AM|PM)?/i);
+      let hours = 12;
+      let minutes = 0;
+      if (timeParts) {
+        hours = parseInt(timeParts[1], 10);
+        minutes = parseInt(timeParts[2], 10);
+        const ampm = timeParts[3];
+        if (ampm) {
+          if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
+          if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+        }
+      }
+      const [y, m, d] = so.order_date.split('-').map(Number);
+      if (y && m && d) {
+        const orderDateTime = new Date(y, m - 1, d, hours, minutes);
+        createdAtStr = orderDateTime.toISOString();
+      }
+    }
+
     const newSO: SalesOrder = {
       ...so,
       id: crypto.randomUUID(),
-      created_at: new Date().toISOString()
+      created_at: createdAtStr
     };
     this.cache.sales.unshift(newSO);
     this.save('sales', newSO);
@@ -1658,13 +1746,15 @@ class ERPStorage {
   // Metrics Generator for Dashboard (isolated by business_id)
   public getDashboardMetrics(
     businessId: string, 
-    timeHorizon: 'today' | 'yesterday' | '7days' | '30days' | 'all' = 'today'
+    timeHorizon: TimeHorizon = 'today',
+    customStartDate?: string,
+    customEndDate?: string
   ) {
     const products = this.getProducts(businessId);
     const allOrders = this.getSalesOrders(businessId);
 
     // Filter orders strictly by time horizon
-    const orders = allOrders.filter(o => isOrderInTimeHorizon(o, timeHorizon));
+    const orders = allOrders.filter(o => isOrderInTimeHorizon(o, timeHorizon, customStartDate, customEndDate));
 
     const todaySalesAmount = orders
       .filter(o => o.status !== 'Cancelled')

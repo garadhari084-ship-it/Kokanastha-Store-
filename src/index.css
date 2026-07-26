@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+select, select option, option {
+  font-size: 11px !important;
+}
+
 @layer utilities {
   .hide-scrollbar {
     -ms-overflow-style: none;  /* IE and Edge */

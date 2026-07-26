@@ -58,7 +58,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   }, [selectedTheme]);
 
   return (
-    <div className={`relative rounded-none px-4 pt-2.5 pb-2.5 md:px-5 md:pt-3 md:pb-3 bg-gradient-to-r ${themeStyles.banner} border shadow-2xl transition-all duration-300 mb-4`}>
+    <div className={`relative rounded-none px-0.5 pt-1.5 pb-1.5 md:px-1 md:pt-2 md:pb-2 bg-gradient-to-r ${themeStyles.banner} border shadow-2xl transition-all duration-300 mb-4`}>
       {badgeText && (
         <div className="absolute top-0 right-0 z-20">
           <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 rounded-none border-l border-b text-[10px] md:text-[11px] font-bold backdrop-blur-md ${themeStyles.badge}`}>
@@ -74,37 +74,34 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         <div className="absolute bottom-0 left-1/4 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl"></div>
       </div>
 
-      <div className="relative z-10 flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pr-32 md:pr-40">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2.5">
+      <div className="relative z-10 flex flex-col gap-2">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="flex-1 min-w-0 pr-36 sm:pr-40 md:pr-48">
+            <div className="flex items-center gap-3 mb-1 flex-wrap">
+              <h1 className="text-base sm:text-lg md:text-xl lg:text-2xl font-black tracking-tight text-white flex items-center gap-2.5">
                 <Icon className={themeStyles.accentText} />
-                <span>{title}</span>
+                <span className="truncate">{title}</span>
               </h1>
             </div>
-            <p className="text-xs font-medium text-slate-300 flex flex-wrap items-center gap-2">
+            <p className="text-[10px] sm:text-xs font-medium text-slate-300 flex flex-wrap items-center gap-2">
               <span>{subtitle}</span>
             </p>
           </div>
-        </div>
 
-        {/* Top Control Bar: Theme Switcher and other controls */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 w-full pb-0 mb-0">
-          <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+          <div className="flex items-center justify-end gap-2 sm:gap-3 flex-wrap shrink-0 md:pt-10 md:pb-1 relative z-30">
             {/* Color Theme Selector */}
             <div className="relative shrink-0">
               <button 
                 onClick={() => setIsThemeDropdownOpen(!isThemeDropdownOpen)}
-                className="px-3.5 py-2 bg-white/10 hover:bg-white/15 border border-white/20 text-slate-200 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                className="p-2 md:px-3.5 md:py-2 bg-white/10 hover:bg-white/15 border border-white/20 text-slate-200 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer min-w-[36px]"
               >
                 <Palette size={15} className="text-amber-400" />
-                <span className="capitalize">{selectedTheme.replace('-', ' ')}</span>
-                <ChevronDown size={14} />
+                <span className="capitalize hidden md:inline-block">{selectedTheme.replace('-', ' ')}</span>
+                <ChevronDown size={14} className="hidden md:inline-block" />
               </button>
               
               {isThemeDropdownOpen && (
-                <div className="absolute left-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50">
+                <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50">
                   <button onClick={() => { setSelectedTheme('midnight-gold'); setIsThemeDropdownOpen(false); }} className="w-full text-left px-3 py-2 text-[11px] text-amber-300 hover:bg-slate-800 rounded-xl font-medium flex items-center gap-2.5">
                     <span className="w-3 h-3 rounded-full bg-amber-500"></span> Midnight Gold
                   </button>
@@ -121,16 +118,17 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
               )}
             </div>
 
-            {/* Children (e.g., date selectors) */}
-            {children}
+            {rightContent}
           </div>
-          
-          {rightContent && (
-            <div className="flex items-center gap-2 flex-wrap">
-              {rightContent}
-            </div>
-          )}
         </div>
+
+        {children && (
+          <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 w-full pb-0 mb-0">
+            <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+              {children}
+            </div>
+          </div>
+        )}
         {bottomContent && (
           <div className="w-full">
             {bottomContent}

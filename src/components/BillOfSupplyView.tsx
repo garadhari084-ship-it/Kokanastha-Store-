@@ -2,6 +2,7 @@ import React from 'react';
 import { SalesOrder, Customer, Business, Product } from '../types/erp';
 import { numberToWordsIndian } from '../utils/invoiceTemplate';
 import { buildUpiPayString, buildBillVerificationString } from '../utils/qrCode';
+import { formatOrderTime } from '../utils/formatters';
 
 interface BillOfSupplyViewProps {
   order: SalesOrder;
@@ -16,6 +17,9 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   businessObj,
   products = []
 }) => {
+  const cur = businessObj?.currency_default;
+  const currencySymbol = cur ? (cur.includes(' - ') ? cur.split(' - ')[0].trim() : cur.trim()) : '₹';
+
   const items = order.items || [];
   const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const delivery = order.total_amount > subTotal ? (order.total_amount - subTotal) : 0;
@@ -23,9 +27,11 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
 
-  const received = order.payment_status === 'Paid' ? totalAmount : 0;
-  const balance = totalAmount - received;
-  const paymentMode = order.payment_status === 'Paid' ? 'Online / Paid' : 'Credit / Pending';
+  const received = typeof order.paid_amount === 'number' 
+    ? order.paid_amount 
+    : (order.payment_status === 'Paid' ? totalAmount : 0);
+  const balance = Math.max(0, totalAmount - received);
+  const paymentMode = order.payment_mode || (order.payment_status === 'Paid' ? 'Online / Paid' : 'Credit / Pending');
 
   const custName = customer?.name || order.customer_name || 'SMITA NAYAK';
   const custAddr = customer?.billing_address || (order.area ? `${order.area} Zone, Mumbai` : 'ARYAVARTA B 406');
@@ -61,7 +67,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const accountHolder = businessObj?.account_holder || bName;
 
   return (
-    <div className="bg-white text-slate-900 px-4 sm:px-6 py-6 sm:py-8 font-sans text-[11px] leading-relaxed shadow-lg max-w-2xl mx-auto rounded-xl border border-slate-200">
+    <div className="bg-white text-slate-900 px-0.5 sm:px-1 py-6 sm:py-8 font-sans text-[11px] leading-relaxed shadow-lg max-w-2xl mx-auto rounded-xl border border-slate-200">
       
       {/* Header */}
       <div className="flex justify-between items-start mb-3">
@@ -127,7 +133,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
           <div className="text-slate-700 space-y-0.5 font-mono text-[10px]">
             <div><span className="text-slate-500 font-sans">Invoice No. :</span> <strong className="text-slate-950 font-bold">{order.order_number}</strong></div>
             <div><span className="text-slate-500 font-sans">Date :</span> {order.order_date}</div>
-            <div><span className="text-slate-500 font-sans">Time :</span> {order.time || '12:22 PM'}</div>
+            <div><span className="text-slate-500 font-sans">Time :</span> {formatOrderTime(order.time, order.created_at)}</div>
           </div>
         </div>
       </div>
@@ -161,9 +167,9 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
                   <td className="py-1.5 px-2 font-extrabold text-slate-900 uppercase">{itemName}</td>
                   <td className="py-1.5 px-2 text-center font-mono text-slate-600">{itemCode}</td>
                   <td className="py-1.5 px-2 text-center font-bold text-slate-900">{qty}</td>
-                  <td className="py-1.5 px-2 text-right font-mono">₹ {price.toFixed(2)}</td>
+                  <td className="py-1.5 px-2 text-right font-mono">{currencySymbol} {price.toFixed(2)}</td>
                   <td className="py-1.5 px-2 text-right font-mono">{price.toFixed(2)}</td>
-                  <td className="py-1.5 px-2 text-right font-mono font-black text-slate-950">₹ {amount.toFixed(2)}</td>
+                  <td className="py-1.5 px-2 text-right font-mono font-black text-slate-950">{currencySymbol} {amount.toFixed(2)}</td>
                 </tr>
               );
             })}
@@ -172,7 +178,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               <td className="py-2 px-2 text-center">{totalQty}</td>
               <td></td>
               <td></td>
-              <td className="py-2 px-2 text-right font-mono">₹ {subTotal.toFixed(2)}</td>
+              <td className="py-2 px-2 text-right font-mono">{currencySymbol} {subTotal.toFixed(2)}</td>
             </tr>
           </tbody>
         </table>
@@ -237,23 +243,23 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
             <div className="font-extrabold text-slate-900 uppercase text-[9px] border-b border-slate-300 pb-0.5 mb-1 text-right">Amounts</div>
             <div className="flex justify-between font-mono">
               <span className="font-sans text-slate-600">Sub Total</span>
-              <span>₹ {subTotal.toFixed(2)}</span>
+              <span>{currencySymbol} {subTotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between font-mono text-slate-600">
               <span className="font-sans">DELIVERY:</span>
-              <span>₹ {delivery.toFixed(2)}</span>
+              <span>{currencySymbol} {delivery.toFixed(2)}</span>
             </div>
             <div className="flex justify-between font-mono font-black border-y border-slate-950 py-1 text-slate-950 text-xs">
               <span className="font-sans">Total</span>
-              <span>₹ {totalAmount.toFixed(2)}</span>
+              <span>{currencySymbol} {totalAmount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between font-mono text-slate-600">
               <span className="font-sans">Received</span>
-              <span>₹ {received.toFixed(2)}</span>
+              <span>{currencySymbol} {received.toFixed(2)}</span>
             </div>
             <div className="flex justify-between font-mono font-extrabold text-slate-900 border-b border-slate-300 pb-1">
               <span className="font-sans">Balance</span>
-              <span>₹ {balance.toFixed(2)}</span>
+              <span>{currencySymbol} {balance.toFixed(2)}</span>
             </div>
           </div>
 
@@ -287,7 +293,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
           <div className="font-mono text-slate-700 space-y-0.5">
             <div>Invoice No. : {order.order_number}</div>
             <div>Invoice date : {order.order_date}</div>
-            <div>Invoice Amount : ₹ {totalAmount.toFixed(2)}</div>
+            <div>Invoice Amount : {currencySymbol} {totalAmount.toFixed(2)}</div>
           </div>
         </div>
 

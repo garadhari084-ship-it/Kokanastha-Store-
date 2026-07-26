@@ -59,7 +59,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [formBrand, setFormBrand] = useState('');
   const [formUnit, setFormUnit] = useState('Pcs');
   const [formHsn, setFormHsn] = useState('');
-  const [formGst, setFormGst] = useState(18);
+  const [formGst, setFormGst] = useState<number>(() => {
+    const biz = dbStore.getBusiness(businessId);
+    return typeof biz?.tax_rate_default === 'number' && !isNaN(biz.tax_rate_default) ? biz.tax_rate_default : 0;
+  });
   const [formPurchasePrice, setFormPurchasePrice] = useState<number | string>('');
   const [formSellingPrice, setFormSellingPrice] = useState<number | string>('');
   const [formMrp, setFormMrp] = useState<number | string>('');
@@ -102,6 +105,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [formActive, setFormActive] = useState(true);
 
   const resetForm = () => {
+    const currentBiz = dbStore.getBusiness(businessId);
     setFormName('');
     setFormSku('');
     setFormBarcode('');
@@ -109,7 +113,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormBrand('');
     setFormUnit('Pcs');
     setFormHsn('');
-    setFormGst(18);
+    setFormGst(typeof currentBiz?.tax_rate_default === 'number' && !isNaN(currentBiz.tax_rate_default) ? currentBiz.tax_rate_default : 0);
     setFormPurchasePrice('');
     setFormSellingPrice('');
     setFormMrp('');
@@ -467,7 +471,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         }
       />
 
-      <div className="px-4 sm:px-6 space-y-6">
+      <div className="px-0.5 sm:px-1 space-y-6">
       {/* Filter and Search Layout */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="md:col-span-2 relative">

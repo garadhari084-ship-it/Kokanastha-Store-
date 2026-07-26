@@ -13,6 +13,7 @@ export interface MetricDetailConfig {
 import { PageHeader } from './PageHeader';
 import { Database } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
+import { formatOrderTime } from '../utils/formatters';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ResponsiveContainer, 
@@ -58,15 +59,18 @@ import {
   Filter,
   RefreshCw,
   QrCode,
+  Download,
+  Mail,
   FileText,
+  Trash2,
   BadgeAlert,
   ChevronDown,
-  Download,
   Eye,
-  Mail,
-  Share2
+  Share2,
+  Calendar,
+  CalendarDays
 } from 'lucide-react';
-import { dbStore, isOrderInTimeHorizon } from '../services/store';
+import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
 import { SalesOrder, UserProfile, OrderStatus } from '../types/erp';
 import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
 import { BillOfSupplyView } from './BillOfSupplyView';
@@ -89,7 +93,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   // Theme & Language Settings
       const [activeTab, setActiveTab] = useState<TabView>('operations');
-  const [timeHorizon, setTimeHorizon] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('today');
+  const [timeHorizon, setTimeHorizon] = useState<TimeHorizon>('today');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const [isTopFilterMenuOpen, setIsTopFilterMenuOpen] = useState(false);
 
   // Search & Filter State
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -260,7 +268,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       setTick(t => t + 1);
     });
   }, [businessId]);
-  const metrics = dbStore.getDashboardMetrics(businessId, timeHorizon);
+  const metrics = dbStore.getDashboardMetrics(businessId, timeHorizon, customStartDate, customEndDate);
   const products = dbStore.getProducts(businessId);
   const customers = dbStore.getCustomers(businessId);
   const allOrders = dbStore.getSalesOrders(businessId);
@@ -325,14 +333,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       case 'yesterday': return 'Yesterday';
       case '7days': return '7 Days';
       case '30days': return '30 Days';
+      case 'custom': return `Custom (${customStartDate || '*'} to ${customEndDate || '*'})`;
       case 'all': default: return 'All Time';
     }
-  }, [timeHorizon]);
+  }, [timeHorizon, customStartDate, customEndDate]);
 
   // Filtered Orders for the Table
   const filteredOrders = useMemo(() => {
     return allOrders.filter(o => {
-      const matchesHorizon = statusFilter !== 'ALL' ? true : isOrderInTimeHorizon(o, timeHorizon);
+      const matchesHorizon = isOrderInTimeHorizon(o, timeHorizon, customStartDate, customEndDate);
       const matchesStatus = 
         statusFilter === 'ALL' ? true :
         statusFilter === 'TO_PACK' ? (o.status === 'Pending' || o.status === 'Packing') :
@@ -347,7 +356,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         (o.channel && o.channel.toLowerCase().includes(searchQuery.toLowerCase()));
       return matchesHorizon && matchesStatus && matchesArea && matchesSearch;
     });
-  }, [allOrders, customers, timeHorizon, statusFilter, areaFilter, searchQuery]);
+  }, [allOrders, customers, timeHorizon, statusFilter, areaFilter, searchQuery, customStartDate, customEndDate]);
 
   // Handle Quick Status Change
   const handleQuickStatusChange = (orderId: string, newStatus: OrderStatus) => {
@@ -384,10 +393,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   const handleOpenNewOrderModal = () => {
-    if (products.length > 0 && !newOrderProduct) {
-      setNewOrderProduct(products[0].id);
-    }
-    setIsNewOrderModalOpen(true);
+    onNavigate('sales', { openAddModal: true });
   };
 
   // Handle Create Order
@@ -428,15 +434,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const selectedProdObj = products.find(p => p.id === newOrderProduct) || products[0];
     const totalCalc = selectedProdObj ? selectedProdObj.selling_price * newOrderQty : 750;
 
+    const now = new Date();
+    const localTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
     const createdOrder = dbStore.createSalesOrder({
       order_number: nextNumber,
       customer_id: cust.id,
       customer_name: cust.name,
       area: newOrderArea,
       channel: newOrderChannel || 'Direct Order',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       is_overdue: false,
-      order_date: new Date().toISOString().split('T')[0],
+      order_date: localTodayStr,
       status: 'Pending',
       payment_status: 'Unpaid',
       delivery_status: 'Pending',
@@ -520,41 +529,87 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         badgeText="Dispatch Engine Active"
         rightContent={
 
-          <>
-            {/* Time Horizon Selector */}
-              <div className="flex flex-nowrap bg-slate-950/70 p-1 rounded-2xl border border-white/10 text-[11px] font-bold shrink-0">
-                {[
-                  { id: 'today', label: 'Today' },
-                  { id: 'yesterday', label: 'Yesterday' },
-                  { id: '7days', label: '7 Days' },
-                  { id: '30days', label: '30 Days' },
-                  { id: 'all', label: 'All' }
-                ].map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => setTimeHorizon(item.id as any)}
-                    className={`px-3 py-1.5 rounded-xl transition whitespace-nowrap ${
-                      timeHorizon === item.id 
-                        ? 'bg-amber-500 text-slate-950 font-extrabold shadow-sm' 
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
+          <div className="flex items-center gap-3">
             {/* Quick Action Button */}
               <button 
                 onClick={handleOpenNewOrderModal}
-                className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 rounded-xl font-extrabold text-[11px] transition cursor-pointer shadow-lg flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                className="p-2 md:px-4 md:py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 rounded-xl font-extrabold text-[11px] transition cursor-pointer shadow-lg flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 min-w-[36px]"
               >
                 <PlusCircle size={16} />
-                <span>Create Order</span>
+                <span className="hidden md:inline-block">Create Order</span>
               </button>
-          </>
+
+            {/* Top Time Filter Dropdown */}
+            <div className="relative shrink-0">
+              <button 
+                onClick={() => setIsTopFilterMenuOpen(!isTopFilterMenuOpen)}
+                className="w-9 h-9 flex items-center justify-center bg-slate-950/70 border border-white/10 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-200 cursor-pointer hover:bg-slate-900 transition-colors"
+                title="Filter by Time"
+              >
+                <Filter size={16} className="text-amber-500" />
+              </button>
+              
+              {isTopFilterMenuOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 text-slate-100">
+                  <div className="p-2 space-y-1">
+                    {['today', 'yesterday', '7days', '30days', 'all', 'custom'].map((horizon) => (
+                      <button
+                        key={horizon}
+                        onClick={() => {
+                          setTimeHorizon(horizon as TimeHorizon);
+                          if (horizon !== 'custom') setIsTopFilterMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold transition flex items-center justify-between ${
+                          timeHorizon === horizon 
+                            ? 'bg-amber-900/40 text-amber-500' 
+                            : 'text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {horizon === 'today' ? 'Today' :
+                         horizon === 'yesterday' ? 'Yesterday' :
+                         horizon === '7days' ? 'Last 7 Days' :
+                         horizon === '30days' ? 'Last 30 Days' :
+                         horizon === 'custom' ? 'Custom Date' : 'All Time'}
+                        {timeHorizon === horizon && <CheckCircle2 size={14} className="text-amber-500" />}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {timeHorizon === 'custom' && (
+                    <div className="p-3 bg-slate-800/50 border-t border-slate-700 space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400">Start Date</label>
+                        <input 
+                          type="date"
+                          value={customStartDate}
+                          onChange={e => setCustomStartDate(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] font-medium text-white focus:ring-1 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400">End Date</label>
+                        <input 
+                          type="date"
+                          value={customEndDate}
+                          onChange={e => setCustomEndDate(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] font-medium text-white focus:ring-1 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                      <button 
+                        onClick={() => setIsTopFilterMenuOpen(false)}
+                        className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-[11px] font-black transition"
+                      >
+                        Apply Filter
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         }
         bottomContent={
-          <div className="mt-4 pt-4 border-t border-white/10 flex flex-nowrap w-full overflow-x-auto hide-scrollbar items-center gap-2 pb-0 mb-0">
+          <div className="mt-2 pt-2 border-t border-white/10 flex flex-nowrap w-full overflow-x-auto hide-scrollbar items-center gap-1.5 pb-0 mb-0">
           {[
             { id: 'operations', label: 'Live Operations', icon: Activity },
             { id: 'analytics', label: 'Sales & Revenue', icon: BarChart3 },
@@ -567,7 +622,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as TabView)}
-                className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-[11px] sm:text-[11px] font-extrabold transition-all flex flex-1 justify-center items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0 ${
+                className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-[11px] sm:text-[11px] font-extrabold transition-all flex flex-1 justify-center items-center gap-1.5 sm:gap-1.5 cursor-pointer shrink-0 ${
                   isActive
                     ? 'bg-white text-slate-950 shadow-lg scale-102'
                     : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
@@ -582,7 +637,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         }
       />
       
-      <div className="px-4 sm:px-6 space-y-6">
+      <div className="px-0.5 sm:px-1 space-y-6">
         {/* 2. DYNAMIC TAB CONTENT */}
       <AnimatePresence mode="wait">
         
@@ -596,9 +651,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             transition={{ duration: 0.2 }}
             className="space-y-6"
           >
-            {/* 8 GLOWING OPERATIONAL METRIC CARDS GRID */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
-              
+                                                {/* 8 GLOWING OPERATIONAL METRIC CARDS GRID */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8 gap-2">
               {/* Metric 1 */}
               <div 
                 onClick={() => handleOpenMetricDetail({
@@ -611,25 +665,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   filterValue: 'TO_PACK',
                   description: 'Orders requiring item selection, weight verification, and box sealing in the kitchen.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 rounded-xl shadow-xs hover:shadow-amber-500/10 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
-                <div className="flex items-start justify-between">
-                  <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform">
+                <div className="flex items-center gap-1.5">
+                  <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
                     <ShoppingBag size={14} />
                   </div>
+                  <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TO PACK</span>
                 </div>
-                <div className="mt-2">
-                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
-                    TO PACK
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Orders requiring item selection, weight verification, and box sealing in the kitchen">Orders requiring item selection, weight verification, and box sealing in the kitchen</span>
+                </div>
+                <div className="text-right mt-1">
+                  <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                    {metrics.toPackToday}
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">
-                      {metrics.toPackToday}
-                    </span>
-                  </div>
                 </div>
               </div>
-
               {/* Metric 2 */}
               <div 
                 onClick={() => handleOpenMetricDetail({
@@ -642,25 +694,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   filterValue: 'PACKED',
                   description: 'Orders sealed, box-tagged, and ready at the dispatch counter.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 rounded-xl shadow-xs hover:shadow-yellow-500/10 hover:border-yellow-400 dark:hover:border-yellow-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-yellow-400 dark:hover:border-yellow-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
-                <div className="flex items-start justify-between">
-                  <div className="p-1.5 bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded-lg group-hover:scale-110 transition-transform">
+                <div className="flex items-center gap-1.5">
+                  <div className="p-1.5 bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
                     <Truck size={14} />
                   </div>
+                  <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">READY</span>
                 </div>
-                <div className="mt-2">
-                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
-                    READY
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Orders sealed, box-tagged, and ready at the dispatch counter">Orders sealed, box-tagged, and ready at the dispatch counter</span>
+                </div>
+                <div className="text-right mt-1">
+                  <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                    {metrics.readyForDispatch}
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">
-                      {metrics.readyForDispatch}
-                    </span>
-                  </div>
                 </div>
               </div>
-
               {/* Metric 3 */}
               <div 
                 onClick={() => handleOpenMetricDetail({
@@ -668,30 +718,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   subtitle: 'Orders currently out on delivery across Dahisar / Borivali / Kandivali',
                   icon: Clock,
                   iconColor: 'text-indigo-600 bg-indigo-500/10 border-indigo-200',
-                  badgeText: 'In Transit',
-                  type: 'deliveries_today',
+                  badgeText: 'Out for Delivery',
+                  type: 'status',
                   filterValue: 'DISPATCHED',
-                  description: 'Orders actively assigned to field couriers or driver routes.'
+                  description: 'Orders assigned to drivers and currently in transit to customers.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 rounded-xl shadow-xs hover:shadow-indigo-500/10 hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
-                <div className="flex items-start justify-between">
-                  <div className="p-1.5 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform">
+                <div className="flex items-center gap-1.5">
+                  <div className="p-1.5 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
                     <Clock size={14} />
                   </div>
+                  <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">IN TRANSIT</span>
                 </div>
-                <div className="mt-2">
-                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
-                    IN TRANSIT
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Orders assigned to drivers and currently in transit to customers">Orders assigned to drivers and currently in transit to customers</span>
+                </div>
+                <div className="text-right mt-1">
+                  <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                    {metrics.deliveriesToday}
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">
-                      {metrics.deliveriesToday}
-                    </span>
-                  </div>
                 </div>
               </div>
-
               {/* Metric 4 */}
               <div 
                 onClick={() => handleOpenMetricDetail({
@@ -703,25 +751,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'overdue',
                   description: 'Prioritize these orders to avoid customer delivery delay.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 rounded-xl shadow-xs hover:shadow-rose-500/10 hover:border-rose-400 dark:hover:border-rose-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-rose-400 dark:hover:border-rose-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
-                <div className="flex items-start justify-between">
-                  <div className="p-1.5 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform">
+                <div className="flex items-center gap-1.5">
+                  <div className="p-1.5 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
                     <AlertTriangle size={14} />
                   </div>
+                  <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">OVERDUE</span>
                 </div>
-                <div className="mt-2">
-                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
-                    OVERDUE
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Prioritize these orders to avoid customer delivery delay">Prioritize these orders to avoid customer delivery delay</span>
+                </div>
+                <div className="text-right mt-1">
+                  <span className="text-xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
+                    {metrics.overdueOrdersCount}
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-base font-black text-rose-600 dark:text-rose-400 tracking-tight">
-                      {metrics.overdueOrdersCount}
-                    </span>
-                  </div>
                 </div>
               </div>
-
               {/* Metric 5 */}
               <div 
                 onClick={() => handleOpenMetricDetail({
@@ -733,25 +779,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'payment',
                   description: 'View unpaid customer orders. Collect payment or dispatch WhatsApp reminders.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 rounded-xl shadow-xs hover:shadow-amber-500/10 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
-                <div className="flex items-start justify-between">
-                  <div className="p-2 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform">
-                    <DollarSign size={16} />
+                <div className="flex items-center gap-1.5">
+                  <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                    <DollarSign size={14} />
                   </div>
+                  <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">PAYMENTS</span>
                 </div>
-                <div className="mt-3">
-                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
-                    PAYMENTS
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="View unpaid customer orders">View unpaid customer orders</span>
+                </div>
+                <div className="text-right mt-1">
+                  <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                    {metrics.pendingPaymentsCount}
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                      {metrics.pendingPaymentsCount}
-                    </span>
-                  </div>
                 </div>
               </div>
-
               {/* Metric 6 */}
               <div 
                 onClick={() => handleOpenMetricDetail({
@@ -763,25 +807,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'all',
                   description: 'Master operational view of all active sales transactions.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 rounded-xl shadow-xs hover:shadow-sky-500/10 hover:border-sky-400 dark:hover:border-sky-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-sky-400 dark:hover:border-sky-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
-                <div className="flex items-start justify-between">
-                  <div className="p-2 bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 rounded-lg group-hover:scale-110 transition-transform">
-                    <ShoppingBag size={16} />
+                <div className="flex items-center gap-1.5">
+                  <div className="p-1.5 bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                    <ShoppingBag size={14} />
                   </div>
+                  <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL</span>
                 </div>
-                <div className="mt-3">
-                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
-                    TOTAL
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Master operational view of all active sales transactions">Master operational view of all active sales transactions</span>
+                </div>
+                <div className="text-right mt-1">
+                  <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                    {metrics.totalOrdersCount}
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                      {metrics.totalOrdersCount}
-                    </span>
-                  </div>
                 </div>
               </div>
-
               {/* Metric 7 */}
               <div 
                 onClick={() => handleOpenMetricDetail({
@@ -793,25 +835,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'revenue',
                   description: 'Financial ledger summarizing completed sales and collected revenue.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 rounded-xl shadow-xs hover:shadow-emerald-500/10 hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
-                <div className="flex items-start justify-between">
-                  <div className="p-2 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
-                    <TrendingUp size={16} />
+                <div className="flex items-center gap-1.5">
+                  <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                    <TrendingUp size={14} />
                   </div>
+                  <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">REVENUE</span>
                 </div>
-                <div className="mt-3">
-                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
-                    REVENUE
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Financial ledger summarizing completed sales and collected revenue">Financial ledger summarizing completed sales and collected revenue</span>
+                </div>
+                <div className="text-right mt-1">
+                  <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                    ₹{metrics.todaySalesAmount.toLocaleString()}
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">
-                      ₹{metrics.todaySalesAmount.toLocaleString()}
-                    </span>
-                  </div>
                 </div>
               </div>
-
               {/* Metric 8 */}
               <div 
                 onClick={() => handleOpenMetricDetail({
@@ -823,211 +863,182 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'receivables',
                   description: 'Track outstanding balances and send instant payment follow-up alerts.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 rounded-xl shadow-xs hover:shadow-orange-500/10 hover:border-orange-400 dark:hover:border-orange-600 transition-all cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-orange-400 dark:hover:border-orange-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
-                <div className="flex items-start justify-between">
-                  <div className="p-2 bg-orange-500/10 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg group-hover:scale-110 transition-transform">
-                    <Clock size={16} />
+                <div className="flex items-center gap-1.5">
+                  <div className="p-1.5 bg-orange-500/10 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                    <Clock size={14} />
                   </div>
+                  <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">OUTSTANDING</span>
                 </div>
-                <div className="mt-3">
-                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
-                    OUTSTANDING
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Track outstanding balances and send instant payment follow-up alerts">Track outstanding balances and send instant payment follow-up alerts</span>
+                </div>
+                <div className="text-right mt-1">
+                  <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                    ₹{metrics.outstandingAmount.toLocaleString()}
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">
-                      ₹{metrics.outstandingAmount.toLocaleString()}
-                    </span>
-                  </div>
                 </div>
               </div>
-
             </div>
 
-            {/* PIPELINE & AREA BREAKDOWN DUAL PANELS */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              
-              {/* Order Workflow Pipeline */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <div>
-                    <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                      <Layers size={18} className="text-amber-500" /> Operational Order Pipeline
-                    </h2>
-                    
-                  </div>
-                  <span className="text-[11px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
-                    Live Status
-                  </span>
-                </div>
 
-                <div className="space-y-3">
-                  {[
-                    { key: 'bookingReceived', label: 'Booking Received', count: metrics.statusPipeline.bookingReceived, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', filter: 'PENDING' },
-                    { key: 'productionStarted', label: 'Production Started', count: metrics.statusPipeline.productionStarted, color: 'text-yellow-600', bg: 'bg-yellow-50 dark:bg-yellow-950/30', filter: 'PENDING' },
-                    { key: 'packingStarted', label: 'Packing Started', count: metrics.statusPipeline.packingStarted, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', filter: 'PACKING' },
-                    { key: 'packingCompleted', label: 'Packing Completed', count: metrics.statusPipeline.packingCompleted, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', filter: 'PACKED' },
-                    { key: 'readyForDispatch', label: 'Ready for Dispatch', count: metrics.statusPipeline.readyForDispatch, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', filter: 'PACKED' },
-                    { key: 'outForDelivery', label: 'Out for Delivery', count: metrics.statusPipeline.outForDelivery, color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-950/30', filter: 'DISPATCHED' },
-                    { key: 'delivered', label: 'Delivered', count: metrics.statusPipeline.delivered, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', filter: 'DELIVERED' }
-                  ].map((stage, idx) => {
-                    const maxCount = Math.max(...Object.values(metrics.statusPipeline), 1);
-                    const percentage = Math.min(100, Math.round((stage.count / maxCount) * 100));
 
-                    return (
-                      <div 
-                        key={stage.key}
-                        onClick={() => handleOpenMetricDetail({
-                        title: `${stage.label} Pipeline Orders`,
-                        subtitle: `All orders currently at "${stage.label}" stage`,
-                        icon: Layers,
-                        iconColor: `${stage.color} ${stage.bg} border-slate-200`,
-                        badgeText: `Stage ${idx + 1}`,
-                        type: 'status',
-                        filterValue: stage.filter,
-                        description: `Live pipeline monitor for stage "${stage.label}". Change status or view invoice details.`
-                      })}
-                        className="flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
-                      >
-                        <div className="flex items-center gap-3 flex-1 min-w-0 pr-4">
-                          <div className={`w-7 h-7 rounded-lg ${stage.bg} ${stage.color} flex items-center justify-center font-bold text-[11px] shrink-0`}>
-                            {idx + 1}
-                          </div>
-                          <div className="truncate">
-                            <strong className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate">
-                              {stage.label}
-                            </strong>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 shrink-0">
-                          <div className="w-24 sm:w-32 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden hidden sm:block">
-                            <div 
-                              className={`h-full rounded-full ${stage.color.replace('text-', 'bg-')}`} 
-                              style={{ width: `${Math.max(percentage, stage.count > 0 ? 15 : 0)}%` }}
-                            ></div>
-                          </div>
-                          <span className={`text-xs font-black ${stage.color} min-w-[20px] text-right`}>
-                            {stage.count}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Active Orders by Region/Area Heatmap */}
-              <div className="space-y-6">
           
-                <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                    <div>
-                      <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                        <MapPin size={18} className="text-amber-500" /> Active Orders by Area
-                      </h2>
-                      
-                    </div>
-                    <span className="text-[11px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
-                      7 Zones
+            {/* Operational Order Pipeline & Active Orders by Area */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
+                            {/* Pipeline */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 border border-slate-700 rounded-3xl p-6 shadow-xl text-white">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 blur-3xl rounded-full -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/10 blur-3xl rounded-full translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
+                
+                <div className="relative z-10 flex items-center justify-between pb-4 border-b border-slate-700/80 mb-5">
+                  <h2 className="text-sm font-black text-white flex items-center gap-2 tracking-wide uppercase">
+                    <Activity size={18} className="text-amber-400" /> Operational Order Pipeline
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                     </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-1">
-                    {metrics.activeOrdersByArea.map((item) => (
-                      <div 
-                        key={item.area}
-                        onClick={() => handleOpenMetricDetail({
-                          title: `Area Delivery Zone: ${item.area}`,
-                          subtitle: `Active orders assigned to ${item.area} neighborhood`,
-                          icon: MapPin,
-                          iconColor: 'text-amber-600 bg-amber-500/10 border-amber-200',
-                          badgeText: `${item.count} Orders`,
-                          type: 'area',
-                          filterValue: item.area,
-                          description: `Grouped delivery route orders for ${item.area}. Assign drivers or track live route status.`
-                        })}
-                        className={`flex items-center justify-between p-3 rounded-2xl transition cursor-pointer border ${
-                          areaFilter === item.area 
-                            ? 'bg-amber-500/10 border-amber-400 text-amber-900 dark:text-amber-200' 
-                            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-100 dark:border-slate-800 hover:bg-slate-100/80 dark:hover:bg-slate-800'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
-                          <strong className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
-                            {item.area}
-                          </strong>
-                        </div>
-                        <span className="text-[11px] font-black bg-white dark:bg-slate-800 px-2.5 py-1 rounded-xl shadow-xs border border-slate-200/60 dark:border-slate-700">
-                          {item.count} orders
-                        </span>
-                      </div>
-                    ))}
+                    <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/20 uppercase tracking-wider shadow-[0_0_10px_rgba(251,191,36,0.2)]">
+                      Command Center
+                    </span>
                   </div>
                 </div>
-
-                {/* Quick Action Buttons Card */}
-                <div className="bg-gradient-to-br from-slate-900 to-amber-950/40 text-white rounded-3xl p-6 shadow-xl border border-amber-500/30">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xs font-extrabold flex items-center gap-2 text-amber-300">
-                      <Sparkles size={16} /> Quick Operational Shortcuts
-                    </h3>
-                    <span className="text-[10px] text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30">
-                      Express
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    <button 
-                      onClick={handleOpenNewOrderModal}
-                      className="p-3 bg-white/10 hover:bg-white/20 rounded-2xl text-left transition border border-white/10 cursor-pointer group"
-                    >
-                      <PlusCircle size={18} className="text-amber-400 mb-1 group-hover:scale-110 transition-transform" />
-                      <strong className="text-[11px] font-bold block">New Order</strong>
-                      <span className="text-[10px] text-slate-300">नवीन ऑर्डर</span>
-                    </button>
-
-                    <button 
-                      onClick={() => onNavigate('packing')}
-                      className="p-3 bg-white/10 hover:bg-white/20 rounded-2xl text-left transition border border-white/10 cursor-pointer group"
-                    >
-                      <PackageCheck size={18} className="text-amber-400 mb-1 group-hover:scale-110 transition-transform" />
-                      <strong className="text-[11px] font-bold block">Production</strong>
-                      <span className="text-[10px] text-slate-300">उत्पादन पॅकिंग</span>
-                    </button>
-
-                    <button 
-                      onClick={() => onNavigate('delivery')}
-                      className="p-3 bg-white/10 hover:bg-white/20 rounded-2xl text-left transition border border-white/10 cursor-pointer group"
-                    >
-                      <Truck size={18} className="text-indigo-400 mb-1 group-hover:scale-110 transition-transform" />
-                      <strong className="text-[11px] font-bold block">Dispatch</strong>
-                      <span className="text-[10px] text-slate-300">डिलिव्हरी</span>
-                    </button>
-
-                    <button 
-                      onClick={() => handleOpenMetricDetail({
-                  title: 'Pending Payments & Uncollected Dues',
-                  subtitle: 'Orders with pending balance requiring payment collection',
-                  icon: DollarSign,
-                  iconColor: 'text-amber-600 bg-amber-500/10 border-amber-200',
-                  badgeText: 'Unpaid Receipts',
-                  type: 'payment',
-                  description: 'View unpaid customer orders. Collect payment or dispatch WhatsApp reminders.'
-                })}
-                      className="p-3 bg-white/10 hover:bg-white/20 rounded-2xl text-left transition border border-white/10 cursor-pointer group"
-                    >
-                      <DollarSign size={18} className="text-emerald-400 mb-1 group-hover:scale-110 transition-transform" />
-                      <strong className="text-[11px] font-bold block">Collect</strong>
-                      <span className="text-[10px] text-slate-300">पेमेंट जमा</span>
-                    </button>
-                  </div>
+                
+                <div className="relative z-10 flex flex-col gap-1.5">
+                  {[
+                    { id: 1, label: 'Booking Received', count: metrics.statusPipeline.bookingReceived, color: 'bg-slate-800', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]' },
+                    { id: 2, label: 'Production Started', count: metrics.statusPipeline.productionStarted, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]' },
+                    { id: 3, label: 'Packing Started', count: metrics.statusPipeline.packingStarted, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]' },
+                    { id: 4, label: 'Packing Completed', count: metrics.statusPipeline.packingCompleted, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]' },
+                    { id: 5, label: 'Ready for Dispatch', count: metrics.statusPipeline.readyForDispatch, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]' },
+                    { id: 6, label: 'Out for Delivery', count: metrics.statusPipeline.outForDelivery, color: 'bg-indigo-950', textColor: 'text-indigo-400', progressColor: 'bg-indigo-400', glow: 'shadow-[0_0_12px_rgba(129,140,248,0.4)]' },
+                    { id: 7, label: 'Delivered', count: metrics.statusPipeline.delivered, color: 'bg-emerald-950', textColor: 'text-emerald-400', progressColor: 'bg-emerald-400', glow: 'shadow-[0_0_12px_rgba(52,211,153,0.4)]' }
+                  ].map((step, idx, arr) => (
+                    <div key={step.id} className="relative group z-10">
+                      {idx !== arr.length - 1 && (
+                        <div className="absolute left-[19px] top-[32px] bottom-[-6px] w-[2px] bg-slate-700/50 -z-10"></div>
+                      )}
+                      <div className="relative z-10 flex items-center gap-4 p-2 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/10">
+                        <div className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-black ${step.color} ${step.textColor} ${step.count > 0 ? step.glow + ' ring-1 ring-' + step.progressColor.split('-')[1] + '-500/50' : 'ring-1 ring-white/10'}`}>
+                          {step.id}
+                        </div>
+                        <span className={`text-[11px] font-bold flex-1 tracking-wide ${step.count > 0 ? 'text-white' : 'text-slate-400'}`}>{step.label}</span>
+                        <div className="hidden sm:block w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner ring-1 ring-white/5">
+                          <div className={`h-full ${step.progressColor} rounded-full transition-all duration-1000 ${step.count > 0 ? step.glow : ''}`} style={{ width: step.count > 0 ? '100%' : '0%' }}></div>
+                        </div>
+                        <div className={`w-10 text-center bg-slate-800/80 px-2 py-1 rounded-md border border-slate-700/50 shadow-inner`}>
+                          <span className={`text-[11px] font-black ${step.count > 0 ? step.textColor : 'text-slate-500'}`}>{step.count}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
+{/* Active Orders by Area */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 mb-4">
+                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <MapPin size={18} className="text-amber-500" /> Active Orders by Area
+                  </h2>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full">
+                    {metrics.activeOrdersByArea.length} Zones
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {metrics.activeOrdersByArea.map((area, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">{area.area}</span>
+                      </div>
+                      <span className="text-[11px] font-black text-slate-900 dark:text-white bg-white dark:bg-slate-900 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 shadow-xs">
+                        {area.count} orders
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </motion.div>
+
+            {/* Quick Operational Shortcuts */}
+            <div className="mt-6 bg-gradient-to-r from-slate-900 to-slate-800 dark:from-slate-950 dark:to-slate-900 rounded-3xl p-6 shadow-md relative overflow-hidden border border-slate-800">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 blur-3xl rounded-full -translate-y-1/2 translate-x-1/2"></div>
+              
+              <div className="flex items-center justify-between mb-4 relative z-10">
+                <h2 className="text-sm font-extrabold text-amber-500 flex items-center gap-1.5">
+                  <Zap size={16} /> Quick Operational Shortcuts
+                </h2>
+                <span className="text-[10px] font-bold text-slate-900 bg-amber-500/20 text-amber-500 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                  Express
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 relative z-10">
+                <button 
+                  onClick={handleOpenNewOrderModal}
+                  className="flex flex-col gap-1 text-left p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition group cursor-pointer"
+                >
+                  <PlusCircle size={16} className="text-amber-400 mb-1 group-hover:scale-110 transition-transform" />
+                  <span className="text-[11px] font-bold text-white">New Order</span>
+                  <span className="text-[10px] text-slate-400">नवीन ऑर्डर</span>
+                </button>
+                <button 
+                  onClick={() => handleOpenMetricDetail({
+                    title: 'To Pack Today (Kitchen Queue)',
+                    subtitle: 'Orders currently pending or undergoing kitchen packing',
+                    icon: ShoppingBag,
+                    iconColor: 'text-amber-600 bg-amber-500/10 border-amber-200',
+                    badgeText: 'Kitchen Queue',
+                    type: 'to_pack',
+                    filterValue: 'TO_PACK',
+                    description: 'Orders requiring item selection, weight verification, and box sealing in the kitchen.'
+                  })}
+                  className="flex flex-col gap-1 text-left p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition group cursor-pointer"
+                >
+                  <Boxes size={16} className="text-amber-400 mb-1 group-hover:scale-110 transition-transform" />
+                  <span className="text-[11px] font-bold text-white">Production</span>
+                  <span className="text-[10px] text-slate-400">उत्पादन पॅकिंग</span>
+                </button>
+                <button 
+                  onClick={() => handleOpenMetricDetail({
+                    title: 'Ready for Dispatch & Delivery Queue',
+                    subtitle: 'Packed orders awaiting route assignment and dispatch',
+                    icon: Truck,
+                    iconColor: 'text-yellow-600 bg-yellow-500/10 border-yellow-200',
+                    badgeText: 'Dispatch Queue',
+                    type: 'status',
+                    filterValue: 'PACKED',
+                    description: 'Orders sealed, box-tagged, and ready for route assignment.'
+                  })}
+                  className="flex flex-col gap-1 text-left p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition group cursor-pointer"
+                >
+                  <Truck size={16} className="text-indigo-400 mb-1 group-hover:scale-110 transition-transform" />
+                  <span className="text-[11px] font-bold text-white">Dispatch</span>
+                  <span className="text-[10px] text-slate-400">डिलिव्हरी</span>
+                </button>
+                <button 
+                  onClick={() => handleOpenMetricDetail({
+                    title: 'Pending Payments & Uncollected Dues',
+                    subtitle: 'Orders with pending balance requiring payment collection',
+                    icon: DollarSign,
+                    iconColor: 'text-amber-600 bg-amber-500/10 border-amber-200',
+                    badgeText: 'Unpaid Receipts',
+                    type: 'payment',
+                    description: 'View unpaid customer orders. Collect payment or dispatch WhatsApp reminders.'
+                  })}
+                  className="flex flex-col gap-1 text-left p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition group cursor-pointer"
+                >
+                  <DollarSign size={16} className="text-emerald-400 mb-1 group-hover:scale-110 transition-transform" />
+                  <span className="text-[11px] font-bold text-white">Collect</span>
+                  <span className="text-[10px] text-slate-400">पेमेंट जमा</span>
+                </button>
+              </div>
+            </div>
+</motion.div>
         )}
 
         {/* ================= TAB 2: SALES & REVENUE ANALYTICS ================= */}
@@ -1046,7 +1057,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                   <div>
-                    <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                    <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
                       <BarChart3 size={18} className="text-amber-500" /> Revenue & Order Trends
                     </h2>
                     <p className="text-[11px] text-slate-500">6-Month revenue performance & seasonal peak forecast</p>
@@ -1080,7 +1091,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {/* Order Channel Distribution Pie Chart */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
                     Order Channel Share
                   </h2>
                   <span className="text-[11px] font-bold text-slate-500">Direct vs Online</span>
@@ -1110,7 +1121,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                   {channelData.map(ch => (
                     <div key={ch.name} className="flex items-center justify-between text-[11px] font-bold">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <span className="w-3 h-3 rounded-full" style={{ backgroundColor: ch.color }}></span>
                         <span className="text-slate-700 dark:text-slate-300">{ch.name}</span>
                       </div>
@@ -1153,7 +1164,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {metrics.topProducts.map((p, idx) => (
                       <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                        <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+                        <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white flex items-center gap-1.5.5">
                           <span className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[11px] font-black flex items-center justify-center shrink-0">
                             #{idx + 1}
                           </span>
@@ -1191,7 +1202,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {/* Dispatch Assistant */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
                     <Truck size={18} className="text-indigo-500" /> Active Dispatch Hub
                   </h2>
                   <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-full">
@@ -1211,7 +1222,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       handleBulkStatusUpdate('Dispatched');
                       triggerToast('All packed orders marked as Out For Delivery!', 'success');
                     }}
-                    className="w-full mt-2 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[11px] font-extrabold shadow-md transition cursor-pointer flex items-center justify-center gap-2"
+                    className="w-full mt-2 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[11px] font-extrabold shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     <Send size={15} /> Mass Dispatch All Ready Orders
                   </button>
@@ -1266,7 +1277,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {/* Stock Overview */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
                     <Boxes size={18} className="text-amber-500" /> Kitchen Raw Material & Goods Stock
                   </h2>
                   <span className="text-[11px] font-bold text-slate-500">Inventory Status</span>
@@ -1353,12 +1364,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </AnimatePresence>
 
       {/* 3. RECENT ORDERS TABLE & BATCH ACTIONS LEDGER */}
-      <div id="orders-ledger-table" className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-5 scroll-mt-6">
+      <div id="orders-ledger-table" className="space-y-5 scroll-mt-6">
         
         {/* Active Filter Indicator Banner */}
         {(statusFilter !== 'ALL' || areaFilter !== 'ALL' || searchQuery || timeHorizon !== 'all') && (
           <div className="p-3 bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 rounded-2xl flex items-center justify-between text-[11px] font-bold animate-in fade-in">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <Filter size={14} className="text-amber-600 shrink-0" />
               <span>Active Filters:</span>
               {timeHorizon !== 'all' && (
@@ -1387,6 +1398,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <button 
               onClick={() => {
                 setTimeHorizon('all');
+                setCustomStartDate('');
+                setCustomEndDate('');
                 setStatusFilter('ALL');
                 setAreaFilter('ALL');
                 setSearchQuery('');
@@ -1399,57 +1412,130 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         )}
 
         {/* Table Controls */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-5 shadow-sm">
+          <div className="shrink-0">
+            <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-1.5">
               Orders Ledger & Dispatch Log
             </h2>
-            <p className="text-[11px] text-slate-500">Live transaction stream with instant status updates & printing</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">Live transaction stream with instant status updates & printing</p>
           </div>
 
-          <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-2.5 w-full lg:w-auto min-w-0">
+          <div className="flex flex-col sm:flex-row flex-wrap xl:flex-nowrap items-stretch sm:items-center justify-end gap-3 w-full xl:w-auto min-w-0 flex-1">
             {/* Search Input */}
-            <div className="relative w-full sm:w-auto">
-              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <div className="relative w-full sm:flex-1 sm:max-w-xs xl:max-w-md shrink-0">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
                 type="text" 
                 placeholder="Search order #, customer, area..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 w-full sm:w-60"
+                className="pl-8 pr-8 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] font-medium focus:outline-none focus:ring-1 focus:ring-amber-500 w-full"
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <X size={14} />
+                <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <X size={12} />
                 </button>
               )}
             </div>
 
-            {/* Area Filter Dropdown */}
-            <select 
-              value={areaFilter}
-              onChange={(e) => setAreaFilter(e.target.value)}
-              className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] font-bold focus:outline-none text-slate-700 dark:text-slate-200 cursor-pointer w-full sm:w-auto"
-            >
-              <option value="ALL">All Areas (सर्व भाग)</option>
-              <option value="Dahisar">Dahisar</option>
-              <option value="Borivali">Borivali</option>
-              <option value="Kandivali">Kandivali</option>
-              <option value="Mira Road">Mira Road</option>
-              <option value="Vasai">Vasai</option>
-              <option value="Virar">Virar</option>
-            </select>
+            <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
+              {/* Area Filter Dropdown */}
+              <select 
+                value={areaFilter}
+                onChange={(e) => setAreaFilter(e.target.value)}
+                className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-700 dark:text-slate-200 cursor-pointer flex-1 sm:w-auto min-w-[140px]"
+              >
+                <option value="ALL">All Areas (सर्व भाग)</option>
+                {(() => {
+                  const bObj = dbStore.getBusiness(businessId);
+                  const zones = bObj?.area_zones && bObj.area_zones.length > 0 
+                    ? bObj.area_zones 
+                    : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
+                  return zones.map(z => (
+                    <option key={z} value={z}>{z}</option>
+                  ));
+                })()}
+              </select>
+
+              {/* Time Filter Dropdown */}
+              <div className="relative shrink-0">
+                <button 
+                  onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                  className="w-9 h-9 flex items-center justify-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  title="Filter by Time"
+                >
+                  <Filter size={16} className="text-amber-500" />
+                </button>
+                
+                {isFilterMenuOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                  <div className="p-2 space-y-1">
+                    {['today', 'yesterday', '7days', '30days', 'all', 'custom'].map((horizon) => (
+                      <button
+                        key={horizon}
+                        onClick={() => {
+                          setTimeHorizon(horizon as TimeHorizon);
+                          if (horizon !== 'custom') setIsFilterMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold transition flex items-center justify-between ${
+                          timeHorizon === horizon 
+                            ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400' 
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        {horizon === 'today' ? 'Today' :
+                         horizon === 'yesterday' ? 'Yesterday' :
+                         horizon === '7days' ? 'Last 7 Days' :
+                         horizon === '30days' ? 'Last 30 Days' :
+                         horizon === 'custom' ? 'Custom Date' : 'All Time'}
+                        {timeHorizon === horizon && <CheckCircle2 size={14} className="text-amber-500" />}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {timeHorizon === 'custom' && (
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500">Start Date</label>
+                        <input 
+                          type="date"
+                          value={customStartDate}
+                          onChange={e => setCustomStartDate(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-medium focus:ring-1 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500">End Date</label>
+                        <input 
+                          type="date"
+                          value={customEndDate}
+                          onChange={e => setCustomEndDate(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-medium focus:ring-1 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                      <button 
+                        onClick={() => setIsFilterMenuOpen(false)}
+                        className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-[11px] font-black transition"
+                      >
+                        Apply Filter
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
 
             {/* Status Pills */}
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-[11px] font-bold overflow-x-auto max-w-full">
+            <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl text-[11px] font-bold overflow-x-auto w-full xl:w-auto border border-slate-200/50 dark:border-slate-700/50 hide-scrollbar shrink-0">
               {['ALL', 'TO_PACK', 'PENDING', 'PACKING', 'PACKED', 'DISPATCHED', 'DELIVERED'].map((st) => (
                 <button 
                   key={st}
                   onClick={() => setStatusFilter(st)}
-                  className={`px-2.5 py-1 rounded-lg transition whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap flex-1 sm:flex-none ${
                     statusFilter === st 
-                      ? 'bg-amber-500 text-slate-950 font-black shadow-xs' 
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-600' 
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 border border-transparent'
                   }`}
                 >
                   {st === 'TO_PACK' ? 'TO PACK TODAY' : st}
@@ -1462,11 +1548,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Selected Items Batch Control Floating Banner */}
         {selectedOrderIds.length > 0 && (
           <div className="p-3 bg-amber-500 text-slate-950 rounded-2xl font-bold text-[11px] flex flex-wrap items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-2">
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5">
               <CheckCircle2 size={18} /> {selectedOrderIds.length} orders selected for batch processing
             </span>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button 
                 onClick={() => handleBulkStatusUpdate('Dispatched')}
                 className="px-3 py-1.5 bg-slate-950 text-white rounded-xl text-[11px] hover:bg-slate-900 transition cursor-pointer"
@@ -1493,29 +1579,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         )}
 
         {/* Orders Table */}
-        <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800">
-          <table className="w-full text-left text-[11px]">
-            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200/80 dark:border-slate-800">
+        <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5">
+          <table className="w-full text-left text-[11px] whitespace-nowrap">
+            <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white">
               <tr>
-                <th className="py-3.5 px-4 w-10">
+                <th className="py-2.5 px-4 w-10">
                   <input 
                     type="checkbox" 
                     onChange={handleSelectAll}
                     checked={selectedOrderIds.length > 0 && selectedOrderIds.length === filteredOrders.length}
-                    className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                    className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer transition-colors"
                   />
                 </th>
-                <th className="py-3.5 px-4">Order ID</th>
-                <th className="py-3.5 px-4">Customer</th>
-                <th className="py-3.5 px-4">Area Zone</th>
-                <th className="py-3.5 px-4">Pipeline Status</th>
-                <th className="py-3.5 px-4">Amount</th>
-                <th className="py-3.5 px-4">Payment</th>
-                <th className="py-3.5 px-4">Time</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
+                <th className="py-2.5 px-4">Order ID</th>
+                <th className="py-2.5 px-4">Customer</th>
+                <th className="py-2.5 px-4">Area Zone</th>
+                <th className="py-2.5 px-4">Pipeline Status</th>
+                <th className="py-2.5 px-4">Amount</th>
+                <th className="py-2.5 px-4">Payment</th>
+                <th className="py-2.5 px-4">Time</th>
+                <th className="py-2.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-black dark:divide-white bg-white dark:bg-slate-900">
               {filteredOrders.map((o) => {
                 const cust = customers.find(c => c.id === o.customer_id);
                 const custName = o.customer_name || (cust ? cust.name : 'Walk-in Customer');
@@ -1524,31 +1610,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 return (
                   <tr 
                     key={o.id}
-                    className={`hover:bg-amber-50/40 dark:hover:bg-slate-800/50 transition-colors ${
-                      isSelected ? 'bg-amber-50/60 dark:bg-slate-800/80' : ''
+                    className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
+                      isSelected ? 'bg-amber-50/50 dark:bg-amber-900/10' : ''
                     }`}
                   >
-                    <td className="py-3.5 px-4">
+                    <td className="py-2.5 px-4">
                       <input 
                         type="checkbox" 
                         checked={isSelected}
                         onChange={() => handleToggleSelectOrder(o.id)}
-                        className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                        className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer transition-colors"
                       />
                     </td>
 
-                    <td className="py-3.5 px-4 font-black text-slate-900 dark:text-white">
+                    <td className="py-2.5 px-4 font-black text-slate-900 dark:text-white">
                       <div className="flex items-center gap-2">
                         <span>{o.order_number}</span>
                         {o.advance_booking && (
-                          <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[9px] font-extrabold border border-amber-200 dark:border-amber-800">
+                          <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 text-[9px] font-extrabold border border-amber-200/80 dark:border-amber-800/60">
                             Advance
                           </span>
                         )}
                       </div>
                     </td>
 
-                    <td className="py-3.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
+                    <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
                       <div>
                         <span>{custName}</span>
                         {o.channel && (
@@ -1559,55 +1645,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </div>
                     </td>
 
-                    <td className="py-3.5 px-4">
-                      <select 
-                        value={o.area || 'Dahisar'}
-                        onChange={(e) => {
-                          const newArea = e.target.value;
-                          dbStore.updateSalesOrder(o.id, { area: newArea });
-                          if (o.customer_id) {
-                            dbStore.updateCustomer(o.customer_id, { area: newArea, shipping_address: `${newArea} Resident` });
-                          }
-                          triggerToast(`Updated Area Zone for Order ${o.order_number} to ${newArea}`, 'info');
-                        }}
-                        className="font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer text-[11px]"
-                      >
-                        <option value="Dahisar">📍 Dahisar</option>
-                        <option value="Borivali">📍 Borivali</option>
-                        <option value="Kandivali">📍 Kandivali</option>
-                        <option value="Mira Road">📍 Mira Road</option>
-                        <option value="Vasai">📍 Vasai</option>
-                        <option value="Virar">📍 Virar</option>
-                      </select>
+                    <td className="py-2.5 px-4 font-semibold text-slate-700 dark:text-slate-300 text-xs">
+                      <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200/80 dark:border-slate-700 font-medium text-[11px] text-slate-700 dark:text-slate-300">
+                        📍 {o.area || 'Dahisar'}
+                      </span>
                     </td>
 
-                    <td className="py-3.5 px-4">
-                      <select 
-                        value={o.status}
-                        onChange={(e) => handleQuickStatusChange(o.id, e.target.value as OrderStatus)}
-                        className={`text-[11px] font-extrabold px-3 py-1 rounded-full border focus:outline-none cursor-pointer ${
-                          o.status === 'Delivered' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800' :
-                          o.status === 'Dispatched' ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800' :
-                          o.status === 'Packed' ? 'bg-yellow-50 dark:bg-yellow-950/40 text-amber-800 dark:text-yellow-300 border-yellow-300 dark:border-yellow-800' :
-                          o.status === 'Packing' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800' :
-                          o.status === 'Cancelled' ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800' :
-                          'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
-                        }`}
-                      >
-                        <option value="Pending">Pending (बुकिंग)</option>
-                        <option value="Packing">Packing Started (पॅकिंग)</option>
-                        <option value="Packed">Ready / Packed (तयार)</option>
-                        <option value="Dispatched">Out for Delivery (निघाले)</option>
-                        <option value="Delivered">Delivered (पूर्ण)</option>
-                        <option value="Cancelled">Cancelled (रद्द)</option>
-                      </select>
+                    <td className="py-2.5 px-4">
+                      <span className={`inline-flex items-center text-[11px] font-bold px-3 py-1 rounded-full border ${
+                        o.status === 'Delivered' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800/60' :
+                        o.status === 'Dispatched' ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800/60' :
+                        o.status === 'Packed' ? 'bg-yellow-50 dark:bg-yellow-950/40 text-amber-800 dark:text-yellow-300 border-yellow-300 dark:border-yellow-800/60' :
+                        o.status === 'Packing' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800/60' :
+                        o.status === 'Cancelled' ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800/60' :
+                        'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                      }`}>
+                        {o.status === 'Pending' ? 'Pending (बुकिंग)' :
+                         o.status === 'Packing' ? 'Packing Started (पॅकिंग)' :
+                         o.status === 'Packed' ? 'Ready / Packed (तयार)' :
+                         o.status === 'Dispatched' ? 'Out for Delivery (निघाले)' :
+                         o.status === 'Delivered' ? 'Delivered (पूर्ण)' :
+                         o.status === 'Cancelled' ? 'Cancelled (रद्द)' : o.status}
+                      </span>
                     </td>
 
-                    <td className="py-3.5 px-4 font-black text-slate-900 dark:text-white">
+                    <td className="py-2.5 px-4 font-black text-slate-900 dark:text-white">
                       ₹{o.total_amount.toLocaleString()}
                     </td>
 
-                    <td className="py-3.5 px-4">
+                    <td className="py-2.5 px-4">
                       <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
                         o.payment_status === 'Paid' 
                           ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200' 
@@ -1619,18 +1685,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-4 text-slate-500 font-medium">
-                      {o.time || '10:15 AM'}
+                    <td className="py-2.5 px-4 text-slate-500 font-medium">
+                      {formatOrderTime(o.time, o.created_at)}
                     </td>
 
-                    <td className="py-3.5 px-4 text-right">
+                    <td className="py-2.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {/* View Tax Invoice button */}
+                        <button 
+                          onClick={() => setViewingInvoiceOrder(o)}
+                          className="p-1.5 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-lg transition cursor-pointer"
+                          title="View & Print Tax Invoice"
+                        >
+                          <FileText size={15} />
+                        </button>
+
                         {/* Notify button */}
                         <button 
                           onClick={() => {
                             setSelectedOrderForNotify(o);
                           }}
-                          className="p-1.5 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-600 rounded-lg transition"
+                          className="p-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg transition cursor-pointer"
                           title="Send Customer Tracking SMS / WhatsApp"
                         >
                           <Send size={15} />
@@ -1639,8 +1714,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {/* View Receipt Detail */}
                         <button 
                           onClick={() => setSelectedOrderForDetail(o)}
-                          className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg transition"
-                          title="View Invoice & QR Code"
+                          className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg transition cursor-pointer"
+                          title="View Specifications & Actions"
                         >
                           <ChevronRight size={18} />
                         </button>
@@ -1653,7 +1728,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {filteredOrders.length === 0 && (
                 <tr>
                   <td colSpan={9} className="text-center py-12 text-slate-400 font-medium">
-                    <div className="flex flex-col items-center justify-center gap-2">
+                    <div className="flex flex-col items-center justify-center gap-1.5">
                       <ShoppingBag size={28} className="text-slate-300 dark:text-slate-600" />
                       <p className="font-bold text-slate-600 dark:text-slate-300 text-xs">
                         No orders found for {horizonLabel}.
@@ -1690,7 +1765,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <activeMetricModal.icon size={22} />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <h3 className="text-base font-black text-slate-900 dark:text-white">
                       {activeMetricModal.title}
                     </h3>
@@ -1809,7 +1884,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           >
                             <td className="py-3.5 px-4 font-black text-slate-900 dark:text-white">
                               {o.order_number}
-                              <span className="block text-[10px] text-slate-400 font-normal">{o.time || '10:15 AM'}</span>
+                              <span className="block text-[10px] text-slate-400 font-normal">{formatOrderTime(o.time, o.created_at)}</span>
                             </td>
 
                             <td className="py-3.5 px-4">
@@ -1843,24 +1918,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             </td>
 
                             <td className="py-3.5 px-4">
-                              <select 
-                                value={o.status}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={(e) => handleQuickStatusChange(o.id, e.target.value as OrderStatus)}
-                                className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border focus:outline-none cursor-pointer ${
-                                  o.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' :
-                                  o.status === 'Dispatched' ? 'bg-indigo-50 text-indigo-700 border-indigo-300' :
-                                  o.status === 'Packed' ? 'bg-yellow-50 text-amber-800 border-yellow-300' :
-                                  o.status === 'Packing' ? 'bg-amber-50 text-amber-800 border-amber-300' :
-                                  'bg-slate-100 text-slate-700 border-slate-300'
-                                }`}
-                              >
-                                <option value="Pending">Pending</option>
-                                <option value="Packing">Packing</option>
-                                <option value="Packed">Packed</option>
-                                <option value="Dispatched">Dispatched</option>
-                                <option value="Delivered">Delivered</option>
-                              </select>
+                              <span className={`inline-flex items-center text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${
+                                o.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' :
+                                o.status === 'Dispatched' ? 'bg-indigo-50 text-indigo-700 border-indigo-300' :
+                                o.status === 'Packed' ? 'bg-yellow-50 text-amber-800 border-yellow-300' :
+                                o.status === 'Packing' ? 'bg-amber-50 text-amber-800 border-amber-300' :
+                                'bg-slate-100 text-slate-700 border-slate-300'
+                              }`}>
+                                {o.status}
+                              </span>
                             </td>
 
                             <td className="py-3.5 px-4 text-right">
@@ -1934,7 +2000,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Showing {modalItems.orders.length || modalItems.products.length} entries
               </span>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button 
                   onClick={() => { setActiveMetricModal(null); setModalSearch(''); }}
                   className="px-4 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold transition cursor-pointer"
@@ -1998,7 +2064,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
                 <div className="text-right">
                   <span className="text-[11px] text-slate-400 block font-mono">Date: {selectedOrderForDetail.order_date}</span>
-                  <span className="text-[11px] font-bold text-amber-600 block">Time: {selectedOrderForDetail.time || '10:15 AM'}</span>
+                  <span className="text-[11px] font-bold text-amber-600 block">Time: {formatOrderTime(selectedOrderForDetail.time, selectedOrderForDetail.created_at)}</span>
                 </div>
               </div>
 
@@ -2029,26 +2095,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+            {/* Vertically stacked action buttons matching invoice specifications */}
+            <div className="flex flex-col space-y-2.5 pt-2">
               <button 
-                onClick={() => setViewingInvoiceOrder(selectedOrderForDetail)}
-                className="w-full sm:flex-1 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black text-[11px] transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                onClick={() => {
+                  setViewingInvoiceOrder(selectedOrderForDetail);
+                  setSelectedOrderForDetail(null);
+                }}
+                className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
               >
                 <Printer size={16} /> Preview & Print Tax Invoice
               </button>
-                            <button
+              <button
                 onClick={() => handleDownload3InchBill(selectedOrderForDetail)}
-                className="w-full sm:w-auto py-3 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-extrabold text-[11px] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
                 title="Download 3-Inch Thermal Bill"
               >
-                <Printer size={15} /> 3" Bill
+                <Printer size={16} /> 3" Bill
               </button>
               <button
                 onClick={() => handleSavePDFInvoice(selectedOrderForDetail)}
-                className="w-full sm:w-auto py-3 px-3 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white rounded-xl font-extrabold text-[11px] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-3.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
                 title="Save & Download Tax Invoice PDF"
               >
-                <Download size={15} /> Save PDF
+                <Download size={16} /> Save PDF
               </button>
               <button 
                 onClick={() => {
@@ -2056,125 +2126,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   setSelectedOrderForDetail(null);
                   setIsPaymentModalOpen(true);
                 }}
-                className="w-full sm:w-auto py-3 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-extrabold text-[11px] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
               >
-                <DollarSign size={15} /> Collect Payment
+                <DollarSign size={16} /> Collect Payment
               </button>
             </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* ================= MODAL 3: EXPRESS NEW ORDER MODAL ================= */}
-      {isNewOrderModalOpen && (
-        <div 
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsNewOrderModalOpen(false);
-          }}
-          className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
-        >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div>
-                <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wider block">EXPRESS DISPATCH</span>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">Create New Faral Order</h3>
-              </div>
-              <button onClick={() => setIsNewOrderModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-full bg-slate-100 dark:bg-slate-800 cursor-pointer">
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateNewOrder} className="space-y-4 text-[11px]">
-              <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Customer Name (ग्राहक नाव)</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Anish Kulkarni"
-                  value={newOrderCustomer}
-                  onChange={(e) => setNewOrderCustomer(e.target.value)}
-                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Phone Number</label>
-                  <input 
-                    type="text" 
-                    placeholder="+91 98200 00000"
-                    value={newOrderPhone}
-                    onChange={(e) => setNewOrderPhone(e.target.value)}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Delivery Area Zone</label>
-                  <select 
-                    value={newOrderArea}
-                    onChange={(e) => setNewOrderArea(e.target.value)}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer"
-                  >
-                    <option value="Dahisar">Dahisar</option>
-                    <option value="Borivali">Borivali</option>
-                    <option value="Kandivali">Kandivali</option>
-                    <option value="Mira Road">Mira Road</option>
-                    <option value="Vasai">Vasai</option>
-                    <option value="Virar">Virar</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Select Faral / Sweet Combo Box</label>
-                <select 
-                  value={newOrderProduct}
-                  onChange={(e) => setNewOrderProduct(e.target.value)}
-                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer"
-                >
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} — ₹{p.selling_price} ({p.unit})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 items-center">
-                <div>
-                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Quantity</label>
-                  <input 
-                    type="number" 
-                    min={1}
-                    value={newOrderQty}
-                    onChange={(e) => setNewOrderQty(Number(e.target.value))}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-
-                <div className="pt-5">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={newOrderAdvance}
-                      onChange={(e) => setNewOrderAdvance(e.target.checked)}
-                      className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer"
-                    />
-                    <span className="font-bold text-slate-800 dark:text-slate-200">Festive Advance Booking</span>
-                  </label>
-                </div>
-              </div>
-
-              <button 
-                type="submit"
-                className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition shadow-lg cursor-pointer"
-              >
-                Confirm Order & Generate Invoice
-              </button>
-            </form>
 
           </div>
         </div>
@@ -2203,7 +2159,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <form onSubmit={handleCollectPaymentSubmit} className="space-y-4 text-[11px]">
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Select Payment Mode</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1.5">
                   {(['UPI', 'Cash', 'Card'] as const).map((m) => (
                     <button 
                       key={m}
@@ -2232,7 +2188,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               <button 
                 type="submit"
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs transition shadow-lg cursor-pointer flex items-center justify-center gap-2"
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs transition shadow-lg cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <CheckCircle2 size={18} /> Confirm Receipt & Close Dues
               </button>
@@ -2267,7 +2223,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 "Hello {selectedOrderForNotify.customer_name || 'Customer'}, your Kokanastha Faral order {selectedOrderForNotify.order_number} is now {selectedOrderForNotify.status}! Track live delivery route at https://kokanasthafaral.com/track/{selectedOrderForNotify.order_number}"
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-1.5">
                 <button 
                   onClick={() => {
                     triggerToast(`WhatsApp alert dispatched for ${selectedOrderForNotify.order_number}!`, 'success');
@@ -2313,7 +2269,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               
               {/* Header */}
               <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-1.5.5">
                   <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
                     <FileText size={18} />
                   </div>
@@ -2340,59 +2296,70 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 />
               </div>
 
-              {/* Action Toolbar */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button 
+              {/* Action buttons in two distinct rows */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 space-y-2 shrink-0">
+                {/* Row 1 */}
+                <div className="grid grid-cols-3 gap-2">
+                  <button
                     onClick={() => handleSavePDFInvoice(viewingInvoiceOrder)}
-                    className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[11px] font-extrabold transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-                    title="Save/Download PDF copy"
+                    className="py-2 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5 shadow-xs transition"
+                    title="Save / Download PDF Invoice Copy"
                   >
-                    <Download size={14} />
-                    <span>Save / Download PDF</span>
+                    <Download size={14} className="shrink-0" />
+                    <span className="truncate">Save / Download PDF</span>
                   </button>
-
+                  <button
+                    onClick={() => handleDownload3InchBill(viewingInvoiceOrder)}
+                    className="py-2 px-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5 shadow-xs transition"
+                    title="Download 3-Inch Thermal Bill"
+                  >
+                    <Printer size={14} className="shrink-0" />
+                    <span className="truncate">3" Bill</span>
+                  </button>
                   <button 
                     onClick={() => handleEmailInvoice(viewingInvoiceOrder, custObj?.email || 'customer@kokanasthafaral.com')}
-                    className="px-3 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-300 rounded-xl text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5"
+                    className="py-2 px-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 rounded-xl text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5 transition"
+                    title="Email PDF Invoice to Customer"
                   >
-                    <Mail size={14} />
-                    <span className="hidden sm:inline">Email Copy</span>
-                  </button>
-
-                  <button 
-                    onClick={() => {
-                      triggerToast(`WhatsApp invoice dispatched for #${viewingInvoiceOrder.order_number}!`, 'success');
-                      dbStore.logActivity(user.id, user.name, user.role, 'WhatsApp Invoice', `Sent invoice #${viewingInvoiceOrder.order_number} link via WhatsApp`, businessId);
-                    }}
-                    className="px-3 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800 rounded-xl text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Send size={14} />
-                    <span className="hidden sm:inline">WhatsApp</span>
+                    <Mail size={14} className="shrink-0" />
+                    <span className="truncate">Email PDF Invoice</span>
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2">
+                {/* Row 2 */}
+                <div className="grid grid-cols-3 gap-2">
+                  {user.role === 'Super Admin' ? (
+                    <button 
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to permanently delete Order #${viewingInvoiceOrder.order_number}?`)) {
+                          dbStore.deleteSalesOrder(viewingInvoiceOrder.id);
+                          dbStore.logActivity(user.id, user.name, user.role, 'Delete Order', `Deleted order #${viewingInvoiceOrder.order_number}`, businessId);
+                          triggerToast(`Order #${viewingInvoiceOrder.order_number} successfully deleted.`, 'info');
+                          setViewingInvoiceOrder(null);
+                        }
+                      }}
+                      className="py-2 px-2 bg-rose-100 dark:bg-rose-950/60 hover:bg-rose-200 dark:hover:bg-rose-900/80 text-rose-700 dark:text-rose-300 rounded-xl text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5 transition"
+                      title="Delete Invoice"
+                    >
+                      <Trash2 size={14} className="shrink-0" />
+                      <span className="truncate">Delete</span>
+                    </button>
+                  ) : (
+                    <div />
+                  )}
                   <button 
                     onClick={() => setViewingInvoiceOrder(null)}
-                    className="px-4 py-2.5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-[11px] font-bold hover:bg-slate-300 dark:hover:bg-slate-700 transition cursor-pointer"
+                    className="py-2 px-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5 transition"
                   >
-                    Close
+                    <X size={14} className="shrink-0" />
+                    <span className="truncate">Close Invoice</span>
                   </button>
                   <button 
                     onClick={() => handlePrintInvoice(viewingInvoiceOrder)}
-                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-[11px] font-black transition cursor-pointer flex items-center gap-1.5 shadow-md"
+                    className="py-2 px-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-[11px] font-black cursor-pointer flex items-center justify-center gap-1.5 shadow-xs transition"
                   >
-                    <Printer size={15} />
-                    <span>Confirm & Print Bill</span>
-                  </button>
-                  <button 
-                    onClick={() => handleDownload3InchBill(viewingInvoiceOrder)}
-                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[11px] font-black transition cursor-pointer flex items-center gap-1.5 shadow-md"
-                    title="Print 3-Inch Thermal Bill"
-                  >
-                    <Printer size={15} />
-                    <span>Print 3" Bill</span>
+                    <Printer size={14} className="shrink-0" />
+                    <span className="truncate">Print</span>
                   </button>
                 </div>
               </div>

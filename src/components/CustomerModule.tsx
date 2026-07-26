@@ -49,6 +49,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   // Form states
   const [formName, setFormName] = useState('');
   const [formGroup, setFormGroup] = useState('Retail');
+  const [formArea, setFormArea] = useState('Dahisar');
   const [formGstin, setFormGstin] = useState('');
   const [formPan, setFormPan] = useState('');
   const [formBilling, setFormBilling] = useState('');
@@ -58,8 +59,10 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   const [formCreditLimit, setFormCreditLimit] = useState(100000);
 
   const resetForm = () => {
+    const bObj = dbStore.getBusiness(businessId);
     setFormName('');
     setFormGroup('Retail');
+    setFormArea(bObj?.default_dispatch_zone || 'Dahisar');
     setFormGstin('');
     setFormPan('');
     setFormBilling('');
@@ -85,6 +88,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setEditingCustomer(cust);
     setFormName(cust.name);
     setFormGroup(cust.group);
+    setFormArea(cust.area || 'Dahisar');
     setFormGstin(cust.gstin);
     setFormPan(cust.pan);
     setFormBilling(cust.billing_address);
@@ -118,6 +122,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
         dbStore.updateCustomer(editingCustomer.id, {
           name: formName.trim(),
           group: formGroup,
+          area: formArea,
           gstin: formGstin.toUpperCase().trim(),
           pan: formPan.toUpperCase().trim(),
           billing_address: formBilling.trim(),
@@ -132,6 +137,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
         dbStore.createCustomer({
           name: formName.trim(),
           group: formGroup,
+          area: formArea,
           gstin: formGstin.toUpperCase().trim(),
           pan: formPan.toUpperCase().trim(),
           billing_address: formBilling.trim(),
@@ -366,7 +372,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
         }
       />
 
-      <div className="px-4 sm:px-6 space-y-6">
+      <div className="px-0.5 sm:px-1 space-y-6">
       {/* Filter and Search Bar */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-center gap-4">
         <div className="relative w-full md:flex-1">
@@ -533,6 +539,27 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                     <option value="Wholesale">Wholesale Trader</option>
                     <option value="Distributor">Primary Distributor</option>
                   </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Area Zone Location</label>
+                  {(() => {
+                    const bObj = dbStore.getBusiness(businessId);
+                    const zones = bObj?.area_zones && bObj.area_zones.length > 0
+                      ? bObj.area_zones
+                      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
+                    return (
+                      <select 
+                        value={formArea}
+                        onChange={(e) => setFormArea(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                      >
+                        {zones.map(z => (
+                          <option key={z} value={z}>{z}</option>
+                        ))}
+                      </select>
+                    );
+                  })()}
                 </div>
 
                 <div className="space-y-1">

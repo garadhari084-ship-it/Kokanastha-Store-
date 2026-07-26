@@ -16,8 +16,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS businesses (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
-    gstin VARCHAR(15) UNIQUE,
-    pan VARCHAR(10) UNIQUE,
+    gstin VARCHAR(15),
+    pan VARCHAR(10),
     billing_address TEXT NOT NULL,
     shipping_address TEXT NOT NULL,
     email VARCHAR(255) NOT NULL,
@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS businesses (
     login_cover_url TEXT,
     upi_qr_url TEXT,
     currency_symbol VARCHAR(10) DEFAULT '₹',
+    currency_default VARCHAR(10) DEFAULT 'INR',
     auto_backup BOOLEAN DEFAULT TRUE,
     low_stock_threshold INTEGER DEFAULT 20,
     audit_retention_days INTEGER DEFAULT 90,
@@ -35,11 +36,17 @@ CREATE TABLE IF NOT EXISTS businesses (
     enable_auto_whatsapp BOOLEAN DEFAULT TRUE,
     enable_auto_sms BOOLEAN DEFAULT TRUE,
     default_dispatch_zone VARCHAR(100) DEFAULT 'Dahisar',
+    area_zones TEXT[] DEFAULT ARRAY['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri']::TEXT[],
     upi_id VARCHAR(255),
     bank_name TEXT,
     account_number VARCHAR(100),
     ifsc_code VARCHAR(50),
     account_holder VARCHAR(255),
+    whatsapp_api_key TEXT,
+    whatsapp_template TEXT,
+    sms_gateway_url TEXT,
+    google_maps_key TEXT,
+    last_supabase_sync TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE
@@ -109,6 +116,7 @@ CREATE TABLE IF NOT EXISTS customers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
     "group" VARCHAR(100) DEFAULT 'Retail', -- Retail, Wholesale, Distributor
+    area VARCHAR(100) DEFAULT 'Dahisar', -- Dahisar, Borivali, Kandivali, Mira Road, Vasai, Virar, etc.
     gstin VARCHAR(15),
     pan VARCHAR(10),
     billing_address TEXT NOT NULL,
@@ -177,13 +185,29 @@ CREATE TABLE IF NOT EXISTS sales_orders (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_number VARCHAR(100) NOT NULL,
     customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    customer_name VARCHAR(255),
+    area VARCHAR(100) DEFAULT 'Dahisar',
+    channel VARCHAR(100) DEFAULT 'Direct Order',
+    time VARCHAR(50),
+    is_overdue BOOLEAN DEFAULT FALSE,
     order_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    delivery_date DATE,
     status VARCHAR(50) NOT NULL DEFAULT 'Pending' CHECK (status IN ('Pending', 'Packing', 'Packed', 'Dispatched', 'Delivered', 'Cancelled')),
     payment_status VARCHAR(50) NOT NULL DEFAULT 'Unpaid' CHECK (payment_status IN ('Unpaid', 'Partial', 'Paid')),
+    payment_mode VARCHAR(100) DEFAULT 'Cash',
+    paid_amount DECIMAL(15,2) DEFAULT 0.00,
     delivery_status VARCHAR(50) NOT NULL DEFAULT 'Pending' CHECK (delivery_status IN ('Pending', 'Packing', 'Packed', 'Dispatched', 'Delivered', 'Cancelled')),
     advance_booking BOOLEAN DEFAULT FALSE,
     total_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
     qr_code_data TEXT NOT NULL, -- QR Code containing: Order ID, customer, total items, etc.
+    delivery_partner VARCHAR(100),
+    delivery_person_name VARCHAR(255),
+    delivery_person_phone VARCHAR(50),
+    tracking_number VARCHAR(100),
+    dispatch_notes TEXT,
+    dispatched_at TIMESTAMP WITH TIME ZONE,
+    packing_started_at TIMESTAMP WITH TIME ZONE,
+    packing_completed_at TIMESTAMP WITH TIME ZONE,
     business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -204,7 +228,7 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
 );
 
 -- ====================================================================
--- 4. PACKING & LOGISTICS TABLES (SPECIAL CLIENT CORE REQUIREMENT)
+-- 4. PACKING & LOGISTICS TABLES
 -- ====================================================================
 
 -- Packing Verification Sessions
@@ -231,7 +255,7 @@ CREATE TABLE IF NOT EXISTS packing_scan_logs (
 );
 
 -- ====================================================================
--- 5. STOCK LEDGER & SYSTEM LOGS
+-- 5. STOCK LEDGER, CHAT & SYSTEM LOGS
 -- ====================================================================
 
 -- Stock Logs (Audit Trail for Inventory valuation and FIFO tracking)
@@ -255,6 +279,17 @@ CREATE TABLE IF NOT EXISTS system_audit_logs (
     action VARCHAR(255) NOT NULL, -- 'Login', 'Create Customer', 'Export Excel', 'Complete Packing', etc.
     details TEXT,
     ip_address VARCHAR(45),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE
+);
+
+-- Internal Chat Messages
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sender_id UUID NOT NULL REFERENCES users_profiles(id) ON DELETE CASCADE,
+    receiver_id UUID NOT NULL REFERENCES users_profiles(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE
 );

@@ -322,7 +322,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         }
       />
 
-      <div className="px-4 sm:px-6 space-y-6">
+      <div className="px-0.5 sm:px-1 space-y-6">
       {/* ========================================================================= */}
       {/* PAGE VIEW A: DEDICATED PACKING STATION FOR A SELECTED ORDER               */}
       {/* ========================================================================= */}

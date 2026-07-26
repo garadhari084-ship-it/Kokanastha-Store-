@@ -65,7 +65,7 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({ businessId, triggerT
         }
       />
 
-      <div className="px-4 sm:px-6 space-y-6">
+      <div className="px-0.5 sm:px-1 space-y-6">
       {/* Filter and stats */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="relative w-full md:w-[350px]">

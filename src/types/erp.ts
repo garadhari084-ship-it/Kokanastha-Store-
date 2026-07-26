@@ -15,6 +15,7 @@ export interface Business {
   logo_url?: string;
   login_cover_url?: string;
   currency_symbol?: string;
+  currency_default?: string;
   auto_backup?: boolean;
   low_stock_threshold?: number;
   audit_retention_days?: number;
@@ -22,6 +23,7 @@ export interface Business {
   enable_auto_whatsapp?: boolean;
   enable_auto_sms?: boolean;
   default_dispatch_zone?: string;
+  area_zones?: string[];
   last_supabase_sync?: string;
   upi_id?: string;
   upi_qr_url?: string;
@@ -29,6 +31,10 @@ export interface Business {
   account_number?: string;
   ifsc_code?: string;
   account_holder?: string;
+  whatsapp_api_key?: string;
+  whatsapp_template?: string;
+  sms_gateway_url?: string;
+  google_maps_key?: string;
 }
 
 export interface UserProfile {
@@ -147,8 +153,11 @@ export interface SalesOrder {
   time?: string; // e.g. '10:15 AM'
   is_overdue?: boolean;
   order_date: string;
+  delivery_date?: string;
   status: OrderStatus;
   payment_status: 'Unpaid' | 'Partial' | 'Paid';
+  payment_mode?: 'Cash' | 'UPI / QR' | 'Card' | 'Bank Transfer' | 'Credit / On Account' | string;
+  paid_amount?: number;
   delivery_status: OrderStatus;
   items: SalesItem[];
   advance_booking: boolean;

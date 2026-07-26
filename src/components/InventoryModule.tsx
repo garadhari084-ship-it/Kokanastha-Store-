@@ -139,7 +139,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         }
       />
 
-      <div className="px-4 sm:px-6 space-y-6">
+      <div className="px-0.5 sm:px-1 space-y-6">
       {/* Valuation Panels Trailing */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 rounded-xl shadow-xs">

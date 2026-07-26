@@ -26,7 +26,9 @@ import {
   Clock,
   Layers,
   Server,
-  Trash2
+  Trash2,
+  Plus,
+  X
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { Business, UserProfile } from '../types/erp';
@@ -56,8 +58,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [name, setName] = useState(business?.name || 'Kokanastha Faral ERP');
   const [gstin, setGstin] = useState(business?.gstin || '27AAAAA0000A1Z5');
   const [pan, setPan] = useState(business?.pan || 'AAAAA0000A');
-  const [invoicePrefix, setInvoicePrefix] = useState(business?.invoice_prefix || 'KOK');
-  const [taxRateDefault, setTaxRateDefault] = useState<number>(business?.tax_rate_default || 18);
+  const [invoicePrefix, setInvoicePrefix] = useState(business?.invoice_prefix || 'KOK-');
+  const [taxRateDefault, setTaxRateDefault] = useState<number>(business?.tax_rate_default ?? 18);
   const [billingAddress, setBillingAddress] = useState(business?.billing_address || 'Warehouse 4B, Apex Industrial Estate, Dahisar East, Mumbai 400068');
   const [logoUrl, setLogoUrl] = useState(business?.logo_url || '');
   const [loginCoverUrl, setLoginCoverUrl] = useState(business?.login_cover_url || '');
@@ -71,6 +73,14 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [enableAutoWhatsapp, setEnableAutoWhatsapp] = useState<boolean>(business?.enable_auto_whatsapp ?? true);
   const [enableAutoSms, setEnableAutoSms] = useState<boolean>(business?.enable_auto_sms ?? true);
   const [defaultDispatchZone, setDefaultDispatchZone] = useState<string>(business?.default_dispatch_zone || 'Dahisar');
+  
+  // Dynamic Area Zone Locations
+  const [areaZones, setAreaZones] = useState<string[]>(
+    business?.area_zones && business.area_zones.length > 0 
+      ? business.area_zones 
+      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri']
+  );
+  const [newAreaInput, setNewAreaInput] = useState('');
 
   // Tenant Payment & UPI QR Configurations
   const [upiId, setUpiId] = useState(business?.upi_id || '9820769697@okicici');
@@ -80,22 +90,90 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [ifscCode, setIfscCode] = useState(business?.ifsc_code || 'NKGS0000092');
   const [accountHolder, setAccountHolder] = useState(business?.account_holder || business?.name || 'Kokanastha Faral & Sweets');
 
-  // API Integration configurations (Simulated keys)
-  const [whatsappApiKey, setWhatsappApiKey] = useState('WA_LIVE_KEY_OMNIPACK_SIM_2026');
-  const [whatsappTemplate, setWhatsappTemplate] = useState('Dear {{1}}, your order {{2}} has been packed!');
-  const [smsGatewayUrl, setSmsGatewayUrl] = useState('https://api.sms-gateway.in/v1/send');
-  const [googleMapsKey, setGoogleMapsKey] = useState('AIzaSy_SimulatedMapKey_Omnipack');
+  // API Integration configurations
+  const [whatsappApiKey, setWhatsappApiKey] = useState(business?.whatsapp_api_key || 'WA_LIVE_KEY_OMNIPACK_SIM_2026');
+  const [whatsappTemplate, setWhatsappTemplate] = useState(business?.whatsapp_template || 'Dear {{1}}, your order {{2}} has been packed!');
+  const [smsGatewayUrl, setSmsGatewayUrl] = useState(business?.sms_gateway_url || 'https://api.sms-gateway.in/v1/send');
+  const [googleMapsKey, setGoogleMapsKey] = useState(business?.google_maps_key || 'AIzaSy_SimulatedMapKey_Omnipack');
 
-  // Keep form synced with current business store state
-  useEffect(() => {
-    const unsub = dbStore.subscribe(() => {
-      const updated = dbStore.getBusiness(businessId);
-      if (updated) {
-        setBusiness(updated);
+  const syncFromBusiness = (bId: string) => {
+    const updated = dbStore.getBusiness(bId);
+    if (updated) {
+      setBusiness(updated);
+      setName(updated.name || '');
+      setGstin(updated.gstin || '');
+      setPan(updated.pan || '');
+      setInvoicePrefix(updated.invoice_prefix || 'KF-');
+      setTaxRateDefault(updated.tax_rate_default ?? 5);
+      setBillingAddress(updated.billing_address || '');
+      setLogoUrl(updated.logo_url || '');
+      setLoginCoverUrl(updated.login_cover_url || '');
+      setCurrencySymbol(updated.currency_symbol || '₹');
+      setAutoBackup(updated.auto_backup ?? true);
+      setLowStockThreshold(updated.low_stock_threshold || 20);
+      setAuditRetentionDays(updated.audit_retention_days || 90);
+      setDefaultTheme(updated.default_theme || 'midnight-gold');
+      setEnableAutoWhatsapp(updated.enable_auto_whatsapp ?? true);
+      setEnableAutoSms(updated.enable_auto_sms ?? true);
+      setDefaultDispatchZone(updated.default_dispatch_zone || 'Dahisar');
+      if (updated.area_zones && updated.area_zones.length > 0) {
+        setAreaZones(updated.area_zones);
       }
-    });
-    return unsub;
+      setUpiId(updated.upi_id || '');
+      setUpiQrUrl(updated.upi_qr_url || '');
+      setBankName(updated.bank_name || '');
+      setAccountNumber(updated.account_number || '');
+      setIfscCode(updated.ifsc_code || '');
+      setAccountHolder(updated.account_holder || '');
+      setWhatsappApiKey(updated.whatsapp_api_key || 'WA_LIVE_KEY_OMNIPACK_SIM_2026');
+      setWhatsappTemplate(updated.whatsapp_template || 'Dear {{1}}, your order {{2}} has been packed!');
+      setSmsGatewayUrl(updated.sms_gateway_url || 'https://api.sms-gateway.in/v1/send');
+      setGoogleMapsKey(updated.google_maps_key || 'AIzaSy_SimulatedMapKey_Omnipack');
+    }
+  };
+
+  // Sync form with current business store state initially or when tenant changes
+  useEffect(() => {
+    syncFromBusiness(businessId);
   }, [businessId]);
+
+  const handleAddAreaZone = () => {
+    const trimmed = newAreaInput.trim();
+    if (!trimmed) return;
+    if (areaZones.some(a => a.toLowerCase() === trimmed.toLowerCase())) {
+      triggerToast(`Area Zone "${trimmed}" already exists.`, 'info');
+      return;
+    }
+    const updated = [...areaZones, trimmed];
+    setAreaZones(updated);
+    setNewAreaInput('');
+    try {
+      dbStore.updateBusiness(businessId, { area_zones: updated });
+      triggerToast(`Added Area Zone Location "${trimmed}".`, 'success');
+    } catch (err: any) {
+      triggerToast(err.message || 'Failed to update Area Zone.', 'error');
+    }
+  };
+
+  const handleRemoveAreaZone = (zoneToRemove: string) => {
+    if (areaZones.length <= 1) {
+      triggerToast('At least one Area Zone Location is required.', 'error');
+      return;
+    }
+    const updated = areaZones.filter(z => z !== zoneToRemove);
+    setAreaZones(updated);
+    let newDefault = defaultDispatchZone;
+    if (defaultDispatchZone === zoneToRemove) {
+      newDefault = updated[0] || 'Dahisar';
+      setDefaultDispatchZone(newDefault);
+    }
+    try {
+      dbStore.updateBusiness(businessId, { area_zones: updated, default_dispatch_zone: newDefault });
+      triggerToast(`Removed Area Zone Location "${zoneToRemove}".`, 'info');
+    } catch (err: any) {
+      triggerToast(err.message || 'Failed to remove Area Zone.', 'error');
+    }
+  };
 
   // Handle Logo Upload with Supabase Storage upload
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -229,12 +307,17 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         enable_auto_whatsapp: enableAutoWhatsapp,
         enable_auto_sms: enableAutoSms,
         default_dispatch_zone: defaultDispatchZone,
+        area_zones: areaZones,
         upi_id: upiId.trim(),
         upi_qr_url: upiQrUrl,
         bank_name: bankName.trim(),
         account_number: accountNumber.trim(),
         ifsc_code: ifscCode.trim(),
-        account_holder: accountHolder.trim()
+        account_holder: accountHolder.trim(),
+        whatsapp_api_key: whatsappApiKey.trim(),
+        whatsapp_template: whatsappTemplate.trim(),
+        sms_gateway_url: smsGatewayUrl.trim(),
+        google_maps_key: googleMapsKey.trim()
       });
 
       dbStore.logActivity(
@@ -247,7 +330,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       );
 
       triggerToast('Tenant configurations & API rules saved successfully.', 'success');
-      setBusiness(dbStore.getBusiness(businessId));
+      syncFromBusiness(businessId);
     } catch (e: any) {
       triggerToast(e.message || 'An error occurred while saving settings.', 'error');
     }
@@ -269,7 +352,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         }
       />
 
-      <div className="px-4 sm:px-6 space-y-6">
+      <div className="px-0.5 sm:px-1 space-y-6">
       {/* ================= 1. SUPABASE CLOUD SYNC CONTROL HUB ================= */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl border border-indigo-500/30 shadow-xl relative overflow-hidden">
         <div className="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
@@ -475,14 +558,17 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
 
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-slate-500 uppercase">Default Tax Rate (%)</label>
-                <input 
-                  type="number" 
-                  min={0}
-                  max={100}
+                <select 
                   value={taxRateDefault}
                   onChange={(e) => setTaxRateDefault(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500"
-                />
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 font-medium"
+                >
+                  <option value={0}>0% GST (Exempted / Zero Tax)</option>
+                  <option value={5}>5% GST (Sweets, Faral & Foods)</option>
+                  <option value={12}>12% GST (Processed Foods & Goods)</option>
+                  <option value={18}>18% GST (Standard Commercial Goods)</option>
+                  <option value={28}>28% GST (Luxury / De merit Items)</option>
+                </select>
               </div>
 
               <div className="space-y-1">
@@ -497,6 +583,21 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   <option value="€">€ - Euro (EUR)</option>
                   <option value="£">£ - British Pound (GBP)</option>
                   <option value="A$">A$ - Australian Dollar (AUD)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1 sm:col-span-3">
+                <label className="text-[11px] font-bold text-slate-500 uppercase">System Theme Preset</label>
+                <select 
+                  value={defaultTheme}
+                  onChange={(e) => setDefaultTheme(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 font-medium"
+                >
+                  <option value="midnight-gold">✨ Midnight Gold (Luxury Dark Canvas)</option>
+                  <option value="emerald-erp">🌿 Emerald ERP (Corporate Green Accent)</option>
+                  <option value="sapphire-enterprise">💎 Sapphire Enterprise (Classic Royal Blue)</option>
+                  <option value="dark-twilight">🌙 Dark Twilight (Minimalist Obsidian)</option>
+                  <option value="slate-light">☀️ Slate Light (Clean Modern White)</option>
                 </select>
               </div>
             </div>
@@ -597,12 +698,9 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   onChange={(e) => setDefaultDispatchZone(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 font-semibold"
                 >
-                  <option value="Dahisar">Dahisar Hub</option>
-                  <option value="Borivali">Borivali Hub</option>
-                  <option value="Kandivali">Kandivali Hub</option>
-                  <option value="Malad">Malad Hub</option>
-                  <option value="Goregaon">Goregaon Hub</option>
-                  <option value="Andheri">Andheri Hub</option>
+                  {areaZones.map(zone => (
+                    <option key={zone} value={zone}>📍 {zone} Zone</option>
+                  ))}
                 </select>
               </div>
 
@@ -615,6 +713,66 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   onChange={(e) => setLowStockThreshold(Number(e.target.value))}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500"
                 />
+              </div>
+            </div>
+
+            {/* Area Zone Location Management */}
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <MapPin size={14} className="text-rose-500" />
+                    <span>Area Zone Locations (Used in Create Order & Customer Profiles)</span>
+                  </label>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Configure dispatch locations. These options populate the Area dropdown when creating sales orders.
+                  </p>
+                </div>
+              </div>
+
+              {/* Add Area Location Form */}
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  placeholder="e.g. Mira Road, Thane West, Vasai East..."
+                  value={newAreaInput}
+                  onChange={(e) => setNewAreaInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddAreaZone();
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddAreaZone}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
+                >
+                  <Plus size={14} />
+                  <span>Add Location</span>
+                </button>
+              </div>
+
+              {/* Active Area Zone Badges/Pills */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                {areaZones.map((zone) => (
+                  <span 
+                    key={zone}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/60 text-xs font-bold rounded-full shadow-2xs"
+                  >
+                    <span>📍 {zone}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAreaZone(zone)}
+                      className="p-0.5 hover:bg-amber-200/60 dark:hover:bg-amber-800/60 text-amber-700 dark:text-amber-300 rounded-full transition cursor-pointer"
+                      title={`Remove ${zone}`}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
               </div>
             </div>
           </div>

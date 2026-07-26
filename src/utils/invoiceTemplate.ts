@@ -1,5 +1,6 @@
 import { SalesOrder, Customer, Business, Product } from '../types/erp';
 import { buildUpiPayString, buildBillVerificationString } from './qrCode';
+import { formatOrderTime } from './formatters';
 
 export function numberToWordsIndian(amount: number): string {
   if (!amount || amount <= 0) return 'Zero Rupees only';
@@ -321,7 +322,7 @@ export function generateBillOfSupplyHTML(
         <div class="meta-value">
           Invoice No. : <strong>${order.order_number}</strong><br/>
           Date : ${order.order_date}<br/>
-          Time : ${order.time || '12:22 PM'}
+          Time : ${formatOrderTime(order.time, order.created_at)}
         </div>
       </td>
     </tr>

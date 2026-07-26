@@ -867,7 +867,7 @@ export default function App() {
         </div>
 
         {/* Right Side: Login Form */}
-        <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-20 xl:px-24 bg-slate-50 z-10 shadow-[-20px_0_40px_-10px_rgba(0,0,0,0.1)] relative">
+        <div className="flex-1 flex flex-col justify-center py-12 px-0.5 sm:px-1 lg:px-20 xl:px-24 bg-slate-50 z-10 shadow-[-20px_0_40px_-10px_rgba(0,0,0,0.1)] relative">
           
           <div className="mx-auto w-full max-w-md bg-white p-8 sm:p-10 rounded-3xl border border-slate-200/60 shadow-xl shadow-slate-200/40">
             {/* Mobile Logo (Only visible on small screens) */}
@@ -1166,7 +1166,7 @@ export default function App() {
         
         {/* Top interactive Header bar */}
         {/* Header content */}
-        <header className="sticky top-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 h-14 flex items-center justify-between gap-4">
+        <header className="sticky top-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-0.5 sm:px-1 h-14 flex items-center justify-between gap-4">
           
           <div className="flex items-center gap-3">
             <button className="lg:hidden text-slate-600 cursor-pointer" onClick={() => setIsMobileMenuOpen(true)}>

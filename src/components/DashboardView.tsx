@@ -378,6 +378,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     try {
       dbStore.updateSalesOrder(orderId, { status: newStatus, delivery_status: newStatus });
       triggerToast(`Order status updated to "${newStatus}".`, 'success');
+      
+      const allUsers = dbStore.getUsers(businessId);
+      const packingStaff = allUsers.filter(u => u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack'));
+      const orderNum = allOrders.find(o => o.id === orderId)?.order_number || orderId;
+      
+      if (packingStaff.length > 0) {
+        packingStaff.forEach(staff => {
+          dbStore.sendMessage({
+            sender_id: user?.id || 'sys',
+            receiver_id: staff.id,
+            content: `Sales Order ${orderNum} status has been updated to ${newStatus}.`,
+            business_id: businessId
+          });
+        });
+        triggerToast(`Notification sent to ${packingStaff.length} packaging staff member(s).`, 'success');
+      }
     } catch (err: any) {
       triggerToast(err.message || 'Failed to update order status', 'error');
     }
@@ -386,9 +402,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Bulk Actions
   const handleBulkStatusUpdate = (status: OrderStatus) => {
     if (selectedOrderIds.length === 0) return;
+    
+    const allUsers = dbStore.getUsers(businessId);
+    const packingStaff = allUsers.filter(u => u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack'));
+    
     selectedOrderIds.forEach(id => {
       dbStore.updateSalesOrder(id, { status, delivery_status: status });
+      const orderNum = allOrders.find(o => o.id === id)?.order_number || id;
+      
+      if (packingStaff.length > 0) {
+        packingStaff.forEach(staff => {
+          dbStore.sendMessage({
+            sender_id: user?.id || 'sys',
+            receiver_id: staff.id,
+            content: `Sales Order ${orderNum} status has been updated to ${status}.`,
+            business_id: businessId
+          });
+        });
+      }
     });
+    
+    if (packingStaff.length > 0) {
+      triggerToast(`Notifications sent to ${packingStaff.length} packaging staff member(s) for ${selectedOrderIds.length} orders.`, 'success');
+    }
+    
     triggerToast(`Updated ${selectedOrderIds.length} orders to ${status}.`, 'success');
     setSelectedOrderIds([]);
   };

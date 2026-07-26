@@ -192,6 +192,24 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   const handleQuickStatusChange = (orderId: string, newStatus: OrderStatus) => {
     dbStore.updateSalesOrder(orderId, { status: newStatus });
+    
+    // Add notification
+    const orderNum = orders.find(o => o.id === orderId)?.order_number || orderId;
+    const allUsers = dbStore.getUsers(businessId);
+    const packingStaff = allUsers.filter(u => u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack'));
+    
+    if (packingStaff.length > 0) {
+      packingStaff.forEach(staff => {
+        dbStore.sendMessage({
+          sender_id: user.id,
+          receiver_id: staff.id,
+          content: `Sales Order ${orderNum} status has been updated to ${newStatus}.`,
+          business_id: businessId
+        });
+      });
+      triggerToast(`Notification sent to ${packingStaff.length} packaging staff member(s).`, 'success');
+    }
+
     setOrders(dbStore.getSalesOrders(businessId));
     triggerToast(`Order status updated to ${newStatus}`, 'success');
   };
@@ -439,22 +457,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
         });
 
-        // Send message to packaging users only if it's for delivery
-        if (selectedCustomerId !== 'WALK_IN') {
-          const allUsers = dbStore.getUsers(businessId);
-          const packingStaff = allUsers.filter(u => u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack'));
-          
-          if (packingStaff.length > 0) {
-            packingStaff.forEach(staff => {
-              dbStore.sendMessage({
-                sender_id: user.id,
-                receiver_id: staff.id,
-                content: `Sales Order ${orderNum} has been updated. Please check the new details.`,
-                business_id: businessId
-              });
+        // Send message to packaging users for any edit
+        const allUsers = dbStore.getUsers(businessId);
+        const packingStaff = allUsers.filter(u => u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack'));
+        
+        if (packingStaff.length > 0) {
+          packingStaff.forEach(staff => {
+            dbStore.sendMessage({
+              sender_id: user.id,
+              receiver_id: staff.id,
+              content: `Sales Order ${orderNum} has been updated. Please check the new details.`,
+              business_id: businessId
             });
-            triggerToast(`Notification sent to ${packingStaff.length} packaging staff member(s).`, 'success');
-          }
+          });
+          triggerToast(`Notification sent to ${packingStaff.length} packaging staff member(s).`, 'success');
         }
 
         dbStore.logActivity(

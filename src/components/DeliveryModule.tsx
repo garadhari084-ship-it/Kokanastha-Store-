@@ -506,34 +506,6 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
                       SELECT DELIVERY MODE
                     </label>
-                    {packedList.length > 1 && (
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Switch Order:</span>
-                        <select
-                          value={dispatchingOrder.id}
-                          onChange={(e) => {
-                            const sel = packedList.find(o => o.id === e.target.value);
-                            if (sel) {
-                              setDispatchingOrder(sel);
-                              setDeliveryPartner(sel.delivery_partner || 'Rapido');
-                              setPersonName(sel.delivery_person_name || '');
-                              setPersonPhone(sel.delivery_person_phone || '');
-                              setTrackingNumber(sel.tracking_number || '');
-                            }
-                          }}
-                          className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none"
-                        >
-                          {packedList.map(po => {
-                            const c = customers.find(cust => cust.id === po.customer_id);
-                            return (
-                              <option key={po.id} value={po.id}>
-                                #{po.order_number} - {c?.name || 'Customer'} (₹{po.total_amount.toLocaleString()})
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                    )}
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">

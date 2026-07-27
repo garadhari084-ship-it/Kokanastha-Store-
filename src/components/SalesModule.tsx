@@ -252,6 +252,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partial' | 'Unpaid' | ''>('');
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [paidAmount, setPaidAmount] = useState<number | string>('');
+  const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
 
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -274,6 +275,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setPaymentStatus('');
     setPaymentMode('Cash');
     setPaidAmount('');
+    setPointsToRedeem(0);
     setOrderItems([]);
     setRowProductId('');
     setRowQty(1);
@@ -514,6 +516,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
           business_id: businessId
         });
+
+        // Process Loyalty Points calculation & redemption
+        if (finalCustomerId !== 'WALK_IN') {
+          const loyaltyResult = dbStore.processOrderLoyalty(
+            finalCustomerId,
+            finalAmount,
+            pointsToRedeem,
+            createdOrder.id,
+            businessId
+          );
+          if (loyaltyResult.pointsEarned > 0) {
+            triggerToast(`Customer earned +${loyaltyResult.pointsEarned} loyalty points on Order #${orderNum}!`, 'info');
+          }
+        }
 
         // Update customer outstanding debt with the remaining unpaid balance!
         if (customerObj && finalCustomerId !== 'WALK_IN') {
@@ -1415,6 +1431,51 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     ]}
                   />
                 </div>
+
+                {/* Loyalty Account Banner */}
+                {selectedCustomerId && selectedCustomerId !== 'WALK_IN' && (() => {
+                  const selCust = customers.find(c => c.id === selectedCustomerId);
+                  if (!selCust) return null;
+                  const pts = selCust.loyalty_points || 0;
+                  const tier = selCust.loyalty_tier || 'Silver';
+                  const config = dbStore.getLoyaltyConfig(businessId);
+                  const pointVal = config?.point_value || 1;
+
+                  return (
+                    <div className="md:col-span-4 p-2.5 bg-gradient-to-r from-amber-50 to-indigo-50 dark:from-amber-950/40 dark:to-indigo-950/40 rounded-xl border border-amber-200/80 dark:border-amber-800/60 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 bg-amber-500 text-white rounded-lg font-black text-[10px]">
+                          {tier === 'Platinum' ? '💎 PLATINUM' : tier === 'Gold' ? '🥇 GOLD' : '🥈 SILVER'}
+                        </span>
+                        <div>
+                          <span className="font-bold text-slate-900 dark:text-white block text-[11px]">
+                            {selCust.name} Loyalty Account: <strong className="text-amber-600 dark:text-amber-400 font-extrabold">{pts} Points</strong>
+                          </span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                            Available Discount Value: {currencySymbol}{(pts * pointVal).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {pts > 0 && (
+                        <div className="flex items-center gap-2">
+                          <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                            Redeem Points:
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={pts}
+                            value={pointsToRedeem}
+                            onChange={e => setPointsToRedeem(Math.min(pts, Math.max(0, Number(e.target.value))))}
+                            className="w-20 px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-center text-xs focus:outline-none"
+                            placeholder="0"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-500 uppercase">Area Zone Location</label>

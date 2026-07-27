@@ -35,6 +35,7 @@ export interface Business {
   whatsapp_template?: string;
   sms_gateway_url?: string;
   google_maps_key?: string;
+  loyalty_config?: LoyaltyConfig;
 }
 
 export interface UserProfile {
@@ -94,6 +95,11 @@ export interface Customer {
   phone: string;
   credit_limit: number;
   outstanding_amount: number;
+  loyalty_points?: number;
+  lifetime_spend?: number;
+  loyalty_tier?: 'Silver' | 'Gold' | 'Platinum';
+  birthday?: string;
+  anniversary?: string;
   business_id: string;
   active: boolean;
   created_at: string;
@@ -174,6 +180,10 @@ export interface SalesOrder {
   dispatched_at?: string;
   packing_started_at?: string;
   packing_completed_at?: string;
+  points_earned?: number;
+  points_redeemed?: number;
+  loyalty_discount?: number;
+  subscription_id?: string;
 }
 
 export interface AuditLogEntry {
@@ -240,3 +250,84 @@ export interface BusinessSettings {
   enable_sms_alerts: boolean;
   theme: 'light' | 'dark';
 }
+
+// ==================== LOYALTY PROGRAM TYPES ====================
+export type LoyaltyTier = 'Silver' | 'Gold' | 'Platinum';
+
+export interface LoyaltyConfig {
+  enabled: boolean;
+  spend_per_point: number; // e.g., 100 => 1 point per ₹100 spent
+  point_value: number; // e.g., 1 => 1 point = ₹1 discount
+  silver_min_spend: number; // 0
+  gold_min_spend: number; // 5000
+  platinum_min_spend: number; // 20000
+  gold_multiplier: number; // 1.25
+  platinum_multiplier: number; // 1.5
+  welcome_bonus_points: number; // 50
+  birthday_bonus_points: number; // 100
+  point_expiry_days: number; // 365
+}
+
+export interface LoyaltyLog {
+  id: string;
+  customer_id: string;
+  type: 'Earned' | 'Redeemed' | 'Bonus' | 'Expired' | 'Adjustment';
+  points: number;
+  amount_spent?: number;
+  order_id?: string;
+  notes: string;
+  created_at: string;
+  business_id: string;
+}
+
+// ==================== SUBSCRIPTION MANAGEMENT TYPES ====================
+export type SubscriptionFrequency = 'Weekly' | 'Bi-Weekly' | 'Monthly' | 'Quarterly';
+export type SubscriptionStatus = 'Active' | 'Paused' | 'Cancelled';
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  description: string;
+  frequency: SubscriptionFrequency;
+  price: number;
+  items: SalesItem[];
+  active: boolean;
+  business_id: string;
+}
+
+export interface CustomerSubscription {
+  id: string;
+  subscription_number: string;
+  customer_id: string;
+  customer_name: string;
+  customer_phone: string;
+  plan_name: string;
+  frequency: SubscriptionFrequency;
+  status: SubscriptionStatus;
+  items: SalesItem[];
+  total_amount: number;
+  delivery_area: string;
+  delivery_address: string;
+  next_billing_date: string;
+  last_order_date?: string;
+  last_order_id?: string;
+  auto_renew: boolean;
+  notes?: string;
+  business_id: string;
+  created_at: string;
+}
+
+export const DEFAULT_LOYALTY_CONFIG: LoyaltyConfig = {
+  enabled: true,
+  spend_per_point: 100,
+  point_value: 1,
+  silver_min_spend: 0,
+  gold_min_spend: 10000,
+  platinum_min_spend: 20000,
+  gold_multiplier: 1.25,
+  platinum_multiplier: 1.5,
+  welcome_bonus_points: 50,
+  birthday_bonus_points: 100,
+  point_expiry_days: 365
+};
+

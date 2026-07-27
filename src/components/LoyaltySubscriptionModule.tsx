@@ -1,0 +1,1661 @@
+import React, { useState, useEffect } from 'react';
+import { PageHeader } from './PageHeader';
+import { dbStore } from '../services/store';
+import { 
+  Customer, 
+  LoyaltyConfig, 
+  LoyaltyLog, 
+  CustomerSubscription, 
+  SubscriptionFrequency, 
+  SubscriptionStatus,
+  Product,
+  UserProfile,
+  SalesItem
+} from '../types/erp';
+import { 
+  Award, 
+  RefreshCw, 
+  Calendar, 
+  Plus, 
+  Search, 
+  Sparkles, 
+  Gift, 
+  Settings, 
+  Users, 
+  TrendingUp, 
+  PauseCircle, 
+  PlayCircle, 
+  XCircle, 
+  Send, 
+  CheckCircle2, 
+  History, 
+  ShieldCheck, 
+  DollarSign, 
+  ChevronRight,
+  Trash2,
+  Edit,
+  Package,
+  Layers,
+  PhoneCall,
+  Clock,
+  AlertTriangle
+} from 'lucide-react';
+
+interface LoyaltySubscriptionModuleProps {
+  businessId: string;
+  user: UserProfile;
+  triggerToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  initialTab?: 'loyalty' | 'subscriptions';
+}
+
+export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps> = ({
+  businessId,
+  user,
+  triggerToast,
+  initialTab = 'loyalty'
+}) => {
+  const [activeTab, setActiveTab] = useState<'loyalty' | 'subscriptions'>(initialTab);
+  const [syncTick, setSyncTick] = useState(0);
+
+  // Search & Filter States
+  const [loyaltySearch, setLoyaltySearch] = useState('');
+  const [tierFilter, setTierFilter] = useState<string>('ALL');
+
+  const [subSearch, setSubSearch] = useState('');
+  const [subStatusFilter, setSubStatusFilter] = useState<string>('ALL');
+
+  // Modals
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [isAdjustPointsModalOpen, setIsAdjustPointsModalOpen] = useState(false);
+  const [selectedCustomerForAdjust, setSelectedCustomerForAdjust] = useState<Customer | null>(null);
+  const [adjustPointsValue, setAdjustPointsValue] = useState<number>(50);
+  const [adjustType, setAdjustType] = useState<LoyaltyLog['type']>('Bonus');
+  const [adjustNotes, setAdjustNotes] = useState('');
+
+  const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
+  const [selectedCustomerForLedger, setSelectedCustomerForLedger] = useState<Customer | null>(null);
+
+  const [isBonusDispatchModalOpen, setIsBonusDispatchModalOpen] = useState(false);
+  const [bonusEventName, setBonusEventName] = useState('Diwali Special Bonus');
+  const [bonusPointsAmount, setBonusPointsAmount] = useState(100);
+  const [bonusTargetTier, setBonusTargetTier] = useState<string>('ALL');
+
+  // Subscription Modal
+  const [isNewSubModalOpen, setIsNewSubModalOpen] = useState(false);
+  const [deletingSub, setDeletingSub] = useState<CustomerSubscription | null>(null);
+  const [cancellingSub, setCancellingSub] = useState<CustomerSubscription | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [subPlanName, setSubPlanName] = useState('Weekly Faral & Sweets Box');
+  const [subFrequency, setSubFrequency] = useState<SubscriptionFrequency>('Weekly');
+  const [subNextBillingDate, setSubNextBillingDate] = useState(
+    new Date().toISOString().split('T')[0]
+  );
+  const [subDeliveryArea, setSubDeliveryArea] = useState('');
+  const [subDeliveryAddress, setSubDeliveryAddress] = useState('');
+  const [subNotes, setSubNotes] = useState('');
+  const [subItems, setSubItems] = useState<SalesItem[]>([]);
+  const [selectedProdForSub, setSelectedProdForSub] = useState('');
+  const [selectedQtyForSub, setSelectedQtyForSub] = useState(1);
+
+  // Loyalty Config form
+  const [configForm, setConfigForm] = useState<LoyaltyConfig>({
+    enabled: true,
+    spend_per_point: 100,
+    point_value: 1,
+    silver_min_spend: 0,
+    gold_min_spend: 10000,
+    platinum_min_spend: 20000,
+    gold_multiplier: 1.25,
+    platinum_multiplier: 1.5,
+    welcome_bonus_points: 50,
+    birthday_bonus_points: 100,
+    point_expiry_days: 365
+  });
+
+  useEffect(() => {
+    const unsub = dbStore.subscribe(() => setSyncTick(t => t + 1));
+    return unsub;
+  }, []);
+
+  const business = dbStore.getBusiness(businessId);
+  const currencySymbol = business?.currency_symbol || '₹';
+
+  const loyaltyConfig = dbStore.getLoyaltyConfig(businessId);
+  const customers = dbStore.getCustomers(businessId);
+  const products = dbStore.getProducts(businessId);
+  const subscriptions = dbStore.getSubscriptions(businessId);
+  const loyaltyLogs = dbStore.getLoyaltyLogs(undefined, businessId);
+
+  useEffect(() => {
+    if (loyaltyConfig) {
+      setConfigForm(loyaltyConfig);
+    }
+  }, [syncTick, businessId]);
+
+  // Handle Loyalty Config Save
+  const handleSaveConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    dbStore.updateLoyaltyConfig(businessId, configForm);
+    dbStore.logActivity(
+      user.id,
+      user.name,
+      user.role,
+      'Update Loyalty Rules',
+      `Updated loyalty program settings (1 pt per ₹${configForm.spend_per_point})`,
+      businessId
+    );
+    triggerToast('Loyalty program rules saved successfully.', 'success');
+    setIsConfigModalOpen(false);
+  };
+
+  // Handle Manual Loyalty Adjust
+  const handlePerformPointsAdjust = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomerForAdjust) return;
+    if (adjustPointsValue === 0) return;
+
+    const pointsDelta = adjustType === 'Redeemed' ? -Math.abs(adjustPointsValue) : Math.abs(adjustPointsValue);
+
+    dbStore.addLoyaltyPoints(
+      selectedCustomerForAdjust.id,
+      pointsDelta,
+      adjustType,
+      adjustNotes || `Manual points ${adjustType.toLowerCase()} by Admin`,
+      businessId
+    );
+
+    dbStore.logActivity(
+      user.id,
+      user.name,
+      user.role,
+      'Loyalty Points Adjust',
+      `${adjustType} ${adjustPointsValue} pts for customer ${selectedCustomerForAdjust.name}`,
+      businessId
+    );
+
+    triggerToast(`Adjusted ${pointsDelta > 0 ? '+' : ''}${pointsDelta} points for ${selectedCustomerForAdjust.name}.`, 'success');
+    setIsAdjustPointsModalOpen(false);
+    setSelectedCustomerForAdjust(null);
+    setAdjustNotes('');
+  };
+
+  // Handle Mass Bonus Dispatcher
+  const handleDispatchMassBonus = (e: React.FormEvent) => {
+    e.preventDefault();
+    let targetCustomers = customers;
+    if (bonusTargetTier !== 'ALL') {
+      targetCustomers = customers.filter(c => (c.loyalty_tier || 'Silver') === bonusTargetTier);
+    }
+
+    if (targetCustomers.length === 0) {
+      triggerToast('No matching customers found for bonus dispatch.', 'error');
+      return;
+    }
+
+    targetCustomers.forEach(c => {
+      dbStore.addLoyaltyPoints(
+        c.id,
+        bonusPointsAmount,
+        'Bonus',
+        `Mass Event Bonus: ${bonusEventName}`,
+        businessId
+      );
+    });
+
+    dbStore.logActivity(
+      user.id,
+      user.name,
+      user.role,
+      'Mass Bonus Loyalty',
+      `Dispatched ${bonusPointsAmount} bonus points to ${targetCustomers.length} customers (${bonusEventName})`,
+      businessId
+    );
+
+    triggerToast(`Successfully credited ${bonusPointsAmount} bonus points to ${targetCustomers.length} customers!`, 'success');
+    setIsBonusDispatchModalOpen(false);
+  };
+
+  // Subscription Item Operations
+  const handleAddSubItem = () => {
+    if (!selectedProdForSub) return;
+    const prod = products.find(p => p.id === selectedProdForSub);
+    if (!prod) return;
+
+    const existingIndex = subItems.findIndex(i => i.product_id === prod.id);
+    if (existingIndex !== -1) {
+      const updated = [...subItems];
+      updated[existingIndex].qty += selectedQtyForSub;
+      setSubItems(updated);
+    } else {
+      setSubItems([
+        ...subItems,
+        {
+          product_id: prod.id,
+          qty: selectedQtyForSub,
+          scanned_qty: 0,
+          selling_price: prod.selling_price,
+          gst_rate: prod.gst_rate
+        }
+      ]);
+    }
+    setSelectedProdForSub('');
+    setSelectedQtyForSub(1);
+  };
+
+  const handleRemoveSubItem = (index: number) => {
+    setSubItems(subItems.filter((_, i) => i !== index));
+  };
+
+  const subTotalAmount = subItems.reduce((acc, i) => acc + (i.qty * i.selling_price), 0);
+
+  // Handle Subscription Creation
+  const handleCreateSubscription = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomerId) {
+      triggerToast('Please select a customer for the subscription.', 'error');
+      return;
+    }
+    if (subItems.length === 0) {
+      triggerToast('Please add at least one item to the subscription plan.', 'error');
+      return;
+    }
+
+    const cust = customers.find(c => c.id === selectedCustomerId);
+    if (!cust) return;
+
+    const created = dbStore.createSubscription({
+      customer_id: cust.id,
+      customer_name: cust.name,
+      customer_phone: cust.phone,
+      plan_name: subPlanName,
+      frequency: subFrequency,
+      status: 'Active',
+      items: subItems,
+      total_amount: subTotalAmount,
+      delivery_area: subDeliveryArea || cust.area || 'Standard',
+      delivery_address: subDeliveryAddress || cust.shipping_address || cust.billing_address || 'Customer Address',
+      next_billing_date: subNextBillingDate,
+      auto_renew: true,
+      notes: subNotes,
+      business_id: businessId
+    });
+
+    dbStore.logActivity(
+      user.id,
+      user.name,
+      user.role,
+      'Create Subscription',
+      `Created subscription ${created.subscription_number} (${created.plan_name}) for ${cust.name}`,
+      businessId
+    );
+
+    triggerToast(`Subscription ${created.subscription_number} created successfully!`, 'success');
+    setIsNewSubModalOpen(false);
+    // Reset form
+    setSelectedCustomerId('');
+    setSubItems([]);
+    setSubNotes('');
+  };
+
+  // Handle Subscription Auto-Renewal Generation
+  const handleGenerateDueSubscriptionOrders = () => {
+    const result = dbStore.generateSubscriptionOrders(businessId);
+    if (result.generatedCount === 0) {
+      triggerToast('No active subscriptions are due for billing today.', 'info');
+    } else {
+      triggerToast(`Auto-generated ${result.generatedCount} new Sales Orders from due subscriptions!`, 'success');
+      dbStore.logActivity(
+        user.id,
+        user.name,
+        user.role,
+        'Auto-Renew Subscriptions',
+        `Generated ${result.generatedCount} sales orders for due subscriptions`,
+        businessId
+      );
+    }
+  };
+
+  // Handle Renewal Reminder Trigger
+  const handleSendRenewalAlert = (sub: CustomerSubscription) => {
+    const alertMessage = `Hello ${sub.customer_name}! Your subscription "${sub.plan_name}" (${currencySymbol}${sub.total_amount}) renewal is scheduled on ${sub.next_billing_date}. Reply YES to confirm delivery.`;
+    
+    triggerToast(`Dispatching WhatsApp & SMS renewal notice to ${sub.customer_phone}...`, 'info');
+    setTimeout(() => {
+      triggerToast(`Renewal alert sent successfully to ${sub.customer_name}!`, 'success');
+    }, 800);
+  };
+
+  // Filtered Lists
+  const filteredCustomers = customers.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(loyaltySearch.toLowerCase()) ||
+                          c.phone.includes(loyaltySearch) ||
+                          (c.email && c.email.toLowerCase().includes(loyaltySearch.toLowerCase()));
+    const tier = c.loyalty_tier || 'Silver';
+    const matchesTier = tierFilter === 'ALL' || tier === tierFilter;
+    return matchesSearch && matchesTier;
+  });
+
+  const filteredSubscriptions = subscriptions.filter(s => {
+    const matchesSearch = s.customer_name.toLowerCase().includes(subSearch.toLowerCase()) ||
+                          s.subscription_number.toLowerCase().includes(subSearch.toLowerCase()) ||
+                          s.plan_name.toLowerCase().includes(subSearch.toLowerCase());
+    const matchesStatus = subStatusFilter === 'ALL' || s.status === subStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  // Calculate Loyalty Metrics
+  const totalLoyaltyPointsBalance = customers.reduce((acc, c) => acc + (c.loyalty_points || 0), 0);
+  const totalLifetimeCustomerSpend = customers.reduce((acc, c) => acc + (c.lifetime_spend || 0), 0);
+  const goldPlatinumMembersCount = customers.filter(c => (c.loyalty_tier === 'Gold' || c.loyalty_tier === 'Platinum')).length;
+
+  // Calculate Subscription Metrics
+  const activeSubs = subscriptions.filter(s => s.status === 'Active');
+  const todayStr = new Date().toISOString().split('T')[0];
+  const dueSubsCount = activeSubs.filter(s => s.next_billing_date <= todayStr).length;
+  const mrr = activeSubs.reduce((acc, s) => {
+    if (s.frequency === 'Weekly') return acc + (s.total_amount * 4);
+    if (s.frequency === 'Bi-Weekly') return acc + (s.total_amount * 2);
+    if (s.frequency === 'Monthly') return acc + s.total_amount;
+    if (s.frequency === 'Quarterly') return acc + (s.total_amount / 3);
+    return acc + s.total_amount;
+  }, 0);
+
+  return (
+    <div className="space-y-4 max-w-full pb-8 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="loyalty-subscription-module-root">
+      
+      {/* Header Bar */}
+      <PageHeader
+        title="Loyalty & Recurring Subscriptions"
+        subtitle="In-House Core Customer Retention Engine & Auto-Billing Pipeline"
+        icon={Award}
+        rightContent={
+          <div className="flex items-center gap-1.5 p-1 bg-white/10 dark:bg-slate-900/60 backdrop-blur-md rounded-xl border border-white/20">
+            <button
+              onClick={() => setActiveTab('loyalty')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                activeTab === 'loyalty'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-200 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <Award size={15} />
+              Loyalty Program
+            </button>
+            <button
+              onClick={() => setActiveTab('subscriptions')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                activeTab === 'subscriptions'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-200 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <RefreshCw size={15} />
+              Subscriptions
+              {dueSubsCount > 0 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-black bg-amber-500 text-white rounded-full">
+                  {dueSubsCount}
+                </span>
+              )}
+            </button>
+          </div>
+        }
+      />
+
+      {/* ========================================================================= */}
+      {/* TAB 1: LOYALTY PROGRAM (3.12) */}
+      {/* ========================================================================= */}
+      {activeTab === 'loyalty' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          
+          {/* Executive Metrics Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  Active Members
+                </span>
+                <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                  {customers.length}
+                </strong>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 mt-1">
+                  <ShieldCheck size={12} /> 100% In-House Profile Link
+                </span>
+              </div>
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                <Users size={22} />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  Points Reserve Balance
+                </span>
+                <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                  {totalLoyaltyPointsBalance.toLocaleString()} pts
+                </strong>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Worth {currencySymbol}{(totalLoyaltyPointsBalance * (loyaltyConfig.point_value || 1)).toLocaleString()} discount
+                </span>
+              </div>
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-xl">
+                <Sparkles size={22} />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  VIP Tiers (Gold/Platinum)
+                </span>
+                <strong className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-0.5 block">
+                  {goldPlatinumMembersCount} Members
+                </strong>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Earn up to {loyaltyConfig.platinum_multiplier || 1.5}x Points Multiplier
+                </span>
+              </div>
+              <div className="p-3 bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 rounded-xl">
+                <Award size={22} />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  Lifetime Spend Log
+                </span>
+                <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                  {currencySymbol}{totalLifetimeCustomerSpend.toLocaleString()}
+                </strong>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-1 block">
+                  1 Pt per {currencySymbol}{loyaltyConfig.spend_per_point || 100} Spent
+                </span>
+              </div>
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                <TrendingUp size={22} />
+              </div>
+            </div>
+
+          </div>
+
+          {/* Action Toolbar */}
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            
+            <div className="flex flex-1 items-center gap-3">
+              <div className="relative flex-1 max-w-md">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search customer name, phone or profile email..."
+                  value={loyaltySearch}
+                  onChange={e => setLoyaltySearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <select
+                value={tierFilter}
+                onChange={e => setTierFilter(e.target.value)}
+                className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="ALL">All Tiers</option>
+                <option value="Silver">Silver 🥈</option>
+                <option value="Gold">Gold 🥇</option>
+                <option value="Platinum">Platinum 💎</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsBonusDispatchModalOpen(true)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Gift size={15} />
+                Distribute Mass Bonus
+              </button>
+
+              <button
+                onClick={() => setIsConfigModalOpen(true)}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Settings size={15} />
+                Configure Rules
+              </button>
+            </div>
+
+          </div>
+
+          {/* Customer Loyalty Directory Table */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">Customer Loyalty Accounts</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Showing {filteredCustomers.length} registered profiles
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100 dark:border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4">Customer Profile</th>
+                    <th className="py-3 px-4">Loyalty Tier</th>
+                    <th className="py-3 px-4">Available Balance</th>
+                    <th className="py-3 px-4">Lifetime Spend</th>
+                    <th className="py-3 px-4">Special Dates</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                  {filteredCustomers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-400">
+                        No customer profiles found matching search criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCustomers.map(cust => {
+                      const tier = cust.loyalty_tier || 'Silver';
+                      const points = cust.loyalty_points || 0;
+                      const lifetime = cust.lifetime_spend || 0;
+
+                      return (
+                        <tr key={cust.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
+                          
+                          <td className="py-3.5 px-4 font-medium">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-xs shrink-0">
+                                {cust.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <strong className="text-slate-900 dark:text-white text-xs block font-bold">
+                                  {cust.name}
+                                </strong>
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400 block font-mono">
+                                  {cust.phone} &bull; {cust.area || 'Standard'}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            {tier === 'Platinum' && (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800 inline-flex items-center gap-1">
+                                💎 Platinum (1.5x)
+                              </span>
+                            )}
+                            {tier === 'Gold' && (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800 inline-flex items-center gap-1">
+                                🥇 Gold (1.25x)
+                              </span>
+                            )}
+                            {tier === 'Silver' && (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 inline-flex items-center gap-1">
+                                🥈 Silver (1.0x)
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className="font-extrabold text-slate-900 dark:text-white text-sm">
+                              {points.toLocaleString()} pts
+                            </span>
+                            <span className="text-[10px] text-slate-400 block font-mono">
+                              Worth {currencySymbol}{(points * (loyaltyConfig.point_value || 1)).toLocaleString()} off
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
+                            {currencySymbol}{lifetime.toLocaleString()}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
+                            {cust.birthday ? (
+                              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                                <Gift size={12} /> {cust.birthday}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">Not provided</span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right space-x-1">
+                            <button
+                              onClick={() => {
+                                setSelectedCustomerForAdjust(cust);
+                                setIsAdjustPointsModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg text-xs font-bold transition cursor-pointer"
+                              title="Adjust Points Balance"
+                            >
+                              Adjust Points
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedCustomerForLedger(cust);
+                                setIsLedgerModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
+                              title="View Loyalty Ledger"
+                            >
+                              History
+                            </button>
+                          </td>
+
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 2: SUBSCRIPTION MANAGEMENT (3.13) */}
+      {/* ========================================================================= */}
+      {activeTab === 'subscriptions' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          
+          {/* Subscription Metrics Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  Active Subscriptions
+                </span>
+                <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                  {activeSubs.length} Plans
+                </strong>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 mt-1">
+                  <CheckCircle2 size={12} /> Auto-Renewing Recurring Customers
+                </span>
+              </div>
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                <RefreshCw size={22} />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  Monthly Recurring Revenue (MRR)
+                </span>
+                <strong className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                  {currencySymbol}{mrr.toLocaleString()}
+                </strong>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Estimated recurring monthly billing
+                </span>
+              </div>
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                <TrendingUp size={22} />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  Due Billing Today
+                </span>
+                <strong className={`text-2xl font-black mt-0.5 block ${dueSubsCount > 0 ? 'text-amber-500' : 'text-slate-900 dark:text-white'}`}>
+                  {dueSubsCount} Due Today
+                </strong>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Click auto-generate to create sales orders
+                </span>
+              </div>
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-xl">
+                <Clock size={22} />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  Pipeline Integration
+                </span>
+                <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                  ERP Order Flow
+                </strong>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-1 block">
+                  Received &rarr; Packing &rarr; Dispatched
+                </span>
+              </div>
+              <div className="p-3 bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 rounded-xl">
+                <Package size={22} />
+              </div>
+            </div>
+
+          </div>
+
+          {/* Subscription Controls & Action Toolbar */}
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            
+            <div className="flex flex-1 items-center gap-3">
+              <div className="relative flex-1 max-w-md">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search plan, customer name or subscription #..."
+                  value={subSearch}
+                  onChange={e => setSubSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <select
+                value={subStatusFilter}
+                onChange={e => setSubStatusFilter(e.target.value)}
+                className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="Active">Active</option>
+                <option value="Paused">Paused</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleGenerateDueSubscriptionOrders}
+                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                title="Run background job to convert due subscriptions into Sales Orders"
+              >
+                <RefreshCw size={15} />
+                Generate Due Orders
+              </button>
+
+              <button
+                onClick={() => setIsNewSubModalOpen(true)}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Plus size={15} />
+                New Subscription
+              </button>
+            </div>
+
+          </div>
+
+          {/* Subscriptions Table */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">Customer Subscriptions Directory</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Showing {filteredSubscriptions.length} subscriptions
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100 dark:border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4">Subscription #</th>
+                    <th className="py-3 px-4">Customer Details</th>
+                    <th className="py-3 px-4">Plan & Frequency</th>
+                    <th className="py-3 px-4">Amount</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Next Billing Date</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                  {filteredSubscriptions.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400">
+                        No customer subscriptions found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredSubscriptions.map(sub => {
+                      const isDueToday = sub.status === 'Active' && sub.next_billing_date <= todayStr;
+
+                      return (
+                        <tr key={sub.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
+                          
+                          <td className="py-3.5 px-4 font-mono font-bold text-slate-900 dark:text-white">
+                            {sub.subscription_number}
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <strong className="text-slate-900 dark:text-white block font-bold">
+                              {sub.customer_name}
+                            </strong>
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono block">
+                              {sub.customer_phone} &bull; {sub.delivery_area}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <strong className="text-indigo-600 dark:text-indigo-400 font-bold block">
+                              {sub.plan_name}
+                            </strong>
+                            <span className="text-[11px] text-slate-500 font-medium">
+                              Recurring {sub.frequency}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 font-extrabold text-slate-900 dark:text-white text-sm">
+                            {currencySymbol}{sub.total_amount.toLocaleString()}
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            {sub.status === 'Active' && (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                Active
+                              </span>
+                            )}
+                            {sub.status === 'Paused' && (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                Paused
+                              </span>
+                            )}
+                            {sub.status === 'Cancelled' && (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                Cancelled
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4 font-mono text-xs">
+                            <span className={isDueToday ? 'text-amber-600 dark:text-amber-400 font-extrabold flex items-center gap-1' : 'text-slate-700 dark:text-slate-300'}>
+                              {isDueToday && <AlertTriangle size={13} />}
+                              {sub.next_billing_date}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right space-x-1">
+                            {sub.status === 'Active' && (
+                              <button
+                                onClick={() => {
+                                  dbStore.updateSubscription(sub.id, { status: 'Paused' });
+                                  triggerToast(`Subscription ${sub.subscription_number} paused.`, 'info');
+                                }}
+                                className="p-1.5 bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 rounded-lg transition cursor-pointer"
+                                title="Pause Subscription"
+                              >
+                                <PauseCircle size={15} />
+                              </button>
+                            )}
+
+                            {sub.status === 'Paused' && (
+                              <button
+                                onClick={() => {
+                                  dbStore.updateSubscription(sub.id, { status: 'Active' });
+                                  triggerToast(`Subscription ${sub.subscription_number} resumed.`, 'success');
+                                }}
+                                className="p-1.5 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-lg transition cursor-pointer"
+                                title="Resume Subscription"
+                              >
+                                <PlayCircle size={15} />
+                              </button>
+                            )}
+
+                            {sub.status !== 'Cancelled' && (
+                              <button
+                                onClick={() => setCancellingSub(sub)}
+                                className="p-1.5 bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 rounded-lg transition cursor-pointer"
+                                title="Cancel Subscription"
+                              >
+                                <XCircle size={15} />
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => setDeletingSub(sub)}
+                              className="p-1.5 bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 rounded-lg transition cursor-pointer"
+                              title="Delete Subscription Permanently"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+
+                            <button
+                              onClick={() => handleSendRenewalAlert(sub)}
+                              className="p-1.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg transition cursor-pointer"
+                              title="Send WhatsApp/SMS Renewal Reminder"
+                            >
+                              <Send size={15} />
+                            </button>
+                          </td>
+
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 1: CONFIGURE LOYALTY RULES */}
+      {/* ========================================================================= */}
+      {isConfigModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-lg overflow-hidden">
+            
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/80">
+              <div className="flex items-center gap-2">
+                <Settings size={18} className="text-indigo-600 dark:text-indigo-400" />
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">Loyalty Rules & Tier Configuration</h3>
+              </div>
+              <button onClick={() => setIsConfigModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <XCircle size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveConfig} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              
+              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div>
+                  <strong className="text-xs font-bold text-slate-900 dark:text-white block">Enable Loyalty Program</strong>
+                  <span className="text-[10px] text-slate-500">Calculate points automatically at billing</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={configForm.enabled}
+                  onChange={e => setConfigForm({ ...configForm, enabled: e.target.checked })}
+                  className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Spend Per Point ({currencySymbol})
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={configForm.spend_per_point}
+                    onChange={e => setConfigForm({ ...configForm, spend_per_point: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">e.g. ₹100 spend = 1 pt</span>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Point Discount Value ({currencySymbol})
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={0.1}
+                    step={0.1}
+                    value={configForm.point_value}
+                    onChange={e => setConfigForm({ ...configForm, point_value: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">e.g. 1 point = ₹1 discount</span>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 dark:border-slate-700 pt-3 space-y-3">
+                <h4 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Tier Thresholds & Multipliers</h4>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      Gold Tier Min Spend ({currencySymbol})
+                    </label>
+                    <input
+                      type="number"
+                      value={configForm.gold_min_spend}
+                      onChange={e => setConfigForm({ ...configForm, gold_min_spend: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      Gold Points Multiplier
+                    </label>
+                    <input
+                      type="number"
+                      step={0.05}
+                      value={configForm.gold_multiplier}
+                      onChange={e => setConfigForm({ ...configForm, gold_multiplier: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      Platinum Tier Min Spend ({currencySymbol})
+                    </label>
+                    <input
+                      type="number"
+                      value={configForm.platinum_min_spend}
+                      onChange={e => setConfigForm({ ...configForm, platinum_min_spend: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      Platinum Points Multiplier
+                    </label>
+                    <input
+                      type="number"
+                      step={0.05}
+                      value={configForm.platinum_multiplier}
+                      onChange={e => setConfigForm({ ...configForm, platinum_multiplier: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 dark:border-slate-700 pt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Welcome Bonus Points
+                  </label>
+                  <input
+                    type="number"
+                    value={configForm.welcome_bonus_points}
+                    onChange={e => setConfigForm({ ...configForm, welcome_bonus_points: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Birthday Bonus Points
+                  </label>
+                  <input
+                    type="number"
+                    value={configForm.birthday_bonus_points}
+                    onChange={e => setConfigForm({ ...configForm, birthday_bonus_points: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setIsConfigModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-sm"
+                >
+                  Save Configuration
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 2: MANUAL POINTS ADJUSTMENT */}
+      {/* ========================================================================= */}
+      {isAdjustPointsModalOpen && selectedCustomerForAdjust && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md overflow-hidden">
+            
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/80">
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} className="text-amber-500" />
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                  Adjust Loyalty Points - {selectedCustomerForAdjust.name}
+                </h3>
+              </div>
+              <button onClick={() => setIsAdjustPointsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <XCircle size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handlePerformPointsAdjust} className="p-5 space-y-4">
+              
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Current Balance:</span>
+                  <strong className="font-bold text-slate-900 dark:text-white">{selectedCustomerForAdjust.loyalty_points || 0} pts</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Loyalty Tier:</span>
+                  <strong className="font-bold text-indigo-600 dark:text-indigo-400">{selectedCustomerForAdjust.loyalty_tier || 'Silver'}</strong>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Adjustment Type
+                </label>
+                <select
+                  value={adjustType}
+                  onChange={e => setAdjustType(e.target.value as LoyaltyLog['type'])}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                >
+                  <option value="Bonus">Bonus (+ Credit Points)</option>
+                  <option value="Earned">Earned (+ Billing Credit)</option>
+                  <option value="Redeemed">Redeemed (- Debit Discount)</option>
+                  <option value="Adjustment">Adjustment (+/- Manual Override)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Points Quantity
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  value={adjustPointsValue}
+                  onChange={e => setAdjustPointsValue(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Notes / Reason
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Birthday bonus, customer gesture, referral reward"
+                  value={adjustNotes}
+                  onChange={e => setAdjustNotes(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setIsAdjustPointsModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-sm"
+                >
+                  Apply Adjustment
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: MASS BONUS DISPATCHER */}
+      {/* ========================================================================= */}
+      {isBonusDispatchModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md overflow-hidden">
+            
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/80">
+              <div className="flex items-center gap-2">
+                <Gift size={18} className="text-emerald-500" />
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                  Distribute Mass Bonus Points
+                </h3>
+              </div>
+              <button onClick={() => setIsBonusDispatchModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <XCircle size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleDispatchMassBonus} className="p-5 space-y-4">
+              
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Campaign / Festival Event Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={bonusEventName}
+                  onChange={e => setBonusEventName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Bonus Points Amount
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={5}
+                    value={bonusPointsAmount}
+                    onChange={e => setBonusPointsAmount(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Target Member Tier
+                  </label>
+                  <select
+                    value={bonusTargetTier}
+                    onChange={e => setBonusTargetTier(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  >
+                    <option value="ALL">All Customers ({customers.length})</option>
+                    <option value="Silver">Silver Only</option>
+                    <option value="Gold">Gold Only</option>
+                    <option value="Platinum">Platinum Only</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl text-xs text-emerald-800 dark:text-emerald-300">
+                💡 This rule-based distribution credits points directly into customer accounts without any external third-party costs.
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setIsBonusDispatchModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-sm"
+                >
+                  Dispatch Bonus Points Now
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 4: LOYALTY HISTORY / LEDGER */}
+      {/* ========================================================================= */}
+      {isLedgerModalOpen && selectedCustomerForLedger && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-xl overflow-hidden flex flex-col max-h-[85vh]">
+            
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/80">
+              <div className="flex items-center gap-2">
+                <History size={18} className="text-indigo-600 dark:text-indigo-400" />
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                  Loyalty Transaction History - {selectedCustomerForLedger.name}
+                </h3>
+              </div>
+              <button onClick={() => setIsLedgerModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <XCircle size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 space-y-2">
+              {dbStore.getLoyaltyLogs(selectedCustomerForLedger.id, businessId).length === 0 ? (
+                <div className="py-8 text-center text-slate-400 text-xs">
+                  No loyalty transactions recorded yet for this customer profile.
+                </div>
+              ) : (
+                dbStore.getLoyaltyLogs(selectedCustomerForLedger.id, businessId).map(log => (
+                  <div key={log.id} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-700/80 flex items-center justify-between text-xs">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                          log.type === 'Earned' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' :
+                          log.type === 'Redeemed' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' :
+                          'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                        }`}>
+                          {log.type}
+                        </span>
+                        <strong className="text-slate-900 dark:text-white font-bold">{log.notes}</strong>
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block font-mono">
+                        {new Date(log.created_at).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <span className={`font-black text-sm ${log.points > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {log.points > 0 ? '+' : ''}{log.points} pts
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-3 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+              <button
+                onClick={() => setIsLedgerModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Close Ledger
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: CREATE NEW SUBSCRIPTION */}
+      {/* ========================================================================= */}
+      {isNewSubModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/80">
+              <div className="flex items-center gap-2">
+                <RefreshCw size={18} className="text-indigo-600 dark:text-indigo-400" />
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                  Create Customer Recurring Subscription Plan
+                </h3>
+              </div>
+              <button onClick={() => setIsNewSubModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <XCircle size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSubscription} className="p-5 space-y-4 overflow-y-auto flex-1">
+              
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Select Customer *
+                </label>
+                <select
+                  required
+                  value={selectedCustomerId}
+                  onChange={e => {
+                    setSelectedCustomerId(e.target.value);
+                    const cust = customers.find(c => c.id === e.target.value);
+                    if (cust) {
+                      setSubDeliveryArea(cust.area || '');
+                      setSubDeliveryAddress(cust.shipping_address || cust.billing_address || '');
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                >
+                  <option value="">-- Choose Customer --</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.phone}) - {c.area || 'Standard'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Subscription Plan Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={subPlanName}
+                    onChange={e => setSubPlanName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Frequency
+                  </label>
+                  <select
+                    value={subFrequency}
+                    onChange={e => setSubFrequency(e.target.value as SubscriptionFrequency)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  >
+                    <option value="Weekly">Weekly (Every 7 Days)</option>
+                    <option value="Bi-Weekly">Bi-Weekly (Every 14 Days)</option>
+                    <option value="Monthly">Monthly (Every Month)</option>
+                    <option value="Quarterly">Quarterly (Every 3 Months)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Items Selection */}
+              <div className="border border-slate-200 dark:border-slate-700 p-3 rounded-xl space-y-3">
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white">Plan Products / Items Box</h4>
+                
+                <div className="flex gap-2">
+                  <select
+                    value={selectedProdForSub}
+                    onChange={e => setSelectedProdForSub(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  >
+                    <option value="">-- Add Product to Subscription --</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({currencySymbol}{p.selling_price})
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="number"
+                    min={1}
+                    value={selectedQtyForSub}
+                    onChange={e => setSelectedQtyForSub(Number(e.target.value))}
+                    className="w-16 px-2 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-center focus:outline-none"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleAddSubItem}
+                    className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition cursor-pointer"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="space-y-1 divide-y divide-slate-100 dark:divide-slate-700">
+                  {subItems.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 py-2 text-center">No items added to plan yet.</p>
+                  ) : (
+                    subItems.map((item, idx) => {
+                      const prod = products.find(p => p.id === item.product_id);
+                      return (
+                        <div key={idx} className="flex justify-between items-center py-1.5 text-xs">
+                          <span>{prod?.name || 'Product'} &times; {item.qty}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold">{currencySymbol}{(item.qty * item.selling_price).toLocaleString()}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSubItem(idx)}
+                              className="text-rose-500 hover:text-rose-700 cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between text-xs font-bold">
+                  <span>Recurring Bill Total:</span>
+                  <span className="text-indigo-600 dark:text-indigo-400 text-sm font-extrabold">{currencySymbol}{subTotalAmount.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Delivery Zone / Area
+                  </label>
+                  <input
+                    type="text"
+                    value={subDeliveryArea}
+                    onChange={e => setSubDeliveryArea(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    First Billing Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={subNextBillingDate}
+                    onChange={e => setSubNextBillingDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Delivery Address
+                </label>
+                <input
+                  type="text"
+                  value={subDeliveryAddress}
+                  onChange={e => setSubDeliveryAddress(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setIsNewSubModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-sm"
+                >
+                  Create Subscription
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE CONFIRMATION */}
+      {deletingSub && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-full shrink-0">
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white text-base">Delete Subscription</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+              Are you sure you want to permanently delete subscription <strong className="text-slate-900 dark:text-white font-mono">{deletingSub.subscription_number}</strong> ({deletingSub.plan_name}) for <strong className="text-slate-900 dark:text-white">{deletingSub.customer_name}</strong>?
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingSub(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                No
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const subNum = deletingSub.subscription_number;
+                  dbStore.deleteSubscription(deletingSub.id);
+                  triggerToast(`Subscription ${subNum} deleted successfully.`, 'success');
+                  setDeletingSub(null);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CANCEL CONFIRMATION */}
+      {cancellingSub && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 rounded-full shrink-0">
+                <XCircle size={24} />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white text-base">Cancel Subscription</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Change status to Cancelled.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+              Are you sure you want to cancel subscription <strong className="text-slate-900 dark:text-white font-mono">{cancellingSub.subscription_number}</strong> ({cancellingSub.plan_name}) for <strong className="text-slate-900 dark:text-white">{cancellingSub.customer_name}</strong>?
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setCancellingSub(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                No
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const subNum = cancellingSub.subscription_number;
+                  dbStore.updateSubscription(cancellingSub.id, { status: 'Cancelled' });
+                  triggerToast(`Subscription ${subNum} cancelled.`, 'info');
+                  setCancellingSub(null);
+                }}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};

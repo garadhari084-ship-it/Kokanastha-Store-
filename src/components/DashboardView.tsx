@@ -1586,17 +1586,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         )}
 
         {/* Table Controls */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-5 shadow-sm">
-          <div className="shrink-0">
-            <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-              Orders Ledger & Dispatch Log
-            </h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">Live transaction stream with instant status updates & printing</p>
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
+          {/* Top Row: Title & Status Pills */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="shrink-0">
+              <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                Orders Ledger & Dispatch Log
+              </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">Live transaction stream with instant status updates & printing</p>
+            </div>
+
+            {/* Status Pills */}
+            <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl text-[11px] font-bold overflow-x-auto border border-slate-200/50 dark:border-slate-700/50 hide-scrollbar max-w-full">
+              {['ALL', 'TO_PACK', 'PENDING', 'PACKING', 'PACKED', 'DISPATCHED', 'DELIVERED'].map((st) => (
+                <button 
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap flex-1 sm:flex-none ${
+                    statusFilter === st 
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-600' 
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 border border-transparent'
+                  }`}
+                >
+                  {st === 'TO_PACK' ? 'TO PACK TODAY' : st}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row flex-wrap xl:flex-nowrap items-stretch sm:items-center justify-end gap-3 w-full xl:w-auto min-w-0 flex-1">
+          {/* Bottom Row: Search, Area Filter, and Date Filter */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800/60">
             {/* Search Input */}
-            <div className="relative w-full sm:flex-1 sm:max-w-xs xl:max-w-md shrink-0">
+            <div className="relative flex-1 min-w-[200px]">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
                 type="text" 
@@ -1612,12 +1633,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
+            <div className="flex items-center gap-3 shrink-0">
               {/* Area Filter Dropdown */}
               <select 
                 value={areaFilter}
                 onChange={(e) => setAreaFilter(e.target.value)}
-                className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-700 dark:text-slate-200 cursor-pointer flex-1 sm:w-auto min-w-[140px]"
+                className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-700 dark:text-slate-200 cursor-pointer min-w-[150px]"
               >
                 <option value="ALL">All Areas (सर्व भाग)</option>
                 {(() => {
@@ -1699,25 +1720,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
             </div>
           </div>
-
-            {/* Status Pills */}
-            <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl text-[11px] font-bold overflow-x-auto w-full xl:w-auto border border-slate-200/50 dark:border-slate-700/50 hide-scrollbar shrink-0">
-              {['ALL', 'TO_PACK', 'PENDING', 'PACKING', 'PACKED', 'DISPATCHED', 'DELIVERED'].map((st) => (
-                <button 
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
-                  className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap flex-1 sm:flex-none ${
-                    statusFilter === st 
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-600' 
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 border border-transparent'
-                  }`}
-                >
-                  {st === 'TO_PACK' ? 'TO PACK TODAY' : st}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
+      </div>
 
         {/* Selected Items Batch Control Floating Banner */}
         {selectedOrderIds.length > 0 && (

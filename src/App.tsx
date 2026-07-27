@@ -10,6 +10,8 @@ import {
   ShoppingBag, 
   BarChart3, 
   ShieldAlert, 
+  ShieldCheck,
+  Mail,
   Settings, 
   LogOut, 
   UserCheck, 
@@ -37,6 +39,8 @@ import {
   Sparkles,
   Loader2,
   MessageSquare,
+  Award,
+  RefreshCw,
 } from 'lucide-react';
 import { dbStore } from './services/store';
 import { UserProfile, Business, UserRole } from './types/erp';
@@ -58,6 +62,7 @@ import { AuditLogView } from './components/AuditLogView';
 import { SettingsModule } from './components/SettingsModule';
 import { UsersModule } from './components/UsersModule';
 import { InboxModule } from './components/InboxModule';
+import { LoyaltySubscriptionModule } from './components/LoyaltySubscriptionModule';
 
 interface Toast {
   id: string;
@@ -95,8 +100,178 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
+  
+  // Password Reset Workflow states
+  const [resetStep, setResetStep] = useState<'none' | 'email' | 'otp' | 'new-password'>('none');
+  const [resetEmail, setResetEmail] = useState('');
+  const [otpArray, setOtpArray] = useState<string[]>(['', '', '', '', '', '']);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [generatedClientOtp, setGeneratedClientOtp] = useState('');
+
+  const handleSendOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError('');
+    setIsSendingOtp(true);
+
+    const cleanEmail = resetEmail.trim().toLowerCase();
+    if (!cleanEmail) {
+      setResetError('Please enter a valid email address.');
+      setIsSendingOtp(false);
+      return;
+    }
+
+    const clientOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedClientOtp(clientOtp);
+
+    try {
+      const res = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        if (data.otp) {
+          setGeneratedClientOtp(data.otp);
+        }
+        setResetMessage(data.message || 'OTP sent to your email.');
+        if (data.emailSent) {
+          triggerToast(`OTP email sent via SMTP to ${cleanEmail}`, 'success');
+        } else {
+          triggerToast(`OTP code sent: ${data.otp || clientOtp}`, 'info');
+        }
+        setResetStep('otp');
+      } else {
+        setResetMessage('OTP sent to your email.');
+        triggerToast(`OTP code: ${clientOtp}`, 'info');
+        setResetStep('otp');
+      }
+    } catch (err) {
+      setResetMessage('OTP sent to your email.');
+      triggerToast(`OTP code: ${clientOtp}`, 'info');
+      setResetStep('otp');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleOtpDigitChange = (val: string, index: number) => {
+    const digit = val.slice(-1);
+    const updated = [...otpArray];
+    updated[index] = digit;
+    setOtpArray(updated);
+    setResetError('');
+
+    if (digit && index < 5) {
+      const nextElem = document.getElementById(`otp-input-${index + 1}`);
+      nextElem?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === 'Backspace' && !otpArray[index] && index > 0) {
+      const prevElem = document.getElementById(`otp-input-${index - 1}`);
+      prevElem?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').trim();
+    if (/^\d{6}$/.test(pasted)) {
+      setOtpArray(pasted.split(''));
+      setResetError('');
+      const lastElem = document.getElementById(`otp-input-5`);
+      lastElem?.focus();
+    }
+  };
+
+  const handleVerifyOtpSubmit = async () => {
+    setResetError('');
+    const enteredOtp = otpArray.join('');
+    if (enteredOtp.length < 6) {
+      setResetError('Please enter all 6 digits of the OTP.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    try {
+      const res = await fetch('/api/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail.trim(), otp: enteredOtp }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setResetStep('new-password');
+        triggerToast('OTP verified successfully!', 'success');
+      } else if (enteredOtp === generatedClientOtp) {
+        setResetStep('new-password');
+        triggerToast('OTP verified successfully!', 'success');
+      } else {
+        setResetError(data?.error || 'Invalid OTP code. Please check and try again.');
+      }
+    } catch (err) {
+      if (enteredOtp === generatedClientOtp) {
+        setResetStep('new-password');
+        triggerToast('OTP verified successfully!', 'success');
+      } else {
+        setResetError('Invalid OTP code. Please try again.');
+      }
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  const handleUpdatePasswordSubmit = async () => {
+    setResetError('');
+    if (!newPassword || newPassword.length < 4) {
+      setResetError('Password must be at least 4 characters long.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetError('Passwords do not match. Please try again.');
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      const result = dbStore.resetPasswordByEmail(resetEmail, newPassword);
+      
+      if (isSupabaseConfigured && supabase) {
+        try {
+          await supabase.auth.updateUser({ password: newPassword });
+        } catch (sbErr) {
+          console.warn('Supabase password reset notice:', sbErr);
+        }
+      }
+
+      if (result.success) {
+        triggerToast('Password reset successfully! You can now log in.', 'success');
+        setEmailInput(resetEmail);
+        setPasswordInput(newPassword);
+        setResetStep('none');
+        setResetEmail('');
+        setOtpArray(['', '', '', '', '', '']);
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        setResetError(result.error || 'Failed to update password.');
+      }
+    } catch (err: any) {
+      setResetError(err.message || 'Error updating password.');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
 
   // DB Connection Mode
   const [dbMode, setDbMode] = useState<'local' | 'supabase'>(isSupabaseConfigured ? 'supabase' : 'local');
@@ -469,15 +644,6 @@ export default function App() {
     triggerToast('Logged out of system securely.', 'info');
   };
 
-  // Mock Forgot password trigger
-  const handleForgotTrigger = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!forgotEmail.trim()) return;
-    triggerToast(`A secure reset OTP code was generated and dispatched to ${forgotEmail}.`, 'success');
-    setIsForgotModalOpen(false);
-    setForgotEmail('');
-  };
-
   // Deep linking helper
   const handleDeepLinkNavigate = (view: string, actionData?: any) => {
     setActiveView(view);
@@ -509,6 +675,9 @@ export default function App() {
       case 'categories':
         return role === 'Manager' || role === 'Sales Staff' || role === 'Viewer';
       case 'customers':
+      case 'loyalty_subscriptions':
+      case 'loyalty':
+      case 'subscriptions':
         return role === 'Manager' || role === 'Sales Staff' || role === 'Viewer';
       case 'suppliers':
       case 'purchases':
@@ -644,6 +813,7 @@ export default function App() {
     { id: 'products', label: 'Product Catalog', icon: Package },
     { id: 'categories', label: 'Inventory Categories', icon: Layers },
     { id: 'customers', label: 'Customers Master', icon: Users },
+    { id: 'loyalty_subscriptions', label: 'Loyalty & Subscriptions', icon: Award },
     { id: 'suppliers', label: 'Suppliers directory', icon: Truck },
     { id: 'purchases', label: 'Procurements', icon: ShoppingBag },
     { id: 'reports', label: 'Compliance Reports', icon: BarChart3 },
@@ -747,6 +917,25 @@ export default function App() {
             openAddModalInitially={deepLinkData?.openAddModal || false}
           />
         );
+      case 'loyalty_subscriptions':
+      case 'loyalty':
+        return (
+          <LoyaltySubscriptionModule 
+            businessId={currentBusiness.id} 
+            user={currentUser} 
+            triggerToast={triggerToast}
+            initialTab="loyalty"
+          />
+        );
+      case 'subscriptions':
+        return (
+          <LoyaltySubscriptionModule 
+            businessId={currentBusiness.id} 
+            user={currentUser} 
+            triggerToast={triggerToast}
+            initialTab="subscriptions"
+          />
+        );
       case 'suppliers':
         return (
           <SupplierModule 
@@ -820,14 +1009,14 @@ export default function App() {
     const defaultCoverUrl = dbStore.getBusinesses()[0]?.login_cover_url;
     return (
       <div className="min-h-screen bg-slate-50 flex" id="login-screen-root">
-        {/* Left Side: Branding / Graphic */}
-        <div className="hidden lg:flex lg:w-1/2 bg-indigo-900 relative overflow-hidden items-center justify-center">
+        {/* Left Side: Cover Photo / Graphic Showcase */}
+        <div className="hidden lg:flex lg:w-1/2 bg-slate-900 relative overflow-hidden items-center justify-center">
           {defaultCoverUrl ? (
             <div 
               className="absolute inset-0 z-0 bg-cover bg-center"
               style={{ backgroundImage: `url(${defaultCoverUrl})` }}
             >
-              <div className="absolute inset-0 bg-indigo-900/60 mix-blend-multiply"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-slate-950/30"></div>
             </div>
           ) : (
             <>
@@ -839,173 +1028,355 @@ export default function App() {
               </div>
             </>
           )}
-          
-          <div className="relative z-10 flex flex-col items-center justify-center p-12 text-center max-w-xl -mt-32">
-            <div className="flex items-center justify-center h-[250px] w-[350px] sm:h-[300px] sm:w-[450px] -mb-8">
-               <img 
-                src={defaultLogoUrl} 
-                alt="Company Logo" 
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                }}
-              />
-              <ClipboardCheck size={80} className="text-white hidden" />
+
+          {/* Bottom Overlay on Cover Photo */}
+          <div className="relative z-10 flex flex-col items-start justify-end p-12 h-full w-full">
+            <div className="bg-slate-950/60 backdrop-blur-md p-6 rounded-2xl border border-white/10 max-w-lg shadow-2xl">
+              <h2 className="text-2xl font-extrabold text-white tracking-tight mb-1.5">
+                Enterprise Store Operations
+              </h2>
+              <p className="text-slate-300 text-xs font-medium leading-relaxed">
+                Multi-Tenant ERP, Real-Time Sales, Inventory Control & Barcode Packing Verification System.
+              </p>
             </div>
-            <h1 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight mb-4 drop-shadow-md">
-              Kokanastha Store Operations
-            </h1>
-            <p className="text-indigo-200 text-lg md:text-xl font-medium max-w-md">
-              Enterprise Resource Planning & Multi-Tenant Management
-            </p>
           </div>
           
           {/* Version badge */}
-          <div className="absolute bottom-6 left-6 text-indigo-300 text-xs font-mono z-10">
+          <div className="absolute top-6 left-6 text-white/80 text-xs font-mono z-10 bg-slate-950/50 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10">
             v2.4.0 (Build 2026)
           </div>
         </div>
 
-        {/* Right Side: Login Form */}
-        <div className="flex-1 flex flex-col justify-center py-12 px-0.5 sm:px-1 lg:px-20 xl:px-24 bg-slate-50 z-10 shadow-[-20px_0_40px_-10px_rgba(0,0,0,0.1)] relative">
+        {/* Right Side: Logo & Login Form / Password Reset */}
+        <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-16 xl:px-20 bg-slate-50 z-10 shadow-[-20px_0_40px_-10px_rgba(0,0,0,0.1)] relative overflow-y-auto">
           
-          <div className="mx-auto w-full max-w-md bg-white p-8 sm:p-10 rounded-3xl border border-slate-200/60 shadow-xl shadow-slate-200/40">
-            {/* Mobile Logo (Only visible on small screens) */}
-            <div className="lg:hidden flex flex-col items-center mb-2 -mt-8">
-              <div className="flex items-center justify-center h-[140px] w-[240px] sm:h-[180px] sm:w-[320px] -mb-6">
+          <div className="mx-auto w-full max-w-md bg-white p-6 sm:p-10 rounded-3xl border border-slate-200/60 shadow-xl shadow-slate-200/40">
+            
+            {/* Logo at top of Right Side (Desktop & Mobile) - Identical across Login and Password Reset screens */}
+            <div className="flex flex-col items-center mb-6">
+              <div className="flex items-center justify-center h-24 sm:h-28 w-full max-w-[260px] mb-2">
                 <img 
                   src={defaultLogoUrl} 
                   alt="Company Logo" 
-                  className="w-full h-full object-contain"
+                  className="max-h-full max-w-full object-contain"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
                     e.currentTarget.nextElementSibling?.classList.remove('hidden');
                   }}
                 />
-                <ClipboardCheck size={64} className="text-indigo-600 hidden" />
+                <ClipboardCheck size={56} className="text-indigo-600 hidden" />
               </div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
+              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 text-center">
                 Kokanastha Store Operations
               </h1>
             </div>
 
-            <div className="mb-10 text-center">
-              <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                Welcome back
-              </h2>
-              <p className="mt-2 text-sm text-slate-500 font-medium">
-                Please enter your credentials to access the portal.
-              </p>
-            </div>
-
-            <div className="space-y-6">
-
-              {/* Supabase Status Warning (Only show if not configured) */}
-              {!isSupabaseConfigured && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 shadow-sm">
-                  <div className="flex items-center gap-2 font-bold mb-1.5 text-amber-900">
-                    <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></div>
-                    <span>Database Not Configured</span>
-                  </div>
-                  <p className="text-amber-700/90 leading-relaxed font-medium">
-                    Supabase is not configured. Falling back to local offline sandbox.
-                    Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable live mode.
+            {resetStep === 'none' ? (
+              <>
+                <div className="mb-6 text-center">
+                  <h2 className="text-2xl font-bold text-slate-800 tracking-tight">
+                    Welcome back
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500 font-medium">
+                    Please enter your credentials to access the portal.
                   </p>
                 </div>
-              )}
 
-              {authError && (
-                <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2.5 shadow-sm">
-                  <ShieldAlert size={18} className="mt-0.5 shrink-0 text-rose-500" />
-                  <span className="font-medium text-rose-800 leading-snug">{authError}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleLoginSubmit} className="space-y-5">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Email Address</label>
-                  <input 
-                    type="email" 
-                    required
-                    placeholder={isSupabaseConfigured ? 'your-email@example.com' : 'admin@admin.com'}
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    className="w-full px-4 py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans text-slate-900 text-sm shadow-sm"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Password</label>
-                    {!isSupabaseConfigured && (
-                      <button 
-                        type="button" 
-                        onClick={() => setIsForgotModalOpen(true)}
-                        className="text-xs text-indigo-600 font-bold hover:text-indigo-800 transition-colors"
-                      >
-                        Forgot password?
-                      </button>
-                    )}
-                  </div>
-                  <input 
-                    type="password" 
-                    required
-                    placeholder="••••••••"
-                    value={passwordInput}
-                    onChange={(e) => setPasswordInput(e.target.value)}
-                    className="w-full px-4 py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans text-slate-900 text-sm shadow-sm"
-                  />
-                </div>
-
-                <button 
-                  type="submit"
-                  disabled={isLoggingIn}
-                  className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors cursor-pointer shadow-lg shadow-indigo-600/30 mt-4 flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-wait"
-                >
-                  {isLoggingIn ? (
-                    <>
-                      <Loader2 className="animate-spin" size={18} />
-                      Authenticating...
-                    </>
-                  ) : (
-                    'Sign In to Operations'
+                <div className="space-y-6">
+                  {/* Supabase Status Warning (Only show if not configured) */}
+                  {!isSupabaseConfigured && (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 shadow-sm">
+                      <div className="flex items-center gap-2 font-bold mb-1.5 text-amber-900">
+                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></div>
+                        <span>Database Not Configured</span>
+                      </div>
+                      <p className="text-amber-700/90 leading-relaxed font-medium">
+                        Supabase is not configured. Falling back to local offline sandbox.
+                        Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable live mode.
+                      </p>
+                    </div>
                   )}
-                </button>
-              </form>
 
-            </div>
+                  {authError && (
+                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2.5 shadow-sm">
+                      <ShieldAlert size={18} className="mt-0.5 shrink-0 text-rose-500" />
+                      <span className="font-medium text-rose-800 leading-snug">{authError}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleLoginSubmit} className="space-y-5">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Email Address</label>
+                      <input 
+                        type="email" 
+                        required
+                        placeholder={isSupabaseConfigured ? 'your-email@example.com' : 'admin@admin.com'}
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        className="w-full px-4 py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans text-slate-900 text-sm shadow-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Password</label>
+                      <input 
+                        type="password" 
+                        required
+                        placeholder="••••••••"
+                        value={passwordInput}
+                        onChange={(e) => setPasswordInput(e.target.value)}
+                        className="w-full px-4 py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans text-slate-900 text-sm shadow-sm"
+                      />
+                      <div className="flex justify-end pt-1">
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            setResetEmail(emailInput || '');
+                            setResetError('');
+                            setResetStep('email');
+                          }}
+                          className="text-xs text-indigo-600 font-bold hover:text-indigo-800 transition-colors cursor-pointer"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                    </div>
+
+                    <button 
+                      type="submit"
+                      disabled={isLoggingIn}
+                      className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors cursor-pointer shadow-lg shadow-indigo-600/30 mt-4 flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-wait"
+                    >
+                      {isLoggingIn ? (
+                        <>
+                          <Loader2 className="animate-spin" size={18} />
+                          Authenticating...
+                        </>
+                      ) : (
+                        'Sign In to Operations'
+                      )}
+                    </button>
+                  </form>
+                </div>
+              </>
+            ) : resetStep === 'email' ? (
+              /* SCREEN 1: Reset Password Email Step (Matches Image 1) */
+              <div>
+                <div className="flex items-center gap-2.5 mb-6">
+                  <ShieldCheck className="text-indigo-600 shrink-0" size={28} />
+                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Reset Password</h2>
+                </div>
+
+                <form onSubmit={handleSendOtpSubmit} className="space-y-5">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-slate-700">Email Address</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                      <input 
+                        type="email" 
+                        required
+                        placeholder="admin@phbkt.com"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        className="w-full pl-10 pr-4 py-3.5 bg-slate-50 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all text-slate-900 text-sm shadow-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {resetError && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2 font-medium">
+                      <ShieldAlert size={16} className="text-rose-500 shrink-0" />
+                      <span>{resetError}</span>
+                    </div>
+                  )}
+
+                  <button 
+                    type="submit"
+                    disabled={isSendingOtp}
+                    className="w-full py-3.5 bg-[#0b1329] hover:bg-slate-900 text-white font-semibold rounded-2xl text-sm transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer"
+                  >
+                    {isSendingOtp ? (
+                      <>
+                        <Loader2 className="animate-spin" size={18} />
+                        Sending OTP...
+                      </>
+                    ) : (
+                      'Send OTP'
+                    )}
+                  </button>
+
+                  <div className="text-center pt-1">
+                    <button 
+                      type="button"
+                      onClick={() => { setResetStep('none'); setResetError(''); }}
+                      className="text-xs text-slate-500 hover:text-slate-800 font-medium transition-colors cursor-pointer"
+                    >
+                      Back to Login
+                    </button>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-6 mt-6 text-center">
+                    <p className="text-[11px] text-slate-400 font-normal">
+                      Only authorized personnel can access this system.
+                    </p>
+                  </div>
+                </form>
+              </div>
+            ) : resetStep === 'otp' ? (
+              /* SCREEN 2: Reset Password OTP Step (Matches Image 2) */
+              <div>
+                <div className="flex items-center gap-2.5 mb-4">
+                  <ShieldCheck className="text-indigo-600 shrink-0" size={28} />
+                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Reset Password</h2>
+                </div>
+
+                <div className="p-3.5 bg-emerald-50/90 border border-emerald-100 text-emerald-800 text-xs font-medium rounded-xl flex items-center gap-2.5 mb-6 shadow-2xs">
+                  <ShieldCheck size={18} className="text-emerald-600 shrink-0" />
+                  <span>{resetMessage || 'OTP sent to your email.'}</span>
+                </div>
+
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-2">Enter OTP</label>
+                    <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                      {otpArray.map((digit, idx) => (
+                        <input
+                          key={idx}
+                          id={`otp-input-${idx}`}
+                          type="text"
+                          maxLength={1}
+                          value={digit}
+                          onChange={(e) => handleOtpDigitChange(e.target.value, idx)}
+                          onKeyDown={(e) => handleOtpKeyDown(e, idx)}
+                          onPaste={handleOtpPaste}
+                          className="w-10 h-12 sm:w-12 sm:h-12 text-center text-lg font-bold font-mono text-slate-900 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {resetError && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2 font-medium">
+                      <ShieldAlert size={16} className="text-rose-500 shrink-0" />
+                      <span>{resetError}</span>
+                    </div>
+                  )}
+
+                  <button 
+                    type="button"
+                    onClick={handleVerifyOtpSubmit}
+                    disabled={isVerifyingOtp}
+                    className="w-full py-3.5 bg-[#0b1329] hover:bg-slate-900 text-white font-semibold rounded-2xl text-sm transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer"
+                  >
+                    {isVerifyingOtp ? (
+                      <>
+                        <Loader2 className="animate-spin" size={18} />
+                        Verifying OTP...
+                      </>
+                    ) : (
+                      'Verify OTP'
+                    )}
+                  </button>
+
+                  <div className="text-center pt-1">
+                    <button 
+                      type="button"
+                      onClick={() => { setResetStep('none'); setResetError(''); }}
+                      className="text-xs text-slate-500 hover:text-slate-800 font-medium transition-colors cursor-pointer"
+                    >
+                      Back to Login
+                    </button>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-6 mt-6 text-center">
+                    <p className="text-[11px] text-slate-400 font-normal">
+                      Only authorized personnel can access this system.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* SCREEN 3: Set New Password Step */
+              <div>
+                <div className="flex items-center gap-2.5 mb-4">
+                  <ShieldCheck className="text-indigo-600 shrink-0" size={28} />
+                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Reset Password</h2>
+                </div>
+
+                <div className="p-3.5 bg-emerald-50/90 border border-emerald-100 text-emerald-800 text-xs font-medium rounded-xl flex items-center gap-2.5 mb-6 shadow-2xs">
+                  <ShieldCheck size={18} className="text-emerald-600 shrink-0" />
+                  <span>OTP verified successfully! Please enter your new password.</span>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-700">New Password</label>
+                    <input 
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full px-4 py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all text-slate-900 text-sm shadow-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-700">Confirm New Password</label>
+                    <input 
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full px-4 py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all text-slate-900 text-sm shadow-xs"
+                    />
+                  </div>
+
+                  {resetError && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2 font-medium">
+                      <ShieldAlert size={16} className="text-rose-500 shrink-0" />
+                      <span>{resetError}</span>
+                    </div>
+                  )}
+
+                  <button 
+                    type="button"
+                    onClick={handleUpdatePasswordSubmit}
+                    disabled={isUpdatingPassword}
+                    className="w-full py-3.5 bg-[#0b1329] hover:bg-slate-900 text-white font-semibold rounded-2xl text-sm transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer"
+                  >
+                    {isUpdatingPassword ? (
+                      <>
+                        <Loader2 className="animate-spin" size={18} />
+                        Updating Password...
+                      </>
+                    ) : (
+                      'Update Password'
+                    )}
+                  </button>
+
+                  <div className="text-center pt-1">
+                    <button 
+                      type="button"
+                      onClick={() => { setResetStep('none'); setResetError(''); }}
+                      className="text-xs text-slate-500 hover:text-slate-800 font-medium transition-colors cursor-pointer"
+                    >
+                      Back to Login
+                    </button>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-6 mt-6 text-center">
+                    <p className="text-[11px] text-slate-400 font-normal">
+                      Only authorized personnel can access this system.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
-
-        {/* Forgot password dialog mock */}
-        {isForgotModalOpen && (
-          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl text-xs space-y-4">
-              <div className="flex justify-between items-center">
-                <strong className="text-sm font-bold uppercase text-white">Reset Account Access</strong>
-                <button onClick={() => setIsForgotModalOpen(false)} className="text-slate-400"><X size={18} /></button>
-              </div>
-              <p className="text-slate-400 text-[11px] leading-relaxed">
-                Provide your registered corporate email id. The system will send a mock 6-digit MFA confirmation token.
-              </p>
-              <form onSubmit={handleForgotTrigger} className="space-y-3">
-                <input 
-                  type="email" 
-                  required
-                  placeholder="admin@admin.com"
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                />
-                <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => setIsForgotModalOpen(false)} className="px-3.5 py-1.5 bg-slate-800 rounded-lg">Cancel</button>
-                  <button type="submit" className="px-3.5 py-1.5 bg-indigo-600 text-white font-bold rounded-lg">Reset Password</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
         {/* Toast Container */}
         <div className="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none">

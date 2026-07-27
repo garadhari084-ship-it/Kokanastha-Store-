@@ -15,7 +15,12 @@ import {
   UserRole,
   OrderStatus,
   AuditLogEntry,
-  ChatMessage
+  ChatMessage,
+  LoyaltyConfig,
+  LoyaltyLog,
+  CustomerSubscription,
+  SubscriptionPlan,
+  DEFAULT_LOYALTY_CONFIG
 } from '../types/erp';
 
 // ====================================================================
@@ -68,136 +73,34 @@ const PRE_SEEDED_PROFILES: (UserProfile & { password_hash: string })[] = [
   }
 ];
 
+const CAT_1_ID = '11111111-2222-4333-8444-000000000001';
+
+const PROD_1_ID = 'b1111111-1111-4111-8111-111111111111';
+const PROD_2_ID = 'b2222222-2222-4222-8222-222222222222';
+const PROD_3_ID = 'b3333333-3333-4333-8333-333333333333';
+
+const CUST_1_ID = 'c1111111-1111-4111-8111-111111111111';
+const CUST_2_ID = 'c2222222-2222-4222-8222-222222222222';
+const CUST_3_ID = 'c3333333-3333-4333-8333-333333333333';
+
+const SO_1001_ID = 'd1111111-1111-4111-8111-111111111001';
+const SO_1002_ID = 'd1111111-1111-4111-8111-111111111002';
+const SO_1003_ID = 'd1111111-1111-4111-8111-111111111003';
+const SO_1004_ID = 'd1111111-1111-4111-8111-111111111004';
+const SO_1005_ID = 'd1111111-1111-4111-8111-111111111005';
+const SO_1006_ID = 'd1111111-1111-4111-8111-111111111006';
+const SO_1007_ID = 'd1111111-1111-4111-8111-111111111007';
+const SO_1008_ID = 'd1111111-1111-4111-8111-111111111008';
+
 const PRE_SEEDED_CATEGORIES: Category[] = [];
 
-const PRE_SEEDED_PRODUCTS: Product[] = [
-  {
-    id: 'p1',
-    name: 'Ukadiche Modak (Pack of 6)',
-    sku: 'MODAK-UKD-6',
-    category_id: 'cat1',
-    purchase_price: 220,
-    selling_price: 350,
-    mrp: 380,
-    gst_rate: 5,
-    unit: 'Pack',
-    current_stock: 45,
-    minimum_stock: 10,
-    maximum_stock: 200,
-    opening_stock: 50,
-    brand: 'Kokanastha',
-    hsn_code: '2106',
-    qr_code: '8901234567101',
-    image_url: 'https://images.unsplash.com/photo-1626132647523-66f5bf380027?auto=format&fit=crop&q=80&w=400&h=400',
-    description: 'Fresh authentic Ukadiche Modak',
-    business_id: BIZ_ID,
-    active: true,
-    barcode: '8901234567101',
-    created_at: new Date().toISOString()
-  },
-  {
-    id: 'p2',
-    name: 'Kaju Katli Special (500g)',
-    sku: 'SWT-KAJU-500',
-    category_id: 'cat1',
-    purchase_price: 180,
-    selling_price: 280,
-    mrp: 300,
-    gst_rate: 5,
-    unit: 'Box',
-    current_stock: 30,
-    minimum_stock: 10,
-    maximum_stock: 200,
-    opening_stock: 35,
-    brand: 'Kokanastha',
-    hsn_code: '2106',
-    qr_code: '8901234567102',
-    image_url: 'https://images.unsplash.com/photo-1599599810769-bcde5a160d32?auto=format&fit=crop&q=80&w=400&h=400',
-    description: 'Rich Cashew Katli',
-    business_id: BIZ_ID,
-    active: true,
-    barcode: '8901234567102',
-    created_at: new Date().toISOString()
-  },
-  {
-    id: 'p3',
-    name: 'Special Diwali Faral Box (1kg)',
-    sku: 'FRL-BOX-1KG',
-    category_id: 'cat1',
-    purchase_price: 320,
-    selling_price: 520,
-    mrp: 550,
-    gst_rate: 5,
-    unit: 'Box',
-    current_stock: 25,
-    minimum_stock: 10,
-    maximum_stock: 200,
-    opening_stock: 30,
-    brand: 'Kokanastha',
-    hsn_code: '2106',
-    qr_code: '8901234567103',
-    image_url: 'https://images.unsplash.com/photo-1589114473223-c091bc90a071?auto=format&fit=crop&q=80&w=400&h=400',
-    description: 'Assorted Diwali Faral Snacks',
-    business_id: BIZ_ID,
-    active: true,
-    barcode: '8901234567103',
-    created_at: new Date().toISOString()
-  }
-];
+const PRE_SEEDED_PRODUCTS: Product[] = [];
 
-const PRE_SEEDED_CUSTOMERS: Customer[] = [
-  {
-    id: 'c1',
-    name: 'Aniket Sharma',
-    group: 'Retail',
-    area: 'Dahisar',
-    gstin: '27AABCS1234F1Z1',
-    pan: 'AABCS1234F',
-    billing_address: 'Dahisar Resident',
-    shipping_address: 'Dahisar Resident',
-    email: 'aniket@gmail.com',
-    phone: '+91 98200 11111',
-    credit_limit: 10000,
-    outstanding_amount: 0,
-    business_id: BIZ_ID,
-    active: true,
-    created_at: new Date().toISOString()
-  },
-  {
-    id: 'c2',
-    name: 'Priyanka Joshi',
-    group: 'Retail',
-    area: 'Borivali',
-    gstin: '27AABCJ5678F1Z2',
-    pan: 'AABCJ5678F',
-    billing_address: 'Borivali Resident',
-    shipping_address: 'Borivali Resident',
-    email: 'priyanka@gmail.com',
-    phone: '+91 98200 22222',
-    credit_limit: 10000,
-    outstanding_amount: 0,
-    business_id: BIZ_ID,
-    active: true,
-    created_at: new Date().toISOString()
-  },
-  {
-    id: 'c3',
-    name: 'Rajesh Kadam',
-    group: 'Retail',
-    area: 'Kandivali',
-    gstin: '27AABCK9012F1Z3',
-    pan: 'AABCK9012F',
-    billing_address: 'Kandivali Resident',
-    shipping_address: 'Kandivali Resident',
-    email: 'rajesh@gmail.com',
-    phone: '+91 98200 33333',
-    credit_limit: 10000,
-    outstanding_amount: 0,
-    business_id: BIZ_ID,
-    active: true,
-    created_at: new Date().toISOString()
-  }
-];
+const PRE_SEEDED_CUSTOMERS: Customer[] = [];
+
+const PRE_SEEDED_LOYALTY_LOGS: LoyaltyLog[] = [];
+
+const PRE_SEEDED_SUBSCRIPTIONS: CustomerSubscription[] = [];
 
 const PRE_SEEDED_SUPPLIERS: Supplier[] = [];
 
@@ -222,168 +125,7 @@ const d40Seed = new Date(nowSeed);
 d40Seed.setDate(d40Seed.getDate() - 40);
 const days40SeedStr = `${d40Seed.getFullYear()}-${String(d40Seed.getMonth() + 1).padStart(2, '0')}-${String(d40Seed.getDate()).padStart(2, '0')}`;
 
-const PRE_SEEDED_SALES: SalesOrder[] = [
-  {
-    id: 'so-1001',
-    order_number: '#1036',
-    customer_id: 'c1',
-    customer_name: 'Aniket Sharma',
-    area: 'Dahisar',
-    channel: 'Direct Order',
-    time: '10:30 AM',
-    is_overdue: false,
-    order_date: todaySeedStr,
-    status: 'Pending',
-    payment_status: 'Unpaid',
-    delivery_status: 'Pending',
-    items: [{ product_id: 'p1', qty: 2, scanned_qty: 0, selling_price: 350, gst_rate: 5 }],
-    advance_booking: false,
-    total_amount: 700,
-    business_id: BIZ_ID,
-    created_at: new Date().toISOString(),
-    qr_code_data: '#1036'
-  },
-  {
-    id: 'so-1002',
-    order_number: '#1037',
-    customer_id: 'c2',
-    customer_name: 'Priyanka Joshi',
-    area: 'Borivali',
-    channel: 'WhatsApp Store',
-    time: '11:15 AM',
-    is_overdue: false,
-    order_date: todaySeedStr,
-    status: 'Packing',
-    payment_status: 'Paid',
-    delivery_status: 'Packing',
-    items: [{ product_id: 'p2', qty: 3, scanned_qty: 1, selling_price: 280, gst_rate: 5 }],
-    advance_booking: false,
-    total_amount: 840,
-    business_id: BIZ_ID,
-    created_at: new Date().toISOString(),
-    qr_code_data: '#1037'
-  },
-  {
-    id: 'so-1003',
-    order_number: '#1038',
-    customer_id: 'c3',
-    customer_name: 'Rajesh Kadam',
-    area: 'Kandivali',
-    channel: 'Direct Order',
-    time: '01:45 PM',
-    is_overdue: false,
-    order_date: todaySeedStr,
-    status: 'Packed',
-    payment_status: 'Paid',
-    delivery_status: 'Packed',
-    items: [{ product_id: 'p3', qty: 1, scanned_qty: 1, selling_price: 520, gst_rate: 5 }],
-    advance_booking: false,
-    total_amount: 520,
-    business_id: BIZ_ID,
-    created_at: new Date().toISOString(),
-    qr_code_data: '#1038'
-  },
-  {
-    id: 'so-1004',
-    order_number: '#1034',
-    customer_id: 'c1',
-    customer_name: 'Aniket Sharma',
-    area: 'Dahisar',
-    channel: 'Direct Order',
-    time: '03:10 PM',
-    is_overdue: false,
-    order_date: yesterdaySeedStr,
-    status: 'Dispatched',
-    payment_status: 'Paid',
-    delivery_status: 'Dispatched',
-    items: [{ product_id: 'p1', qty: 1, scanned_qty: 1, selling_price: 350, gst_rate: 5 }],
-    advance_booking: false,
-    total_amount: 350,
-    business_id: BIZ_ID,
-    created_at: new Date().toISOString(),
-    qr_code_data: '#1034'
-  },
-  {
-    id: 'so-1005',
-    order_number: '#1035',
-    customer_id: 'c2',
-    customer_name: 'Priyanka Joshi',
-    area: 'Mira Road',
-    channel: 'Phone Booking',
-    time: '04:20 PM',
-    is_overdue: false,
-    order_date: yesterdaySeedStr,
-    status: 'Delivered',
-    payment_status: 'Paid',
-    delivery_status: 'Delivered',
-    items: [{ product_id: 'p2', qty: 2, scanned_qty: 2, selling_price: 280, gst_rate: 5 }],
-    advance_booking: false,
-    total_amount: 560,
-    business_id: BIZ_ID,
-    created_at: new Date().toISOString(),
-    qr_code_data: '#1035'
-  },
-  {
-    id: 'so-1006',
-    order_number: '#1031',
-    customer_id: 'c3',
-    customer_name: 'Rajesh Kadam',
-    area: 'Vasai',
-    channel: 'Direct Order',
-    time: '09:00 AM',
-    is_overdue: false,
-    order_date: days3SeedStr,
-    status: 'Delivered',
-    payment_status: 'Paid',
-    delivery_status: 'Delivered',
-    items: [{ product_id: 'p3', qty: 2, scanned_qty: 2, selling_price: 520, gst_rate: 5 }],
-    advance_booking: false,
-    total_amount: 1040,
-    business_id: BIZ_ID,
-    created_at: new Date().toISOString(),
-    qr_code_data: '#1031'
-  },
-  {
-    id: 'so-1007',
-    order_number: '#1025',
-    customer_id: 'c1',
-    customer_name: 'Aniket Sharma',
-    area: 'Virar',
-    channel: 'WhatsApp Store',
-    time: '02:00 PM',
-    is_overdue: false,
-    order_date: days10SeedStr,
-    status: 'Delivered',
-    payment_status: 'Paid',
-    delivery_status: 'Delivered',
-    items: [{ product_id: 'p1', qty: 4, scanned_qty: 4, selling_price: 350, gst_rate: 5 }],
-    advance_booking: false,
-    total_amount: 1400,
-    business_id: BIZ_ID,
-    created_at: new Date().toISOString(),
-    qr_code_data: '#1025'
-  },
-  {
-    id: 'so-1008',
-    order_number: '#1010',
-    customer_id: 'c2',
-    customer_name: 'Priyanka Joshi',
-    area: 'Borivali',
-    channel: 'Direct Order',
-    time: '11:00 AM',
-    is_overdue: false,
-    order_date: days40SeedStr,
-    status: 'Delivered',
-    payment_status: 'Paid',
-    delivery_status: 'Delivered',
-    items: [{ product_id: 'p2', qty: 5, scanned_qty: 5, selling_price: 280, gst_rate: 5 }],
-    advance_booking: false,
-    total_amount: 1400,
-    business_id: BIZ_ID,
-    created_at: new Date().toISOString(),
-    qr_code_data: '#1010'
-  }
-];
+const PRE_SEEDED_SALES: SalesOrder[] = [];
 
 const PRE_SEEDED_SETTINGS: BusinessSettings[] = [
   {
@@ -514,6 +256,8 @@ class ERPStorage {
     auditLogs: SystemAuditLog[];
     packingSessions: PackingSession[];
     messages: ChatMessage[];
+    loyaltyLogs: LoyaltyLog[];
+    subscriptions: CustomerSubscription[];
   };
 
   private bc: BroadcastChannel | null = null;
@@ -537,7 +281,9 @@ class ERPStorage {
       stockLogs: this.load('stockLogs', PRE_SEEDED_STOCK_LOGS),
       auditLogs: this.load('auditLogs', PRE_SEEDED_SYSTEM_AUDIT_LOGS),
       packingSessions: this.load('packingSessions', []),
-      messages: this.load('messages', [])
+      messages: this.load('messages', []),
+      loyaltyLogs: this.load('loyaltyLogs', PRE_SEEDED_LOYALTY_LOGS),
+      subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS)
     };
 
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -574,7 +320,9 @@ class ERPStorage {
       stockLogs: this.load('stockLogs', PRE_SEEDED_STOCK_LOGS),
       auditLogs: this.load('auditLogs', PRE_SEEDED_SYSTEM_AUDIT_LOGS),
       packingSessions: this.load('packingSessions', []),
-      messages: this.load('messages', [])
+      messages: this.load('messages', []),
+      loyaltyLogs: this.load('loyaltyLogs', PRE_SEEDED_LOYALTY_LOGS),
+      subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS)
     };
     this.notify();
   }
@@ -625,6 +373,12 @@ class ERPStorage {
     err = await this.syncToSupabase('sales', this.cache.sales);
     if (err) errors.push('sales: ' + err.message);
 
+    err = await this.syncToSupabase('loyaltyLogs', this.cache.loyaltyLogs);
+    if (err) errors.push('loyaltyLogs: ' + err.message);
+
+    err = await this.syncToSupabase('subscriptions', this.cache.subscriptions);
+    if (err) errors.push('subscriptions: ' + err.message);
+
     if (errors.length > 0) {
        throw new Error(errors.join('\n'));
     }
@@ -648,7 +402,9 @@ class ERPStorage {
        stockLogs: 'stock_logs',
        auditLogs: 'system_audit_logs',
        settings: 'business_settings',
-       messages: 'chat_messages'
+       messages: 'chat_messages',
+       loyaltyLogs: 'loyalty_logs',
+       subscriptions: 'customer_subscriptions'
     };
     
     for (const [key, table] of Object.entries(tables)) {
@@ -837,7 +593,9 @@ class ERPStorage {
        stockLogs: 'stock_logs',
        auditLogs: 'system_audit_logs',
        settings: 'business_settings',
-       messages: 'chat_messages'
+       messages: 'chat_messages',
+       loyaltyLogs: 'loyalty_logs',
+       subscriptions: 'customer_subscriptions'
     };
     
     const tableName = tables[key];
@@ -864,35 +622,92 @@ class ERPStorage {
        let payload = Array.isArray(dataItem) ? [...dataItem] : { ...dataItem };
        let salesItems = [];
        let purchaseItems = [];
+
+       const isValidUUID = (val: any): boolean => {
+           if (typeof val !== 'string') return false;
+           return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+       };
+
+       const legacyIdMap: Record<string, string> = {
+           'biz-1': BIZ_ID,
+           'c1': CUST_1_ID,
+           'c2': CUST_2_ID,
+           'c3': CUST_3_ID,
+           'p1': PROD_1_ID,
+           'p2': PROD_2_ID,
+           'p3': PROD_3_ID,
+           'cat1': CAT_1_ID,
+           'cat1_1': CAT_1_ID,
+           'cat1_2': CAT_1_ID,
+           'so-1001': SO_1001_ID,
+           'so-1002': SO_1002_ID,
+           'so-1003': SO_1003_ID,
+           'so-1004': SO_1004_ID,
+           'so-1005': SO_1005_ID,
+           'so-1006': SO_1006_ID,
+           'so-1007': SO_1007_ID,
+           'so-1008': SO_1008_ID,
+           'l1': 'e1111111-1111-4111-8111-111111111001',
+           'l2': 'e1111111-1111-4111-8111-111111111002',
+           'l3': 'e1111111-1111-4111-8111-111111111003',
+           'sub-1': 'f1111111-1111-4111-8111-111111111001',
+           'sub-2': 'f1111111-1111-4111-8111-111111111002'
+       };
+
+       const sanitizeUUID = (val: any, isNullable = false): string | null => {
+           if (!val) return isNullable ? null : crypto.randomUUID();
+           if (isValidUUID(val)) return val;
+           if (legacyIdMap[val]) return legacyIdMap[val];
+           if (isNullable) return null;
+           return crypto.randomUUID();
+       };
        
-       const cleanItem = (item) => {
+       const cleanItem = (item: any) => {
            const clean = { ...item };
+           if (clean.id && tableName !== 'business_settings') {
+               clean.id = sanitizeUUID(clean.id, false);
+           }
+           if (clean.business_id) {
+               clean.business_id = sanitizeUUID(clean.business_id, false);
+           }
            if (tableName === 'business_settings') {
                delete clean.business_name;
                delete clean.gstin;
                delete clean.invoice_prefix;
+               clean.business_id = sanitizeUUID(clean.business_id, false);
            }
            if (tableName === 'customers') {
                delete clean.area;
            }
+           if (tableName === 'products') {
+               clean.category_id = sanitizeUUID(clean.category_id, true);
+           }
+           if (tableName === 'categories') {
+               clean.parent_id = sanitizeUUID(clean.parent_id, true);
+           }
            if (tableName === 'sales_orders') {
                delete clean.area;
+               clean.customer_id = sanitizeUUID(clean.customer_id, true);
+               if (clean.customer_id && Array.isArray(this.cache.customers) && !this.cache.customers.some((c: any) => c.id === clean.customer_id)) {
+                   clean.customer_id = null;
+               }
                if (clean.items) {
-                   clean.items.forEach(i => {
-                       // The table might not have 'id' if we just created the order items inline,
-                       // so we should let Supabase generate it or generate one here.
+                   clean.items.forEach((i: any) => {
                        const si = { ...i, sales_order_id: clean.id };
-                       if(!si.id) si.id = crypto.randomUUID();
+                       si.id = sanitizeUUID(si.id, false);
+                       si.product_id = sanitizeUUID(si.product_id, false);
                        salesItems.push(si);
                    });
                }
                delete clean.items;
            }
            if (tableName === 'purchase_orders') {
+               clean.supplier_id = sanitizeUUID(clean.supplier_id, false);
                if (clean.items) {
-                   clean.items.forEach(i => {
+                   clean.items.forEach((i: any) => {
                        const pi = { ...i, purchase_order_id: clean.id };
-                       if(!pi.id) pi.id = crypto.randomUUID();
+                       pi.id = sanitizeUUID(pi.id, false);
+                       pi.product_id = sanitizeUUID(pi.product_id, false);
                        purchaseItems.push(pi);
                    });
                }
@@ -902,18 +717,49 @@ class ERPStorage {
                delete clean.password_hash;
            }
            if (tableName === 'stock_logs') {
-               if (clean.created_by === 'System' || clean.created_by === 'sys') {
-                   clean.created_by = null;
-               }
+               clean.product_id = sanitizeUUID(clean.product_id, false);
+               clean.created_by = sanitizeUUID(clean.created_by, true);
            }
            if (tableName === 'system_audit_logs') {
-               if (clean.user_id === 'System' || clean.user_id === 'sys') {
-                   clean.user_id = null;
+               clean.user_id = sanitizeUUID(clean.user_id, true);
+           }
+           if (tableName === 'packing_sessions') {
+               clean.order_id = sanitizeUUID(clean.order_id, false);
+               clean.packing_staff_id = sanitizeUUID(clean.packing_staff_id, false);
+           }
+           if (tableName === 'chat_messages') {
+               clean.sender_id = sanitizeUUID(clean.sender_id, false);
+               clean.receiver_id = sanitizeUUID(clean.receiver_id, false);
+           }
+           if (tableName === 'businesses') {
+               delete clean.last_supabase_sync;
+           }
+           if (tableName === 'loyalty_logs') {
+               clean.customer_id = sanitizeUUID(clean.customer_id, true);
+               if (clean.customer_id && Array.isArray(this.cache.customers) && !this.cache.customers.some((c: any) => c.id === clean.customer_id)) {
+                   clean.customer_id = null;
+               }
+               clean.order_id = sanitizeUUID(clean.order_id, true);
+           }
+           if (tableName === 'customer_subscriptions') {
+               clean.customer_id = sanitizeUUID(clean.customer_id, true);
+               if (clean.customer_id && Array.isArray(this.cache.customers) && !this.cache.customers.some((c: any) => c.id === clean.customer_id)) {
+                   clean.customer_id = null;
+               }
+               clean.last_order_id = sanitizeUUID(clean.last_order_id, true);
+               if (!clean.next_delivery_date && clean.next_billing_date) {
+                   clean.next_delivery_date = clean.next_billing_date;
+               }
+               if (!clean.next_billing_date && clean.next_delivery_date) {
+                   clean.next_billing_date = clean.next_delivery_date;
+               }
+               if (Array.isArray(clean.items)) {
+                   clean.items = clean.items.map((it: any) => ({
+                       ...it,
+                       product_id: sanitizeUUID(it.product_id, true)
+                   }));
                }
            }
-            if (tableName === 'businesses') {
-                delete clean.last_supabase_sync;
-            }
            return clean;
        };
        
@@ -1097,6 +943,22 @@ class ERPStorage {
     throw new Error('User not found');
   }
 
+  public resetPasswordByEmail(email: string, newPassword_hash: string): { success: boolean; error?: string; user?: UserProfile } {
+    const cleanEmail = email.trim().toLowerCase();
+    const profile = this.cache.profiles.find(p => p.email.trim().toLowerCase() === cleanEmail);
+    if (!profile) {
+      return { success: false, error: 'User account not found for this email address.' };
+    }
+    (profile as any).password_hash = newPassword_hash;
+    try {
+      const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+      saved[cleanEmail] = newPassword_hash;
+      localStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+    } catch (e) {}
+    this.save('profiles', profile);
+    return { success: true, user: profile };
+  }
+
   public deleteUser(id: string): boolean {
     const index = this.cache.profiles.findIndex(p => p.id === id);
     if (index !== -1) {
@@ -1192,14 +1054,31 @@ class ERPStorage {
   }
 
   public createCustomer(cust: Omit<Customer, 'id' | 'created_at' | 'outstanding_amount'>): Customer {
+    const config = this.getLoyaltyConfig(cust.business_id);
+    const welcomeBonus = config?.welcome_bonus_points || 50;
+
     const newCust: Customer = {
       ...cust,
       id: crypto.randomUUID(),
       outstanding_amount: 0,
+      loyalty_points: welcomeBonus,
+      lifetime_spend: 0,
+      loyalty_tier: 'Silver',
       created_at: new Date().toISOString()
     };
     this.cache.customers.push(newCust);
     this.save('customers', newCust);
+
+    if (welcomeBonus > 0) {
+      this.addLoyaltyPoints(
+        newCust.id,
+        welcomeBonus,
+        'Bonus',
+        'Welcome registration loyalty bonus points',
+        cust.business_id
+      );
+    }
+
     return newCust;
   }
 
@@ -1221,6 +1100,235 @@ class ERPStorage {
       return true;
     }
     return false;
+  }
+
+  // ==================== LOYALTY & SUBSCRIPTION OPERATIONS ====================
+  public getLoyaltyConfig(businessId: string): LoyaltyConfig {
+    const biz = this.getBusiness(businessId);
+    return biz?.loyalty_config || DEFAULT_LOYALTY_CONFIG;
+  }
+
+  public updateLoyaltyConfig(businessId: string, updates: Partial<LoyaltyConfig>): LoyaltyConfig {
+    const currentConfig = this.getLoyaltyConfig(businessId);
+    const updated = { ...currentConfig, ...updates };
+    this.updateBusiness(businessId, { loyalty_config: updated });
+    return updated;
+  }
+
+  public getLoyaltyLogs(customerId?: string, businessId?: string): LoyaltyLog[] {
+    let logs = this.cache.loyaltyLogs || [];
+    if (businessId) logs = logs.filter(l => l.business_id === businessId);
+    if (customerId) logs = logs.filter(l => l.customer_id === customerId);
+    return [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  public addLoyaltyPoints(
+    customerId: string, 
+    points: number, 
+    type: LoyaltyLog['type'], 
+    notes: string, 
+    businessId: string,
+    orderId?: string, 
+    amountSpent?: number
+  ): void {
+    const cust = this.cache.customers.find(c => c.id === customerId);
+    if (!cust) return;
+
+    const currentPoints = cust.loyalty_points || 0;
+    const newPoints = Math.max(0, currentPoints + points);
+
+    this.updateCustomer(customerId, {
+      loyalty_points: newPoints
+    });
+
+    const newLog: LoyaltyLog = {
+      id: crypto.randomUUID(),
+      customer_id: customerId,
+      type,
+      points,
+      notes,
+      business_id: businessId,
+      order_id: orderId,
+      amount_spent: amountSpent,
+      created_at: new Date().toISOString()
+    };
+
+    if (!this.cache.loyaltyLogs) this.cache.loyaltyLogs = [];
+    this.cache.loyaltyLogs.push(newLog);
+    this.save('loyaltyLogs', newLog);
+  }
+
+  public calculateCustomerTier(lifetimeSpend: number, config: LoyaltyConfig): 'Silver' | 'Gold' | 'Platinum' {
+    if (lifetimeSpend >= (config.platinum_min_spend || 20000)) return 'Platinum';
+    if (lifetimeSpend >= (config.gold_min_spend || 10000)) return 'Gold';
+    return 'Silver';
+  }
+
+  public processOrderLoyalty(
+    customerId: string,
+    orderAmount: number,
+    pointsToRedeem: number,
+    orderId: string,
+    businessId: string
+  ): { pointsEarned: number; discountAmount: number } {
+    if (!customerId || customerId === 'WALK_IN') {
+      return { pointsEarned: 0, discountAmount: 0 };
+    }
+
+    const config = this.getLoyaltyConfig(businessId);
+    if (!config.enabled) return { pointsEarned: 0, discountAmount: 0 };
+
+    const cust = this.cache.customers.find(c => c.id === customerId);
+    if (!cust) return { pointsEarned: 0, discountAmount: 0 };
+
+    let discountAmount = 0;
+    // 1. Redeem points
+    if (pointsToRedeem > 0) {
+      const availablePoints = cust.loyalty_points || 0;
+      const actualRedeem = Math.min(availablePoints, pointsToRedeem);
+      discountAmount = actualRedeem * (config.point_value || 1);
+
+      this.addLoyaltyPoints(
+        customerId,
+        -actualRedeem,
+        'Redeemed',
+        `Redeemed ${actualRedeem} points for discount ₹${discountAmount} on Order #${orderId}`,
+        businessId,
+        orderId
+      );
+    }
+
+    // 2. Calculate tier & spend
+    const newLifetimeSpend = (cust.lifetime_spend || 0) + orderAmount;
+    const newTier = this.calculateCustomerTier(newLifetimeSpend, config);
+
+    // Tier Multiplier
+    let multiplier = 1.0;
+    if (newTier === 'Gold') multiplier = config.gold_multiplier || 1.25;
+    if (newTier === 'Platinum') multiplier = config.platinum_multiplier || 1.5;
+
+    // 3. Earn points on net spend (per ₹100 spend)
+    const netSpend = Math.max(0, orderAmount - discountAmount);
+    const basePoints = Math.floor(netSpend / (config.spend_per_point || 100));
+    const pointsEarned = Math.floor(basePoints * multiplier);
+
+    if (pointsEarned > 0) {
+      this.addLoyaltyPoints(
+        customerId,
+        pointsEarned,
+        'Earned',
+        `Earned ${pointsEarned} points for spend ₹${netSpend.toLocaleString()} (${newTier} Tier ${multiplier}x)`,
+        businessId,
+        orderId,
+        orderAmount
+      );
+    }
+
+    // Update lifetime spend & tier
+    this.updateCustomer(customerId, {
+      lifetime_spend: newLifetimeSpend,
+      loyalty_tier: newTier
+    });
+
+    return { pointsEarned, discountAmount };
+  }
+
+  // Subscription Operations
+  public getSubscriptions(businessId: string): CustomerSubscription[] {
+    const subs = this.cache.subscriptions || [];
+    return subs.filter(s => s.business_id === businessId);
+  }
+
+  public createSubscription(
+    subData: Omit<CustomerSubscription, 'id' | 'subscription_number' | 'created_at'>
+  ): CustomerSubscription {
+    const num = `SUB-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newSub: CustomerSubscription = {
+      ...subData,
+      id: crypto.randomUUID(),
+      subscription_number: num,
+      created_at: new Date().toISOString()
+    };
+    if (!this.cache.subscriptions) this.cache.subscriptions = [];
+    this.cache.subscriptions.push(newSub);
+    this.save('subscriptions', newSub);
+    return newSub;
+  }
+
+  public updateSubscription(id: string, updates: Partial<CustomerSubscription>): CustomerSubscription {
+    const index = (this.cache.subscriptions || []).findIndex(s => s.id === id);
+    if (index !== -1) {
+      this.cache.subscriptions[index] = { ...this.cache.subscriptions[index], ...updates };
+      this.save('subscriptions', this.cache.subscriptions[index]);
+      return this.cache.subscriptions[index];
+    }
+    throw new Error('Subscription not found');
+  }
+
+  public deleteSubscription(id: string): boolean {
+    const initialLen = (this.cache.subscriptions || []).length;
+    this.cache.subscriptions = (this.cache.subscriptions || []).filter(s => s.id !== id);
+    if (this.cache.subscriptions.length !== initialLen) {
+      this.save('subscriptions', null, true, id);
+      return true;
+    }
+    return false;
+  }
+
+  public generateSubscriptionOrders(businessId: string): { generatedCount: number; orders: SalesOrder[] } {
+    const subs = this.getSubscriptions(businessId).filter(s => s.status === 'Active');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const generatedOrders: SalesOrder[] = [];
+
+    const biz = this.getBusiness(businessId);
+    const prefix = biz?.invoice_prefix ? biz.invoice_prefix.trim() : 'SO-2026-';
+
+    subs.forEach(sub => {
+      // Check if billing date is today or in past
+      if (sub.next_billing_date <= todayStr) {
+        const randNum = Math.floor(1000 + Math.random() * 9000);
+        const orderNum = `${prefix}SUB-${randNum}`;
+
+        const newOrder = this.createSalesOrder({
+          order_number: orderNum,
+          customer_id: sub.customer_id,
+          customer_name: sub.customer_name,
+          area: sub.delivery_area || 'Standard',
+          channel: 'Subscription Auto-Renewal',
+          time: '08:00 AM',
+          order_date: todayStr,
+          delivery_date: todayStr,
+          status: 'Pending',
+          payment_status: 'Unpaid',
+          delivery_status: 'Pending',
+          items: sub.items,
+          advance_booking: false,
+          total_amount: sub.total_amount,
+          qr_code_data: `${orderNum}|${sub.customer_id}|${sub.customer_name}|Auto-Subscription`,
+          subscription_id: sub.id,
+          business_id: businessId
+        });
+
+        generatedOrders.push(newOrder);
+
+        // Advance next billing date based on frequency
+        const nextDate = new Date(sub.next_billing_date || todayStr);
+        if (sub.frequency === 'Weekly') nextDate.setDate(nextDate.getDate() + 7);
+        else if (sub.frequency === 'Bi-Weekly') nextDate.setDate(nextDate.getDate() + 14);
+        else if (sub.frequency === 'Monthly') nextDate.setMonth(nextDate.getMonth() + 1);
+        else if (sub.frequency === 'Quarterly') nextDate.setMonth(nextDate.getMonth() + 3);
+
+        const newNextBillingStr = nextDate.toISOString().split('T')[0];
+
+        this.updateSubscription(sub.id, {
+          next_billing_date: newNextBillingStr,
+          last_order_date: todayStr,
+          last_order_id: newOrder.id
+        });
+      }
+    });
+
+    return { generatedCount: generatedOrders.length, orders: generatedOrders };
   }
 
   // Supplier Operations
@@ -1726,6 +1834,8 @@ class ERPStorage {
     localStorage.removeItem('omnipack_erp_auditLogs');
     localStorage.removeItem('omnipack_erp_packingSessions');
     localStorage.removeItem('omnipack_erp_messages');
+    localStorage.removeItem('omnipack_erp_loyaltyLogs');
+    localStorage.removeItem('omnipack_erp_subscriptions');
 
     this.cache = {
       businesses: PRE_SEEDED_BUSINESSES,
@@ -1740,7 +1850,9 @@ class ERPStorage {
       stockLogs: PRE_SEEDED_STOCK_LOGS,
       auditLogs: PRE_SEEDED_SYSTEM_AUDIT_LOGS,
       packingSessions: [],
-      messages: []
+      messages: [],
+      loyaltyLogs: PRE_SEEDED_LOYALTY_LOGS,
+      subscriptions: PRE_SEEDED_SUBSCRIPTIONS
     };
   }
 

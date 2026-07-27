@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS businesses (
 -- User Profiles (Linked with Supabase auth.users)
 CREATE TABLE IF NOT EXISTS users_profiles (
     id UUID PRIMARY KEY, -- Maps directly to auth.users.id
+    user_id UUID, -- Backwards compatibility alias for auth.users.id
     email VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL CHECK (role IN ('Super Admin', 'Admin', 'Manager', 'Packing Staff', 'Sales Staff', 'Viewer')),
@@ -64,6 +65,17 @@ CREATE TABLE IF NOT EXISTS users_profiles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE
 );
+
+-- Ensure user_id column exists if table was created previously without it
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name='users_profiles' AND column_name='user_id'
+    ) THEN
+        ALTER TABLE users_profiles ADD COLUMN user_id UUID;
+    END IF;
+END $$;
 
 -- ====================================================================
 -- 2. MASTER DATA TABLES
@@ -306,6 +318,93 @@ CREATE TABLE IF NOT EXISTS business_settings (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Loyalty Program Configurations
+CREATE TABLE IF NOT EXISTS loyalty_configs (
+    business_id UUID PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
+    enabled BOOLEAN DEFAULT TRUE,
+    spend_per_point DECIMAL(15,2) DEFAULT 100.00,
+    point_value DECIMAL(15,2) DEFAULT 1.00,
+    silver_min_spend DECIMAL(15,2) DEFAULT 0.00,
+    gold_min_spend DECIMAL(15,2) DEFAULT 10000.00,
+    platinum_min_spend DECIMAL(15,2) DEFAULT 20000.00,
+    gold_multiplier DECIMAL(5,2) DEFAULT 1.25,
+    platinum_multiplier DECIMAL(5,2) DEFAULT 1.50,
+    welcome_bonus_points INTEGER DEFAULT 50,
+    birthday_bonus_points INTEGER DEFAULT 100,
+    point_expiry_days INTEGER DEFAULT 365,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Loyalty Points Audit Logs
+CREATE TABLE IF NOT EXISTS loyalty_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    customer_id UUID,
+    type VARCHAR(50) NOT NULL CHECK (type IN ('Earned', 'Redeemed', 'Bonus', 'Expired', 'Adjusted')),
+    points INTEGER NOT NULL,
+    amount_spent DECIMAL(15,2) DEFAULT 0.00,
+    order_id UUID,
+    notes TEXT,
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Customer Subscriptions
+CREATE TABLE IF NOT EXISTS customer_subscriptions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    subscription_number VARCHAR(100) NOT NULL,
+    customer_id UUID,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_phone VARCHAR(50),
+    plan_name VARCHAR(255) NOT NULL,
+    frequency VARCHAR(50) NOT NULL,
+    next_delivery_date DATE,
+    next_billing_date DATE,
+    status VARCHAR(50) DEFAULT 'Active',
+    items JSONB DEFAULT '[]'::jsonb,
+    total_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+    delivery_area VARCHAR(100),
+    delivery_address TEXT,
+    last_order_date DATE,
+    last_order_id UUID,
+    auto_renew BOOLEAN DEFAULT TRUE,
+    notes TEXT,
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Ensure foreign key flexibilities and column definitions on customer_subscriptions and loyalty_logs
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customer_subscriptions' AND column_name='next_billing_date') THEN
+        ALTER TABLE customer_subscriptions ADD COLUMN next_billing_date DATE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customer_subscriptions' AND column_name='delivery_address') THEN
+        ALTER TABLE customer_subscriptions ADD COLUMN delivery_address TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customer_subscriptions' AND column_name='last_order_date') THEN
+        ALTER TABLE customer_subscriptions ADD COLUMN last_order_date DATE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customer_subscriptions' AND column_name='last_order_id') THEN
+        ALTER TABLE customer_subscriptions ADD COLUMN last_order_id UUID;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customer_subscriptions' AND column_name='auto_renew') THEN
+        ALTER TABLE customer_subscriptions ADD COLUMN auto_renew BOOLEAN DEFAULT TRUE;
+    END IF;
+    
+    -- Drop strict foreign key constraints to prevent sync failures when customers or orders are managed loosely
+    ALTER TABLE customer_subscriptions DROP CONSTRAINT IF EXISTS customer_subscriptions_customer_id_fkey;
+    ALTER TABLE customer_subscriptions ALTER COLUMN customer_id DROP NOT NULL;
+
+    ALTER TABLE loyalty_logs DROP CONSTRAINT IF EXISTS loyalty_logs_customer_id_fkey;
+    ALTER TABLE loyalty_logs ALTER COLUMN customer_id DROP NOT NULL;
+    ALTER TABLE loyalty_logs DROP CONSTRAINT IF EXISTS loyalty_logs_order_id_fkey;
+
+    ALTER TABLE sales_orders DROP CONSTRAINT IF EXISTS sales_orders_customer_id_fkey;
+    ALTER TABLE sales_orders ALTER COLUMN customer_id DROP NOT NULL;
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END $$;
+
 -- ====================================================================
 -- 6. INDEXES FOR PERFORMANCE OPTIMIZATION
 -- ====================================================================
@@ -391,6 +490,9 @@ ALTER TABLE packing_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE business_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE loyalty_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE loyalty_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customer_subscriptions ENABLE ROW LEVEL SECURITY;
 
 -- Helper function to extract current user's business_id from user metadata
 -- In production, Supabase sets business_id via auth.jwt() claims or user_profile query
@@ -399,10 +501,11 @@ RETURNS UUID AS $$
 DECLARE
     v_business_id UUID;
 BEGIN
-    -- Look up profile by current auth user id
+    -- Look up profile by current auth user id (checking both id and user_id columns for compatibility)
     SELECT business_id INTO v_business_id
     FROM users_profiles
-    WHERE id = auth.uid();
+    WHERE id = auth.uid() OR user_id = auth.uid()
+    LIMIT 1;
     
     RETURN v_business_id;
 END;
@@ -442,4 +545,13 @@ CREATE POLICY tenant_isolation_system_audit_logs ON system_audit_logs
     FOR ALL USING (business_id = get_user_business_id());
 
 CREATE POLICY tenant_isolation_business_settings ON business_settings
+    FOR ALL USING (business_id = get_user_business_id());
+
+CREATE POLICY tenant_isolation_loyalty_configs ON loyalty_configs
+    FOR ALL USING (business_id = get_user_business_id());
+
+CREATE POLICY tenant_isolation_loyalty_logs ON loyalty_logs
+    FOR ALL USING (business_id = get_user_business_id());
+
+CREATE POLICY tenant_isolation_customer_subscriptions ON customer_subscriptions
     FOR ALL USING (business_id = get_user_business_id());

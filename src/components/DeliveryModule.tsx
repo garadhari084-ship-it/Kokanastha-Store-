@@ -22,7 +22,10 @@ import {
   QrCode,
   Building2,
   Banknote,
-  XCircle
+  XCircle,
+  Sparkles,
+  User,
+  AlertCircle
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { SalesOrder, Customer, UserProfile, OrderStatus } from '../types/erp';
@@ -60,6 +63,54 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   const [confirmingOrder, setConfirmingOrder] = useState<SalesOrder | null>(null);
   const [selectedPaymentMode, setSelectedPaymentMode] = useState<'Cash' | 'Card' | 'UPI' | 'Net Banking' | 'Not Paid' | null>(null);
   const [detailOrder, setDetailOrder] = useState<SalesOrder | null>(null);
+
+  // Delivery Partner & Dispatch Station State
+  const [dispatchingOrder, setDispatchingOrder] = useState<SalesOrder | null>(null);
+  const [deliveryPartner, setDeliveryPartner] = useState<string>('Rapido');
+  const [personName, setPersonName] = useState<string>('');
+  const [personPhone, setPersonPhone] = useState<string>('');
+  const [trackingNumber, setTrackingNumber] = useState<string>('');
+
+  const handleCompleteDispatchAssignment = (targetOrder: SalesOrder, e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!targetOrder) return;
+
+    try {
+      const isCustomPerson = deliveryPartner === 'In-House Agent' || deliveryPartner === 'Customer Pickup';
+      const updateData: Partial<SalesOrder> = {
+        status: 'Dispatched',
+        delivery_status: 'Dispatched',
+        delivery_partner: deliveryPartner,
+        delivery_person_name: isCustomPerson ? personName : undefined,
+        delivery_person_phone: isCustomPerson ? personPhone : undefined,
+        tracking_number: !isCustomPerson ? trackingNumber : undefined,
+      };
+
+      dbStore.updateSalesOrder(targetOrder.id, updateData);
+      triggerToast(`Order #${targetOrder.order_number} dispatched & assigned to ${deliveryPartner}!`, 'success');
+
+      // Send notification message to sales/manager staff
+      const orderNum = targetOrder.order_number || targetOrder.id;
+      const allUsers = dbStore.getUsers(businessId);
+      const salesStaff = allUsers.filter(u => u.role && (u.role === 'Sales Staff' || u.role === 'Manager'));
+      salesStaff.forEach(staff => {
+        dbStore.sendMessage({
+          sender_id: user.id,
+          receiver_id: staff.id,
+          content: `Order #${orderNum} has been assigned to ${deliveryPartner} and dispatched for delivery.`,
+          business_id: businessId
+        });
+      });
+
+      setDispatchingOrder(null);
+      setPersonName('');
+      setPersonPhone('');
+      setTrackingNumber('');
+      reloadOrders();
+    } catch (err: any) {
+      triggerToast(err.message || 'Error assigning delivery partner', 'error');
+    }
+  };
 
   const handleUpdateStatus = (order: SalesOrder, newStatus: OrderStatus) => {
     if (newStatus === 'Delivered') {
@@ -141,7 +192,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
     return orders.filter(o => {
       // Apply status filter
       if (activeFilter === 'Pending Delivery') {
-        if (o.status !== 'Packed' && o.status !== 'Dispatched') return false;
+        if (o.status !== 'Dispatched') return false;
       } else if (activeFilter === 'Ready to Dispatch') {
         if (o.status !== 'Packed') return false;
       } else if (activeFilter === 'In Transit') {
@@ -370,7 +421,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
         <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
           {[
             { id: 'All', label: 'All Orders' },
-            { id: 'Pending Delivery', label: 'Pending Delivery' },
+            { id: 'Pending Delivery', label: `Pending Delivery (${transitCount})` },
             { id: 'Ready to Dispatch', label: `Ready to Dispatch (${readyCount})` },
             { id: 'In Transit', label: `In Transit (${transitCount})` },
             { id: 'Delivered', label: `Delivered (${deliveredCount})` },
@@ -405,6 +456,189 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
           )}
         </div>
       </div>
+
+      {/* DELIVERY PARTNER & DISPATCH MODAL POPUP */}
+      {dispatchingOrder && (() => {
+        const targetCust = customers.find(c => c.id === dispatchingOrder.customer_id);
+        const packedList = orders.filter(o => o.status === 'Packed');
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-3xl p-5 sm:p-6 space-y-4 my-auto relative">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 shrink-0">
+                    <Truck size={22} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-black text-slate-900 dark:text-white">Delivery Partner & Dispatch</h3>
+                      <span className="px-2.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold rounded-lg">
+                        #{dispatchingOrder.order_number}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Customer: <strong className="text-slate-800 dark:text-slate-200">{targetCust?.name || 'Customer'}</strong> • Total: <strong className="text-emerald-600 dark:text-emerald-400">₹{dispatchingOrder.total_amount.toLocaleString()}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDispatchingOrder(null);
+                    setPersonName('');
+                    setPersonPhone('');
+                    setTrackingNumber('');
+                  }}
+                  className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={(e) => handleCompleteDispatchAssignment(dispatchingOrder, e)} className="space-y-4">
+                {/* Select Delivery Mode */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                      SELECT DELIVERY MODE
+                    </label>
+                    {packedList.length > 1 && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Switch Order:</span>
+                        <select
+                          value={dispatchingOrder.id}
+                          onChange={(e) => {
+                            const sel = packedList.find(o => o.id === e.target.value);
+                            if (sel) {
+                              setDispatchingOrder(sel);
+                              setDeliveryPartner(sel.delivery_partner || 'Rapido');
+                              setPersonName(sel.delivery_person_name || '');
+                              setPersonPhone(sel.delivery_person_phone || '');
+                              setTrackingNumber(sel.tracking_number || '');
+                            }
+                          }}
+                          className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none"
+                        >
+                          {packedList.map(po => {
+                            const c = customers.find(cust => cust.id === po.customer_id);
+                            return (
+                              <option key={po.id} value={po.id}>
+                                #{po.order_number} - {c?.name || 'Customer'} (₹{po.total_amount.toLocaleString()})
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    {[
+                      { id: 'Rapido', label: 'Rapido', desc: 'BIKE EXPRESS' },
+                      { id: 'Dunzo / Swiggy', label: 'Dunzo / Swiggy', desc: 'HYPERLOCAL' },
+                      { id: 'Porter', label: 'Porter', desc: 'LOCAL DRIVER' },
+                      { id: 'Courier Logistics', label: 'Courier', desc: 'BLUEDART/DELHIVERY' },
+                      { id: 'In-House Agent', label: 'In-House', desc: 'COMPANY DRIVER' },
+                      { id: 'Customer Pickup', label: 'Self Pickup', desc: 'STORE COUNTER' }
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setDeliveryPartner(mode.id)}
+                        className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer min-h-[76px] ${
+                          deliveryPartner === mode.id
+                            ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 border-indigo-700 text-white shadow-md shadow-indigo-600/20 scale-[1.02]'
+                            : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <strong className="text-xs font-black block">{mode.label}</strong>
+                        <span className={`text-[9.5px] font-bold uppercase tracking-wider mt-1.5 ${deliveryPartner === mode.id ? 'text-indigo-200' : 'text-slate-500'}`}>
+                          {mode.desc}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tracking / Driver Details */}
+                <div className="bg-slate-50 dark:bg-slate-800/40 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800">
+                  {(deliveryPartner === 'In-House Agent' || deliveryPartner === 'Customer Pickup') ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                          <User size={12} className="text-slate-400" /> {deliveryPartner === 'Customer Pickup' ? 'Collector / Person Name' : 'Driver / Exec Name'}
+                        </label>
+                        <input 
+                          type="text" 
+                          placeholder={deliveryPartner === 'Customer Pickup' ? 'e.g. Customer Name' : 'e.g. Rahul Sharma'}
+                          value={personName}
+                          onChange={(e) => setPersonName(e.target.value)}
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all placeholder:font-normal placeholder:text-slate-400"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                          <Phone size={12} className="text-slate-400" /> Contact Mobile Number (10 Digits)
+                        </label>
+                        <input 
+                          type="tel" 
+                          maxLength={10}
+                          placeholder="e.g. 9876543210"
+                          value={personPhone}
+                          onChange={(e) => setPersonPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all placeholder:font-normal placeholder:text-slate-400"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <Navigation size={12} className="text-slate-400" /> TRACKING / WAYBILL NUMBER
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. TRK-99214"
+                        value={trackingNumber}
+                        onChange={(e) => setTrackingNumber(e.target.value)}
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all placeholder:font-normal placeholder:text-slate-400"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDispatchingOrder(null);
+                      setPersonName('');
+                      setPersonPhone('');
+                      setTrackingNumber('');
+                    }}
+                    className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                  >
+                    <Sparkles size={15} />
+                    <span>Ready to Dispatch & Assign</span>
+                    <span className="bg-emerald-700/50 px-2 py-0.5 rounded text-[10px]">{deliveryPartner}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Compact List View */}
       <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm mt-3">
@@ -519,10 +753,16 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                       
                       {o.status === 'Packed' && (
                         <button 
-                          onClick={() => handleUpdateStatus(o, 'Dispatched')}
-                          className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-lg font-black text-[10px] transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                          onClick={() => {
+                            setDispatchingOrder(o);
+                            setDeliveryPartner(o.delivery_partner || 'Rapido');
+                            setPersonName(o.delivery_person_name || '');
+                            setPersonPhone(o.delivery_person_phone || '');
+                            setTrackingNumber(o.tracking_number || '');
+                          }}
+                          className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg font-black text-[10px] transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                         >
-                          <Truck size={12} /> Out for Delivery
+                          <Sparkles size={12} /> Assign & Dispatch
                         </button>
                       )}
                       

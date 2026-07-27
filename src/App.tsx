@@ -1534,11 +1534,11 @@ export default function App() {
       </aside>
 
       {/* Main Panel Content container */}
-      <div className={`flex-1 transition-all duration-300 ${isSidebarMinimized ? 'lg:pl-20' : 'lg:pl-56'} flex flex-col h-screen min-w-0 overflow-y-auto overflow-x-hidden`}>
+      <div className={`flex-1 transition-all duration-300 ${isSidebarMinimized ? 'lg:pl-20' : 'lg:pl-56'} flex flex-col h-screen min-w-0 overflow-hidden`}>
         
         {/* Top interactive Header bar */}
         {/* Header content */}
-        <header className="sticky top-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-0.5 sm:px-1 h-14 flex items-center justify-between gap-4">
+        <header className="shrink-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-2 sm:px-4 h-14 flex items-center justify-between gap-4">
           
           <div className="flex items-center gap-3">
             <button className="lg:hidden text-slate-600 cursor-pointer" onClick={() => setIsMobileMenuOpen(true)}>
@@ -1752,7 +1752,11 @@ export default function App() {
         </header>
 
         {/* Dynamic active view body */}
-        <main className="flex-1 px-0 pt-0.5 pb-4 sm:px-0 lg:px-0 sm:pt-1 sm:pb-6 w-full min-w-0 overflow-x-hidden space-y-4">
+        <main className={`flex-1 w-full min-w-0 min-h-0 ${
+          activeView === 'inbox' 
+            ? 'overflow-hidden flex flex-col p-2 sm:p-4' 
+            : 'overflow-y-auto overflow-x-hidden px-0 pt-0.5 pb-4 sm:px-0 lg:px-0 sm:pt-1 sm:pb-6 space-y-4'
+        }`}>
           {renderActiveModule()}
         </main>
 

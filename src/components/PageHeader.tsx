@@ -61,8 +61,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
     <div className={`relative rounded-2xl p-4 sm:p-5 md:p-6 bg-gradient-to-r ${themeStyles.banner} border shadow-2xl transition-all duration-300 mb-4 overflow-hidden w-full`}>
       {badgeText && (
         <div className="absolute top-0 right-0 z-20">
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 rounded-tr-2xl rounded-bl-2xl border-l border-b text-[10px] md:text-[11px] font-bold backdrop-blur-md ${themeStyles.badge}`}>
-            {badgeActive && <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-400 animate-pulse"></span>}
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 md:px-3.5 md:py-1.5 rounded-tr-2xl rounded-bl-2xl border-l border-b text-[10px] md:text-[11px] font-bold backdrop-blur-md ${themeStyles.badge}`}>
+            {badgeActive && <span className="w-1.5 h-1.5 md:w-1.5 md:h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>}
             {badgeText}
           </span>
         </div>

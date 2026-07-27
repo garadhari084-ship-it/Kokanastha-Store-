@@ -102,10 +102,10 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   };
 
   return (
-    <div className="flex h-[calc(100vh-120px)] bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm mx-4 mb-4">
+    <div className="flex flex-1 h-full min-h-0 w-full bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm">
       {/* Sidebar - User List */}
-      <div className={`${isMobileListVisible ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-80 border-r border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50`}>
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800">
+      <div className={`${isMobileListVisible ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-80 border-r border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50 h-full min-h-0`}>
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Internal Communications</h2>
             {onClose && (
@@ -129,7 +129,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {filteredUsers.length === 0 ? (
             <div className="p-8 text-center text-slate-400">
               <User className="mx-auto mb-2 opacity-20" size={32} />
@@ -189,11 +189,11 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
       </div>
 
       {/* Main Chat Window */}
-      <div className={`${!isMobileListVisible ? 'flex' : 'hidden'} md:flex flex-col flex-1 bg-white dark:bg-slate-900`}>
+      <div className={`${!isMobileListVisible ? 'flex' : 'hidden'} md:flex flex-col flex-1 h-full min-h-0 bg-white dark:bg-slate-900 overflow-hidden`}>
         {selectedUser ? (
           <>
             {/* Chat Header */}
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
+            <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30 shrink-0 z-10">
               <div className="flex items-center gap-3">
                 <button 
                   onClick={() => setIsMobileListVisible(true)}
@@ -231,7 +231,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
             </div>
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/30 dark:bg-slate-900/50">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-50/30 dark:bg-slate-900/50">
               <AnimatePresence initial={false}>
                 {conversationMessages.map((msg) => {
                   const isMe = msg.sender_id === currentUser.id;
@@ -268,7 +268,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
             </div>
 
             {/* Message Input */}
-            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+            <div className="p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 z-10">
               <form onSubmit={handleSendMessage} className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent transition-all">
                 <input 
                   type="text" 

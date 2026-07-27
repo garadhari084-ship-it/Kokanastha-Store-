@@ -824,7 +824,7 @@ export default function App() {
     { id: 'audit', label: 'Security Logs', icon: ShieldAlert, adminOnly: true }
   ];
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     if (!changePasswordData.oldPassword || !changePasswordData.newPassword || !changePasswordData.confirmPassword) {
       triggerToast('All fields are required', 'error');
       return;
@@ -857,7 +857,7 @@ export default function App() {
       
       if (isSupabaseConfigured && supabase) {
           // If we had a secure way to update the user's password in Supabase via their profile
-          // supabase.from('users_profiles').update({ password_hash: changePasswordData.newPassword }).eq('id', currentUser.id);
+          await supabase.from('users_profiles').update({ password_hash: changePasswordData.newPassword }).eq('id', currentUser.id);
       }
 
       triggerToast('Password changed successfully', 'success');

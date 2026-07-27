@@ -717,7 +717,7 @@ class ERPStorage {
                delete clean.items;
            }
            if (tableName === 'users_profiles') {
-               delete clean.password_hash;
+               // We intentionally preserve password_hash so users created via UI can log in
            }
            if (tableName === 'stock_logs') {
                clean.product_id = sanitizeUUID(clean.product_id, false);

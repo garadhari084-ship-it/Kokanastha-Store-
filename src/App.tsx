@@ -491,6 +491,13 @@ export default function App() {
               
             if (profiles && profiles.length > 0) {
               const p = profiles[0];
+              
+              if (!p.password_hash || p.password_hash !== passwordInput) {
+                  setAuthError('Invalid credentials.');
+                  setIsLoggingIn(false);
+                  return;
+              }
+
               // Fetch business
               const { data: businesses } = await supabase
                 .from('businesses')
@@ -599,6 +606,14 @@ export default function App() {
             setCurrentUser(profile);
             setCurrentBusiness(biz);
             localStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase' }));
+            
+            // Save password for offline fallback
+            try {
+              const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+              saved[profile.email.toLowerCase().trim()] = passwordInput;
+              localStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+            } catch(e) {}
+            
             setActiveView('dashboard');
             triggerToast(`Supabase Cloud Session Established. Welcome, ${profile.name}!`, 'success');
           }
@@ -840,30 +855,39 @@ export default function App() {
 
     if (!currentUser) return;
     
-    // In a real application, you would verify the old password here
-    // Currently, as we just store password in localStorage and DB, we update directly or assume verification
-    
     try {
-      const passwords = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
-      
-      // Basic check
-      if (passwords[currentUser.email.toLowerCase()] && passwords[currentUser.email.toLowerCase()] !== changePasswordData.oldPassword) {
-         triggerToast('Incorrect old password', 'error');
-         return;
-      }
-
-      passwords[currentUser.email.toLowerCase()] = changePasswordData.newPassword;
-      localStorage.setItem('omnipack_erp_passwords', JSON.stringify(passwords));
-      
       if (isSupabaseConfigured && supabase) {
-          const { error } = await supabase.auth.updateUser({ password: changePasswordData.newPassword });
-          if (error) {
-            triggerToast('Failed to update secure authentication: ' + error.message, 'error');
-            return;
+          const { error: verifyError } = await supabase.auth.signInWithPassword({
+            email: currentUser.email,
+            password: changePasswordData.oldPassword
+          });
+          
+          if (verifyError) {
+             // Fallback check for users without Supabase Auth accounts
+             let fallbackResult = dbStore.login(currentUser.email, changePasswordData.oldPassword);
+             if (!fallbackResult.success) {
+                 triggerToast('Incorrect old password', 'error');
+                 return;
+             }
+          } else {
+             const { error } = await supabase.auth.updateUser({ password: changePasswordData.newPassword });
+             if (error) {
+               triggerToast('Failed to update secure authentication: ' + error.message, 'error');
+               return;
+             }
           }
+          
           await supabase.from('users_profiles').update({ password_hash: changePasswordData.newPassword }).eq('id', currentUser.id);
+      } else {
+          let fallbackResult = dbStore.login(currentUser.email, changePasswordData.oldPassword);
+          if (!fallbackResult.success) {
+             triggerToast('Incorrect old password', 'error');
+             return;
+          }
       }
 
+      dbStore.updateUser(currentUser.id, { password_hash: changePasswordData.newPassword });
+      
       triggerToast('Password changed successfully', 'success');
       setIsChangePasswordModalOpen(false);
       setChangePasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });

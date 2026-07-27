@@ -856,7 +856,11 @@ export default function App() {
       localStorage.setItem('omnipack_erp_passwords', JSON.stringify(passwords));
       
       if (isSupabaseConfigured && supabase) {
-          // If we had a secure way to update the user's password in Supabase via their profile
+          const { error } = await supabase.auth.updateUser({ password: changePasswordData.newPassword });
+          if (error) {
+            triggerToast('Failed to update secure authentication: ' + error.message, 'error');
+            return;
+          }
           await supabase.from('users_profiles').update({ password_hash: changePasswordData.newPassword }).eq('id', currentUser.id);
       }
 

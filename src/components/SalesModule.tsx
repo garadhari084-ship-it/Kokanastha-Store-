@@ -162,7 +162,22 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   // Theme & Language Settings (Dashboard UI Match)
   type ColorTheme = 'midnight-gold' | 'emerald-pro' | 'royal-sapphire' | 'titanium-dark';
       const [timeHorizon, setTimeHorizon] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('today');
+  const [bookingFilter, setBookingFilter] = useState<'all' | 'regular' | 'festive'>('all');
   const [isTopFilterMenuOpen, setIsTopFilterMenuOpen] = useState(false);
+  const topFilterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (topFilterRef.current && !topFilterRef.current.contains(event.target as Node)) {
+        setIsTopFilterMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [selectedOrderForNotify, setSelectedOrderForNotify] = useState<SalesOrder | null>(null);
 
@@ -249,6 +264,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [orderTime, setOrderTime] = useState<string>(getLocalCurrentTimeInput);
   const [deliveryDate, setDeliveryDate] = useState<string>(getLocalTodayDate);
   const [isAdvanceBooking, setIsAdvanceBooking] = useState(false);
+  const [isFestiveBooking, setIsFestiveBooking] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partial' | 'Unpaid' | ''>('');
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [paidAmount, setPaidAmount] = useState<number | string>('');
@@ -272,6 +288,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setOrderTime(getLocalCurrentTimeInput());
     setDeliveryDate(getLocalTodayDate());
     setIsAdvanceBooking(false);
+    setIsFestiveBooking(false);
     setPaymentStatus('');
     setPaymentMode('Cash');
     setPaidAmount('');
@@ -312,6 +329,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setOrderTime(order.time || getLocalCurrentTimeInput());
     setDeliveryDate(order.delivery_date || getLocalTodayDate());
     setIsAdvanceBooking(order.advance_booking || false);
+    setIsFestiveBooking(order.festive_booking || false);
     setPaymentStatus(order.payment_status);
     setPaymentMode(order.payment_mode || 'Cash');
     setPaidAmount(order.paid_amount || 0);
@@ -459,6 +477,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           paid_amount: actualPaid,
           items: orderItems,
           advance_booking: isAdvanceBooking,
+          festive_booking: isFestiveBooking,
           total_amount: finalAmount,
           is_updated: true,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
@@ -492,7 +511,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         triggerToast(`Order ${orderNum} updated successfully.`, 'success');
       } else {
         // Create flow
-        const prefix = currentBiz?.invoice_prefix ? currentBiz.invoice_prefix.trim() : 'SO-2026-';
+        const standardPrefix = currentBiz?.invoice_prefix ? currentBiz.invoice_prefix.trim() : 'SO-2026-';
+        const festivePrefix = currentBiz?.festive_invoice_prefix ? currentBiz.festive_invoice_prefix.trim() : 'FEST-KF-';
+        const prefix = isFestiveBooking ? festivePrefix : standardPrefix;
         const randNum = Math.floor(1000 + Math.random() * 9000);
         const orderNum = isAdvanceBooking ? `${prefix}AB-${randNum}` : `${prefix}${randNum}`;
 
@@ -512,6 +533,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           delivery_status: 'Pending',
           items: orderItems,
           advance_booking: isAdvanceBooking,
+          festive_booking: isFestiveBooking,
           total_amount: finalAmount,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
           business_id: businessId
@@ -697,10 +719,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   };
 
 
-  // Filter orders strictly by time horizon for the entire page (metrics & table)
+  // Filter orders strictly by time horizon and booking filter for the entire page (metrics & table)
   const horizonOrders = useMemo(() => {
-    return orders.filter(o => isOrderInTimeHorizon(o, timeHorizon));
-  }, [orders, timeHorizon]);
+    return orders.filter(o => {
+      if (!isOrderInTimeHorizon(o, timeHorizon)) return false;
+      if (bookingFilter === 'regular' && o.festive_booking) return false;
+      if (bookingFilter === 'festive' && !o.festive_booking) return false;
+      return true;
+    });
+  }, [orders, timeHorizon, bookingFilter]);
 
   // Filtered Orders for the Table (applies search on top of time horizon)
   const filteredOrders = useMemo(() => {
@@ -752,7 +779,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               </button>
 
             {/* Top Time Filter Dropdown */}
-            <div className="relative shrink-0">
+            <div className="relative shrink-0" ref={topFilterRef}>
               <button 
                 onClick={() => setIsTopFilterMenuOpen(!isTopFilterMenuOpen)}
                 className="h-9 px-3 flex items-center gap-2 bg-slate-950/70 border border-white/10 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-200 cursor-pointer hover:bg-slate-900 transition-colors text-xs font-bold"
@@ -897,6 +924,27 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 {filteredOrders.length} {filteredOrders.length === 1 ? 'order' : 'orders'}
               </span>
             </span>
+
+            {/* Toggle button: Regular -> Festive -> All */}
+            <button
+              type="button"
+              onClick={() => {
+                setBookingFilter(prev => prev === 'all' ? 'regular' : prev === 'regular' ? 'festive' : 'all');
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold shrink-0 transition-all cursor-pointer shadow-xs border ${
+                bookingFilter === 'regular'
+                  ? 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700'
+                  : bookingFilter === 'festive'
+                  ? 'bg-amber-500 text-slate-950 border-amber-600 hover:bg-amber-400 font-extrabold'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+              title="Click to toggle filter: All -> Regular -> Festive -> All"
+            >
+              <Sparkles size={13} className={bookingFilter === 'festive' ? 'text-slate-950' : bookingFilter === 'regular' ? 'text-white' : 'text-amber-500'} />
+              <span>
+                Booking: <strong className="uppercase">{bookingFilter === 'all' ? 'All' : bookingFilter === 'regular' ? 'Regular' : 'Festive'}</strong>
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -937,8 +985,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       >
                         {o.order_number}
                       </button>
+                      {o.festive_booking && (
+                        <span className="px-1.5 py-0.2 rounded bg-amber-500/15 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 text-[9px] font-black border border-amber-300 dark:border-amber-700/80">
+                          Festive
+                        </span>
+                      )}
                       {o.advance_booking && (
-                        <span className="px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 text-[9px] font-extrabold border border-amber-200/80 dark:border-amber-800/60">
+                        <span className="px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 text-[9px] font-extrabold border border-indigo-200/80 dark:border-indigo-800/60">
                           Advance
                         </span>
                       )}
@@ -1506,36 +1559,68 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-1 flex flex-col justify-end pb-1.5">
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="checkbox" 
-                        id="advance-chk"
-                        checked={isAdvanceBooking}
-                        onChange={(e) => setIsAdvanceBooking(e.target.checked)}
-                        className="h-4 w-4 text-indigo-600 cursor-pointer"
-                      />
-                      <label htmlFor="advance-chk" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
-                        <Sparkles size={14} className="text-indigo-500" />
-                        <span>Advance Booking</span>
-                      </label>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        <input 
+                          type="checkbox" 
+                          id="advance-chk"
+                          checked={isAdvanceBooking}
+                          onChange={(e) => setIsAdvanceBooking(e.target.checked)}
+                          className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
+                        />
+                        <label htmlFor="advance-chk" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
+                          <Sparkles size={14} className="text-indigo-500" />
+                          <span>Advance Booking</span>
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <input 
+                          type="checkbox" 
+                          id="festive-chk"
+                          checked={isFestiveBooking}
+                          onChange={(e) => setIsFestiveBooking(e.target.checked)}
+                          className="h-4 w-4 text-amber-600 cursor-pointer rounded"
+                        />
+                        <label htmlFor="festive-chk" className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase flex items-center gap-1 cursor-pointer">
+                          <Sparkles size={14} className="text-amber-500" />
+                          <span>Festive Booking</span>
+                        </label>
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
 
               {selectedCustomerId !== 'WALK_IN' && (
-                <div className="pt-1 flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="advance-chk-sub"
-                    checked={isAdvanceBooking}
-                    onChange={(e) => setIsAdvanceBooking(e.target.checked)}
-                    className="h-4 w-4 text-indigo-600 cursor-pointer"
-                  />
-                  <label htmlFor="advance-chk-sub" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
-                    <Sparkles size={14} className="text-indigo-500" />
-                    <span>Flag as Advance Booking</span>
-                  </label>
+                <div className="pt-1 flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      id="advance-chk-sub"
+                      checked={isAdvanceBooking}
+                      onChange={(e) => setIsAdvanceBooking(e.target.checked)}
+                      className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
+                    />
+                    <label htmlFor="advance-chk-sub" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
+                      <Sparkles size={14} className="text-indigo-500" />
+                      <span>Flag as Advance Booking</span>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      id="festive-chk-sub"
+                      checked={isFestiveBooking}
+                      onChange={(e) => setIsFestiveBooking(e.target.checked)}
+                      className="h-4 w-4 text-amber-600 cursor-pointer rounded"
+                    />
+                    <label htmlFor="festive-chk-sub" className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase flex items-center gap-1 cursor-pointer">
+                      <Sparkles size={14} className="text-amber-500" />
+                      <span>Festive Booking</span>
+                    </label>
+                  </div>
                 </div>
               )}
 

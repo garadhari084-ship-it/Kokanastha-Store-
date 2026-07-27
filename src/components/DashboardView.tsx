@@ -12,7 +12,7 @@ export interface MetricDetailConfig {
 
 import { PageHeader } from './PageHeader';
 import { Database } from 'lucide-react';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { formatOrderTime } from '../utils/formatters';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -148,6 +148,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [isTopFilterMenuOpen, setIsTopFilterMenuOpen] = useState(false);
+  
+  const topFilterRef = useRef<HTMLDivElement>(null);
+  const chartFilterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (topFilterRef.current && !topFilterRef.current.contains(event.target as Node)) {
+        setIsTopFilterMenuOpen(false);
+      }
+      if (chartFilterRef.current && !chartFilterRef.current.contains(event.target as Node)) {
+        setIsFilterMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // Search & Filter State
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -658,7 +676,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             {/* Top Time Filter Dropdown */}
-            <div className="relative shrink-0">
+            <div className="relative shrink-0" ref={topFilterRef}>
               <button 
                 onClick={() => setIsTopFilterMenuOpen(!isTopFilterMenuOpen)}
                 className="w-9 h-9 flex items-center justify-center bg-slate-950/70 border border-white/10 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-200 cursor-pointer hover:bg-slate-900 transition-colors"
@@ -1653,7 +1671,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </select>
 
               {/* Time Filter Dropdown */}
-              <div className="relative shrink-0">
+              <div className="relative shrink-0" ref={chartFilterRef}>
                 <button 
                   onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
                   className="w-9 h-9 flex items-center justify-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS businesses (
     email VARCHAR(255) NOT NULL,
     phone VARCHAR(20) NOT NULL,
     invoice_prefix VARCHAR(10) DEFAULT 'INV-',
+    festive_invoice_prefix VARCHAR(50) DEFAULT 'FEST-KF-',
     tax_rate_default DECIMAL(5,2) DEFAULT 18.00,
     logo_url TEXT,
     login_cover_url TEXT,
@@ -210,6 +211,7 @@ CREATE TABLE IF NOT EXISTS sales_orders (
     paid_amount DECIMAL(15,2) DEFAULT 0.00,
     delivery_status VARCHAR(50) NOT NULL DEFAULT 'Pending' CHECK (delivery_status IN ('Pending', 'Packing', 'Packed', 'Dispatched', 'Delivered', 'Cancelled')),
     advance_booking BOOLEAN DEFAULT FALSE,
+    festive_booking BOOLEAN DEFAULT FALSE,
     total_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
     qr_code_data TEXT NOT NULL, -- QR Code containing: Order ID, customer, total items, etc.
     delivery_partner VARCHAR(100),

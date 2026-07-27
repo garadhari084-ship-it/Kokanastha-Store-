@@ -59,6 +59,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [gstin, setGstin] = useState(business?.gstin || '27AAAAA0000A1Z5');
   const [pan, setPan] = useState(business?.pan || 'AAAAA0000A');
   const [invoicePrefix, setInvoicePrefix] = useState(business?.invoice_prefix || 'KOK-');
+  const [festiveInvoicePrefix, setFestiveInvoicePrefix] = useState(business?.festive_invoice_prefix || 'FEST-KF-');
   const [taxRateDefault, setTaxRateDefault] = useState<number>(business?.tax_rate_default ?? 18);
   const [billingAddress, setBillingAddress] = useState(business?.billing_address || 'Warehouse 4B, Apex Industrial Estate, Dahisar East, Mumbai 400068');
   const [logoUrl, setLogoUrl] = useState(business?.logo_url || '');
@@ -104,6 +105,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       setGstin(updated.gstin || '');
       setPan(updated.pan || '');
       setInvoicePrefix(updated.invoice_prefix || 'KF-');
+      setFestiveInvoicePrefix(updated.festive_invoice_prefix || 'FEST-KF-');
       setTaxRateDefault(updated.tax_rate_default ?? 5);
       setBillingAddress(updated.billing_address || '');
       setLogoUrl(updated.logo_url || '');
@@ -295,6 +297,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         gstin: gstin.toUpperCase().trim(),
         pan: pan.toUpperCase().trim(),
         invoice_prefix: invoicePrefix.toUpperCase().trim(),
+        festive_invoice_prefix: festiveInvoicePrefix.toUpperCase().trim(),
         tax_rate_default: Number(taxRateDefault),
         billing_address: billingAddress.trim(),
         logo_url: logoUrl,
@@ -353,74 +356,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       />
 
       <div className="px-0.5 sm:px-1 space-y-6">
-      {/* ================= 1. SUPABASE CLOUD SYNC CONTROL HUB ================= */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl border border-indigo-500/30 shadow-xl relative overflow-hidden">
-        <div className="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
-          <Database size={220} />
-        </div>
-
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 bg-indigo-500/20 rounded-lg text-indigo-400 border border-indigo-500/30">
-                <Database size={18} />
-              </span>
-              <h2 className="text-base font-extrabold tracking-wide text-white flex items-center gap-2">
-                Supabase PostgreSQL Cloud Storage
-              </h2>
-              <span className="px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold border border-emerald-500/30">
-                ACTIVE
-              </span>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Synchronize all local enterprise data (Sales Orders, Packing Verifications, SKUs, Customers, and Audit Logs) to your dedicated Supabase database tables with strict Row-Level Security (RLS).
-            </p>
-            {lastSyncTime && (
-              <p className="text-[11px] text-indigo-300/80 font-mono flex items-center gap-1.5">
-                <Clock size={12} />
-                <span>Last Cloud Sync: <strong>{lastSyncTime}</strong></span>
-              </p>
-            )}
-          </div>
-
-          <div className="shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <button
-              type="button"
-              onClick={handleSyncToSupabase}
-              disabled={isSyncing}
-              className="px-5 py-3 bg-indigo-500 hover:bg-indigo-400 disabled:bg-indigo-800 text-white font-extrabold text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed shrink-0 border border-indigo-400/30"
-            >
-              <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
-              <span>{isSyncing ? 'Syncing to Supabase...' : 'Sync to Supabase Now'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Sync Summary Indicators */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-white/10 text-xs">
-          <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sync Status</p>
-            <p className="text-xs font-extrabold text-emerald-400 flex items-center gap-1 mt-0.5">
-              <CheckCircle2 size={13} />
-              <span>Connected</span>
-            </p>
-          </div>
-          <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Storage Engine</p>
-            <p className="text-xs font-extrabold text-white mt-0.5">PostgreSQL 15</p>
-          </div>
-          <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tenant Partition</p>
-            <p className="text-xs font-extrabold text-amber-300 font-mono mt-0.5 truncate">{businessId}</p>
-          </div>
-          <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cloud RLS</p>
-            <p className="text-xs font-extrabold text-indigo-300 mt-0.5">Enforced</p>
-          </div>
-        </div>
-      </div>
-
-      {/* ================= 2. ADVANCED TENANT SETTINGS FORM ================= */}
+      {/* ================= ADVANCED TENANT SETTINGS FORM ================= */}
       <form onSubmit={handleSaveSettings} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Left 2 Columns: Core Identity & Advanced Features */}
@@ -544,15 +480,28 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
               <span>Financials, Invoicing & Tax Rules</span>
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Invoice Prefix</label>
+                <label className="text-[11px] font-bold text-slate-500 uppercase">Standard Invoice Prefix</label>
                 <input 
                   type="text" 
                   required
                   value={invoicePrefix}
                   onChange={(e) => setInvoicePrefix(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 uppercase"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase flex items-center gap-1">
+                  <span>Festive Invoice Prefix</span>
+                </label>
+                <input 
+                  type="text" 
+                  value={festiveInvoicePrefix}
+                  onChange={(e) => setFestiveInvoicePrefix(e.target.value)}
+                  placeholder="FEST-KF-"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500 uppercase"
                 />
               </div>
 

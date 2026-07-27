@@ -40,6 +40,7 @@ const PRE_SEEDED_BUSINESSES: Business[] = [
     email: 'ops@kokanasthafaral.com',
     phone: '+91 98200 12345',
     invoice_prefix: 'KF-',
+    festive_invoice_prefix: 'FEST-KF-',
     tax_rate_default: 5.00,
     currency_symbol: '₹',
     auto_backup: true,
@@ -406,8 +407,7 @@ class ERPStorage {
        loyaltyLogs: 'loyalty_logs',
        subscriptions: 'customer_subscriptions'
     };
-    
-    for (const [key, table] of Object.entries(tables)) {
+       const syncPromises = Object.entries(tables).map(async ([key, table]) => {
        try {
        let query = supabase.from(table).select('*');
        if (businessId && table !== 'businesses') {
@@ -415,7 +415,7 @@ class ERPStorage {
        } else if (businessId && table === 'businesses') {
           query = query.eq('id', businessId);
        }
-       
+          
        const { data, error } = await query;
        if (!error && data && data.length > 0) {
           if (key === 'profiles') {
@@ -443,6 +443,7 @@ class ERPStorage {
                if (!itemsByOrder[item.sales_order_id]) itemsByOrder[item.sales_order_id] = [];
                itemsByOrder[item.sales_order_id].push(item);
              });
+
              const mergedSales = (data || []).map((so: any) => {
                const existingSO = (this.cache.sales || []).find(s => s.id === so.id);
                if (existingSO && this.pendingUploads.has(existingSO.id)) return existingSO;
@@ -524,7 +525,9 @@ class ERPStorage {
        } catch (tableErr) {
          console.warn(`Supabase query failed for ${table}:`, tableErr);
        }
-    }
+    });
+
+    await Promise.all(syncPromises);
 
     // Auto-discover uploaded assets directly from Supabase Storage tenant-assets bucket
     try {
@@ -740,6 +743,9 @@ class ERPStorage {
                    clean.customer_id = null;
                }
                clean.order_id = sanitizeUUID(clean.order_id, true);
+               if (clean.order_id && Array.isArray(this.cache.sales) && !this.cache.sales.some((s: any) => s.id === clean.order_id)) {
+                   clean.order_id = null;
+               }
            }
            if (tableName === 'customer_subscriptions') {
                clean.customer_id = sanitizeUUID(clean.customer_id, true);
@@ -792,6 +798,22 @@ class ERPStorage {
          } else {
            break;
          }
+       }
+       if (error && error.code === '23503') {
+         console.warn(`Foreign key violation on ${tableName} (${error.message}). Clearing unlinked foreign key IDs and retrying...`);
+         const stripFks = (item: any) => {
+           if (item && typeof item === 'object') {
+             const copy = { ...item };
+             if ('order_id' in copy) copy.order_id = null;
+             if ('customer_id' in copy) copy.customer_id = null;
+             if ('last_order_id' in copy) copy.last_order_id = null;
+             return copy;
+           }
+           return item;
+         };
+         payload = Array.isArray(payload) ? payload.map(stripFks) : stripFks(payload);
+         upsertRes = await supabase.from(tableName).upsert(payload);
+         error = upsertRes.error;
        }
        if (error) {
          if (error.code === 'PGRST205') {

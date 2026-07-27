@@ -10,6 +10,7 @@ export interface Business {
   email: string;
   phone: string;
   invoice_prefix: string;
+  festive_invoice_prefix?: string;
   tax_rate_default: number;
   created_at: string;
   logo_url?: string;
@@ -167,6 +168,7 @@ export interface SalesOrder {
   delivery_status: OrderStatus;
   items: SalesItem[];
   advance_booking: boolean;
+  festive_booking?: boolean;
   total_amount: number;
   is_updated?: boolean;
   business_id: string;

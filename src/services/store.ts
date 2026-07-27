@@ -1618,19 +1618,20 @@ class ERPStorage {
     if (deliveryDetails && deliveryDetails.partner) {
       finalPartner = deliveryDetails.partner;
       this.updateSalesOrder(orderId, {
-        status: 'Dispatched',
-        delivery_status: 'Dispatched',
+        status: 'Packed',
+        delivery_status: 'Packed',
         delivery_partner: deliveryDetails.partner,
         delivery_person_name: deliveryDetails.personName,
         delivery_person_phone: deliveryDetails.personPhone,
         tracking_number: deliveryDetails.trackingNumber,
         dispatch_notes: deliveryDetails.notes,
-        dispatched_at: new Date().toISOString()
+        packing_completed_at: new Date().toISOString()
       });
     } else {
       this.updateSalesOrder(orderId, {
         status: 'Packed',
-        delivery_status: 'Packed'
+        delivery_status: 'Packed',
+        packing_completed_at: new Date().toISOString()
       });
     }
 

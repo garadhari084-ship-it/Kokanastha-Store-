@@ -115,7 +115,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   });
 
   return (
-    <div className="space-y-6 max-w-full pb-12 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="inventory-module-root">
+    <div className="space-y-4 max-w-full pb-8 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="inventory-module-root">
       {/* Page Header */}
       <PageHeader
         title="Inventory Ledger & Stock Adjustment"
@@ -139,33 +139,81 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         }
       />
 
-      <div className="px-0.5 sm:px-1 space-y-6">
+      <div className="px-0.5 sm:px-1 space-y-4">
       {/* Valuation Panels Trailing */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 rounded-xl shadow-xs">
-          <span className="text-[10px] text-slate-400 font-bold uppercase block">Asset Valuation (FIFO Cost)</span>
-          <strong className="text-base font-mono text-slate-900 dark:text-white mt-1 block">₹{totalValuation.toLocaleString()}</strong>
-          <span className="text-[10px] text-slate-500 block mt-1">Calculated at current purchase cost levels.</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-slate-400 dark:hover:border-slate-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="p-1.5 bg-slate-500/10 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+              <FileSpreadsheet size={14} />
+            </div>
+            <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">ASSET VALUATION</span>
+          </div>
+          <div className="flex flex-col gap-0.5 mt-0.5">
+            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Calculated at current purchase cost levels.</span>
+          </div>
+          <div className="text-right mt-1">
+            <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+              ₹{totalValuation.toLocaleString()}
+            </span>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 rounded-xl shadow-xs">
-          <span className="text-[10px] text-slate-400 font-bold uppercase block">Expected Sales Revenue</span>
-          <strong className="text-base font-mono text-indigo-600 mt-1 block">₹{totalRetailValuation.toLocaleString()}</strong>
-          <span className="text-[10px] text-slate-500 block mt-1">Expected revenue if sold at retail catalog.</span>
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="p-1.5 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+              <ArrowUpRight size={14} />
+            </div>
+            <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">SALES REVENUE</span>
+          </div>
+          <div className="flex flex-col gap-0.5 mt-0.5">
+            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Expected revenue if sold at retail catalog.</span>
+          </div>
+          <div className="text-right mt-1">
+            <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+              ₹{totalRetailValuation.toLocaleString()}
+            </span>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 rounded-xl shadow-xs">
-          <span className="text-[10px] text-slate-400 font-bold uppercase block">Expected Gross Profit Margin</span>
-          <strong className="text-base font-mono text-emerald-600 mt-1 block">₹{(totalRetailValuation - totalValuation).toLocaleString()}</strong>
-          <span className="text-[10px] text-emerald-600 font-bold block mt-1">
-            +{(((totalRetailValuation - totalValuation) / (totalValuation || 1)) * 100).toFixed(1)}% markup ratio
-          </span>
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+              <TrendingDown size={14} />
+            </div>
+            <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">PROFIT MARGIN</span>
+          </div>
+          <div className="flex flex-col gap-0.5 mt-0.5">
+            <span className="text-[11px] text-emerald-600 font-bold leading-tight line-clamp-2">+{(((totalRetailValuation - totalValuation) / (totalValuation || 1)) * 100).toFixed(1)}% markup ratio</span>
+          </div>
+          <div className="text-right mt-1">
+            <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+              ₹{(totalRetailValuation - totalValuation).toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-rose-400 dark:hover:border-rose-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="p-1.5 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+              <AlertTriangle size={14} />
+            </div>
+            <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">LOW STOCK ALERTS</span>
+          </div>
+          <div className="flex flex-col gap-0.5 mt-0.5">
+            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Items below par level (10)</span>
+          </div>
+          <div className="text-right mt-1">
+            <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+              {products.filter(p => p.current_stock < 10).length}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Main Ledger Table view */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs overflow-x-auto overflow-y-hidden">
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-black dark:border-white shadow-sm mt-5 overflow-x-auto overflow-y-hidden">
+        <div className="px-3 py-2 border-b border-black dark:border-white flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-50 dark:bg-slate-800/50">
           <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
             <History size={16} />
             <span>Stock Transaction Ledger</span>
@@ -177,65 +225,83 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               placeholder="Search ledger by product..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+              className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] rounded-full border border-slate-300 dark:border-slate-700 focus:outline-hidden"
             />
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full text-left text-[11px] whitespace-nowrap">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800 text-[10px] font-bold uppercase text-slate-400 border-b border-slate-100 dark:border-slate-800">
-                <th className="p-4">Timestamp</th>
-                <th className="p-4">Product Details</th>
-                <th className="p-4">Transaction Type</th>
-                <th className="p-4">Change Qty</th>
-                <th className="p-4">Remarks / Audit Note</th>
+              <tr className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[11px]">
+                <th className="py-2.5 px-4">Timestamp</th>
+                <th className="py-2.5 px-4">Product Details</th>
+                <th className="py-2.5 px-4">Transaction Type</th>
+                <th className="py-2.5 px-4">Change Qty</th>
+                <th className="py-2.5 px-4">Remarks / Audit Note</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px]">
-              {filteredLogs.map((log, idx) => {
-                const p = products.find(prod => prod.id === log.product_id);
-                if (!p) return null;
-
-                const isAddition = log.change_qty > 0;
-
-                return (
-                  <tr key={`${log.id}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
-                    <td className="p-4 font-mono text-[11px] text-slate-400">
-                      {new Date(log.created_at).toLocaleString()}
-                    </td>
-                    <td className="p-4 space-y-0.5">
-                      <strong className="text-slate-800 dark:text-slate-200">{p.name}</strong>
-                      <span className="text-[10px] text-slate-400 font-mono block">SKU: {p.sku}</span>
-                    </td>
-                    <td className="p-4">
-                      <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                        log.type === 'In' ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30' :
-                        log.type === 'Adjustment' ? 'text-indigo-700 bg-indigo-50 dark:bg-indigo-950/30' :
-                        log.type === 'Damage' ? 'text-rose-700 bg-rose-50 dark:bg-rose-950/30' :
-                        log.type === 'Return' ? 'text-amber-700 bg-amber-50 dark:bg-amber-950/30' :
-                        'text-slate-700 bg-slate-100'
-                      }`}>
-                        {log.type}
-                      </span>
-                    </td>
-                    <td className={`p-4 font-bold font-mono text-xs ${isAddition ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {isAddition ? '+' : ''}{log.change_qty}
-                    </td>
-                    <td className="p-4 text-slate-500 italic max-w-[250px] truncate" title={log.notes}>
-                      {log.notes}
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {filteredLogs.length === 0 && (
+            <tbody className="divide-y divide-black dark:divide-white bg-white dark:bg-slate-900 text-[11px]">
+              {filteredLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-12 text-slate-400">
-                    No transactions recorded in ledger logs yet.
+                  <td colSpan={5} className="text-center py-12">
+                    <div className="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400">
+                      <History size={24} className="mb-2 opacity-50" />
+                      <p className="font-bold text-xs">No transactions found.</p>
+                      <p className="text-[10px]">No records match your filters.</p>
+                    </div>
                   </td>
                 </tr>
+              ) : (
+                filteredLogs.map((log, idx) => {
+                  const p = products.find(prod => prod.id === log.product_id);
+                  if (!p) return null;
+
+                  const isAddition = log.change_qty > 0;
+                  const logDate = new Date(log.created_at);
+
+                  return (
+                    <tr key={`${log.id}-${idx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="py-2.5 px-4 font-black text-slate-900 dark:text-white">
+                        <div className="flex flex-col">
+                          <span>{logDate.toLocaleDateString()}</span>
+                          <span className="text-[9px] text-slate-500">{logDate.toLocaleTimeString()}</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{p.name}</span>
+                          <span className="text-[9px] text-slate-500 font-mono tracking-widest text-indigo-500/70">{p.sku}</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                          log.type === 'In' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          log.type === 'Adjustment' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                          log.type === 'Damage' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                          log.type === 'Return' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                          'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {log.type}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="flex items-center gap-1">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${isAddition ? 'bg-emerald-100/50 text-emerald-700' : 'bg-rose-100/50 text-rose-700'}`}>
+                            {isAddition ? '+' : ''}{log.change_qty}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="flex items-center gap-1.5 max-w-[200px]">
+                          <span className="truncate text-slate-600 dark:text-slate-400 font-medium" title={log.notes}>
+                            {log.notes || 'No notes'}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

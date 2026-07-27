@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PageHeader } from './PageHeader';
 import { 
+  Bike, 
+  Store, 
   QrCode, 
   Scan, 
   Check, 
@@ -24,7 +26,9 @@ import {
   Clock,
   MapPin,
   Building2,
-  Navigation
+  Navigation,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
 import { dbStore } from '../services/store';
@@ -56,6 +60,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     openOrderIdInitially ? dbStore.getSalesOrders(businessId).find(o => o.id === openOrderIdInitially) || null : null
   );
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Scanning flow states
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -219,14 +224,14 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   // Reset scans
   const handleResetOrderScans = () => {
     if (!selectedOrder) return;
-    if (window.confirm(`Reset all scanned quantities back to 0 for Order #${selectedOrder.order_number}?`)) {
-      dbStore.updateSalesOrder(selectedOrder.id, {
-        items: (selectedOrder.items || []).map(it => ({ ...it, scanned_qty: 0 }))
-      });
-      triggerToast('All item scan counts reset to 0.', 'info');
-      setRecentScanLog(null);
-      reloadOrders();
-    }
+    const resetItems = (selectedOrder.items || []).map(it => ({ ...it, scanned_qty: 0 }));
+    dbStore.updateSalesOrder(selectedOrder.id, {
+      items: resetItems
+    });
+    setSelectedOrder(prev => prev ? { ...prev, items: resetItems } : null);
+    triggerToast('All item scan counts reset to 0.', 'info');
+    setRecentScanLog(null);
+    reloadOrders();
   };
 
   // Complete Packing & Assign Delivery
@@ -264,7 +269,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       }
 
       
-      triggerToast(`Order #${selectedOrder.order_number} successfully packed & assigned to ${deliveryPartner}!`, 'success');
+      triggerToast(`Order #${selectedOrder.order_number} packed & ready for dispatch (Assigned: ${deliveryPartner})!`, 'success');
       setSelectedOrder(null);
       setRecentScanLog(null);
       reloadOrders();
@@ -298,7 +303,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   });
 
   return (
-    <div className="space-y-6 max-w-full pb-16 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="packing-verification-module">
+    <div className="space-y-3 max-w-full pb-16 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="packing-verification-module">
       
       {/* SECTION 1: TOP PAGE HEADER */}
       <PageHeader
@@ -309,7 +314,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setAudioFeedback(!audioFeedback)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer border transition-colors ${
                 audioFeedback 
                   ? 'bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-400' 
                   : 'bg-slate-50 border-slate-200 text-slate-400 dark:bg-slate-800 dark:border-slate-700'
@@ -322,30 +327,30 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         }
       />
 
-      <div className="px-0.5 sm:px-1 space-y-6">
+      <div className="px-0.5 sm:px-1 space-y-3">
       {/* ========================================================================= */}
       {/* PAGE VIEW A: DEDICATED PACKING STATION FOR A SELECTED ORDER               */}
       {/* ========================================================================= */}
       {selectedOrder ? (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
           
           {/* Top Bar with Back Button */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <button
               onClick={handleBackToQueue}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-[11px] font-bold transition-all cursor-pointer active:scale-95"
             >
               <ArrowLeft size={16} />
               <span>Back to Orders Queue</span>
             </button>
 
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+            <div className="flex items-center gap-2.5">
+              <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
                 Data saved automatically as you scan
               </span>
               <button 
                 onClick={handleResetOrderScans}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:hover:bg-rose-900/40 dark:text-rose-400 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:hover:bg-rose-900/40 dark:text-rose-400 rounded-xl text-[11px] font-bold transition-all cursor-pointer active:scale-95"
               >
                 <RotateCcw size={14} />
                 <span>Reset Scans</span>
@@ -354,46 +359,46 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
           </div>
 
           {/* Active Order Overview Banner */}
-          <div className="bg-slate-950 text-white rounded-2xl p-6 shadow-xl border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-            <div className="md:col-span-2 space-y-2">
-              <div className="flex items-center gap-2">
+          <div className="bg-slate-950 text-white rounded-2xl p-4 sm:p-5 shadow-xl border border-slate-800 flex flex-row flex-wrap items-center justify-between gap-4">
+            <div className="space-y-3 flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="px-2.5 py-1 bg-indigo-500/20 text-indigo-300 rounded-md text-[10px] font-bold font-mono tracking-wider uppercase border border-indigo-500/30">
                   PACKING DESK #1
                 </span>
                 <span className="px-2.5 py-1 bg-slate-800 text-slate-300 rounded-md text-[10px] font-bold uppercase">
                   Status: {selectedOrder.status}
                 </span>
+                <h2 className="text-sm font-extrabold tracking-tight flex items-center gap-2 text-white ml-1">
+                  Order #{selectedOrder.order_number}
+                </h2>
               </div>
-              <h2 className="text-xl font-extrabold tracking-tight flex items-center gap-2 text-white">
-                <span>Order #{selectedOrder.order_number}</span>
-              </h2>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300">
-                <p className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-slate-300">
+                <p className="flex items-center gap-1.5">
                   <User size={13} className="text-slate-400" />
-                  <span className="font-semibold text-white">
+                  <span className="font-semibold text-white truncate max-w-[150px]">
                     {customers.find(c => c.id === selectedOrder.customer_id)?.name || 'Walk-in Customer'}
                   </span>
                 </p>
                 {selectedOrder.area && (
-                  <p className="flex items-center gap-1 text-slate-400">
+                  <p className="flex items-center gap-1.5 text-slate-400">
                     <MapPin size={13} />
-                    <span>Area: {selectedOrder.area}</span>
+                    <span className="truncate max-w-[120px]">Area: {selectedOrder.area}</span>
                   </p>
                 )}
                 {selectedOrder.channel && (
-                  <p className="flex items-center gap-1 text-slate-400">
+                  <p className="flex items-center gap-1.5 text-slate-400">
                     <Building2 size={13} />
-                    <span>Channel: {selectedOrder.channel}</span>
+                    <span className="truncate max-w-[120px]">Channel: {selectedOrder.channel}</span>
                   </p>
                 )}
               </div>
             </div>
 
             {/* Verification Progress Box */}
-            <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-xl flex flex-col justify-between">
+            <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-xl flex flex-col justify-between w-full sm:w-[320px] shrink-0">
               <div className="flex justify-between items-baseline mb-2">
-                <span className="text-xs text-slate-400 uppercase font-bold tracking-wider">Verification Progress</span>
-                <span className="text-2xl font-mono font-black text-indigo-400">{packingProgressPercent}%</span>
+                <span className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">Verification Progress</span>
+                <span className="text-sm font-mono font-black text-indigo-400">{packingProgressPercent}%</span>
               </div>
               
               <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden mb-3">
@@ -414,52 +419,71 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
           </div>
 
           {/* Barcode Scanner Controls */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                <Scan size={16} className="text-indigo-600 animate-pulse" />
+              <h3 className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                <Scan size={14} className="text-indigo-600 animate-pulse" />
                 <span>Barcode / SKU Input Console</span>
               </h3>
-              <button
-                onClick={() => setIsScannerOpen(true)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center gap-2 shadow-md shadow-indigo-600/20 transition-all active:scale-95"
-              >
-                <Camera size={16} />
-                <span>Open Back Camera Scanner</span>
-              </button>
             </div>
 
-            <form onSubmit={handleFormSubmit} className="flex gap-2">
-              <div className="relative flex-1">
-                <input 
-                  ref={barcodeInputRef}
-                  type="text" 
-                  placeholder="Scan or type barcode / SKU / product name (e.g. AM-1001)..."
-                  value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value)}
-                  className="w-full pl-3 pr-10 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-mono font-bold rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                />
-                {barcodeInput && (
-                  <button 
-                    type="button" 
-                    onClick={() => setBarcodeInput('')}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  >
-                    <X size={16} />
-                  </button>
-                )}
+            <form onSubmit={handleFormSubmit} className="space-y-2.5 w-full">
+              {/* Row 1: Barcode / SKU input field + Verify Item button on tablet/desktop */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
+                <div className="relative flex-1">
+                  <input 
+                    ref={barcodeInputRef}
+                    type="text" 
+                    placeholder="Scan or type barcode / SKU / product name (e.g. AM-1001)..."
+                    value={barcodeInput}
+                    onChange={(e) => setBarcodeInput(e.target.value)}
+                    className="w-full pl-3 pr-10 h-10 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] font-mono font-bold rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  />
+                  {barcodeInput && (
+                    <button 
+                      type="button" 
+                      onClick={() => setBarcodeInput('')}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Verify Item button on tablet & desktop (sm+) */}
+                <button 
+                  type="submit"
+                  className="hidden sm:flex h-10 px-4 sm:w-48 shrink-0 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white rounded-xl text-[11px] font-bold cursor-pointer items-center justify-center transition-all active:scale-95 shadow-sm"
+                >
+                  Verify Item
+                </button>
               </div>
-              <button 
-                type="submit"
-                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer shrink-0 transition-all active:scale-95"
-              >
-                Verify Item
-              </button>
+
+              {/* Row 2: Equal width buttons on mobile; Camera Scanner right-aligned under Verify Item on tablet/desktop */}
+              <div className="grid grid-cols-2 sm:flex sm:justify-end gap-2 w-full">
+                {/* Verify Item button on mobile (< sm) */}
+                <button 
+                  type="submit"
+                  className="sm:hidden h-10 px-4 w-full bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white rounded-xl text-[11px] font-bold cursor-pointer flex items-center justify-center transition-all active:scale-95 shadow-sm"
+                >
+                  Verify Item
+                </button>
+
+                {/* Camera Scanner button */}
+                <button
+                  type="button"
+                  onClick={() => setIsScannerOpen(true)}
+                  className="h-10 px-4 w-full sm:w-48 shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all active:scale-95"
+                >
+                  <Camera size={14} />
+                  <span>Camera Scanner</span>
+                </button>
+              </div>
             </form>
 
             {/* Scan Feedback Banner */}
             {recentScanLog && (
-              <div className={`p-3 rounded-xl flex items-center gap-2.5 text-xs font-semibold border ${
+              <div className={`p-2.5 rounded-xl flex items-center gap-2.5 text-[11px] font-semibold border ${
                 recentScanLog.success 
                   ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300' 
                   : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
@@ -472,18 +496,18 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
           {/* ITEM SCAN CHECKLIST TABLE WITH DETAILED SCANNED VS PENDING QUANTITIES */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
-              <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+            <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+              <h3 className="text-[11px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
                 <PackageCheck size={16} className="text-indigo-600" />
                 <span>Order Items Verification List ({selectedItems.length} Products)</span>
               </h3>
-              <span className="text-xs text-slate-500 font-medium">
-                Click "Simulate Scan" for manual verification
+              <span className="text-[11px] text-slate-500 font-medium">
+                
               </span>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-[11px]">
                 <thead>
                   <tr className="bg-slate-100/70 dark:bg-slate-800/80 text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
                     <th className="py-3 px-4">Product Details</th>
@@ -492,7 +516,6 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                     <th className="py-3 px-4 text-center">Scanned Qty</th>
                     <th className="py-3 px-4 text-center">Pending Qty</th>
                     <th className="py-3 px-4 text-center">Status / Progress</th>
-                    <th className="py-3 px-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -516,27 +539,27 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                         }`}
                       >
                         <td className="py-3.5 px-4">
-                          <strong className="text-slate-900 dark:text-slate-100 font-bold block text-sm">
+                          <strong className="text-slate-900 dark:text-slate-100 font-bold block text-[11px]">
                             {p ? p.name : 'Unknown Product'}
                           </strong>
                           <span className="text-[11px] text-slate-400 font-mono">Category: {p?.category || 'General'}</span>
                         </td>
                         
                         <td className="py-3.5 px-4 text-center">
-                          <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 rounded-md border border-indigo-100 dark:border-indigo-900">
+                          <span className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 rounded-md border border-indigo-100 dark:border-indigo-900">
                             {p?.barcode || p?.sku || 'N/A'}
                           </span>
                         </td>
 
-                        <td className="py-3.5 px-4 text-center font-mono font-extrabold text-sm text-slate-900 dark:text-slate-100">
+                        <td className="py-3.5 px-4 text-center font-mono font-extrabold text-[11px] text-slate-900 dark:text-slate-100">
                           {totalNeeded}
                         </td>
 
-                        <td className="py-3.5 px-4 text-center font-mono font-extrabold text-sm text-emerald-600 dark:text-emerald-400">
+                        <td className="py-3.5 px-4 text-center font-mono font-extrabold text-[11px] text-emerald-600 dark:text-emerald-400">
                           {scanned}
                         </td>
 
-                        <td className={`py-3.5 px-4 text-center font-mono font-extrabold text-sm ${pending > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>
+                        <td className={`py-3.5 px-4 text-center font-mono font-extrabold text-[11px] ${pending > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>
                           {pending}
                         </td>
 
@@ -564,31 +587,6 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                             </div>
                           </div>
                         </td>
-
-                        <td className="py-3.5 px-4 text-right">
-                          {!isItemDone && p && (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => processBarcodeScan(p.barcode || p.sku || p.id)}
-                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg transition-all cursor-pointer active:scale-95"
-                                title="Scan 1 unit"
-                              >
-                                +1 Scan
-                              </button>
-                              {pending > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleScanAllForProduct(p.barcode || p.sku || p.id, pending)}
-                                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer active:scale-95"
-                                  title={`Verify all ${pending} remaining units at once`}
-                                >
-                                  Verify All ({pending})
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </td>
                       </tr>
                     );
                   })}
@@ -597,47 +595,48 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
             </div>
           </div>
 
-          {/* DISPATCH & DELIVERY PARTNER ASSIGNMENT PANEL (UNLOCKED WHEN 100% VERIFIED) */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-xl ${isFullyVerified ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
-                  <Truck size={22} />
+                                                  {/* DISPATCH & DELIVERY PARTNER ASSIGNMENT PANEL (UNLOCKED WHEN 100% VERIFIED) */}
+          <div className={`bg-white dark:bg-slate-900 rounded-3xl border p-3.5 sm:p-3.5 shadow-sm space-y-3.5 transition-all duration-300 ${isFullyVerified ? 'border-emerald-500/50 shadow-emerald-500/10' : 'border-slate-200 dark:border-slate-800'}`}>
+            <div className="flex flex-row flex-wrap items-center justify-between gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3.5">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isFullyVerified ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`}>
+                  <Truck size={24} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Delivery Partner & Dispatch Assignment</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <h3 className="text-[15px] font-black text-slate-900 dark:text-white">Delivery Partner & Dispatch</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                     {isFullyVerified 
-                      ? 'All items verified! Select delivery service (Rapido, Dunzo, Courier, Agent, etc.) to dispatch.' 
-                      : 'Complete scanning all item checkmarks above to unlock delivery dispatch options.'}
+                      ? 'All items verified! Select delivery service to proceed.' 
+                      : 'Complete scanning all item checkmarks above to unlock dispatch options.'}
                   </p>
                 </div>
               </div>
-
-              {isFullyVerified ? (
-                <span className="px-3 py-1 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold rounded-full flex items-center gap-1">
-                  <Sparkles size={14} /> Ready to Dispatch
-                </span>
-              ) : (
-                <span className="px-3 py-1 bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 text-xs font-extrabold rounded-full flex items-center gap-1">
-                  <AlertCircle size={14} /> {pendingItemsCount} Units Pending Scan
-                </span>
-              )}
+              <div>
+                {isFullyVerified ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold rounded-lg border border-emerald-200 dark:border-emerald-500/30">
+                    <Sparkles size={14} /> Ready to Dispatch
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[11px] font-bold rounded-lg border border-amber-200 dark:border-amber-500/30">
+                    <AlertCircle size={14} /> {pendingItemsCount} Units Pending
+                  </span>
+                )}
+              </div>
             </div>
 
-            <form onSubmit={handleCompleteDispatch} className="space-y-5">
-              {/* Delivery Partner Selection Cards */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
-                  Select Delivery Mode / Partner
+            <form onSubmit={handleCompleteDispatch} className="flex flex-col md:flex-row gap-3.5">
+              {/* Left Column: Delivery Mode */}
+              <div className="flex-[1.2] space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                  Select Delivery Mode
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                   {[
                     { id: 'Rapido', label: 'Rapido', desc: 'Bike Express' },
                     { id: 'Dunzo / Swiggy', label: 'Dunzo / Swiggy', desc: 'Hyperlocal' },
                     { id: 'Porter', label: 'Porter', desc: 'Local Driver' },
                     { id: 'Courier Logistics', label: 'Courier', desc: 'BlueDart/Delhivery' },
-                    { id: 'In-House Agent', label: 'In-House Exec', desc: 'Company Driver' },
+                    { id: 'In-House Agent', label: 'In-House', desc: 'Company Driver' },
                     { id: 'Customer Pickup', label: 'Self Pickup', desc: 'Store Counter' }
                   ].map((mode) => (
                     <button
@@ -645,14 +644,14 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                       type="button"
                       disabled={!isFullyVerified}
                       onClick={() => setDeliveryPartner(mode.id)}
-                      className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                      className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer min-h-[76px] ${
                         deliveryPartner === mode.id && isFullyVerified
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
-                          : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-100'
-                      } ${!isFullyVerified ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 border-indigo-700 text-white shadow-md shadow-indigo-600/20 scale-[1.02]'
+                          : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
+                      } ${!isFullyVerified ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}
                     >
-                      <strong className="text-xs font-extrabold block">{mode.label}</strong>
-                      <span className={`text-[10px] mt-1 ${deliveryPartner === mode.id && isFullyVerified ? 'text-indigo-200' : 'text-slate-400'}`}>
+                      <strong className="text-[11px] font-black block">{mode.label}</strong>
+                      <span className={`text-[9.5px] font-bold uppercase tracking-wider mt-1.5 ${deliveryPartner === mode.id && isFullyVerified ? 'text-indigo-200' : 'text-slate-500'}`}>
                         {mode.desc}
                       </span>
                     </button>
@@ -660,90 +659,81 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                 </div>
               </div>
 
-              {/* Delivery Driver / Tracking Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
-                    <User size={13} /> Driver / Exec Name
-                  </label>
-                  <input 
-                    type="text" 
-                    disabled={!isFullyVerified}
-                    placeholder="e.g. Rahul Sharma"
-                    value={personName}
-                    onChange={(e) => setPersonName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 font-medium disabled:opacity-50"
-                  />
+              {/* Right Column: Delivery Details & Actions */}
+              <div className="flex-1 flex flex-col gap-3.5">
+                <div className="bg-slate-50 dark:bg-slate-800/30 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800">
+                  {(deliveryPartner === 'In-House Agent' || deliveryPartner === 'Customer Pickup') ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                          <User size={12} className="text-slate-400" /> {deliveryPartner === 'Customer Pickup' ? 'Collector / Person Name' : 'Driver / Exec Name'}
+                        </label>
+                        <input 
+                          type="text" 
+                          disabled={!isFullyVerified}
+                          placeholder={deliveryPartner === 'Customer Pickup' ? 'e.g. Customer Name' : 'e.g. Rahul Sharma'}
+                          value={personName}
+                          onChange={(e) => setPersonName(e.target.value)}
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-[11px] font-semibold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 disabled:opacity-50 transition-all placeholder:font-normal placeholder:text-slate-400"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                          <Phone size={12} className="text-slate-400" /> Contact Number
+                        </label>
+                        <input 
+                          type="text" 
+                          disabled={!isFullyVerified}
+                          placeholder="e.g. +91 9876543210"
+                          value={personPhone}
+                          onChange={(e) => setPersonPhone(e.target.value)}
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-[11px] font-semibold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 disabled:opacity-50 transition-all placeholder:font-normal placeholder:text-slate-400"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <Navigation size={12} className="text-slate-400" /> Tracking / Waybill Number
+                      </label>
+                      <input 
+                        type="text" 
+                        disabled={!isFullyVerified}
+                        placeholder="e.g. TRK-99214"
+                        value={trackingNumber}
+                        onChange={(e) => setTrackingNumber(e.target.value)}
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-[11px] font-semibold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 disabled:opacity-50 transition-all placeholder:font-normal placeholder:text-slate-400"
+                      />
+                    </div>
+                  )}
                 </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
-                    <Phone size={13} /> Driver Contact Number
-                  </label>
-                  <input 
-                    type="text" 
-                    disabled={!isFullyVerified}
-                    placeholder="e.g. +91 9876543210"
-                    value={personPhone}
-                    onChange={(e) => setPersonPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 font-medium disabled:opacity-50"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
-                    <Navigation size={13} /> Tracking / Waybill Number
-                  </label>
-                  <input 
-                    type="text" 
-                    disabled={!isFullyVerified}
-                    placeholder="e.g. RAP-99214 or AWB-1002"
-                    value={trackingNumber}
-                    onChange={(e) => setTrackingNumber(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 font-medium disabled:opacity-50"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
-                  <FileText size={13} /> Dispatch Notes / Special Instructions
-                </label>
-                <input 
-                  type="text" 
-                  disabled={!isFullyVerified}
-                  placeholder="e.g. Handle fragile bakery box with care, call customer before arriving..."
-                  value={dispatchNotes}
-                  onChange={(e) => setDispatchNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 font-medium disabled:opacity-50"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={handleBackToQueue}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-                >
-                  Save Progress & Exit
-                </button>
-
-                {isFullyVerified ? (
+                {/* Action Buttons */}
+                <div className="mt-auto flex flex-row flex-wrap items-center justify-between gap-2.5">
                   <button
-                    type="submit"
-                    className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-extrabold shadow-lg shadow-emerald-600/30 flex items-center gap-2 cursor-pointer transition-all animate-bounce"
+                    type="button"
+                    onClick={handleBackToQueue}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition-all cursor-pointer shadow-sm active:scale-[0.98]"
                   >
-                    <Sparkles size={18} />
-                    <span>Confirm Dispatch & Assign ({deliveryPartner})</span>
-                    <ArrowRight size={18} />
+                    Save and Exit
                   </button>
-                ) : (
-                  <div className="text-xs text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1.5">
-                    <AlertCircle size={16} />
-                    <span>Verify remaining {pendingItemsCount} units to enable dispatch.</span>
-                  </div>
-                )}
+                  
+                  {isFullyVerified ? (
+                    <button
+                      type="submit"
+                      className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white rounded-xl text-[11px] font-black shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+                    >
+                      <Sparkles size={14} />
+                      <span>Ready to Dispatch & Assign</span>
+                      <span className="bg-emerald-700/50 px-2 py-0.5 rounded text-[10px] ml-1">{deliveryPartner}</span>
+                    </button>
+                  ) : (
+                    <div className="w-full sm:w-auto px-4 py-2.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl text-[11px] text-amber-700 dark:text-amber-400 font-bold flex items-center justify-center gap-1.5 border border-amber-200 dark:border-amber-500/30">
+                      <AlertCircle size={14} />
+                      <span>Verify {pendingItemsCount} unit{pendingItemsCount > 1 ? 's' : ''} to dispatch</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </form>
           </div>
@@ -754,126 +744,260 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         /* ========================================================================= */
         /* PAGE VIEW B: ORDERS QUEUE LIST (PENDING FULFILLMENT LIST)                 */
         /* ========================================================================= */
-        <div className="space-y-6">
+        <div className="space-y-3">
           
           {/* Header Controls & Search Bar */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="relative w-full sm:w-80">
-              <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
+          <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-row flex-wrap items-center justify-between gap-3.5">
+            <div className="relative w-full md:w-96">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
                 type="text" 
                 placeholder="Search orders, customers, area..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-medium rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 text-[11px] font-medium rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder:text-slate-400"
               />
             </div>
-
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-              <span className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-lg font-bold">
-                {pendingOrders.length} Pending Orders
-              </span>
+            
+            <div className="flex items-center gap-2.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                  title="Grid View"
+                >
+                  <LayoutGrid size={16} />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                  title="List View"
+                >
+                  <List size={16} />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 bg-slate-100 dark:bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                <PackageCheck size={14} className="text-indigo-500" />
+                <span className="text-slate-700 dark:text-slate-300">
+                  {pendingOrders.length} Pending
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Orders Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {filteredQueue.map((o) => {
-              const customer = customers.find(c => c.id === o.customer_id);
-              const items = o.items || [];
-              const itemsCount = items.reduce((acc, it) => acc + (it.qty || 0), 0);
-              const packedCount = items.reduce((acc, it) => acc + (it.scanned_qty || 0), 0);
-              const pendingCount = Math.max(0, itemsCount - packedCount);
-              const pct = itemsCount > 0 ? Math.round((packedCount / itemsCount) * 100) : 0;
-              const isDone = itemsCount > 0 && pct === 100;
-
-              return (
-                <div 
-                  key={o.id}
-                  onClick={() => handleOpenPackingStation(o)}
-                  className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800 p-2.5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-2.5 cursor-pointer group hover:border-indigo-300"
-                >
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="text-[8px] font-bold text-slate-400 font-mono block uppercase tracking-tight">Order Number</span>
-                        <strong className="text-xs font-black text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors">
-                          #{o.order_number}
-                        </strong>
-                      </div>
-                      <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-black font-mono tracking-tighter ${
-                        isDone 
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/50' 
-                          : o.status === 'Packing' 
-                          ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/50' 
-                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/50'
-                      }`}>
-                        {isDone ? 'VERIFIED' : o.status.toUpperCase()}
-                      </span>
-                    </div>
-
-                    <div className="text-[10px] space-y-0.5 text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-2">
-                      <p className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1 truncate">
-                        <User size={12} className="text-indigo-600 shrink-0" />
-                        <span className="truncate">{customer ? customer.name : 'Walk-in Customer'}</span>
-                      </p>
-                      {customer?.phone && (
-                        <p className="text-[9px] text-slate-400 pl-4 flex items-center gap-1">
-                          <Phone size={9} /> {customer.phone}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Progress details */}
-                    <div className="bg-slate-50/50 dark:bg-slate-800/40 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800/80 space-y-1">
-                      <div className="flex justify-between items-center text-[9px] font-bold font-mono">
-                        <span className="text-slate-400 uppercase tracking-tighter">Scan Progress</span>
-                        <span className={isDone ? 'text-emerald-600' : 'text-indigo-600'}>{pct}%</span>
-                      </div>
-
-                      <div className="w-full bg-slate-200 dark:bg-slate-700 h-1 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-500 ${isDone ? 'bg-emerald-500' : 'bg-indigo-600'}`} 
-                          style={{ width: `${pct}%` }} 
-                        />
-                      </div>
-
-                      <div className="flex justify-between text-[8px] font-bold text-slate-400 pt-0.5 tracking-tighter uppercase">
-                        <span>{packedCount} Done</span>
-                        <span>{itemsCount} Total</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenPackingStation(o);
-                    }}
-                    className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[9px] font-black cursor-pointer transition-all flex items-center justify-center gap-2 shadow-sm shadow-indigo-600/20 active:scale-[0.98]"
+          {/* Orders Display */}
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
+              {filteredQueue.map((o) => {
+                const customer = customers.find(c => c.id === o.customer_id);
+                const items = o.items || [];
+                const itemsCount = items.reduce((acc, it) => acc + (it.qty || 0), 0);
+                const packedCount = items.reduce((acc, it) => acc + (it.scanned_qty || 0), 0);
+                const pct = itemsCount > 0 ? Math.round((packedCount / itemsCount) * 100) : 0;
+                const isDone = itemsCount > 0 && pct === 100;
+                
+                return (
+                  <div 
+                    key={o.id}
+                    onClick={() => handleOpenPackingStation(o)}
+                    className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-2.5 sm:p-3 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group hover:border-indigo-500/50 cursor-pointer relative overflow-hidden"
                   >
-                    <Scan size={12} />
-                    <span>Packing Station</span>
-                  </button>
-                </div>
-              );
-            })}
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-indigo-500/10 via-indigo-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
+                    
+                    <div className="space-y-2 relative z-10">
+                      {/* Header: Order Ref & Status Pill */}
+                      <div className="flex justify-between items-start gap-1">
+                        <div className="min-w-0">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block leading-none mb-0.5">Order Ref</span>
+                          <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate block">
+                            #{o.order_number}
+                          </strong>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 border ${
+                          isDone 
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
+                            : o.status === 'Packing' 
+                            ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 animate-pulse' 
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                        }`}>
+                          {isDone ? 'Verified' : o.status}
+                        </span>
+                      </div>
+                      
+                      {/* Customer Info Container */}
+                      <div className="space-y-1 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                          <div className="w-5 h-5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                            <User size={11} />
+                          </div>
+                          <span className="truncate">{customer ? customer.name : 'Walk-in Customer'}</span>
+                        </div>
+                        {customer?.phone && (
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pl-6.5 truncate">
+                            <Phone size={10} className="shrink-0 text-slate-400" /> 
+                            <span className="truncate">{customer.phone}</span>
+                          </div>
+                        )}
+                        {o.area && (
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pl-6.5 truncate">
+                            <MapPin size={10} className="shrink-0 text-slate-400" /> 
+                            <span className="truncate">{o.area}</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Scan Progress Bar */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[10px] font-bold">
+                          <span className="text-slate-500">Progress</span>
+                          <span className={isDone ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}>{pct}%</span>
+                        </div>
+                        <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ease-out ${isDone ? 'bg-emerald-500' : 'bg-gradient-to-r from-indigo-500 to-violet-500'}`} 
+                            style={{ width: `${pct}%` }} 
+                          />
+                        </div>
+                        <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                          <span>{packedCount} Scanned</span>
+                          <span>{itemsCount} Total</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Vibrant Action Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenPackingStation(o);
+                      }}
+                      className={`mt-2.5 w-full py-2 px-3 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95 ${
+                        isDone
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/20'
+                          : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-600/20'
+                      }`}
+                    >
+                      <Scan size={13} />
+                      <span>Open Station</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold">
+                      <th className="p-3">Order Details</th>
+                      <th className="p-3">Customer Info</th>
+                      <th className="p-3">Progress</th>
+                      <th className="p-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {filteredQueue.map((o) => {
+                      const customer = customers.find(c => c.id === o.customer_id);
+                      const items = o.items || [];
+                      const itemsCount = items.reduce((acc, it) => acc + (it.qty || 0), 0);
+                      const packedCount = items.reduce((acc, it) => acc + (it.scanned_qty || 0), 0);
+                      const pct = itemsCount > 0 ? Math.round((packedCount / itemsCount) * 100) : 0;
+                      const isDone = itemsCount > 0 && pct === 100;
 
-            {filteredQueue.length === 0 && (
-              <div className="col-span-full bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center text-slate-400 space-y-3">
-                <QrCode size={48} className="mx-auto text-slate-300 dark:text-slate-700" />
-                <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300">No Pending Orders to Pack</h4>
-                <p className="text-xs max-w-sm mx-auto">All sales orders are packed and verified! New pending sales orders will automatically appear in this queue.</p>
+                      return (
+                        <tr 
+                          key={o.id} 
+                          onClick={() => handleOpenPackingStation(o)}
+                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer"
+                        >
+                          <td className="p-3">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                #{o.order_number}
+                              </span>
+                              <span className={`w-fit px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider border ${
+                                isDone 
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
+                                  : o.status === 'Packing' 
+                                  ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700' 
+                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                              }`}>
+                                {isDone ? 'Verified' : o.status}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex flex-col gap-0.5 text-[11px]">
+                              <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                <User size={12} className="text-indigo-500 shrink-0" />
+                                {customer ? customer.name : 'Walk-in Customer'}
+                              </span>
+                              {(customer?.phone || o.area) && (
+                                <span className="text-slate-500 flex items-center gap-2.5 text-[10px]">
+                                  {customer?.phone && <span className="flex items-center gap-1"><Phone size={10} /> {customer.phone}</span>}
+                                  {o.area && <span className="flex items-center gap-1"><MapPin size={10} /> {o.area}</span>}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3 min-w-[180px]">
+                            <div className="flex items-center gap-2.5">
+                              <div className="flex-1 space-y-1">
+                                <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full ${isDone ? 'bg-emerald-500' : 'bg-gradient-to-r from-indigo-500 to-violet-500'}`} 
+                                    style={{ width: `${pct}%` }} 
+                                  />
+                                </div>
+                                <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                  <span>{packedCount} / {itemsCount} units</span>
+                                </div>
+                              </div>
+                              <span className={`text-[11px] font-black w-9 text-right ${isDone ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                                {pct}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="p-3 text-right">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenPackingStation(o);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all inline-flex items-center gap-1.5 ml-auto shadow-sm cursor-pointer active:scale-95 ${
+                                isDone
+                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                                  : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-600/20'
+                              }`}
+                            >
+                              <Scan size={13} />
+                              <span>Open Station</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
+          {filteredQueue.length === 0 && (
+            <div className="col-span-full bg-slate-50 dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center text-slate-500 space-y-3">
+              <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center mx-auto">
+                <QrCode size={28} className="text-slate-400" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">No Pending Orders</h4>
+                <p className="text-[11px] max-w-sm mx-auto text-slate-500">All sales orders are packed and verified! New pending sales orders will automatically appear in this queue.</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
-
-      </div>
-
-      {/* CAMERA SCANNER MODAL */}
+      </div>{/* CAMERA SCANNER MODAL */}
       {isScannerOpen && (
         <BarcodeScanner 
           onClose={() => setIsScannerOpen(false)}

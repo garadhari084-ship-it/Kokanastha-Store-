@@ -161,7 +161,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   
   // Theme & Language Settings (Dashboard UI Match)
   type ColorTheme = 'midnight-gold' | 'emerald-pro' | 'royal-sapphire' | 'titanium-dark';
-      const [timeHorizon, setTimeHorizon] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('all');
+      const [timeHorizon, setTimeHorizon] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('today');
   const [isTopFilterMenuOpen, setIsTopFilterMenuOpen] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [selectedOrderForNotify, setSelectedOrderForNotify] = useState<SalesOrder | null>(null);
@@ -249,7 +249,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [orderTime, setOrderTime] = useState<string>(getLocalCurrentTimeInput);
   const [deliveryDate, setDeliveryDate] = useState<string>(getLocalTodayDate);
   const [isAdvanceBooking, setIsAdvanceBooking] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partial' | 'Unpaid'>('Paid');
+  const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partial' | 'Unpaid' | ''>('');
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [paidAmount, setPaidAmount] = useState<number | string>('');
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
@@ -271,7 +271,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setOrderTime(getLocalCurrentTimeInput());
     setDeliveryDate(getLocalTodayDate());
     setIsAdvanceBooking(false);
-    setPaymentStatus('Paid');
+    setPaymentStatus('');
     setPaymentMode('Cash');
     setPaidAmount('');
     setOrderItems([]);
@@ -373,6 +373,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
     if (orderItems.length === 0) {
       triggerToast('Add at least one line item.', 'error');
+      return;
+    }
+
+    if (!paymentStatus) {
+      triggerToast('Please select a Payment Status (Mandatory).', 'error');
       return;
     }
 
@@ -883,16 +888,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       {/* Primary orders table */}
       <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5">
         <table className="w-full text-left text-[11px] whitespace-nowrap">
-          <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white">
+          <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[10px]">
             <tr>
-              <th className="py-2.5 px-4">Order ID</th>
-              <th className="py-2.5 px-4">Customer</th>
-              <th className="py-2.5 px-4">Area Zone</th>
-              <th className="py-2.5 px-4">Pipeline Status</th>
-              <th className="py-2.5 px-4">Amount</th>
-              <th className="py-2.5 px-4">Payment</th>
-              <th className="py-2.5 px-4">Time</th>
-              <th className="py-2.5 px-4 text-right">Actions</th>
+              <th className="py-2 px-3">Order ID</th>
+              <th className="py-2 px-3">Customer</th>
+              <th className="py-2 px-3">Area Zone</th>
+              <th className="py-2 px-3">Pipeline Status</th>
+              <th className="py-2 px-3">Amount</th>
+              <th className="py-2 px-3">Payment</th>
+              <th className="py-2 px-3">Time</th>
+              <th className="py-2 px-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-black dark:divide-white bg-white dark:bg-slate-900">
@@ -908,8 +913,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     isSelected ? 'bg-amber-50/50 dark:bg-amber-900/10' : ''
                   }`}
                 >
-                  <td className="py-2.5 px-4 font-black text-slate-900 dark:text-white">
-                    <div className="flex items-center gap-2">
+                  <td className="py-1.5 px-3 font-black text-slate-900 dark:text-white">
+                    <div className="flex items-center gap-1.5">
                       <button 
                         onClick={() => setSelectedOrderForDetail(o)}
                         className="hover:text-amber-500 cursor-pointer text-left transition-colors"
@@ -917,37 +922,37 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         {o.order_number}
                       </button>
                       {o.advance_booking && (
-                        <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 text-[9px] font-extrabold border border-amber-200/80 dark:border-amber-800/60">
+                        <span className="px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 text-[9px] font-extrabold border border-amber-200/80 dark:border-amber-800/60">
                           Advance
                         </span>
                       )}
                       {o.is_updated && (
-                        <span className="px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400 text-[9px] font-extrabold border border-sky-200/80 dark:border-sky-800/60">
+                        <span className="px-1.5 py-0.2 rounded bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400 text-[9px] font-extrabold border border-sky-200/80 dark:border-sky-800/60">
                           Updated
                         </span>
                       )}
                     </div>
                   </td>
 
-                  <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
-                    <div>
+                  <td className="py-1.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
                       <span>{custName}</span>
                       {o.channel && (
-                        <span className="text-[10px] text-slate-400 block font-normal">
-                          Via {o.channel}
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          ({o.channel})
                         </span>
                       )}
                     </div>
                   </td>
 
-                  <td className="py-2.5 px-4 font-semibold text-slate-700 dark:text-slate-300 text-xs">
-                    <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200/80 dark:border-slate-700 font-medium text-[11px] text-slate-700 dark:text-slate-300">
+                  <td className="py-1.5 px-3 font-semibold text-slate-700 dark:text-slate-300 text-xs">
+                    <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200/80 dark:border-slate-700 font-medium text-[10px] text-slate-700 dark:text-slate-300">
                       📍 {o.area || 'Dahisar'}
                     </span>
                   </td>
 
-                  <td className="py-2.5 px-4">
-                    <span className={`inline-flex items-center text-[11px] font-bold px-3 py-1 rounded-full border ${
+                  <td className="py-1.5 px-3">
+                    <span className={`inline-flex items-center text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
                       o.status === 'Delivered' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800/60' :
                       o.status === 'Dispatched' ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800/60' :
                       o.status === 'Packed' ? 'bg-yellow-50 dark:bg-yellow-950/40 text-amber-800 dark:text-yellow-300 border-yellow-300 dark:border-yellow-800/60' :
@@ -964,27 +969,42 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </span>
                   </td>
 
-                  <td className="py-2.5 px-4 font-black text-slate-900 dark:text-white">
+                  <td className="py-1.5 px-3 font-black text-slate-900 dark:text-white">
                     {currencySymbol}{o.total_amount.toLocaleString()}
                   </td>
 
-                  <td className="py-2.5 px-4">
-                    <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
-                      o.payment_status === 'Paid' 
-                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200' 
-                        : o.payment_status === 'Partial'
-                        ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200'
-                        : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200'
-                    }`}>
-                      {o.payment_status}
-                    </span>
+                  <td className="py-1.5 px-3">
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border shrink-0 ${
+                        o.payment_status === 'Paid' 
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' 
+                          : o.payment_status === 'Partial'
+                          ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                          : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                      }`}>
+                        {o.payment_status || 'Unpaid'}
+                      </span>
+                      {o.payment_status !== 'Unpaid' && o.payment_mode && (
+                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 shrink-0">
+                          {(() => {
+                            const m = (o.payment_mode || '').toLowerCase();
+                            if (m.includes('cash')) return 'Cash';
+                            if (m.includes('upi') || m.includes('qr')) return 'UPI';
+                            if (m.includes('card')) return 'Card';
+                            if (m.includes('bank') || m.includes('net')) return 'Net Banking';
+                            if (m.includes('credit') || m.includes('account')) return 'On Credit';
+                            return o.payment_mode;
+                          })()}
+                        </span>
+                      )}
+                    </div>
                   </td>
 
-                  <td className="py-2.5 px-4 text-slate-500 font-medium">
+                  <td className="py-1.5 px-3 text-slate-500 font-medium text-[10px]">
                     {formatOrderTime(o.time, o.created_at)}
                   </td>
 
-                  <td className="py-2.5 px-4 text-right">
+                  <td className="py-1.5 px-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {/* Notify button */}
                       <button 
@@ -1194,7 +1214,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             <form onSubmit={(e) => {
               e.preventDefault();
               if (!selectedOrderForPayment) return;
-              dbStore.updateSalesOrder(selectedOrderForPayment.id, { payment_status: 'Paid' });
+              dbStore.updateSalesOrder(selectedOrderForPayment.id, { payment_status: 'Paid', payment_mode: paymentMethod });
               dbStore.logActivity(user.id, user.name, user.role, 'Collect Payment', `Collected ₹${selectedOrderForPayment.total_amount} via ${paymentMethod} for Order ${selectedOrderForPayment.order_number}`, businessId);
               triggerToast(`Recorded payment of ₹${selectedOrderForPayment.total_amount.toLocaleString()} via ${paymentMethod} for Order ${selectedOrderForPayment.order_number}`, 'success');
               setOrders(dbStore.getSalesOrders(businessId));
@@ -1667,42 +1687,48 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block">Payment Status</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block">
+                      Payment Status <span className="text-rose-500">*</span>
+                    </label>
                     <CustomDropdown 
                       value={paymentStatus}
                       onChange={(val) => {
-                        const st = val as 'Paid' | 'Partial' | 'Unpaid';
+                        const st = val as 'Paid' | 'Partial' | 'Unpaid' | '';
                         setPaymentStatus(st);
-                        if (st === 'Unpaid') {
+                        if (st === 'Unpaid' || st === '') {
                           setPaymentMode('Credit / On Account');
                         } else if (paymentMode === 'Credit / On Account') {
                           setPaymentMode('Cash');
                         }
                       }}
+                      placeholder="-- Select Payment Status --"
                       options={[
+                        { value: '', label: '-- Select Payment Status --' },
                         { value: 'Paid', label: 'Fully Paid (Settled)' },
                         { value: 'Partial', label: 'Partial / Advance Received' },
                         { value: 'Unpaid', label: 'Unpaid / On Credit' }
                       ]}
-                      className="bg-white dark:bg-slate-800 font-bold"
+                      className={`bg-white dark:bg-slate-800 font-bold ${!paymentStatus ? 'border-amber-300 dark:border-amber-700' : ''}`}
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block">Payment Method / Mode</label>
-                    <CustomDropdown 
-                      value={paymentMode}
-                      onChange={(val) => setPaymentMode(val)}
-                      options={[
-                        { value: 'Cash', label: 'Cash' },
-                        { value: 'UPI / QR', label: 'UPI / QR Code' },
-                        { value: 'Card', label: 'Card (Credit/Debit)' },
-                        { value: 'Bank Transfer', label: 'Bank Transfer / NEFT' },
-                        { value: 'Credit / On Account', label: 'Credit / On Account' }
-                      ]}
-                      className="bg-white dark:bg-slate-800"
-                    />
-                  </div>
+                  {(paymentStatus === 'Paid' || paymentStatus === 'Partial') && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase block">Payment Method / Mode</label>
+                      <CustomDropdown 
+                        value={paymentMode}
+                        onChange={(val) => setPaymentMode(val)}
+                        options={[
+                          { value: 'Cash', label: 'Cash' },
+                          { value: 'UPI / QR', label: 'UPI / QR Code' },
+                          { value: 'Card', label: 'Card (Credit/Debit)' },
+                          { value: 'Bank Transfer', label: 'Bank Transfer / NEFT' },
+                          { value: 'Credit / On Account', label: 'Credit / On Account' }
+                        ]}
+                        className="bg-white dark:bg-slate-800"
+                      />
+                    </div>
+                  )}
 
                   {paymentStatus === 'Partial' && (
                     <div className="space-y-1">

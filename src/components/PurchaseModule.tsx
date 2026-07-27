@@ -1,20 +1,12 @@
 import { PageHeader } from './PageHeader';
 import React, { useEffect, useState } from 'react';
 import { 
-  ShoppingBag, 
-  PlusCircle, 
-  Search, 
-  Truck, 
-  FileText, 
-  Calendar, 
-  DollarSign, 
-  X, 
-  Check, 
-  CheckCircle,
-  Clock
+  ShoppingBag, PlusCircle, Search, Truck, FileText, Calendar, DollarSign, X, Check, CheckCircle, Clock, Package, Download, Building, ArrowRight, Printer, AlertTriangle, ChevronRight, FileSpreadsheet, Store
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { PurchaseOrder, Supplier, Product, UserProfile, PurchaseItem } from '../types/erp';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface PurchaseModuleProps {
   businessId: string;
@@ -31,7 +23,10 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
   const [suppliers, setSuppliers] = useState<Supplier[]>(dbStore.getSuppliers(businessId));
   const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
 
   // Form states for creating a new PO
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
@@ -51,6 +46,7 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
     setRowQty(10);
     setRowPrice(0);
   };
+
   useEffect(() => {
     return dbStore.subscribe(() => {
       setPurchases(dbStore.getPurchaseOrders(businessId));
@@ -59,10 +55,26 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
     });
   }, [businessId]);
 
-
   const handleOpenAddModal = () => {
+    if (suppliers.length === 0) {
+      triggerToast('Please add a vendor first in the Supplier module.', 'error');
+      return;
+    }
+    if (products.length === 0) {
+      triggerToast('Please add products first in the Inventory module.', 'error');
+      return;
+    }
     resetForm();
     setIsModalOpen(true);
+  };
+
+  const handleProductSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const pId = e.target.value;
+    setRowProductId(pId);
+    const prod = products.find(p => p.id === pId);
+    if (prod) {
+      setRowPrice(prod.purchase_price);
+    }
   };
 
   const handleAddRowItem = () => {
@@ -74,11 +86,10 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
       triggerToast('Quantity must be greater than zero.', 'error');
       return;
     }
-
+    
     const prod = products.find(p => p.id === rowProductId);
     if (!prod) return;
 
-    // Check if item already added
     if (items.some(it => it.product_id === rowProductId)) {
       triggerToast('This product is already added to the order. Adjust qty instead.', 'error');
       return;
@@ -88,7 +99,7 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
       product_id: rowProductId,
       qty: rowQty,
       received_qty: 0,
-      purchase_price: rowPrice || prod.purchase_price,
+      purchase_price: rowPrice,
       gst_rate: prod.gst_rate
     };
 
@@ -98,413 +109,629 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
     setRowPrice(0);
   };
 
-  const handleRemoveRowItem = (idx: number) => {
-    setItems(items.filter((_, i) => i !== idx));
+  const handleRemoveItem = (prodId: string) => {
+    setItems(items.filter(i => i.product_id !== prodId));
   };
 
-  const handleCreatePO = (e: React.FormEvent, immediateReceive = false) => {
+  const handleSavePO = (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!selectedSupplierId) {
-      triggerToast('Please choose a vendor.', 'error');
+      triggerToast('Please select a vendor.', 'error');
       return;
     }
-
     if (items.length === 0) {
-      triggerToast('Add at least one product item to the order list.', 'error');
+      triggerToast('Please add at least one item to the PO.', 'error');
       return;
     }
 
-    // Calc total amount inclusive of tax
-    const total = items.reduce((sum, item) => {
-      const lineCost = item.qty * item.purchase_price;
-      const lineTax = lineCost * (item.gst_rate / 100);
-      return sum + lineCost + lineTax;
-    }, 0);
+    let totalAmount = 0;
+    items.forEach(i => {
+      const lineTotal = i.qty * i.purchase_price;
+      const tax = lineTotal * (i.gst_rate / 100);
+      totalAmount += (lineTotal + tax);
+    });
 
-    const randomNum = Math.floor(100 + Math.random() * 900);
-    const orderNum = `PO-2026-${randomNum}`;
+    const poNumber = `PO-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2, '0')}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
 
     try {
       dbStore.createPurchaseOrder({
-        order_number: orderNum,
+        order_number: poNumber,
         supplier_id: selectedSupplierId,
         order_date: new Date().toISOString().split('T')[0],
         delivery_date: deliveryDate,
-        status: immediateReceive ? 'Received' : 'Ordered',
+        status: 'Draft',
         payment_status: 'Unpaid',
-        items: items.map(it => ({ ...it, received_qty: immediateReceive ? it.qty : 0 })),
-        total_amount: Math.round(total),
+        items: items,
+        total_amount: totalAmount,
         business_id: businessId
       });
-
-      // Update supplier trade balance outstanding
-      const supplier = suppliers.find(s => s.id === selectedSupplierId);
-      if (supplier) {
-        dbStore.updateSupplier(selectedSupplierId, {
-          outstanding_amount: supplier.outstanding_amount + Math.round(total)
-        });
-      }
-
-      dbStore.logActivity(
-        user.id,
-        user.name,
-        user.role,
-        'Create Purchase',
-        `Raised Purchase Order: ${orderNum} to ${supplier?.name || 'Vendor'} for ₹${Math.round(total).toLocaleString()}`,
-        businessId
-      );
-
-      triggerToast(`Purchase Order ${orderNum} raised successfully.`, 'success');
-      setPurchases(dbStore.getPurchaseOrders(businessId));
+      dbStore.logActivity(user.id, user.name, user.role, 'Create PO', `Generated new Purchase Order: ${poNumber}`, businessId);
+      triggerToast(`Purchase Order ${poNumber} created successfully.`, 'success');
       setIsModalOpen(false);
-      resetForm();
-    } catch (err: any) {
-      triggerToast(err.message || 'Error occurred.', 'error');
+    } catch (e: any) {
+      triggerToast(e.message || 'Error creating PO', 'error');
     }
   };
 
-  const handleProcessGoodsReceipt = (poId: string) => {
+  const handleUpdateStatus = (poId: string, newStatus: PurchaseOrder['status']) => {
     try {
-      const po = purchases.find(p => p.id === poId);
-      if (!po) return;
+      dbStore.updatePurchaseOrder(poId, { status: newStatus });
+      dbStore.logActivity(user.id, user.name, user.role, 'Update PO', `Updated PO status to ${newStatus}`, businessId);
+      triggerToast(`Order status updated to ${newStatus}`, 'success');
+      setViewingOrder(null);
+    } catch (err: any) {
+      triggerToast(err.message || 'Error updating status', 'error');
+    }
+  };
 
-      dbStore.updatePurchaseOrder(poId, {
-        status: 'Received',
-        items: (po.items || []).map(it => ({ ...it, received_qty: it.qty }))
+  const handlePrintPO = (po: PurchaseOrder) => {
+    try {
+      const doc = new jsPDF();
+      const sup = suppliers.find(s => s.id === po.supplier_id);
+      
+      doc.setFontSize(22);
+      doc.setTextColor(30, 41, 59);
+      doc.text('PURCHASE ORDER', 14, 22);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`PO Number: ${po.order_number}`, 14, 32);
+      doc.text(`Order Date: ${po.order_date}`, 14, 38);
+      doc.text(`Delivery Date: ${po.delivery_date}`, 14, 44);
+      
+      doc.setTextColor(30, 41, 59);
+      doc.setFontSize(12);
+      doc.text('Vendor Details', 120, 32);
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      doc.text(sup?.name || 'Unknown Vendor', 120, 38);
+      doc.text(`Phone: ${sup?.phone || '-'}`, 120, 44);
+      doc.text(`GSTIN: ${sup?.gstin || '-'}`, 120, 50);
+
+      const tableColumn = ["Product Name", "Qty", "Unit Price", "GST %", "Total"];
+      const tableRows = po.items.map(item => {
+        const prod = products.find(p => p.id === item.product_id);
+        const lineTotal = item.qty * item.purchase_price;
+        const tax = lineTotal * (item.gst_rate / 100);
+        return [
+          prod?.name || 'Unknown',
+          item.qty.toString(),
+          `Rs. ${item.purchase_price.toLocaleString()}`,
+          `${item.gst_rate}%`,
+          `Rs. ${(lineTotal + tax).toLocaleString()}`
+        ];
       });
 
-      dbStore.logActivity(
-        user.id,
-        user.name,
-        user.role,
-        'Goods Receipt',
-        `Completed Goods Receipt Note (GRN) for Purchase Order: ${po.order_number}`,
-        businessId
-      );
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 60,
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229], textColor: 255, fontSize: 10, fontStyle: 'bold' },
+        bodyStyles: { fontSize: 9 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
 
-      triggerToast(`Goods Receipt Note (GRN) parsed. Stock levels incremented successfully.`, 'success');
-      setPurchases(dbStore.getPurchaseOrders(businessId));
-    } catch (e: any) {
-      triggerToast(e.message || 'Error executing GRN.', 'error');
-    }
-  };
-
-  const handleCancelPO = (poId: string) => {
-    try {
-      const po = purchases.find(p => p.id === poId);
-      if (!po) return;
-
-      dbStore.updatePurchaseOrder(poId, { status: 'Cancelled' });
+      doc.setFontSize(12);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`Total Amount: Rs. ${po.total_amount.toLocaleString()}`, 14, (doc as any).lastAutoTable.finalY + 15);
       
-      // Deduct trade payable
-      const supplier = suppliers.find(s => s.id === po.supplier_id);
-      if (supplier) {
-        dbStore.updateSupplier(po.supplier_id, {
-          outstanding_amount: Math.max(0, supplier.outstanding_amount - po.total_amount)
-        });
-      }
-
-      dbStore.logActivity(user.id, user.name, user.role, 'Cancel Purchase', `Cancelled purchase order: ${po.order_number}`, businessId);
-      triggerToast(`Purchase order marked as Cancelled.`, 'info');
-      setPurchases(dbStore.getPurchaseOrders(businessId));
-    } catch (e: any) {
-      triggerToast(e.message || 'Cancel failed.', 'error');
+      doc.save(`${po.order_number}.pdf`);
+      triggerToast('Purchase Order PDF generated.', 'success');
+      dbStore.logActivity(user.id, user.name, user.role, 'Print PO', `Printed Purchase Order: ${po.order_number}`, businessId);
+    } catch (err) {
+      console.error(err);
+      triggerToast('Failed to generate PDF.', 'error');
     }
   };
 
-  const filteredPurchases = purchases.filter(po => {
-    const s = suppliers.find(sup => sup.id === po.supplier_id);
-    return po.order_number.toLowerCase().includes(searchQuery.toLowerCase()) || 
-           (s && s.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  });
+  const getProductName = (id: string) => products.find(p => p.id === id)?.name || 'Unknown Product';
+  const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.name || 'Unknown Vendor';
+
+  const filteredPurchases = purchases.filter(po => 
+    po.order_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    getSupplierName(po.supplier_id).toLowerCase().includes(searchQuery.toLowerCase())
+  ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  // KPIs
+  const totalPOAmount = purchases.reduce((sum, po) => sum + po.total_amount, 0);
+  const pendingDeliveries = purchases.filter(po => po.status === 'Ordered').length;
+  const draftPOs = purchases.filter(po => po.status === 'Draft').length;
 
   return (
-    <div className="space-y-6 max-w-full pb-12 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="procurement-module-root">
+    <div className="space-y-4 max-w-full pb-8 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden animate-in fade-in duration-300">
       <PageHeader
         title="Procurement & Purchase Lifecycle"
-        subtitle="Raise supplier requests, manage Goods Receipt Notes (GRN), and audit inventory stock additions."
+        subtitle="Manage supplier purchase orders, track inbound deliveries, and audit accounts payable."
         icon={ShoppingBag}
         rightContent={
-          <>
-{user.role !== 'Viewer' && (
-          <button 
-            onClick={handleOpenAddModal} 
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold cursor-pointer"
-          >
-            <PlusCircle size={16} />
-            <span>Raise Purchase Order</span>
-          </button>
-        )}
-          </>
+          <div className="flex flex-wrap gap-2">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer shadow-sm transition-colors">
+              <FileSpreadsheet size={16} className="text-emerald-600" />
+              <span>Export CSV</span>
+            </button>
+            {user.role !== 'Viewer' && (
+              <button 
+                onClick={handleOpenAddModal} 
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold cursor-pointer shadow-sm transition-colors"
+              >
+                <PlusCircle size={16} />
+                <span>Create Purchase Order</span>
+              </button>
+            )}
+          </div>
         }
       />
 
-      <div className="px-0.5 sm:px-1 space-y-6">
-      {/* Search Filter bar */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex items-center gap-3">
-        <Search size={16} className="text-slate-400" />
-        <input 
-          type="text" 
-          placeholder="Search purchases by PO order number or vendor name..." 
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-transparent text-[11px] outline-hidden text-slate-800 dark:text-slate-100"
-        />
-      </div>
+      <div className="px-0.5 sm:px-1 space-y-4">
+        {/* Advanced KPI Grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3 sm:p-4 rounded-xl shadow-xs hover:shadow-md hover:border-slate-400 dark:hover:border-slate-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+            <div className="flex items-center gap-1.5">
+              <div className="p-1.5 bg-slate-500/10 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                <FileText size={14} />
+              </div>
+              <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL POs</span>
+            </div>
+            <div className="flex flex-col gap-0.5 mt-0.5">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">Lifetime historical orders</span>
+            </div>
+            <div className="text-right mt-1">
+              <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                {purchases.length}
+              </span>
+            </div>
+          </div>
 
-      {/* PO List Grid */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs overflow-x-auto overflow-y-hidden">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-slate-50 dark:bg-slate-800 text-[11px] font-semibold uppercase text-slate-500 border-b border-slate-100 dark:border-slate-800">
-              <th className="p-4">Order Details</th>
-              <th className="p-4">Supplier Vendor</th>
-              <th className="p-4">Procurement Status</th>
-              <th className="p-4">Total Payables</th>
-              <th className="p-4 text-center">Receipt Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px]">
-            {filteredPurchases.map((po, idx) => {
-              const vendor = suppliers.find(s => s.id === po.supplier_id);
-              return (
-                <tr key={`${po.id}-${idx}`} className="hover:bg-slate-50/50 text-slate-700 dark:text-slate-300">
-                  <td className="p-4 space-y-1">
-                    <strong className="text-slate-900 dark:text-white font-semibold">{po.order_number}</strong>
-                    <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                      <span className="flex items-center gap-0.5"><Calendar size={12} /> {po.order_date}</span>
-                    </div>
-                  </td>
-                  <td className="p-4 font-semibold text-slate-800 dark:text-slate-200">
-                    {vendor ? vendor.name : 'Unknown Supplier'}
-                  </td>
-                  <td className="p-4 space-y-1">
-                    <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                      po.status === 'Received' ? 'text-emerald-700 bg-emerald-50' :
-                      po.status === 'Ordered' ? 'text-indigo-700 bg-indigo-50' :
-                      po.status === 'Cancelled' ? 'text-rose-700 bg-rose-50' :
-                      'text-slate-700 bg-slate-100'
-                    }`}>
-                      {po.status}
-                    </span>
-                    <span className="text-[10px] text-slate-400 block">Payment: <strong>{po.payment_status}</strong></span>
-                  </td>
-                  <td className="p-4 font-mono font-bold text-slate-950 dark:text-white">
-                    ₹{po.total_amount.toLocaleString()}
-                  </td>
-                  <td className="p-4 text-center">
-                    <div className="flex justify-center gap-1.5">
-                      {po.status === 'Ordered' && user.role !== 'Viewer' && (
-                        <>
-                          <button 
-                            onClick={() => handleProcessGoodsReceipt(po.id)}
-                            className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-semibold transition cursor-pointer"
-                            title="Acknowledge Delivery (GRN)"
-                          >
-                            <Check size={12} />
-                            <span>GRN Receipt</span>
-                          </button>
-                          <button 
-                            onClick={() => handleCancelPO(po.id)}
-                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-semibold transition cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      )}
-                      {po.status === 'Received' && (
-                        <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
-                          <CheckCircle size={14} /> Received in Stock
-                        </span>
-                      )}
-                      {po.status === 'Cancelled' && (
-                        <span className="text-[11px] text-rose-400 italic">No Actions</span>
-                      )}
-                    </div>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3 sm:p-4 rounded-xl shadow-xs hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+            <div className="flex items-center gap-1.5">
+              <div className="p-1.5 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                <DollarSign size={14} />
+              </div>
+              <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">LIFETIME SPEND</span>
+            </div>
+            <div className="flex flex-col gap-0.5 mt-0.5">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">Total procurement value</span>
+            </div>
+            <div className="text-right mt-1">
+              <span className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight">
+                ₹{totalPOAmount.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3 sm:p-4 rounded-xl shadow-xs hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+            <div className="flex items-center gap-1.5">
+              <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                <Truck size={14} />
+              </div>
+              <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">PENDING DELIVERIES</span>
+            </div>
+            <div className="flex flex-col gap-0.5 mt-0.5">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">Ordered but not received</span>
+            </div>
+            <div className="text-right mt-1">
+              <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+                {pendingDeliveries}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3 sm:p-4 rounded-xl shadow-xs hover:shadow-md hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+            <div className="flex items-center gap-1.5">
+              <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                <Clock size={14} />
+              </div>
+              <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">DRAFT POS</span>
+            </div>
+            <div className="flex flex-col gap-0.5 mt-0.5">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">Awaiting vendor confirmation</span>
+            </div>
+            <div className="text-right mt-1">
+              <span className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
+                {draftPOs}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex flex-col sm:flex-row gap-2 mt-4">
+          <div className="relative flex-1 flex items-center">
+            <Search size={14} className="absolute left-3 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search PO by number or vendor..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 text-xs font-medium rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-400"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-3 text-slate-400 hover:text-slate-600">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Main List Table */}
+        <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-xs mt-2">
+          <table className="w-full text-left text-xs whitespace-nowrap">
+            <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700 text-[10px]">
+              <tr>
+                <th className="py-3 px-4">PO Details</th>
+                <th className="py-3 px-4">Vendor</th>
+                <th className="py-3 px-4 text-center">Lifecycle Status</th>
+                <th className="py-3 px-4 text-right">Order Value</th>
+                <th className="py-3 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredPurchases.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-500">
+                    <Store size={24} className="mx-auto mb-2 opacity-30" />
+                    <p className="font-semibold">No purchase orders found.</p>
                   </td>
                 </tr>
-              );
-            })}
-            {filteredPurchases.length === 0 && (
-              <tr>
-                <td colSpan={5} className="text-center py-10 text-slate-400">No procurement activities registered in catalog.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filteredPurchases.map(po => (
+                  <tr key={po.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td className="py-2.5 px-4">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-slate-900 dark:text-white font-mono text-[13px]">{po.order_number}</span>
+                        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-500">
+                          <span className="flex items-center gap-1"><Calendar size={10}/> Order: {po.order_date}</span>
+                          <span className="flex items-center gap-1"><Truck size={10}/> Est: {po.delivery_date}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
+                          <Building size={12} className="text-slate-500" />
+                        </div>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[150px]">
+                          {getSupplierName(po.supplier_id)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-4 text-center">
+                      <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        po.status === 'Draft' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800' :
+                        po.status === 'Ordered' ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400 border border-sky-200 dark:border-sky-800' :
+                        po.status === 'Received' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' :
+                        'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
+                      }`}>
+                        {po.status === 'Draft' && <Clock size={10} className="mr-1" />}
+                        {po.status === 'Ordered' && <Truck size={10} className="mr-1" />}
+                        {po.status === 'Received' && <CheckCircle size={10} className="mr-1" />}
+                        {po.status === 'Cancelled' && <X size={10} className="mr-1" />}
+                        {po.status}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-right">
+                      <span className="font-black text-[13px] text-slate-900 dark:text-white">
+                        ₹{po.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-right">
+                      <button 
+                        onClick={() => setViewingOrder(po)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded hover:bg-slate-50 dark:hover:bg-slate-700 text-[11px] font-bold transition-colors cursor-pointer"
+                      >
+                        Details <ChevronRight size={12} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      </div>
-
-      {/* PO Creation Drawer Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-3xl h-[85vh] flex flex-col shadow-xl animate-in zoom-in duration-150 overflow-hidden">
-            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b flex items-center justify-between">
-              <h2 className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <ShoppingBag />
-                <span>Draft New Supplier Purchase Order</span>
-              </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+      {/* View PO Details Modal */}
+      {viewingOrder && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                  <Package size={16} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold uppercase tracking-wider">Purchase Order Overview</h2>
+                  <p className="text-[10px] text-slate-400 font-mono">{viewingOrder.order_number}</p>
+                </div>
+              </div>
+              <button onClick={() => setViewingOrder(null)} className="text-slate-400 hover:text-white transition-colors cursor-pointer p-1">
+                <X size={20} />
+              </button>
             </div>
+            
+            <div className="p-6 overflow-y-auto bg-slate-50 dark:bg-slate-900/50 flex-1 grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-2 space-y-6">
+                
+                {/* Items Table */}
+                <div>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Line Items ({viewingOrder.items.length})</h3>
+                  <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                          <th className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400">Product</th>
+                          <th className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400 text-right">Qty</th>
+                          <th className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400 text-right">Price</th>
+                          <th className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400 text-right">Tax</th>
+                          <th className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                        {viewingOrder.items.map((item, idx) => {
+                          const lineBase = item.qty * item.purchase_price;
+                          const lineTax = lineBase * (item.gst_rate / 100);
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                              <td className="py-3 px-4 font-semibold text-slate-800 dark:text-slate-200">{getProductName(item.product_id)}</td>
+                              <td className="py-3 px-4 text-right font-black text-slate-900 dark:text-white">{item.qty}</td>
+                              <td className="py-3 px-4 text-right">₹{item.purchase_price.toLocaleString()}</td>
+                              <td className="py-3 px-4 text-right text-[10px] text-slate-500">{item.gst_rate}%</td>
+                              <td className="py-3 px-4 text-right font-bold text-indigo-600 dark:text-indigo-400">₹{(lineBase + lineTax).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Select Supplier Vendor</label>
+                {/* Status Transitions */}
+                {user.role !== 'Viewer' && viewingOrder.status !== 'Received' && viewingOrder.status !== 'Cancelled' && (
+                  <div className="bg-indigo-50/50 dark:bg-indigo-900/10 rounded-xl p-4 border border-indigo-100 dark:border-indigo-900/30 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider flex items-center gap-1.5"><ArrowRight size={14}/> Advance Lifecycle Status</h4>
+                      <p className="text-[11px] text-indigo-700 dark:text-indigo-400 mt-1">Move this PO to the next stage in procurement.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      {viewingOrder.status === 'Draft' && (
+                        <button 
+                          onClick={() => handleUpdateStatus(viewingOrder.id, 'Ordered')}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-sm"
+                        >
+                          Mark as Ordered
+                        </button>
+                      )}
+                      {viewingOrder.status === 'Ordered' && (
+                        <button 
+                          onClick={() => {
+                            if (window.confirm('Receiving this PO will automatically increase inventory stock in the ledger. Proceed?')) {
+                              handleUpdateStatus(viewingOrder.id, 'Received');
+                            }
+                          }}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
+                        >
+                          <CheckCircle size={14} /> Receive Goods
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sidebar Info */}
+              <div className="space-y-4">
+                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm">
+                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Order Summary</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-700/50">
+                      <span className="text-xs text-slate-600 dark:text-slate-400">Status</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        viewingOrder.status === 'Draft' ? 'bg-amber-100 text-amber-700' :
+                        viewingOrder.status === 'Ordered' ? 'bg-sky-100 text-sky-700' :
+                        viewingOrder.status === 'Received' ? 'bg-emerald-100 text-emerald-700' :
+                        'bg-rose-100 text-rose-700'
+                      }`}>
+                        {viewingOrder.status}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-700/50">
+                      <span className="text-xs text-slate-600 dark:text-slate-400">Total Value</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-white">₹{viewingOrder.total_amount.toLocaleString(undefined, {minimumFractionDigits:2})}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-700/50">
+                      <span className="text-xs text-slate-600 dark:text-slate-400">Vendor</span>
+                      <span className="text-xs font-semibold text-slate-900 dark:text-white truncate max-w-[120px]">{getSupplierName(viewingOrder.supplier_id)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-600 dark:text-slate-400">Est. Delivery</span>
+                      <span className="text-xs font-mono text-slate-900 dark:text-white">{viewingOrder.delivery_date}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => handlePrintPO(viewingOrder)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl transition-colors cursor-pointer border border-slate-300 dark:border-slate-600"
+                >
+                  <Printer size={16} /> Print Official PO Document
+                </button>
+
+                {user.role !== 'Viewer' && viewingOrder.status === 'Draft' && (
+                  <button 
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to cancel this PO?')) {
+                        handleUpdateStatus(viewingOrder.id, 'Cancelled');
+                      }
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                  >
+                    Cancel Order
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create New PO Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in duration-200">
+            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shrink-0">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <PlusCircle size={16} className="text-indigo-600" />
+                Draft New Purchase Order
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer transition-colors p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              
+              {/* Header Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Select Vendor *</label>
                   <select 
                     value={selectedSupplierId}
                     onChange={(e) => setSelectedSupplierId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 text-[11px] rounded-lg border focus:outline-hidden"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                   >
-                    {suppliers.map((s, idx) => (
-                      <option key={`${s.id}-${idx}`} value={s.id}>{s.name} (GST: {s.gstin || 'None'})</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} - {s.phone}</option>
                     ))}
                   </select>
                 </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Target Expected Delivery Date</label>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Expected Delivery Date *</label>
                   <input 
-                    type="date" 
+                    type="date"
                     value={deliveryDate}
                     onChange={(e) => setDeliveryDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 text-[11px] rounded-lg border focus:outline-hidden font-mono"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-xs font-semibold font-mono rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
               </div>
 
-              {/* Add item sub-row panel */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <h4 className="text-[11px] font-bold text-slate-500 uppercase">Add Procurement Line Item</h4>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <div className="md:col-span-2">
+              {/* Add Item Row */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2 border-b border-slate-200 dark:border-slate-700 pb-2">Add Line Items</h3>
+                <div className="flex flex-wrap md:flex-nowrap items-end gap-3 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="flex-1 min-w-[200px] space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500">Product</label>
                     <select 
                       value={rowProductId}
-                      onChange={(e) => {
-                        setRowProductId(e.target.value);
-                        const prod = products.find(p => p.id === e.target.value);
-                        if (prod) setRowPrice(prod.purchase_price);
-                      }}
-                      className="w-full px-3 py-2 bg-white text-[11px] rounded-lg border focus:outline-hidden"
+                      onChange={handleProductSelect}
+                      className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-900 text-xs rounded border border-slate-300 dark:border-slate-600"
                     >
-                      <option value="">-- Choose Catalog SKU --</option>
-                      {products.map((p, idx) => (
-                        <option key={`${p.id}-${idx}`} value={p.id}>{p.name} (SKU: {p.sku})</option>
+                      <option value="">-- Select Product --</option>
+                      {products.map(p => (
+                        <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock_quantity})</option>
                       ))}
                     </select>
                   </div>
-                  <div>
+                  <div className="w-24 space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500">PO Qty</label>
                     <input 
                       type="number" 
-                      min={1}
-                      placeholder="Qty"
+                      min="1"
                       value={rowQty}
-                      onChange={(e) => setRowQty(Math.max(1, Number(e.target.value)))}
-                      className="w-full px-3 py-2 bg-white text-[11px] rounded-lg border focus:outline-hidden font-mono"
+                      onChange={(e) => setRowQty(parseInt(e.target.value) || 0)}
+                      className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-900 text-xs rounded border border-slate-300 dark:border-slate-600 text-right"
                     />
                   </div>
-                  <div className="flex gap-2">
+                  <div className="w-28 space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500">Unit Price (₹)</label>
                     <input 
                       type="number" 
-                      placeholder="Unit Cost (₹)"
+                      min="0"
                       value={rowPrice}
-                      onChange={(e) => setRowPrice(Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-white text-[11px] rounded-lg border focus:outline-hidden font-mono"
+                      onChange={(e) => setRowPrice(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-900 text-xs rounded border border-slate-300 dark:border-slate-600 text-right"
                     />
-                    <button 
-                      type="button" 
-                      onClick={handleAddRowItem}
-                      className="px-3 bg-indigo-600 text-white rounded-lg text-[11px] font-bold"
-                    >
-                      Add
-                    </button>
                   </div>
+                  <button 
+                    type="button"
+                    onClick={handleAddRowItem}
+                    className="px-4 py-1.5 h-[34px] bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold rounded cursor-pointer hover:bg-slate-700 dark:hover:bg-white transition-colors"
+                  >
+                    Add Item
+                  </button>
                 </div>
               </div>
 
-              {/* Added Line Items Table */}
-              <div className="space-y-2">
-                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Purchase Lines Grid</h4>
-                <div className="border border-slate-100 rounded-xl overflow-x-auto text-[11px]">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-100 text-[10px] font-bold uppercase text-slate-500">
-                        <th className="p-3">Product SKU</th>
-                        <th className="p-3 text-right">Quantity</th>
-                        <th className="p-3 text-right">Unit Price</th>
-                        <th className="p-3 text-right">Tax Rate</th>
-                        <th className="p-3 text-right">Subtotal</th>
-                        <th className="p-3 text-center">Action</th>
+              {/* Items List */}
+              {items.length > 0 && (
+                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
+                      <tr>
+                        <th className="py-2.5 px-4 font-semibold text-slate-600 dark:text-slate-400">Item</th>
+                        <th className="py-2.5 px-4 font-semibold text-slate-600 dark:text-slate-400 text-right">Qty</th>
+                        <th className="py-2.5 px-4 font-semibold text-slate-600 dark:text-slate-400 text-right">Unit Rate</th>
+                        <th className="py-2.5 px-4 font-semibold text-slate-600 dark:text-slate-400 text-right">GST</th>
+                        <th className="py-2.5 px-4 font-semibold text-slate-600 dark:text-slate-400 text-right">Line Total</th>
+                        <th className="py-2.5 px-4"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono">
-                      {items.map((it, idx) => {
-                        const p = products.find(prod => prod.id === it.product_id);
-                        const cost = it.qty * it.purchase_price;
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                      {items.map((item, idx) => {
+                        const lineBase = item.qty * item.purchase_price;
+                        const lineTax = lineBase * (item.gst_rate / 100);
+                        const lineTotal = lineBase + lineTax;
                         return (
-                          <tr key={idx}>
-                            <td className="p-3 font-sans font-semibold text-slate-900">{p?.name || 'Unknown'}</td>
-                            <td className="p-3 text-right font-bold">{it.qty}</td>
-                            <td className="p-3 text-right">₹{it.purchase_price.toLocaleString()}</td>
-                            <td className="p-3 text-right">{it.gst_rate}%</td>
-                            <td className="p-3 text-right font-bold text-indigo-600">₹{(cost * (1 + it.gst_rate/100)).toLocaleString()}</td>
-                            <td className="p-3 text-center">
+                          <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                            <td className="py-2.5 px-4 font-medium">{getProductName(item.product_id)}</td>
+                            <td className="py-2.5 px-4 text-right font-bold">{item.qty}</td>
+                            <td className="py-2.5 px-4 text-right">₹{item.purchase_price.toLocaleString()}</td>
+                            <td className="py-2.5 px-4 text-right text-slate-500 text-[10px]">{item.gst_rate}%</td>
+                            <td className="py-2.5 px-4 text-right font-black text-indigo-600 dark:text-indigo-400">₹{lineTotal.toLocaleString()}</td>
+                            <td className="py-2.5 px-2 text-center">
                               <button 
-                                type="button"
-                                onClick={() => handleRemoveRowItem(idx)}
-                                className="text-rose-500 hover:underline font-sans font-semibold"
+                                onClick={() => handleRemoveItem(item.product_id)}
+                                className="text-slate-400 hover:text-rose-500 cursor-pointer p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-900/20"
                               >
-                                Delete
+                                <X size={14} />
                               </button>
                             </td>
                           </tr>
                         );
                       })}
-                      {items.length === 0 && (
-                        <tr>
-                          <td colSpan={6} className="text-center py-10 text-slate-400 font-sans">No line items added yet.</td>
-                        </tr>
-                      )}
                     </tbody>
+                    <tfoot className="bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700">
+                      <tr>
+                        <td colSpan={4} className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider">
+                          Gross PO Value:
+                        </td>
+                        <td className="py-3 px-4 text-right font-black text-sm text-slate-900 dark:text-white">
+                          ₹{items.reduce((sum, i) => sum + (i.qty * i.purchase_price) * (1 + i.gst_rate/100), 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Bottom Actions footer */}
-            <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t flex justify-between items-center">
-              <div className="text-left font-mono">
-                <span className="text-[10px] text-slate-400 uppercase block">Total Inclusive Amount:</span>
-                <strong className="text-xs font-extrabold text-slate-900 dark:text-white">
-                  ₹{items.reduce((sum, item) => sum + (item.qty * item.purchase_price * (1 + item.gst_rate/100)), 0).toLocaleString()}
-                </strong>
-              </div>
-
-              <div className="flex gap-2">
-                <button 
-                  type="button" 
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold hover:bg-slate-200"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="button" 
-                  onClick={(e) => handleCreatePO(e, false)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-[11px] font-semibold"
-                >
-                  Raise PO (Ordered)
-                </button>
-                <button 
-                  type="button" 
-                  onClick={(e) => handleCreatePO(e, true)}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold hover:bg-indigo-700"
-                >
-                  Receive Immediately (GRN)
-                </button>
-              </div>
+            <div className="bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 px-6 py-4 flex justify-between items-center shrink-0">
+              <button 
+                type="button" 
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors shadow-sm"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSavePO}
+                disabled={items.length === 0}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 cursor-pointer shadow-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                <Check size={14} /> Submit Purchase Order
+              </button>
             </div>
           </div>
         </div>

@@ -1,4 +1,6 @@
-import { PageHeader } from './PageHeader';
+const fs = require('fs');
+
+const code = `import { PageHeader } from './PageHeader';
 import React, { useEffect, useState } from 'react';
 import { 
   Users, Search, Filter, PlusCircle, Edit, Trash2, FileSpreadsheet, FileText, DollarSign, History, X, MapPin, Phone, Mail, Building, SearchX, Truck, ClipboardList, ShoppingBag
@@ -78,7 +80,7 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
           email: formEmail,
           phone: formPhone
         });
-        dbStore.logActivity(user.id, user.name, user.role, 'Update Vendor', `Updated vendor profile: ${formName}`, businessId);
+        dbStore.logActivity(user.id, user.name, user.role, 'Update Vendor', \\\`Updated vendor profile: \\\${formName}\\\`, businessId);
         triggerToast('Vendor updated successfully.', 'success');
       } else {
         dbStore.createSupplier({
@@ -88,9 +90,9 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
           email: formEmail,
           phone: formPhone,
           business_id: businessId,
-          
+          outstanding_amount: 0
         });
-        dbStore.logActivity(user.id, user.name, user.role, 'Create Vendor', `Registered new vendor: ${formName}`, businessId);
+        dbStore.logActivity(user.id, user.name, user.role, 'Create Vendor', \\\`Registered new vendor: \\\${formName}\\\`, businessId);
         triggerToast('Vendor created successfully.', 'success');
       }
       setIsModalOpen(false);
@@ -107,14 +109,14 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
 
     const sup = suppliers.find(s => s.id === id);
     if (sup && sup.outstanding_amount > 0) {
-      triggerToast(`Cannot delete: Vendor has an outstanding payable balance of Rs. ${sup.outstanding_amount}`, 'error');
+      triggerToast(\\\`Cannot delete: Vendor has an outstanding payable balance of Rs. \\\${sup.outstanding_amount}\\\`, 'error');
       return;
     }
 
-    if (window.confirm(`Are you sure you want to delete vendor "${name}"? This action cannot be undone.`)) {
+    if (window.confirm(\\\`Are you sure you want to delete vendor "\\\${name}"? This action cannot be undone.\\\`)) {
       try {
         dbStore.deleteSupplier(id);
-        dbStore.logActivity(user.id, user.name, user.role, 'Delete Vendor', `Deleted vendor: ${name}`, businessId);
+        dbStore.logActivity(user.id, user.name, user.role, 'Delete Vendor', \\\`Deleted vendor: \\\${name}\\\`, businessId);
         triggerToast('Vendor removed from master.', 'success');
       } catch (e: any) {
          triggerToast(e.message || 'Failed to delete vendor', 'error');
@@ -133,16 +135,16 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
       s.phone,
       s.email,
       s.outstanding_amount,
-      `"${s.address.replace(/"/g, '""')}"`
+      \\\`"\\\${s.address.replace(/"/g, '""')}"\\\`
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' 
-      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      + [headers.join(','), ...rows.map(e => e.join(','))].join('\\\\n');
     
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `vendors_export_${businessId}.csv`);
+    link.setAttribute('download', \\\`vendors_export_\\\${businessId}.csv\\\`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -162,16 +164,16 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
       
       doc.setFontSize(10);
       doc.setTextColor(100, 116, 139);
-      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
-      doc.text(`Business ID: ${businessId}`, 14, 35);
-      doc.text(`Exported by: ${user.name} (${user.role})`, 14, 40);
+      doc.text(\\\`Generated on: \\\${new Date().toLocaleString()}\\\`, 14, 30);
+      doc.text(\\\`Business ID: \\\${businessId}\\\`, 14, 35);
+      doc.text(\\\`Exported by: \\\${user.name} (\\\${user.role})\\\`, 14, 40);
       
       const tableColumn = ["Vendor Name", "Phone", "GSTIN", "Outstanding Payable"];
       const tableRows = filteredSuppliers.map(s => [
         s.name,
         s.phone,
         s.gstin || 'Unregistered',
-        `Rs. ${s.outstanding_amount.toLocaleString()}`
+        \\\`Rs. \\\${s.outstanding_amount.toLocaleString()}\\\`
       ]);
 
       autoTable(doc, {
@@ -185,7 +187,7 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
         margin: { top: 48 }
       });
 
-      doc.save(`vendor_payable_report_${businessId}_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(\\\`vendor_payable_report_\\\${businessId}_\\\${new Date().toISOString().split('T')[0]}.pdf\\\`);
       
       setTimeout(() => {
         triggerToast('Vendor payable PDF generation complete. Download initiated.', 'success');
@@ -197,7 +199,7 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
   };
 
   const handlePrintIndividualLedger = (sup: Supplier) => {
-    dbStore.logActivity(user.id, user.name, user.role, 'Print Ledger', `Printed individual ledger for ${sup.name}`, businessId);
+    dbStore.logActivity(user.id, user.name, user.role, 'Print Ledger', \\\`Printed individual ledger for \\\${sup.name}\\\`, businessId);
     
     try {
       const doc = new jsPDF();
@@ -209,14 +211,14 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
       
       doc.setFontSize(10);
       doc.setTextColor(100, 116, 139);
-      doc.text(`Vendor: ${sup.name}`, 14, 30);
-      doc.text(`Phone: ${sup.phone}`, 14, 35);
-      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 40);
-      doc.text(`Business ID: ${businessId}`, 14, 45);
+      doc.text(\\\`Vendor: \\\${sup.name}\\\`, 14, 30);
+      doc.text(\\\`Phone: \\\${sup.phone}\\\`, 14, 35);
+      doc.text(\\\`Generated: \\\${new Date().toLocaleString()}\\\`, 14, 40);
+      doc.text(\\\`Business ID: \\\${businessId}\\\`, 14, 45);
       
       autoTable(doc, {
         body: [
-          ['Total Outstanding Payable', `Rs. ${sup.outstanding_amount.toLocaleString()}`]
+          ['Total Outstanding Payable', \\\`Rs. \\\${sup.outstanding_amount.toLocaleString()}\\\`]
         ],
         startY: 50,
         theme: 'grid',
@@ -229,7 +231,7 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
         o.order_number,
         o.order_date,
         o.status,
-        `Rs. ${o.total_amount.toLocaleString()}`,
+        \\\`Rs. \\\${o.total_amount.toLocaleString()}\\\`,
         o.payment_status
       ]);
 
@@ -242,7 +244,7 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
         bodyStyles: { fontSize: 8 }
       });
 
-      doc.save(`ledger_${sup.name.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(\\\`ledger_\\\${sup.name.replace(/\\\\s+/g, '_').toLowerCase()}_\\\${new Date().toISOString().split('T')[0]}.pdf\\\`);
       triggerToast('Individual ledger PDF generated successfully.', 'success');
     } catch (err) {
       console.error('Individual PDF Error:', err);
@@ -424,7 +426,7 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
                 </tr>
               ) : (
                 filteredSuppliers.map((sup, idx) => (
-                  <tr key={`${sup.id}-${idx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                  <tr key={\`\${sup.id}-\${idx}\`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                     <td className="py-2 px-4">
                       <div className="flex flex-col">
                         <span className="font-bold text-slate-800 dark:text-slate-200 line-clamp-1 text-[12px]">{sup.name}</span>
@@ -635,21 +637,21 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
                           <td className="py-2.5 px-4 text-slate-600 dark:text-slate-400">{order.order_date}</td>
                           <td className="py-2.5 px-4 font-black">₹{order.total_amount.toLocaleString()}</td>
                           <td className="py-2.5 px-4">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                            <span className={\`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase \${
                               order.status === 'Draft' ? 'bg-slate-100 text-slate-600' :
                               order.status === 'Ordered' ? 'bg-sky-100 text-sky-700' :
                               order.status === 'Received' ? 'bg-emerald-100 text-emerald-700' :
                               'bg-rose-100 text-rose-700'
-                            }`}>
+                            }\`}>
                               {order.status}
                             </span>
                           </td>
                           <td className="py-2.5 px-4 text-right">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                            <span className={\`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase \${
                               order.payment_status === 'Paid' ? 'bg-emerald-100 text-emerald-700' :
                               order.payment_status === 'Partial' ? 'bg-amber-100 text-amber-700' :
                               'bg-rose-100 text-rose-700'
-                            }`}>
+                            }\`}>
                               {order.payment_status}
                             </span>
                           </td>
@@ -682,3 +684,5 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
     </div>
   );
 };
+`
+fs.writeFileSync('src/components/SupplierModule.tsx', code);

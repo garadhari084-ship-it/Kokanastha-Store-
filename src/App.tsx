@@ -164,6 +164,12 @@ export default function App() {
 
   const handleOtpDigitChange = (val: string, index: number) => {
     const digit = val.slice(-1);
+    
+    // Only allow numbers
+    if (digit && !/^\d+$/.test(digit)) {
+      return;
+    }
+
     const updated = [...otpArray];
     updated[index] = digit;
     setOtpArray(updated);
@@ -1318,6 +1324,7 @@ export default function App() {
                           key={idx}
                           id={`otp-input-${idx}`}
                           type="text"
+                          inputMode="numeric"
                           maxLength={1}
                           value={digit}
                           onChange={(e) => handleOtpDigitChange(e.target.value, idx)}

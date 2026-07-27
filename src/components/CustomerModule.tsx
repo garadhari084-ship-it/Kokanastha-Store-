@@ -87,6 +87,12 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     e.preventDefault();
     if (!formName.trim() || !formPhone.trim() || !formBilling.trim()) return;
 
+    const cleanPhone = formPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      triggerToast('Mobile number must be exactly 10 digits.', 'error');
+      return;
+    }
+
     try {
       if (editingCustomer) {
         dbStore.updateCustomer(editingCustomer.id, {
@@ -98,7 +104,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           billing_address: formBilling,
           shipping_address: formShipping,
           email: formEmail,
-          phone: formPhone,
+          phone: cleanPhone,
           credit_limit: formCreditLimit
         });
         dbStore.logActivity(user.id, user.name, user.role, 'Update Customer', `Updated customer profile: ${formName}`, businessId);
@@ -113,7 +119,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           billing_address: formBilling,
           shipping_address: formShipping,
           email: formEmail,
-          phone: formPhone,
+          phone: cleanPhone,
           credit_limit: formCreditLimit,
           business_id: businessId,
           active: true,
@@ -676,13 +682,14 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Contact Phone Number *</label>
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Contact Mobile Number * (10 Digits)</label>
                   <input 
                     type="tel" 
                     required
+                    maxLength={10}
                     value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="+91 XXXXX XXXXX"
+                    onChange={(e) => setFormPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="e.g. 9820012345"
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-mono"
                   />
                 </div>

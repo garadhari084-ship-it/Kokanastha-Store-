@@ -1315,9 +1315,29 @@ export default function App() {
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700">
                     <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{currentUser?.name || 'Store Admin'}</p>
                     <p className="text-xs text-slate-500 truncate">{currentUser?.email || 'admin@example.com'}</p>
-                    <span className="mt-1 inline-block px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded text-[10px] font-bold">
-                      Role: {currentUser?.role}
-                    </span>
+                    <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Switch Role View</label>
+                      <select 
+                        value={currentUser?.role} 
+                        onChange={(e) => {
+                          const newRole = e.target.value as UserRole;
+                          if (currentUser) {
+                            const updated = { ...currentUser, role: newRole };
+                            setCurrentUser(updated);
+                            dbStore.updateUser(currentUser.id, { role: newRole });
+                            triggerToast(`Switched active role profile to ${newRole}`, 'info');
+                          }
+                        }}
+                        className="w-full text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white rounded-lg p-1.5 border border-slate-200 dark:border-slate-600 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        <option value="Super Admin">Super Admin</option>
+                        <option value="Admin">Admin</option>
+                        <option value="Manager">Manager</option>
+                        <option value="Sales Staff">Sales Staff</option>
+                        <option value="Packing Staff">Packing Staff</option>
+                        <option value="Viewer">Viewer</option>
+                      </select>
+                    </div>
                   </div>
                   <div className="py-1">
                     <button 

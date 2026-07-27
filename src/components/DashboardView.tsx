@@ -92,8 +92,57 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate, 
   triggerToast 
 }) => {
-  // Theme & Language Settings
-      const [activeTab, setActiveTab] = useState<TabView>('operations');
+  // Role Permission Flags & Tab Filtering
+  const userRole = user?.role || 'Viewer';
+
+  const canCreateOrder = userRole !== 'Viewer' && userRole !== 'Packing Staff';
+  const canCollectPayment = userRole !== 'Viewer' && userRole !== 'Packing Staff';
+  const canDeleteOrder = userRole === 'Super Admin' || userRole === 'Admin';
+  const canEditOrder = userRole !== 'Viewer' && userRole !== 'Packing Staff';
+  const showFinancials = userRole === 'Super Admin' || userRole === 'Admin' || userRole === 'Manager' || userRole === 'Sales Staff';
+  const canMassDispatch = userRole !== 'Viewer';
+
+  // Allowed Dashboard Tabs per User Role
+  const allowedTabs = useMemo(() => {
+    if (userRole === 'Super Admin' || userRole === 'Admin' || userRole === 'Manager') {
+      return [
+        { id: 'operations', label: 'Live Operations', icon: Activity },
+        { id: 'analytics', label: 'Sales & Revenue', icon: BarChart3 },
+        { id: 'logistics', label: 'Dispatch & Zones', icon: Truck },
+        { id: 'inventory', label: 'Stock & Kitchen', icon: Boxes }
+      ];
+    }
+    if (userRole === 'Sales Staff') {
+      return [
+        { id: 'operations', label: 'Live Operations', icon: Activity },
+        { id: 'analytics', label: 'Sales & Revenue', icon: BarChart3 },
+        { id: 'logistics', label: 'Dispatch & Zones', icon: Truck }
+      ];
+    }
+    if (userRole === 'Packing Staff') {
+      return [
+        { id: 'operations', label: 'Kitchen & Packing Ops', icon: Activity },
+        { id: 'logistics', label: 'Dispatch & Zones', icon: Truck },
+        { id: 'inventory', label: 'Stock & Kitchen', icon: Boxes }
+      ];
+    }
+    // Viewer
+    return [
+      { id: 'operations', label: 'Live Operations', icon: Activity },
+      { id: 'logistics', label: 'Dispatch & Zones', icon: Truck },
+      { id: 'inventory', label: 'Stock & Kitchen', icon: Boxes }
+    ];
+  }, [userRole]);
+
+  const [activeTab, setActiveTab] = useState<TabView>('operations');
+
+  useEffect(() => {
+    const validIds = allowedTabs.map(t => t.id);
+    if (!validIds.includes(activeTab)) {
+      setActiveTab(validIds[0].id as TabView);
+    }
+  }, [userRole, allowedTabs, activeTab]);
+
   const [timeHorizon, setTimeHorizon] = useState<TimeHorizon>('today');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
@@ -287,6 +336,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const products = dbStore.getProducts(businessId);
   const customers = dbStore.getCustomers(businessId);
   const allOrders = dbStore.getSalesOrders(businessId);
+
+  const lowStockCount = useMemo(() => products.filter(p => (p.current_stock ?? 0) <= (p.minimum_stock || 10)).length, [products]);
+  const outOfStockCount = useMemo(() => products.filter(p => (p.current_stock ?? 0) === 0).length, [products]);
 
   // Modal drilldown items computation
   const modalItems = useMemo(() => {
@@ -581,13 +633,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       
       <PageHeader
         title="Executive Command Center"
-        subtitle="Live order tracking, route fulfillment & sales intelligence dashboard"
+        subtitle={`Welcome, ${user?.name || 'User'} • ${
+          userRole === 'Super Admin' ? 'Full Control & Financial Oversight' :
+          userRole === 'Admin' ? 'Administrator Portal & Sales Oversight' :
+          userRole === 'Manager' ? 'Operations, Logistics & Stock Control' :
+          userRole === 'Sales Staff' ? 'Sales Desk, Order Booking & Unpaid Collections' :
+          userRole === 'Packing Staff' ? 'Kitchen Queue, Packaging & Route Dispatch' :
+          'Read-Only Operational View'
+        }`}
         icon={LayoutDashboard}
-        badgeText="Dispatch Engine Active"
+        badgeText={`Role: ${userRole}`}
         rightContent={
 
           <div className="flex items-center gap-3">
-            {/* Quick Action Button */}
+            {/* Quick Action Button - Hide for Viewer and Packing Staff */}
+            {canCreateOrder && (
               <button 
                 onClick={handleOpenNewOrderModal}
                 className="p-2 md:px-4 md:py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 rounded-xl font-extrabold text-[11px] transition cursor-pointer shadow-lg flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 min-w-[36px]"
@@ -595,6 +655,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <PlusCircle size={16} />
                 <span className="hidden md:inline-block">Create Order</span>
               </button>
+            )}
 
             {/* Top Time Filter Dropdown */}
             <div className="relative shrink-0">
@@ -667,12 +728,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         }
         bottomContent={
           <div className="mt-2 pt-2 border-t border-white/10 flex flex-nowrap w-full overflow-x-auto hide-scrollbar items-center gap-1.5 pb-0 mb-0">
-          {[
-            { id: 'operations', label: 'Live Operations', icon: Activity },
-            { id: 'analytics', label: 'Sales & Revenue', icon: BarChart3 },
-            { id: 'logistics', label: 'Dispatch & Zones', icon: Truck },
-            { id: 'inventory', label: 'Stock & Kitchen', icon: Boxes }
-          ].map(tab => {
+          {allowedTabs.map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -882,61 +938,122 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </div>
               {/* Metric 7 */}
-              <div 
-                onClick={() => handleOpenMetricDetail({
-                  title: 'Sales & Revenue Ledger',
-                  subtitle: 'Gross revenue breakdown across completed and active orders',
-                  icon: TrendingUp,
-                  iconColor: 'text-emerald-600 bg-emerald-500/10 border-emerald-200',
-                  badgeText: '+14.2% Growth',
-                  type: 'revenue',
-                  description: 'Financial ledger summarizing completed sales and collected revenue.'
-                })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
-              >
-                <div className="flex items-center gap-1.5">
-                  <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
-                    <TrendingUp size={14} />
+              {showFinancials ? (
+                <div 
+                  onClick={() => handleOpenMetricDetail({
+                    title: 'Sales & Revenue Ledger',
+                    subtitle: 'Gross revenue breakdown across completed and active orders',
+                    icon: TrendingUp,
+                    iconColor: 'text-emerald-600 bg-emerald-500/10 border-emerald-200',
+                    badgeText: '+14.2% Growth',
+                    type: 'revenue',
+                    description: 'Financial ledger summarizing completed sales and collected revenue.'
+                  })}
+                  className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                      <TrendingUp size={14} />
+                    </div>
+                    <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">REVENUE</span>
                   </div>
-                  <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">REVENUE</span>
+                  <div className="flex flex-col gap-0.5 mt-0.5">
+                    <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Financial ledger summarizing completed sales and collected revenue">Financial ledger summarizing completed sales and collected revenue</span>
+                  </div>
+                  <div className="text-right mt-1">
+                    <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                      ₹{metrics.todaySalesAmount.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-0.5 mt-0.5">
-                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Financial ledger summarizing completed sales and collected revenue">Financial ledger summarizing completed sales and collected revenue</span>
+              ) : (
+                <div 
+                  onClick={() => handleOpenMetricDetail({
+                    title: 'Low Stock Replenishment Alert',
+                    subtitle: 'Kitchen raw material & packaging stock running low',
+                    icon: Boxes,
+                    iconColor: 'text-amber-600 bg-amber-500/10 border-amber-200',
+                    badgeText: 'Low Stock',
+                    type: 'low_stock',
+                    description: 'Items requiring restock or supplier re-orders.'
+                  })}
+                  className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                      <Boxes size={14} />
+                    </div>
+                    <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">LOW STOCK</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 mt-0.5">
+                    <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Kitchen raw material & packaging stock running low">Kitchen raw material & packaging stock running low</span>
+                  </div>
+                  <div className="text-right mt-1">
+                    <span className="text-xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
+                      {lowStockCount}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-right mt-1">
-                  <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
-                    ₹{metrics.todaySalesAmount.toLocaleString()}
-                  </span>
-                </div>
-              </div>
+              )}
+
               {/* Metric 8 */}
-              <div 
-                onClick={() => handleOpenMetricDetail({
-                  title: 'Outstanding Accounts Receivable',
-                  subtitle: 'Customer receivables pending payment settlement',
-                  icon: Clock,
-                  iconColor: 'text-orange-600 bg-orange-500/10 border-orange-200',
-                  badgeText: 'Receivables',
-                  type: 'receivables',
-                  description: 'Track outstanding balances and send instant payment follow-up alerts.'
-                })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-orange-400 dark:hover:border-orange-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
-              >
-                <div className="flex items-center gap-1.5">
-                  <div className="p-1.5 bg-orange-500/10 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
-                    <Clock size={14} />
+              {showFinancials ? (
+                <div 
+                  onClick={() => handleOpenMetricDetail({
+                    title: 'Outstanding Accounts Receivable',
+                    subtitle: 'Customer receivables pending payment settlement',
+                    icon: Clock,
+                    iconColor: 'text-orange-600 bg-orange-500/10 border-orange-200',
+                    badgeText: 'Receivables',
+                    type: 'receivables',
+                    description: 'Track outstanding balances and send instant payment follow-up alerts.'
+                  })}
+                  className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-orange-400 dark:hover:border-orange-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <div className="p-1.5 bg-orange-500/10 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                      <Clock size={14} />
+                    </div>
+                    <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">OUTSTANDING</span>
                   </div>
-                  <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">OUTSTANDING</span>
+                  <div className="flex flex-col gap-0.5 mt-0.5">
+                    <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Track outstanding balances and send instant payment follow-up alerts">Track outstanding balances and send instant payment follow-up alerts</span>
+                  </div>
+                  <div className="text-right mt-1">
+                    <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                      ₹{metrics.outstandingAmount.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-0.5 mt-0.5">
-                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Track outstanding balances and send instant payment follow-up alerts">Track outstanding balances and send instant payment follow-up alerts</span>
+              ) : (
+                <div 
+                  onClick={() => handleOpenMetricDetail({
+                    title: 'Out of Stock Critical Alert',
+                    subtitle: 'Products with zero stock level requiring immediate replenishment',
+                    icon: AlertTriangle,
+                    iconColor: 'text-rose-600 bg-rose-500/10 border-rose-200',
+                    badgeText: 'Zero Stock',
+                    type: 'out_of_stock',
+                    description: 'Zero stock SKUs requiring kitchen cooking or purchasing.'
+                  })}
+                  className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-rose-400 dark:hover:border-rose-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <div className="p-1.5 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                      <AlertTriangle size={14} />
+                    </div>
+                    <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">ZERO STOCK</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 mt-0.5">
+                    <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Products with zero stock level requiring immediate replenishment">Products with zero stock level requiring immediate replenishment</span>
+                  </div>
+                  <div className="text-right mt-1">
+                    <span className="text-xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
+                      {outOfStockCount}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-right mt-1">
-                  <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
-                    ₹{metrics.outstandingAmount.toLocaleString()}
-                  </span>
-                </div>
-              </div>
+              )}
             </div>
 
 
@@ -2182,41 +2299,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               >
                 <Download size={16} /> Save PDF
               </button>
-              <button 
-                onClick={() => {
-                  setSelectedOrderForPayment(selectedOrderForDetail);
-                  setSelectedOrderForDetail(null);
-                  setIsPaymentModalOpen(true);
-                }}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
-              >
-                <DollarSign size={16} /> Collect Payment
-              </button>
+              {canCollectPayment && (
+                <button 
+                  onClick={() => {
+                    setSelectedOrderForPayment(selectedOrderForDetail);
+                    setSelectedOrderForDetail(null);
+                    setIsPaymentModalOpen(true);
+                  }}
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                >
+                  <DollarSign size={16} /> Collect Payment
+                </button>
+              )}
 
-              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 mt-2">
-                <button
-                  onClick={() => {
-                    if (selectedOrderForDetail.delivery_status === 'Delivered') {
-                      triggerToast('Cannot edit an order that is already delivered.', 'error');
-                      return;
-                    }
-                    setInvoiceToEdit(selectedOrderForDetail);
-                    setSelectedOrderForDetail(null);
-                  }}
-                  className={`w-full py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${selectedOrderForDetail.delivery_status === 'Delivered' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/40 dark:hover:bg-sky-900/60 dark:text-sky-300 cursor-pointer'}`}
-                >
-                  <Edit size={14} /> Edit / Update
-                </button>
-                <button
-                  onClick={() => {
-                    setInvoiceToDelete(selectedOrderForDetail);
-                    setSelectedOrderForDetail(null);
-                  }}
-                  className="w-full py-3 bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Trash2 size={14} /> Delete Invoice
-                </button>
-              </div>
+              {(canEditOrder || canDeleteOrder) && (
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 mt-2">
+                  {canEditOrder ? (
+                    <button
+                      onClick={() => {
+                        if (selectedOrderForDetail.delivery_status === 'Delivered') {
+                          triggerToast('Cannot edit an order that is already delivered.', 'error');
+                          return;
+                        }
+                        setInvoiceToEdit(selectedOrderForDetail);
+                        setSelectedOrderForDetail(null);
+                      }}
+                      className={`w-full py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${selectedOrderForDetail.delivery_status === 'Delivered' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/40 dark:hover:bg-sky-900/60 dark:text-sky-300 cursor-pointer'}`}
+                    >
+                      <Edit size={14} /> Edit / Update
+                    </button>
+                  ) : <div />}
+                  
+                  {canDeleteOrder ? (
+                    <button
+                      onClick={() => {
+                        setInvoiceToDelete(selectedOrderForDetail);
+                        setSelectedOrderForDetail(null);
+                      }}
+                      className="w-full py-3 bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 size={14} /> Delete Invoice
+                    </button>
+                  ) : <div />}
+                </div>
+              )}
             </div>
 
           </div>

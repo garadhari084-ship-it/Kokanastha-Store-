@@ -679,14 +679,15 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                          <Phone size={12} className="text-slate-400" /> Contact Number
+                          <Phone size={12} className="text-slate-400" /> Contact Mobile Number (10 Digits)
                         </label>
                         <input 
-                          type="text" 
+                          type="tel" 
+                          maxLength={10}
                           disabled={!isFullyVerified}
-                          placeholder="e.g. +91 9876543210"
+                          placeholder="e.g. 9876543210"
                           value={personPhone}
-                          onChange={(e) => setPersonPhone(e.target.value)}
+                          onChange={(e) => setPersonPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                           className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-[11px] font-semibold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 disabled:opacity-50 transition-all placeholder:font-normal placeholder:text-slate-400"
                         />
                       </div>

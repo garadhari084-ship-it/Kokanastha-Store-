@@ -101,6 +101,12 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
       return;
     }
 
+    const cleanPhone = formPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      triggerToast('Mobile number must be exactly 10 digits.', 'error');
+      return;
+    }
+
     // GSTIN/PAN validations (Indian formats)
     if (formGstin.trim() && formGstin.trim().length !== 15) {
       triggerToast('GSTIN must be exactly 15 characters.', 'error');
@@ -121,7 +127,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           billing_address: formBilling.trim(),
           shipping_address: (formShipping.trim() || formBilling.trim()),
           email: formEmail.trim(),
-          phone: formPhone.trim(),
+          phone: cleanPhone,
           credit_limit: Number(formCreditLimit)
         });
         dbStore.logActivity(user.id, user.name, user.role, 'Update Customer', `Updated customer details for: ${formName}`, businessId);
@@ -135,7 +141,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           billing_address: formBilling.trim(),
           shipping_address: (formShipping.trim() || formBilling.trim()),
           email: formEmail.trim(),
-          phone: formPhone.trim(),
+          phone: cleanPhone,
           credit_limit: Number(formCreditLimit),
           business_id: businessId,
           active: true
@@ -425,13 +431,14 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Contact Phone Number *</label>
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Contact Mobile Number * (10 Digits)</label>
                   <input 
                     type="tel" 
                     required
+                    maxLength={10}
                     value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="+91 XXXXX XXXXX"
+                    onChange={(e) => setFormPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="e.g. 9820012345"
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>

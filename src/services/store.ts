@@ -665,6 +665,12 @@ class ERPStorage {
            return crypto.randomUUID();
        };
        
+       let activeBusinessId: string | null = null;
+       try {
+           const sess = JSON.parse(localStorage.getItem('omnipack_session') || '{}');
+           if (sess.businessId) activeBusinessId = sess.businessId;
+       } catch (e) {}
+       
        const cleanItem = (item: any) => {
            const clean = { ...item };
            if (clean.id && tableName !== 'business_settings') {
@@ -672,7 +678,10 @@ class ERPStorage {
            }
            if (clean.business_id) {
                clean.business_id = sanitizeUUID(clean.business_id, false);
+           } else if (activeBusinessId && tableName !== 'users_profiles' && tableName !== 'businesses') {
+               clean.business_id = sanitizeUUID(activeBusinessId, false);
            }
+           
            if (tableName === 'business_settings') {
                delete clean.business_name;
                delete clean.gstin;

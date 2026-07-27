@@ -23,6 +23,7 @@ import { dbStore } from '../services/store';
 import { Product, Category, UserProfile } from '../types/erp';
 import { Camera } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
+import ReactBarcode from 'react-barcode';
 
 interface ProductModuleProps {
   businessId: string;
@@ -369,44 +370,6 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     }
   };
 
-  // Barcode CSS-Based Vector Pattern Generator
-  // Standard CODE-128 contains sequences of vertical bars with 4 thickness values.
-  // We can generate a highly convincing real barcode visual by converting a string hash into a loop of 1px to 4px wide dark lines!
-  const renderVisualBarcodeLines = (codeStr: string) => {
-    // Basic deterministic mapping loop to render barcode columns
-    const columns: React.ReactElement[] = [];
-    const codeVal = codeStr || '890123456789';
-    let lineIdx = 0;
-
-    for (let charIdx = 0; charIdx < codeVal.length; charIdx++) {
-      const numericVal = parseInt(codeVal[charIdx]) || (codeVal.charCodeAt(charIdx) % 10);
-      
-      // alternate dark lines and white lines
-      const darkWidth = ((numericVal % 3) + 1) * 1.5; // 1.5px to 4.5px
-      const spaceWidth = (((numericVal + 2) % 3) + 1) * 1.5;
-
-      columns.push(
-        <span 
-          key={`bar-${charIdx}`} 
-          className="bg-black inline-block h-12" 
-          style={{ width: `${darkWidth}px` }}
-        />
-      );
-      columns.push(
-        <span 
-          key={`space-${charIdx}`} 
-          className="bg-white inline-block h-12" 
-          style={{ width: `${spaceWidth}px` }}
-        />
-      );
-    }
-
-    return (
-      <div className="flex bg-white p-2 border border-slate-200 justify-center items-center overflow-hidden h-16 rounded-sm">
-        {columns}
-      </div>
-    );
-  };
 
   // Barcode Printing Action
   const handlePrintBarcodeSubmit = () => {
@@ -734,8 +697,17 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               <div className="text-center p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
                 <h3 className="text-[11px] font-bold text-slate-800 dark:text-slate-200 mb-2">{printingBarcodeProduct.name}</h3>
                 
-                {/* Dynamically Styled Barcode Lines */}
-                {renderVisualBarcodeLines(printingBarcodeProduct.barcode)}
+                {/* Real Scannable Barcode using react-barcode */}
+                <div className="flex justify-center">
+                  <ReactBarcode 
+                    value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || printingBarcodeProduct.id} 
+                    height={48} 
+                    displayValue={false} 
+                    width={1.5}
+                    margin={0}
+                    background="transparent"
+                  />
+                </div>
                 
                 <span className="font-mono text-[11px] text-slate-400 block mt-1 tracking-widest">{printingBarcodeProduct.barcode}</span>
                 <span className="text-[10px] text-slate-400 font-mono">SKU: {printingBarcodeProduct.sku}</span>

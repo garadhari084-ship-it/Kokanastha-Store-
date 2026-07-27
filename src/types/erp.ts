@@ -212,7 +212,7 @@ export interface StockLog {
   id: string;
   product_id: string;
   change_qty: number;
-  type: 'In' | 'Out' | 'Adjustment' | 'Transfer' | 'Damage' | 'Return';
+  type: 'In' | 'Out' | 'Adjusted' | 'Transfer' | 'Damage' | 'Return';
   notes: string;
   created_by: string;
   created_at: string;
@@ -273,7 +273,7 @@ export interface LoyaltyConfig {
 export interface LoyaltyLog {
   id: string;
   customer_id: string;
-  type: 'Earned' | 'Redeemed' | 'Bonus' | 'Expired' | 'Adjustment';
+  type: 'Earned' | 'Redeemed' | 'Bonus' | 'Expired' | 'Adjusted';
   points: number;
   amount_spent?: number;
   order_id?: string;

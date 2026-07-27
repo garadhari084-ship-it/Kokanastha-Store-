@@ -59,7 +59,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
       return;
     }
     try {
-      dbStore.createUser({
+      const newUser = dbStore.createUser({
         name: newUserName,
         email: newUserEmail,
         role: newUserRole,

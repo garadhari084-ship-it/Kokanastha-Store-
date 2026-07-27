@@ -283,28 +283,28 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
         subtitle="Add, edit, delete, and audit vendor profiles and payable histories."
         icon={Truck}
         rightContent={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-nowrap overflow-x-auto md:flex-wrap gap-2 hide-scrollbar pb-1 sm:pb-0">
             <button 
               onClick={handleExportCSV} 
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer shadow-sm transition-colors"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
             >
               <FileSpreadsheet size={16} className="text-emerald-600" />
-              <span>Export Excel</span>
+              <span className="hidden xs:inline">Export Excel</span>
             </button>
             <button 
               onClick={handleExportPDF} 
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer shadow-sm transition-colors"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
             >
               <FileText size={16} className="text-rose-600" />
-              <span>Print Payable PDF</span>
+              <span className="hidden xs:inline">Print Payable PDF</span>
             </button>
             {user.role !== 'Viewer' && (
               <button 
                 onClick={handleOpenAddModal} 
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold cursor-pointer shadow-sm transition-colors"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
               >
                 <PlusCircle size={16} />
-                <span>Register Vendor</span>
+                <span className="hidden xs:inline">Register Vendor</span>
               </button>
             )}
           </div>

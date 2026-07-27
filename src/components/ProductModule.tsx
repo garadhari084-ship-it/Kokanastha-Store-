@@ -441,29 +441,28 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         subtitle="Track and manage inventory items, pricing margins, SKU catalogs, and barcode rendering."
         icon={Package}
         rightContent={
-          <>
-<div className="flex flex-wrap gap-2">
+          <><div className="flex flex-nowrap overflow-x-auto md:flex-wrap gap-2 hide-scrollbar pb-1 sm:pb-0">
           <button 
             onClick={() => setIsBulkImportOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
           >
             <Upload size={16} className="text-indigo-600" />
-            <span>Import Excel</span>
+            <span className="hidden xs:inline">Import Excel</span>
           </button>
           <button 
             onClick={handleBulkExport} 
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
           >
             <FileSpreadsheet size={16} className="text-emerald-600" />
-            <span>Export Catalog</span>
+            <span className="hidden xs:inline">Export Catalog</span>
           </button>
           {user.role !== 'Viewer' && (
             <button 
               onClick={handleOpenAddModal} 
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
             >
               <Plus size={16} />
-              <span>Add Product</span>
+              <span className="hidden xs:inline">Add Product</span>
             </button>
           )}
         </div>

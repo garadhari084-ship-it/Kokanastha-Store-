@@ -295,6 +295,8 @@ export default function App() {
 
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [changePasswordData, setChangePasswordData] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
     try {
@@ -821,6 +823,50 @@ export default function App() {
     { id: 'settings', label: 'Tenant settings', icon: Settings, adminOnly: true },
     { id: 'audit', label: 'Security Logs', icon: ShieldAlert, adminOnly: true }
   ];
+
+  const handleChangePassword = () => {
+    if (!changePasswordData.oldPassword || !changePasswordData.newPassword || !changePasswordData.confirmPassword) {
+      triggerToast('All fields are required', 'error');
+      return;
+    }
+    if (changePasswordData.newPassword !== changePasswordData.confirmPassword) {
+      triggerToast('New passwords do not match', 'error');
+      return;
+    }
+    if (changePasswordData.newPassword.length < 6) {
+      triggerToast('New password must be at least 6 characters long', 'error');
+      return;
+    }
+
+    if (!currentUser) return;
+    
+    // In a real application, you would verify the old password here
+    // Currently, as we just store password in localStorage and DB, we update directly or assume verification
+    
+    try {
+      const passwords = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+      
+      // Basic check
+      if (passwords[currentUser.email.toLowerCase()] && passwords[currentUser.email.toLowerCase()] !== changePasswordData.oldPassword) {
+         triggerToast('Incorrect old password', 'error');
+         return;
+      }
+
+      passwords[currentUser.email.toLowerCase()] = changePasswordData.newPassword;
+      localStorage.setItem('omnipack_erp_passwords', JSON.stringify(passwords));
+      
+      if (isSupabaseConfigured && supabase) {
+          // If we had a secure way to update the user's password in Supabase via their profile
+          // supabase.from('users_profiles').update({ password_hash: changePasswordData.newPassword }).eq('id', currentUser.id);
+      }
+
+      triggerToast('Password changed successfully', 'success');
+      setIsChangePasswordModalOpen(false);
+      setChangePasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+    } catch(e) {
+      triggerToast('Failed to change password', 'error');
+    }
+  };
 
   // Render view router
   const renderActiveModule = () => {
@@ -1701,6 +1747,16 @@ export default function App() {
                     >
                       <Settings size={14} /> Account Settings
                     </button>
+                    <button 
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        setChangePasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+                        setIsChangePasswordModalOpen(true);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 focus:outline-none cursor-pointer"
+                    >
+                      <Lock size={14} /> Change Password
+                    </button>
                     {hasAccessToView('audit') && (
                       <button 
                         onClick={() => {
@@ -1919,6 +1975,73 @@ export default function App() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {isChangePasswordModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[100] animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 border border-slate-200 dark:border-slate-800">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Lock size={18} className="text-indigo-500" />
+                Change Password
+              </h3>
+              <button 
+                onClick={() => setIsChangePasswordModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Old Password</label>
+                <input 
+                  type="password"
+                  value={changePasswordData.oldPassword}
+                  onChange={(e) => setChangePasswordData({...changePasswordData, oldPassword: e.target.value})}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                  placeholder="Enter old password"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">New Password</label>
+                <input 
+                  type="password"
+                  value={changePasswordData.newPassword}
+                  onChange={(e) => setChangePasswordData({...changePasswordData, newPassword: e.target.value})}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                  placeholder="Enter new password"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Confirm New Password</label>
+                <input 
+                  type="password"
+                  value={changePasswordData.confirmPassword}
+                  onChange={(e) => setChangePasswordData({...changePasswordData, confirmPassword: e.target.value})}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                  placeholder="Confirm new password"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-2">
+              <button
+                onClick={() => setIsChangePasswordModalOpen(false)}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleChangePassword}
+                className="px-4 py-2 text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl shadow-sm transition"
+              >
+                Save Changes
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 {
-  "name": "Multi-Tenant ERP & Packing Verification System",
+  "name": "Kokanastha Operation",
   "description": "An enterprise-grade ERP with multi-tenant business partition, role-based controls, inventory, sales, suppliers, purchases, advance bookings, reports, and a high-fidelity packing verification system with barcode scanning.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

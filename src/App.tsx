@@ -1545,9 +1545,6 @@ export default function App() {
             </div>
             <strong className={`text-sm font-extrabold tracking-tight truncate max-w-[150px] ${isSidebarMinimized ? 'lg:hidden' : ''}`}>Kokanastha Operation</strong>
           </div>
-          <button className="lg:hidden text-slate-400 cursor-pointer hover:text-white" onClick={() => setIsMobileMenuOpen(false)}>
-            <X size={20} />
-          </button>
         </div>
         {/* Navigation Items list */}
         <nav className={`flex-1 overflow-y-auto py-6 space-y-1 px-4 overscroll-contain scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent ${isSidebarMinimized ? 'lg:px-3' : ''}`}>

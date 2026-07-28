@@ -236,6 +236,13 @@ export function isOrderInTimeHorizon(
 class ERPStorage {
   private listeners: (() => void)[] = [];
   private pendingUploads = new Set<string>();
+  private realtimeChannel: any = null;
+  
+  public setRealtimeChannel(channel: any) {
+    this.realtimeChannel = channel;
+  }
+
+
   public subscribe(listener: () => void) {
     this.listeners.push(listener);
     return () => { this.listeners = this.listeners.filter(l => l !== listener); };
@@ -503,25 +510,8 @@ class ERPStorage {
              const mergedBusinesses = (data || []).map((b: any) => {
                 const existing = (this.cache.businesses || []).find(eb => eb.id === b.id);
                 if (!existing) return b;
-                const merged: any = { ...b, ...existing };
-                for (const k of Object.keys(b)) {
-                  if (b[k] !== null && b[k] !== undefined) {
-                    if (Array.isArray(b[k]) && b[k].length === 0 && Array.isArray(existing[k]) && (existing[k] as any[]).length > 0) {
-                      merged[k] = existing[k];
-                      continue;
-                    }
-                    if (existing[k] !== undefined && existing[k] !== null && existing[k] !== '') {
-                      merged[k] = existing[k];
-                    } else {
-                      merged[k] = b[k];
-                    }
-                  }
-                }
-                if (!merged.logo_url && existing?.logo_url) merged.logo_url = existing.logo_url;
-                if (!merged.login_cover_url && existing?.login_cover_url) merged.login_cover_url = existing.login_cover_url;
-                if (!merged.upi_qr_url && existing?.upi_qr_url) merged.upi_qr_url = existing.upi_qr_url;
-                return merged;
-              });
+                return { ...existing, ...b };
+             });
              this.cache.businesses = mergedBusinesses.length > 0 ? mergedBusinesses : this.cache.businesses;
              localStorage.setItem('omnipack_erp_businesses', JSON.stringify(this.cache.businesses));
           } else {
@@ -535,50 +525,6 @@ class ERPStorage {
     });
 
     await Promise.all(syncPromises);
-
-    // Auto-discover uploaded assets directly from Supabase Storage tenant-assets bucket
-    try {
-      if (this.cache.businesses && this.cache.businesses.length > 0) {
-        const biz = this.cache.businesses[0];
-        let assetUpdated = false;
-
-        // Check logo
-        const { data: logoFiles } = await supabase.storage.from("tenant-assets").list("logo", { limit: 1, sortBy: { column: "created_at", order: "desc" } });
-        if (logoFiles && logoFiles.length > 0) {
-          const { data: pUrl } = supabase.storage.from("tenant-assets").getPublicUrl(`logo/${logoFiles[0].name}`);
-          if (pUrl?.publicUrl) {
-            biz.logo_url = pUrl.publicUrl;
-            assetUpdated = true;
-          }
-        }
-
-        // Check cover
-        const { data: coverFiles } = await supabase.storage.from("tenant-assets").list("cover", { limit: 1, sortBy: { column: "created_at", order: "desc" } });
-        if (coverFiles && coverFiles.length > 0) {
-          const { data: pUrl } = supabase.storage.from("tenant-assets").getPublicUrl(`cover/${coverFiles[0].name}`);
-          if (pUrl?.publicUrl) {
-            biz.login_cover_url = pUrl.publicUrl;
-            assetUpdated = true;
-          }
-        }
-
-        // Check upi_qr
-        const { data: qrFiles } = await supabase.storage.from("tenant-assets").list("upi_qr", { limit: 1, sortBy: { column: "created_at", order: "desc" } });
-        if (qrFiles && qrFiles.length > 0) {
-          const { data: pUrl } = supabase.storage.from("tenant-assets").getPublicUrl(`upi_qr/${qrFiles[0].name}`);
-          if (pUrl?.publicUrl) {
-            biz.upi_qr_url = pUrl.publicUrl;
-            assetUpdated = true;
-          }
-        }
-
-        if (assetUpdated) {
-          localStorage.setItem("omnipack_erp_businesses", JSON.stringify(this.cache.businesses));
-        }
-      }
-    } catch (storageErr) {
-      console.warn("Storage asset auto-discovery warning:", storageErr);
-    }
 
     this.notify();
     } catch (err) {
@@ -872,6 +818,14 @@ class ERPStorage {
            } else if (dataItem.id) {
                this.pendingUploads.delete(dataItem.id);
            }
+       }
+       
+       if (activeBusinessId && this.realtimeChannel) {
+           this.realtimeChannel.send({
+               type: 'broadcast',
+               event: 'sync_update',
+               payload: { businessId: activeBusinessId, key }
+           }).catch(() => {});
        }
     }
     } catch (err: any) {

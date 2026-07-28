@@ -411,13 +411,16 @@ export default function App() {
     restoreSession();
 
     // Setup Supabase Realtime for data sync
-    let realtimeChannel: any;
+    let realtimeChannel: any = null;
     if (isSupabaseConfigured && supabase) {
-      realtimeChannel = supabase.channel('schema-db-changes')
+      realtimeChannel = supabase.channel('schema-db-changes');
+      dbStore.setRealtimeChannel(realtimeChannel);
+      
+      realtimeChannel
         .on(
           'postgres_changes',
           { event: '*', schema: 'public' },
-          async (payload) => {
+          async (payload: any) => {
             console.log('Realtime update received:', payload);
             const sessionData = localStorage.getItem('omnipack_session');
             if (sessionData) {
@@ -430,6 +433,32 @@ export default function App() {
                 }
               } catch(e) {}
             }
+          }
+        )
+        .on(
+          'broadcast',
+          { event: 'sync_update' },
+          async (payload: any) => {
+            console.log('Sync update broadcast received:', payload);
+            const sessionData = localStorage.getItem('omnipack_session');
+            if (sessionData) {
+              try {
+                const { businessId } = JSON.parse(sessionData);
+                if (businessId && payload.payload?.businessId === businessId) {
+                  await dbStore.syncFromSupabase(businessId);
+                  setSyncTick(prev => prev + 1);
+                }
+              } catch(e) {}
+            }
+          }
+        )
+        .on(
+          'broadcast',
+          { event: 'factory_reset' },
+          (payload: any) => {
+            console.log('Factory reset broadcast received:', payload);
+            triggerToast('System was factory reset by administrator. Reloading...', 'error');
+            setTimeout(() => window.location.reload(), 2000);
           }
         )
         .subscribe();
@@ -450,6 +479,7 @@ export default function App() {
         subscription.unsubscribe();
         if (realtimeChannel) {
           supabase.removeChannel(realtimeChannel);
+          dbStore.setRealtimeChannel(null);
         }
       };
     }

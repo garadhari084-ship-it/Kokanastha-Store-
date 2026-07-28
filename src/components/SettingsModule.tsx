@@ -33,7 +33,7 @@ import {
 import { dbStore } from '../services/store';
 import { Business, UserProfile } from '../types/erp';
 import { compressImageFile } from '../utils/imageCompressor';
-import { uploadFileToSupabaseStorage } from '../services/supabase';
+import { uploadFileToSupabaseStorage, supabase, isSupabaseConfigured } from '../services/supabase';
 
 interface SettingsModuleProps {
   businessId: string;
@@ -135,6 +135,12 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   };
 
   // Sync form with current business store state initially or when tenant changes
+  useEffect(() => {
+    return dbStore.subscribe(() => {
+      syncFromBusiness(businessId);
+    });
+  }, [businessId]);
+
   useEffect(() => {
     syncFromBusiness(businessId);
   }, [businessId]);
@@ -280,6 +286,13 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     setIsSyncing(true);
     await dbStore.clearAllAndReset(businessId);
     triggerToast('System factory reset complete. Reloading...', 'success');
+    if (isSupabaseConfigured && supabase) {
+      await supabase.channel('schema-db-changes').send({
+        type: 'broadcast',
+        event: 'factory_reset',
+        payload: { businessId }
+      });
+    }
     setShowResetConfirm(false);
     setIsSyncing(false);
     setTimeout(() => window.location.reload(), 1500);

@@ -559,3 +559,34 @@ CREATE POLICY dev_public_loyalty_logs ON loyalty_logs FOR ALL USING (true);
 
 DROP POLICY IF EXISTS dev_public_customer_subscriptions ON customer_subscriptions;
 CREATE POLICY dev_public_customer_subscriptions ON customer_subscriptions FOR ALL USING (true);
+
+-- ====================================================================
+-- REALTIME SUBSCRIPTIONS
+-- ====================================================================
+-- Run this in Supabase SQL Editor to enable Realtime for all tables
+-- so changes sync instantly across all devices
+
+BEGIN;
+  DROP PUBLICATION IF EXISTS supabase_realtime;
+  CREATE PUBLICATION supabase_realtime;
+COMMIT;
+
+ALTER PUBLICATION supabase_realtime ADD TABLE businesses;
+ALTER PUBLICATION supabase_realtime ADD TABLE users_profiles;
+ALTER PUBLICATION supabase_realtime ADD TABLE categories;
+ALTER PUBLICATION supabase_realtime ADD TABLE products;
+ALTER PUBLICATION supabase_realtime ADD TABLE customers;
+ALTER PUBLICATION supabase_realtime ADD TABLE suppliers;
+ALTER PUBLICATION supabase_realtime ADD TABLE purchase_orders;
+ALTER PUBLICATION supabase_realtime ADD TABLE purchase_order_items;
+ALTER PUBLICATION supabase_realtime ADD TABLE sales_orders;
+ALTER PUBLICATION supabase_realtime ADD TABLE sales_order_items;
+ALTER PUBLICATION supabase_realtime ADD TABLE packing_sessions;
+ALTER PUBLICATION supabase_realtime ADD TABLE packing_scan_logs;
+ALTER PUBLICATION supabase_realtime ADD TABLE stock_logs;
+ALTER PUBLICATION supabase_realtime ADD TABLE system_audit_logs;
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE business_settings;
+ALTER PUBLICATION supabase_realtime ADD TABLE loyalty_configs;
+ALTER PUBLICATION supabase_realtime ADD TABLE loyalty_logs;
+ALTER PUBLICATION supabase_realtime ADD TABLE customer_subscriptions;

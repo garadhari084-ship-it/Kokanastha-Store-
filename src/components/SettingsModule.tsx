@@ -134,13 +134,6 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     }
   };
 
-  // Sync form with current business store state initially or when tenant changes
-  useEffect(() => {
-    return dbStore.subscribe(() => {
-      syncFromBusiness(businessId);
-    });
-  }, [businessId]);
-
   useEffect(() => {
     syncFromBusiness(businessId);
   }, [businessId]);

@@ -272,7 +272,42 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
 
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-  
+  const [customInvoiceNumber, setCustomInvoiceNumber] = useState<string>('');
+
+  const getSuggestedInvoiceNumber = (isFestive: boolean, isAdvance: boolean) => {
+    const biz = dbStore.getBusiness(businessId);
+    const standardPrefix = biz?.invoice_prefix ? biz.invoice_prefix.trim() : 'SO-2026-';
+    const festivePrefix = biz?.festive_invoice_prefix ? biz.festive_invoice_prefix.trim() : 'FEST-KF-';
+    const prefix = isFestive ? festivePrefix : standardPrefix;
+    
+    const allOrders = dbStore.getSalesOrders(businessId);
+    const existingPrefixOrders = allOrders.filter(o => o.order_number && o.order_number.startsWith(prefix));
+    let maxSeq = 0;
+    existingPrefixOrders.forEach(o => {
+      const numPart = o.order_number.replace(prefix, '').replace('AB-', '');
+      const parsed = parseInt(numPart, 10);
+      if (!isNaN(parsed) && parsed > maxSeq) {
+        maxSeq = parsed;
+      }
+    });
+    const nextSeq = maxSeq + 1;
+    return isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`;
+  };
+
+  const handleToggleAdvanceBooking = (val: boolean) => {
+    setIsAdvanceBooking(val);
+    if (!editingOrderId) {
+      setCustomInvoiceNumber(getSuggestedInvoiceNumber(isFestiveBooking, val));
+    }
+  };
+
+  const handleToggleFestiveBooking = (val: boolean) => {
+    setIsFestiveBooking(val);
+    if (!editingOrderId) {
+      setCustomInvoiceNumber(getSuggestedInvoiceNumber(val, isAdvanceBooking));
+    }
+  };
+
   // Quick line-item row helper
   const [rowProductId, setRowProductId] = useState('');
   const [rowQty, setRowQty] = useState(1);
@@ -282,6 +317,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const resetForm = () => {
     setEditingOrderId(null);
     const biz = dbStore.getBusiness(businessId);
+    setCustomInvoiceNumber(getSuggestedInvoiceNumber(false, false));
     setSelectedCustomerId('');
     setSelectedArea(biz?.default_dispatch_zone || 'Dahisar');
     setOrderDate(getLocalTodayDate());
@@ -299,6 +335,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setRowPrice(0);
     setRowTaxRate(typeof biz?.tax_rate_default === 'number' && !isNaN(biz.tax_rate_default) ? biz.tax_rate_default : 0);
   };
+  useEffect(() => {
+    if (isCreateModalOpen && !editingOrderId && !customInvoiceNumber) {
+      setCustomInvoiceNumber(getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking));
+    }
+  }, [isCreateModalOpen, editingOrderId, customInvoiceNumber, isFestiveBooking, isAdvanceBooking]);
+
   useEffect(() => {
     return dbStore.subscribe(() => {
       setOrders(dbStore.getSalesOrders(businessId));
@@ -323,6 +365,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     }
     
     setEditingOrderId(order.id);
+    setCustomInvoiceNumber(order.order_number);
     setSelectedCustomerId(order.customer_id);
     setSelectedArea(order.area || 'Dahisar');
     setOrderDate(order.order_date || getLocalTodayDate());
@@ -461,9 +504,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       if (editingOrderId) {
         // Edit flow
         const existingOrder = orders.find(o => o.id === editingOrderId);
-        const orderNum = existingOrder ? existingOrder.order_number : `${currentBiz?.invoice_prefix || 'SO-'}${Math.floor(1000 + Math.random() * 9000)}`;
+        const orderNum = customInvoiceNumber.trim() || (existingOrder ? existingOrder.order_number : `${currentBiz?.invoice_prefix || 'SO-'}${Math.floor(1000 + Math.random() * 9000)}`);
         
         dbStore.updateSalesOrder(editingOrderId, {
+          order_number: orderNum,
           customer_id: finalCustomerId,
           customer_name: finalCustomerName,
           area: finalCustomerArea,
@@ -511,22 +555,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         triggerToast(`Order ${orderNum} updated successfully.`, 'success');
       } else {
         // Create flow
-        const standardPrefix = currentBiz?.invoice_prefix ? currentBiz.invoice_prefix.trim() : 'SO-2026-';
-        const festivePrefix = currentBiz?.festive_invoice_prefix ? currentBiz.festive_invoice_prefix.trim() : 'FEST-KF-';
-        const prefix = isFestiveBooking ? festivePrefix : standardPrefix;
-        
-        const existingPrefixOrders = orders.filter(o => o.order_number && o.order_number.startsWith(prefix));
-        let maxSeq = 0;
-        existingPrefixOrders.forEach(o => {
-          const numPart = o.order_number.replace(prefix, '').replace('AB-', '');
-          const parsed = parseInt(numPart, 10);
-          if (!isNaN(parsed) && parsed > maxSeq) {
-            maxSeq = parsed;
-          }
-        });
-        const nextSeq = maxSeq + 1;
-        const orderNum = isAdvanceBooking ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`;
-
+        const orderNum = customInvoiceNumber.trim() || getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking);
 
         const createdOrder = dbStore.createSalesOrder({
           order_number: orderNum,
@@ -1463,6 +1492,19 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase block">
+                    <span>Invoice Number *</span>
+                  </label>
+                  <input 
+                    type="text"
+                    value={customInvoiceNumber || getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking)}
+                    readOnly
+                    placeholder="Auto-Generated Invoice #"
+                    className="w-full px-3 py-2 bg-amber-50/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-[11px] rounded-lg border border-amber-300 dark:border-amber-800/80 focus:outline-hidden font-black cursor-not-allowed select-none"
+                  />
+                </div>
+
                 <div className="md:col-span-2 space-y-1">
                   <label className="text-[11px] font-bold text-slate-500 uppercase">Select Customer Party</label>
                   <CustomDropdown 
@@ -1485,6 +1527,23 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       }))
                     ]}
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Area Zone Location</label>
+                  {(() => {
+                    const areaZoneList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
+                      ? currentBiz.area_zones 
+                      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
+                    return (
+                      <CustomDropdown 
+                        value={selectedArea}
+                        onChange={(val) => setSelectedArea(val)}
+                        options={areaZoneList.map(aZone => ({ value: aZone, label: aZone }))}
+                        className="font-bold text-slate-700 dark:text-slate-200"
+                      />
+                    );
+                  })()}
                 </div>
 
                 {/* Loyalty Account Banner */}
@@ -1532,23 +1591,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   );
                 })()}
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Area Zone Location</label>
-                  {(() => {
-                    const areaZoneList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
-                      ? currentBiz.area_zones 
-                      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
-                    return (
-                      <CustomDropdown 
-                        value={selectedArea}
-                        onChange={(val) => setSelectedArea(val)}
-                        options={areaZoneList.map(aZone => ({ value: aZone, label: aZone }))}
-                        className="font-bold text-slate-700 dark:text-slate-200"
-                      />
-                    );
-                  })()}
-                </div>
-
                 {selectedCustomerId !== 'WALK_IN' ? (
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-slate-500 uppercase">Delivery Date</label>
@@ -1567,7 +1609,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           type="checkbox" 
                           id="advance-chk"
                           checked={isAdvanceBooking}
-                          onChange={(e) => setIsAdvanceBooking(e.target.checked)}
+                          onChange={(e) => handleToggleAdvanceBooking(e.target.checked)}
                           className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
                         />
                         <label htmlFor="advance-chk" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
@@ -1581,7 +1623,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           type="checkbox" 
                           id="festive-chk"
                           checked={isFestiveBooking}
-                          onChange={(e) => setIsFestiveBooking(e.target.checked)}
+                          onChange={(e) => handleToggleFestiveBooking(e.target.checked)}
                           className="h-4 w-4 text-amber-600 cursor-pointer rounded"
                         />
                         <label htmlFor="festive-chk" className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase flex items-center gap-1 cursor-pointer">
@@ -1601,7 +1643,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       type="checkbox" 
                       id="advance-chk-sub"
                       checked={isAdvanceBooking}
-                      onChange={(e) => setIsAdvanceBooking(e.target.checked)}
+                      onChange={(e) => handleToggleAdvanceBooking(e.target.checked)}
                       className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
                     />
                     <label htmlFor="advance-chk-sub" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
@@ -1615,7 +1657,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       type="checkbox" 
                       id="festive-chk-sub"
                       checked={isFestiveBooking}
-                      onChange={(e) => setIsFestiveBooking(e.target.checked)}
+                      onChange={(e) => handleToggleFestiveBooking(e.target.checked)}
                       className="h-4 w-4 text-amber-600 cursor-pointer rounded"
                     />
                     <label htmlFor="festive-chk-sub" className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase flex items-center gap-1 cursor-pointer">

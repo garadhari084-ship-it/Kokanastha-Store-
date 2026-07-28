@@ -276,10 +276,12 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     setShowResetConfirm(true);
   };
 
-  const confirmFactoryReset = () => {
-    dbStore.clearAllAndReset();
+  const confirmFactoryReset = async () => {
+    setIsSyncing(true);
+    await dbStore.clearAllAndReset(businessId);
     triggerToast('System factory reset complete. Reloading...', 'success');
     setShowResetConfirm(false);
+    setIsSyncing(false);
     setTimeout(() => window.location.reload(), 1500);
   };
 
@@ -294,15 +296,15 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     try {
       dbStore.updateBusiness(businessId, {
         name: name.trim(),
-        gstin: gstin.toUpperCase().trim(),
-        pan: pan.toUpperCase().trim(),
-        invoice_prefix: invoicePrefix.toUpperCase().trim(),
-        festive_invoice_prefix: festiveInvoicePrefix.toUpperCase().trim(),
+        gstin: gstin.toUpperCase().trim().substring(0, 15),
+        pan: pan.toUpperCase().trim().substring(0, 10),
+        invoice_prefix: invoicePrefix.toUpperCase().trim().substring(0, 10),
+        festive_invoice_prefix: festiveInvoicePrefix.toUpperCase().trim().substring(0, 50),
         tax_rate_default: Number(taxRateDefault),
         billing_address: billingAddress.trim(),
         logo_url: logoUrl,
         login_cover_url: loginCoverUrl,
-        currency_symbol: currencySymbol,
+        currency_symbol: currencySymbol.substring(0, 10),
         auto_backup: autoBackup,
         low_stock_threshold: Number(lowStockThreshold),
         audit_retention_days: Number(auditRetentionDays),
@@ -311,12 +313,12 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         enable_auto_sms: enableAutoSms,
         default_dispatch_zone: defaultDispatchZone,
         area_zones: areaZones,
-        upi_id: upiId.trim(),
+        upi_id: upiId.trim().substring(0, 255),
         upi_qr_url: upiQrUrl,
         bank_name: bankName.trim(),
-        account_number: accountNumber.trim(),
-        ifsc_code: ifscCode.trim(),
-        account_holder: accountHolder.trim(),
+        account_number: accountNumber.trim().substring(0, 100),
+        ifsc_code: ifscCode.trim().substring(0, 50),
+        account_holder: accountHolder.trim().substring(0, 255),
         whatsapp_api_key: whatsappApiKey.trim(),
         whatsapp_template: whatsappTemplate.trim(),
         sms_gateway_url: smsGatewayUrl.trim(),
@@ -727,7 +729,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
           </div>
 
           {/* D. Automated Messaging & API Webhooks */}
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
+          {/* <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
             <h3 className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
               <MessageSquare size={16} className="text-emerald-500" />
               <span>Messaging Gateways & Notification Triggers</span>
@@ -764,7 +766,6 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                 />
               </div>
 
-              {/* Toggles */}
               <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Auto WhatsApp on Packing Verification</span>
                 <input 
@@ -785,7 +786,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                 />
               </div>
             </div>
-          </div>
+          </div> */}
 
         </div>
 
@@ -823,15 +824,11 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                 />
               </div>
-
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
-                Every transaction, SKU update, and order verification is strictly tagged with your business tenant ID <code className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">{businessId}</code> to preserve total multi-tenant memory isolation.
-              </p>
             </div>
           </div>
 
           {/* Google Maps Integration */}
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
+          {/* <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
             <h3 className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
               <Compass size={16} className="text-amber-500" />
               <span>Google Maps Integration</span>
@@ -851,7 +848,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                 Google Maps APIs enable live distance calculation from warehouse coordinates to buyer addresses during checkout and route planning.
               </p>
             </div>
-          </div>
+          </div> */}
 
           {/* Action Save Panel */}
           <div className="bg-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-lg space-y-4">
@@ -883,7 +880,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       </form>
 
       {/* Danger Zone for Super Admin */}
-      {user.role === 'Super Admin' && (
+      {/* {user.role === 'Super Admin' && (
         <div className="mt-8 pt-8 border-t border-rose-100 dark:border-rose-900/30">
           <div className="bg-rose-50 dark:bg-rose-950/20 p-6 rounded-2xl border border-rose-200 dark:border-rose-900/40 space-y-3">
             <h3 className="text-xs font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider flex items-center gap-2">
@@ -902,7 +899,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
             </button>
           </div>
         </div>
-      )}
+      )} */}
 
       </div>
 

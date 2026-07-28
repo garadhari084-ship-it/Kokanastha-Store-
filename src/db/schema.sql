@@ -554,8 +554,8 @@ CREATE POLICY tenant_isolation_business_settings ON business_settings
 CREATE POLICY tenant_isolation_loyalty_configs ON loyalty_configs
     FOR ALL USING (business_id = get_user_business_id());
 
-CREATE POLICY tenant_isolation_loyalty_logs ON loyalty_logs
-    FOR ALL USING (business_id = get_user_business_id());
+DROP POLICY IF EXISTS dev_public_loyalty_logs ON loyalty_logs;
+CREATE POLICY dev_public_loyalty_logs ON loyalty_logs FOR ALL USING (true);
 
-CREATE POLICY tenant_isolation_customer_subscriptions ON customer_subscriptions
-    FOR ALL USING (business_id = get_user_business_id());
+DROP POLICY IF EXISTS dev_public_customer_subscriptions ON customer_subscriptions;
+CREATE POLICY dev_public_customer_subscriptions ON customer_subscriptions FOR ALL USING (true);

@@ -514,8 +514,19 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         const standardPrefix = currentBiz?.invoice_prefix ? currentBiz.invoice_prefix.trim() : 'SO-2026-';
         const festivePrefix = currentBiz?.festive_invoice_prefix ? currentBiz.festive_invoice_prefix.trim() : 'FEST-KF-';
         const prefix = isFestiveBooking ? festivePrefix : standardPrefix;
-        const randNum = Math.floor(1000 + Math.random() * 9000);
-        const orderNum = isAdvanceBooking ? `${prefix}AB-${randNum}` : `${prefix}${randNum}`;
+        
+        const existingPrefixOrders = orders.filter(o => o.order_number && o.order_number.startsWith(prefix));
+        let maxSeq = 0;
+        existingPrefixOrders.forEach(o => {
+          const numPart = o.order_number.replace(prefix, '').replace('AB-', '');
+          const parsed = parseInt(numPart, 10);
+          if (!isNaN(parsed) && parsed > maxSeq) {
+            maxSeq = parsed;
+          }
+        });
+        const nextSeq = maxSeq + 1;
+        const orderNum = isAdvanceBooking ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`;
+
 
         const createdOrder = dbStore.createSalesOrder({
           order_number: orderNum,
@@ -1081,7 +1092,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           setSelectedOrderForNotify(o);
                         }}
                         className="p-1.5 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-600 rounded-lg transition"
-                        title="Send Customer Tracking SMS / WhatsApp"
+                        title="Send Customer Tracking via WhatsApp"
                       >
                         <Send size={15} />
                       </button>
@@ -2018,7 +2029,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
                 <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider block">CUSTOMER ALERT</span>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">Send SMS / WhatsApp Tracking</h3>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">Send WhatsApp Tracking</h3>
               </div>
               <button onClick={() => setSelectedOrderForNotify(null)} className="p-2 text-slate-400 hover:text-slate-600 rounded-full bg-slate-100 dark:bg-slate-800 cursor-pointer">
                 <X size={18} />
@@ -2026,28 +2037,26 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             </div>
 
             <div className="space-y-3 text-[11px]">
-              <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 font-mono text-[11px] text-slate-700 dark:text-slate-300">
-                "Hello {selectedOrderForNotify.customer_name || 'Customer'}, your Kokanastha Faral order {selectedOrderForNotify.order_number} is now {selectedOrderForNotify.status}! Track live delivery route at https://kokanasthafaral.com/track/{selectedOrderForNotify.order_number}"
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 font-mono text-[11px] text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                {`Hello ${selectedOrderForNotify.customer_name || 'Customer'},\nYour Kokanastha Faral order ${selectedOrderForNotify.order_number}.\nThank you for visiting!`}
               </div>
 
               <div className="flex gap-1.5">
                 <button 
                   onClick={() => {
-                    triggerToast(`WhatsApp alert dispatched for ${selectedOrderForNotify.order_number}!`, 'success');
+                    const cust = customers.find(c => c.id === selectedOrderForNotify.customer_id);
+                    const phone = cust?.phone ? cust.phone.replace(/\D/g, '') : '';
+                    const message = `Hello ${selectedOrderForNotify.customer_name || 'Customer'},\nYour Kokanastha Faral order ${selectedOrderForNotify.order_number}.\nThank you for visiting!`;
+                    if (phone) {
+                      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+                    } else {
+                      triggerToast('Customer phone number not available.', 'error');
+                    }
                     setSelectedOrderForNotify(null);
                   }}
                   className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-extrabold transition cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  <Send size={15} /> Send WhatsApp
-                </button>
-                <button 
-                  onClick={() => {
-                    triggerToast(`SMS dispatch notification sent to customer!`, 'info');
-                    setSelectedOrderForNotify(null);
-                  }}
-                  className="flex-1 py-3 bg-slate-900 dark:bg-slate-800 text-white rounded-xl font-extrabold transition cursor-pointer"
-                >
-                  Send SMS
+                  <Send size={15} /> Send via WhatsApp
                 </button>
               </div>
             </div>

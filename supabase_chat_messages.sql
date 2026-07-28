@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS public.chat_messages (
 );
 
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS dev_public_chat_messages ON public.chat_messages;
 CREATE POLICY dev_public_chat_messages ON public.chat_messages FOR ALL USING (true);
 
 -- Enable Realtime replication for this table so the app gets instant messages

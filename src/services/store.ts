@@ -690,6 +690,12 @@ class ERPStorage {
            }
            if (tableName === 'customers') {
                delete clean.area;
+               if (clean.pan) clean.pan = String(clean.pan).substring(0, 10);
+               if (clean.gstin) clean.gstin = String(clean.gstin).substring(0, 15);
+           }
+           if (tableName === 'suppliers') {
+               if (clean.pan) clean.pan = String(clean.pan).substring(0, 10);
+               if (clean.gstin) clean.gstin = String(clean.gstin).substring(0, 15);
            }
            if (tableName === 'products') {
                clean.category_id = sanitizeUUID(clean.category_id, true);
@@ -745,6 +751,16 @@ class ERPStorage {
            }
            if (tableName === 'businesses') {
                delete clean.last_supabase_sync;
+               delete clean.loyalty_config;
+               if (clean.invoice_prefix) clean.invoice_prefix = String(clean.invoice_prefix).substring(0, 10);
+               if (clean.festive_invoice_prefix) clean.festive_invoice_prefix = String(clean.festive_invoice_prefix).substring(0, 50);
+               if (clean.currency_symbol) clean.currency_symbol = String(clean.currency_symbol).substring(0, 10);
+               if (clean.pan) clean.pan = String(clean.pan).substring(0, 10);
+               if (clean.gstin) clean.gstin = String(clean.gstin).substring(0, 15);
+               if (clean.upi_id) clean.upi_id = String(clean.upi_id).substring(0, 255);
+               if (clean.account_number) clean.account_number = String(clean.account_number).substring(0, 100);
+               if (clean.ifsc_code) clean.ifsc_code = String(clean.ifsc_code).substring(0, 50);
+               if (clean.account_holder) clean.account_holder = String(clean.account_holder).substring(0, 255);
            }
            if (tableName === 'loyalty_logs') {
                clean.customer_id = sanitizeUUID(clean.customer_id, true);
@@ -1317,8 +1333,16 @@ class ERPStorage {
     subs.forEach(sub => {
       // Check if billing date is today or in past
       if (sub.next_billing_date <= todayStr) {
-        const randNum = Math.floor(1000 + Math.random() * 9000);
-        const orderNum = `${prefix}SUB-${randNum}`;
+        const existingPrefixOrders = this.cache.sales.filter(o => o.business_id === businessId && o.order_number && o.order_number.startsWith(prefix));
+        let maxSeq = 0;
+        existingPrefixOrders.forEach(o => {
+          const numPart = o.order_number.replace(prefix, '').replace('SUB-', '').replace('AB-', '');
+          const parsed = parseInt(numPart, 10);
+          if (!isNaN(parsed) && parsed > maxSeq) {
+            maxSeq = parsed;
+          }
+        });
+        const orderNum = `${prefix}SUB-${maxSeq + 1}`;
 
         const newOrder = this.createSalesOrder({
           order_number: orderNum,
@@ -1855,7 +1879,23 @@ class ERPStorage {
   }
 
   // Reset Storage helper
-  public clearAllAndReset() {
+  public async clearAllAndReset(businessId?: string) {
+    if (businessId && isSupabaseConfigured && supabase) {
+      try {
+        const tables = [
+          'categories', 'products', 'customers', 'suppliers', 
+          'purchase_orders', 'sales_orders', 'stock_logs', 
+          'system_audit_logs', 'packing_sessions', 'chat_messages', 
+          'loyalty_logs', 'customer_subscriptions'
+        ];
+        for (const table of tables) {
+          await supabase.from(table).delete().eq('business_id', businessId);
+        }
+      } catch (e) {
+        console.error('Failed to wipe Supabase on reset', e);
+      }
+    }
+
     localStorage.removeItem('omnipack_erp_businesses');
     localStorage.removeItem('omnipack_erp_profiles');
     localStorage.removeItem('omnipack_erp_categories');

@@ -22,7 +22,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
   
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const onScanRef = useRef(onScan);
-  const isCoolingDownRef = useRef<boolean>(false);
+  
+  // Single-scan lock references
+  const lastScannedBarcodeRef = useRef<string | null>(null);
+  const consecutiveNoScanRef = useRef<number>(0);
+  const [inViewNotice, setInViewNotice] = useState<string | null>(null);
 
   useEffect(() => {
     onScanRef.current = onScan;
@@ -55,9 +59,19 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
         };
 
         const onScanSuccess = (decodedText: string) => {
-          if (!isMounted || isCoolingDownRef.current) return;
+          if (!isMounted) return;
 
-          isCoolingDownRef.current = true;
+          // Reset no-scan consecutive frame counter
+          consecutiveNoScanRef.current = 0;
+
+          // If the exact same barcode is still sitting in front of camera, ignore continuous scans!
+          if (lastScannedBarcodeRef.current === decodedText) {
+            return;
+          }
+
+          // Lock this barcode until removed from camera view
+          lastScannedBarcodeRef.current = decodedText;
+          setInViewNotice(`Barcode ${decodedText} scanned. Remove from view to scan next item.`);
 
           try {
             const res = onScanRef.current(decodedText);
@@ -97,17 +111,20 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
               message: err?.message || 'Scan error / mismatch'
             });
           }
-
-          // Reset cooldown so same or next barcode can be scanned continuously
-          setTimeout(() => {
-            if (isMounted) {
-              isCoolingDownRef.current = false;
-            }
-          }, 1000);
         };
 
         const onScanFailure = () => {
+          if (!isMounted) return;
           // Frame failed to detect QR/Barcode - normal stream loop
+          consecutiveNoScanRef.current += 1;
+          
+          // If 3 consecutive frames (~300ms at 10fps) had no barcode in view, unlock lastScannedBarcodeRef
+          if (consecutiveNoScanRef.current >= 3) {
+            if (lastScannedBarcodeRef.current !== null) {
+              lastScannedBarcodeRef.current = null;
+              setInViewNotice(null);
+            }
+          }
         };
 
         try {
@@ -231,6 +248,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
           }`}>
             {lastScanBanner.success ? <CheckCircle2 size={18} className="shrink-0" /> : <AlertCircle size={18} className="shrink-0" />}
             <span className="truncate">{lastScanBanner.message}</span>
+          </div>
+        )}
+
+        {inViewNotice && (
+          <div className="bg-amber-500 text-slate-950 px-4 py-1.5 text-[11px] font-bold flex items-center justify-between border-b border-amber-600">
+            <span className="truncate">⏸ {inViewNotice}</span>
+            <span className="text-[10px] uppercase font-extrabold tracking-wide shrink-0 ml-2 bg-amber-600/30 px-1.5 py-0.5 rounded">Remove to rescan</span>
           </div>
         )}
 

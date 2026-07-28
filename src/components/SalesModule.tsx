@@ -32,7 +32,9 @@ import {
   ShoppingBag,
   MapPin,
   TrendingUp,
-  Edit
+  Edit,
+  Plus,
+  Minus
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
@@ -1710,14 +1712,32 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Qty</label>
-                    <input 
-                      type="number" 
-                      min={1}
-                      placeholder="Qty"
-                      value={rowQty}
-                      onChange={(e) => setRowQty(Math.max(1, Number(e.target.value)))}
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono text-slate-900 dark:text-slate-100"
-                    />
+                    <div className="flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => setRowQty(Math.max(1, rowQty - 1))}
+                        className="px-2 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-l-lg border border-r-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
+                        title="Decrease Quantity"
+                      >
+                        <Minus size={12} />
+                      </button>
+                      <input 
+                        type="number" 
+                        min={1}
+                        placeholder="Qty"
+                        value={rowQty}
+                        onChange={(e) => setRowQty(Math.max(1, Number(e.target.value)))}
+                        className="w-full px-2 py-2 bg-white dark:bg-slate-800 text-[11px] text-center border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono text-slate-900 dark:text-slate-100 font-bold"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setRowQty(rowQty + 1)}
+                        className="px-2 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-r-lg border border-l-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
+                        title="Increase Quantity"
+                      >
+                        <Plus size={12} />
+                      </button>
+                    </div>
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Price ({currencySymbol})</label>
@@ -1779,17 +1799,43 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           <tr key={idx}>
                             <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">{p?.name || 'Unknown Item'}</td>
                             <td className="p-3 text-right font-sans font-bold">
-                              <input 
-                                type="number" 
-                                min={1}
-                                value={it.qty}
-                                onChange={(e) => {
-                                  const updated = [...orderItems];
-                                  updated[idx].qty = Math.max(1, Number(e.target.value));
-                                  setOrderItems(updated);
-                                }}
-                                className="w-16 px-2 py-1 text-right bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[11px] focus:outline-hidden text-slate-900 dark:text-slate-100"
-                              />
+                              <div className="flex items-center justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...orderItems];
+                                    updated[idx].qty = Math.max(1, updated[idx].qty - 1);
+                                    setOrderItems(updated);
+                                  }}
+                                  className="px-1.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-l border border-r-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
+                                  title="Decrease Quantity"
+                                >
+                                  <Minus size={10} />
+                                </button>
+                                <input 
+                                  type="number" 
+                                  min={1}
+                                  value={it.qty}
+                                  onChange={(e) => {
+                                    const updated = [...orderItems];
+                                    updated[idx].qty = Math.max(1, Number(e.target.value));
+                                    setOrderItems(updated);
+                                  }}
+                                  className="w-12 px-1 py-1 text-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] focus:outline-hidden text-slate-900 dark:text-slate-100 font-bold"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...orderItems];
+                                    updated[idx].qty = updated[idx].qty + 1;
+                                    setOrderItems(updated);
+                                  }}
+                                  className="px-1.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-r border border-l-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
+                                  title="Increase Quantity"
+                                >
+                                  <Plus size={10} />
+                                </button>
+                              </div>
                             </td>
                             <td className="p-3 text-right">
                               <input 

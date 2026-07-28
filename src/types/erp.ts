@@ -134,6 +134,10 @@ export interface PurchaseOrder {
   delivery_date: string;
   status: 'Draft' | 'Ordered' | 'Received' | 'Cancelled';
   payment_status: 'Unpaid' | 'Partial' | 'Paid';
+  paid_amount?: number;
+  payment_mode?: 'Cash' | 'UPI' | 'Bank Transfer' | 'Cheque' | 'Credit Card' | 'Other';
+  payment_notes?: string;
+  payment_date?: string;
   items: PurchaseItem[];
   total_amount: number;
   business_id: string;

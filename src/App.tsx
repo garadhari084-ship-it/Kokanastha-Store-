@@ -877,7 +877,7 @@ export default function App() {
     { id: 'customers', label: 'Customers Master', icon: Users },
     { id: 'loyalty_subscriptions', label: 'Loyalty & Subscriptions', icon: Award },
     { id: 'suppliers', label: 'Suppliers directory', icon: Truck },
-    { id: 'purchases', label: 'Procurements', icon: ShoppingBag },
+    { id: 'purchases', label: 'Purchase & Expense', icon: ShoppingBag },
     { id: 'reports', label: 'Compliance Reports', icon: BarChart3 },
     { id: 'users', label: 'User Management', icon: UserCheck, adminOnly: true },
     { id: 'settings', label: 'Tenant settings', icon: Settings, adminOnly: true },

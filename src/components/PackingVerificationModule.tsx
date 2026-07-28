@@ -155,7 +155,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
   // Barcode Submission Handler
   const processBarcodeScan = (codeToVerify: string): { success: boolean; message: string; scanned?: number; total?: number; isAllScanned?: boolean } => {
-    if (!selectedOrder) {
+    const currentOrder = selectedOrderRef.current || selectedOrder;
+    if (!currentOrder) {
       return { success: false, message: 'No order selected.', isAllScanned: false };
     }
     const cleanCode = codeToVerify.trim();
@@ -164,7 +165,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     }
 
     try {
-      const result = dbStore.verifyPackingBarcode(businessId, selectedOrder.id, cleanCode);
+      const result = dbStore.verifyPackingBarcode(businessId, currentOrder.id, cleanCode);
       
       if (!result.success) {
         throw new Error(result.error_message || 'Barcode scan failed or item mismatch.');
@@ -177,13 +178,13 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
       reloadOrders();
 
-      const refreshedOrder = dbStore.getSalesOrders(businessId).find(o => o.id === selectedOrder.id);
+      const refreshedOrder = dbStore.getSalesOrders(businessId).find(o => o.id === currentOrder.id);
       const isAllScanned = refreshedOrder && refreshedOrder.items.length > 0
         ? refreshedOrder.items.every(it => (it.scanned_qty || 0) >= it.qty)
         : false;
 
       const msg = isAllScanned
-        ? `🎉 Order #${selectedOrder.order_number} 100% Scanned & Verified!`
+        ? `🎉 Order #${currentOrder.order_number} 100% Scanned & Verified!`
         : `Scanned: ${prodName} | ${scanned}/${total} Verified (${pending} Pending)`;
 
       setRecentScanLog({

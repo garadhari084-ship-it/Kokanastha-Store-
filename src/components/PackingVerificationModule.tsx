@@ -76,6 +76,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const [personPhone, setPersonPhone] = useState<string>('');
   const [trackingNumber, setTrackingNumber] = useState<string>('');
   const [dispatchNotes, setDispatchNotes] = useState<string>('');
+  const [rackLocation, setRackLocation] = useState<string>('');
+  const [rackSection, setRackSection] = useState<string>('');
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const selectedOrderRef = useRef<SalesOrder | null>(selectedOrder);
@@ -254,7 +256,16 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         user.id,
         user.name,
         totalItemsCount,
-        []
+        [],
+        {
+          partner: deliveryPartner,
+          personName,
+          personPhone,
+          trackingNumber,
+          notes: dispatchNotes,
+          rackLocation,
+          rackSection
+        }
       );
 
       if (!res.success) {
@@ -586,6 +597,40 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               </table>
             </div>
           </div>
+
+          {/* RACK LOCATION (Godown / Storage) */}
+          {isFullyVerified && (
+            <div className="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl p-4 mb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                    <LayoutGrid size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 dark:text-slate-200">Storage Rack / Location</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Where is this packed order stored?</p>
+                  </div>
+                </div>
+                
+                <div className="flex-1 flex gap-2">
+                  <input
+                    type="text"
+                    value={rackLocation}
+                    onChange={(e) => setRackLocation(e.target.value)}
+                    placeholder="Rack (e.g. Rack A1)"
+                    className="w-1/2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm font-medium px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  />
+                  <input
+                    type="text"
+                    value={rackSection}
+                    onChange={(e) => setRackSection(e.target.value)}
+                    placeholder="Section/Shelf (e.g. 3)"
+                    className="w-1/2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm font-medium px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* PACKING VERIFICATION ACTION FOOTER */}
           <div className={`bg-white dark:bg-slate-900 rounded-3xl border p-4 shadow-sm transition-all duration-300 ${isFullyVerified ? 'border-emerald-500/50 shadow-emerald-500/10' : 'border-slate-200 dark:border-slate-800'}`}>

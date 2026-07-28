@@ -1,0 +1,3 @@
+ALTER TABLE sales_orders
+ADD COLUMN IF NOT EXISTS rack_location TEXT,
+ADD COLUMN IF NOT EXISTS rack_section TEXT;

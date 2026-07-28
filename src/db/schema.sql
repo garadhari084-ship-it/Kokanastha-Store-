@@ -210,6 +210,8 @@ CREATE TABLE IF NOT EXISTS sales_orders (
     payment_mode VARCHAR(100) DEFAULT 'Cash',
     paid_amount DECIMAL(15,2) DEFAULT 0.00,
     delivery_status VARCHAR(50) NOT NULL DEFAULT 'Pending' CHECK (delivery_status IN ('Pending', 'Packing', 'Packed', 'Dispatched', 'Delivered', 'Cancelled')),
+    rack_location VARCHAR(255),
+    rack_section VARCHAR(255),
     advance_booking BOOLEAN DEFAULT FALSE,
     festive_booking BOOLEAN DEFAULT FALSE,
     total_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,

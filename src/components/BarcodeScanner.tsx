@@ -98,29 +98,38 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
 
         try {
           await qrCode.start(
-            { facingMode: currentFacingMode },
+            { facingMode: currentFacingMode === 'environment' ? { exact: "environment" } : "user" },
             config,
             onScanSuccess,
             onScanFailure
           );
-        } catch (facingErr) {
-          const available = await Html5Qrcode.getCameras();
-          if (available && available.length > 0) {
-            const backCam = available.find(c => 
-              c.label.toLowerCase().includes('back') || 
-              c.label.toLowerCase().includes('rear') || 
-              c.label.toLowerCase().includes('environment')
-            );
-            const selectedCamId = backCam ? backCam.id : available[available.length - 1].id;
-            
+        } catch (exactErr) {
+          try {
             await qrCode.start(
-              selectedCamId,
+              { facingMode: currentFacingMode },
               config,
               onScanSuccess,
               onScanFailure
             );
-          } else {
-            throw new Error("No camera found on this device.");
+          } catch (facingErr) {
+            const available = await Html5Qrcode.getCameras();
+            if (available && available.length > 0) {
+              const backCam = available.find(c => 
+                c.label.toLowerCase().includes('back') || 
+                c.label.toLowerCase().includes('rear') || 
+                c.label.toLowerCase().includes('environment')
+              );
+              const selectedCamId = backCam ? backCam.id : available[available.length - 1].id;
+              
+              await qrCode.start(
+                selectedCamId,
+                config,
+                onScanSuccess,
+                onScanFailure
+              );
+            } else {
+              throw new Error("No camera found on this device.");
+            }
           }
         }
 

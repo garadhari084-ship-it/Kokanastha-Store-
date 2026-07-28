@@ -125,6 +125,8 @@ CREATE TABLE public.sales_orders (
   status TEXT NOT NULL,
   payment_status TEXT NOT NULL,
   delivery_status TEXT NOT NULL,
+  rack_location TEXT,
+  rack_section TEXT,
   items JSONB NOT NULL DEFAULT '[]'::jsonb,
   advance_booking BOOLEAN DEFAULT FALSE,
   total_amount NUMERIC DEFAULT 0,

@@ -1,6 +1,7 @@
 import { SalesOrder, Customer, Business, Product } from '../types/erp';
-import { buildUpiPayString, buildBillVerificationString } from './qrCode';
+import { buildUpiPayString, buildBillVerificationString, generateQRCodeDataUrl } from './qrCode';
 import { formatOrderTime } from './formatters';
+import { urlToBase64 } from './imageToBase64';
 
 export function numberToWordsIndian(amount: number): string {
   if (!amount || amount <= 0) return 'Zero Rupees only';
@@ -23,13 +24,14 @@ export function numberToWordsIndian(amount: number): string {
   return `${words} Rupees only`;
 }
 
-export function generateBillOfSupplyHTML(
+export async function generateBillOfSupplyHTML(
   order: SalesOrder,
   cust?: Customer,
   businessObj?: Business,
   products: Product[] = []
-): string {
+): Promise<string> {
   const items = order.items || [];
+  const logoBase64 = businessObj?.logo_url ? await urlToBase64(businessObj.logo_url) : "";
   const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const delivery = order.total_amount > subTotal ? (order.total_amount - subTotal) : 0;
   const totalAmount = order.total_amount || (subTotal + delivery);
@@ -65,8 +67,8 @@ export function generateBillOfSupplyHTML(
     gstin: businessObj?.gstin
   });
 
-  const upiQrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
-  const billQrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(billString)}`;
+  const upiQrImgSrc = await generateQRCodeDataUrl(upiString, { width: 150, margin: 1 });
+  const billQrImgSrc = await generateQRCodeDataUrl(billString, { width: 150, margin: 1 });
 
   const bankName = businessObj?.bank_name || 'NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN';
   const accountNo = businessObj?.account_number || '092110100000085';
@@ -284,7 +286,7 @@ export function generateBillOfSupplyHTML(
 <body>
   <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 16px;">
     <div style="display: flex; align-items: center; gap: 16px;">
-      ${businessObj?.logo_url ? `<img src="${businessObj.logo_url}" alt="${bName}" style="max-height: 100px; width: auto; object-fit: contain;" />` : ""}
+      ${logoBase64 ? `<img src="${logoBase64}" alt="${bName}" style="max-height: 100px; width: auto; object-fit: contain;" />` : ""}
       <div style="text-align: left;">
         <h1 class="company-title" style="margin: 0 0 4px 0; font-size: 20pt; text-align: left;">${bName}</h1>
         <div class="company-address" style="text-align: left; margin: 0;">${bAddress}</div>
@@ -469,13 +471,14 @@ export function generateBillOfSupplyHTML(
 }
 
 
-export function generate3InchBillHTML(
+export async function generate3InchBillHTML(
   order: any,
   customerObj: any,
   businessObj: any,
   products: any[]
-): string {
+): Promise<string> {
   const bName = businessObj?.name || "KOKANASTHA";
+  const logoBase64 = businessObj?.logo_url ? await urlToBase64(businessObj.logo_url) : "";
   const bAddress = businessObj?.billing_address || "SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLA\nBH ROAD ASHOKVAN DAHISAR E MUMBAI 68";
   const phone = businessObj?.phone || "8779792825";
   const email = businessObj?.email || "contact@kokanastha.in";
@@ -538,7 +541,7 @@ export function generate3InchBillHTML(
   });
   
   // Using encodeURIComponent to ensure special chars are handled
-  const upiQrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
+  const upiQrImgSrc = await generateQRCodeDataUrl(upiString, { width: 150, margin: 1 });
   
   const billString = buildBillVerificationString({
     orderNumber: invoiceNo,
@@ -547,7 +550,7 @@ export function generate3InchBillHTML(
     orderDate: order.order_date,
     gstin: businessObj?.gstin
   });
-  const billQrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(billString)}`;
+  const billQrImgSrc = await generateQRCodeDataUrl(billString, { width: 150, margin: 1 });
 
   return `
 <!DOCTYPE html>

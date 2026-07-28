@@ -437,7 +437,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   )}
                   <input 
                     type="file"
-                    accept="image/png, image/jpeg, image/svg+xml"
+                    accept="image/*"
                     onChange={handleLogoUpload}
                     className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-xl border border-slate-200 dark:border-slate-700 file:mr-2 file:py-0.5 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-indigo-50 file:text-indigo-700"
                   />
@@ -464,7 +464,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   )}
                   <input 
                     type="file"
-                    accept="image/png, image/jpeg"
+                    accept="image/*"
                     onChange={handleCoverUpload}
                     className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-xl border border-slate-200 dark:border-slate-700 file:mr-2 file:py-0.5 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-indigo-50 file:text-indigo-700"
                   />
@@ -591,7 +591,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                     )}
                     <input 
                       type="file"
-                      accept="image/png, image/jpeg, image/svg+xml"
+                      accept="image/*"
                       onChange={handleUpiQrUpload}
                       className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-xl border border-slate-200 dark:border-slate-700 file:mr-2 file:py-0.5 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-emerald-50 file:text-emerald-700"
                     />

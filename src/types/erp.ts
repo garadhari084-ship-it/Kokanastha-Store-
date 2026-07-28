@@ -182,6 +182,8 @@ export interface SalesOrder {
   dispatched_at?: string;
   packing_started_at?: string;
   packing_completed_at?: string;
+  rack_location?: string;
+  rack_section?: string;
   points_earned?: number;
   points_redeemed?: number;
   loyalty_discount?: number;

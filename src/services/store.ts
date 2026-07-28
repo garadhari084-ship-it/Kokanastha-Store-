@@ -1721,6 +1721,8 @@ class ERPStorage {
       personPhone?: string;
       trackingNumber?: string;
       notes?: string;
+      rackLocation?: string;
+      rackSection?: string;
     }
   ): { success: boolean; order?: SalesOrder; error?: string } {
     const orderIndex = this.cache.sales.findIndex(o => o.id === orderId && o.business_id === businessId);
@@ -1754,7 +1756,7 @@ class ERPStorage {
 
     // Update order status & delivery details
     let finalPartner = 'Packed';
-    if (deliveryDetails && deliveryDetails.partner) {
+    if (deliveryDetails && (deliveryDetails.partner || deliveryDetails.rackLocation || deliveryDetails.rackSection)) {
       finalPartner = deliveryDetails.partner;
       this.updateSalesOrder(orderId, {
         status: 'Packed',
@@ -1764,6 +1766,8 @@ class ERPStorage {
         delivery_person_phone: deliveryDetails.personPhone,
         tracking_number: deliveryDetails.trackingNumber,
         dispatch_notes: deliveryDetails.notes,
+        rack_location: deliveryDetails.rackLocation,
+        rack_section: deliveryDetails.rackSection,
         packing_completed_at: new Date().toISOString()
       });
     } else {

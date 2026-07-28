@@ -21,6 +21,7 @@ import {
   CreditCard,
   QrCode,
   Building2,
+  LayoutGrid,
   Banknote,
   XCircle,
   Sparkles,
@@ -694,6 +695,12 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                       ) : (
                         <span className="text-slate-400 text-[10px]">Not assigned</span>
                       )}
+                      {(o.rack_location || o.rack_section) && (
+                        <div className="mt-1 flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-md inline-flex w-fit">
+                          <LayoutGrid size={10} />
+                          {[o.rack_location, o.rack_section].filter(Boolean).join(' • ')}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2.5 px-3">
                       <div className="flex flex-col">
@@ -808,7 +815,8 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                       { id: 'Cash', label: 'Cash', icon: Banknote, color: 'text-emerald-600 dark:text-emerald-400' },
                       { id: 'Card', label: 'Card', icon: CreditCard, color: 'text-indigo-600 dark:text-indigo-400' },
                       { id: 'UPI', label: 'UPI / QR', icon: QrCode, color: 'text-purple-600 dark:text-purple-400' },
-                      { id: 'Net Banking', label: 'Net Banking', icon: Building2, color: 'text-blue-600 dark:text-blue-400' },
+                      { id: 'Net Banking', label: 'Net Banking', icon: Building2,
+  LayoutGrid, color: 'text-blue-600 dark:text-blue-400' },
                       { id: 'Not Paid', label: 'Not Paid', icon: XCircle, color: 'text-slate-500' },
                     ].map((mode) => {
                       const Icon = mode.icon;
@@ -887,7 +895,15 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                 <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
                   <Package size={16} className="text-indigo-500" /> Package Contents
                 </h3>
-                <p className="text-[10px] text-slate-500 font-bold mt-0.5 uppercase tracking-wider">{detailOrder.order_number}</p>
+                <p className="text-[10px] text-slate-500 font-bold mt-0.5 uppercase tracking-wider">
+                  {detailOrder.order_number}
+                  {(detailOrder.rack_location || detailOrder.rack_section) && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-amber-700 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-md">
+                      <LayoutGrid size={10} />
+                      {[detailOrder.rack_location, detailOrder.rack_section].filter(Boolean).join(' • ')}
+                    </span>
+                  )}
+                </p>
               </div>
               <button onClick={() => setDetailOrder(null)} className="cursor-pointer text-slate-400 hover:text-slate-600 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-full transition-colors">
                 <X size={16} />

@@ -196,13 +196,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   // Invoice Handlers
-  const handlePrintInvoice = (order: SalesOrder) => {
+  const handlePrintInvoice = async (order: SalesOrder) => {
     triggerToast(`Bill of Supply "${order.order_number}" sent to print spooler!`, 'success');
     dbStore.logActivity(user.id, user.name, user.role, 'Print Invoice', `Printed Bill of Supply for ${order.order_number}`, businessId);
 
     const cust = customers.find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
-    const printHtml = generateBillOfSupplyHTML(order, cust, businessObj, products);
+    const printHtml = await generateBillOfSupplyHTML(order, cust, businessObj, products);
 
     try {
       let printFrame = document.getElementById('tax-invoice-print-frame') as HTMLIFrameElement;
@@ -241,10 +241,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  const handleDownload3InchBill = (order: SalesOrder) => {
+  const handleDownload3InchBill = async (order: SalesOrder) => {
     const cust = customers.find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
-    const fullHtml = generate3InchBillHTML(order, cust, businessObj, products);
+    const fullHtml = await generate3InchBillHTML(order, cust, businessObj, products);
 
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -274,10 +274,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     dbStore.logActivity(user.id, user.name, user.role, 'Download 3-Inch Bill', `Downloaded 3-Inch bill for ${order.order_number}`, businessId);
   };
 
-  const handleSavePDFInvoice = (order: SalesOrder) => {
+  const handleSavePDFInvoice = async (order: SalesOrder) => {
     const cust = customers.find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
-    const fullHtml = generateBillOfSupplyHTML(order, cust, businessObj, products);
+    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, products);
     
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);

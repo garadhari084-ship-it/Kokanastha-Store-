@@ -1136,7 +1136,7 @@ export default function App() {
             <div className="flex flex-col items-center mb-6">
               <div className="flex items-center justify-center h-24 sm:h-28 w-full max-w-[260px] mb-2">
                 <img 
-                  src={defaultLogoUrl} 
+                  src={defaultLogoUrl}
                   alt="Company Logo" 
                   className="max-h-full max-w-full object-contain"
                   onError={(e) => {
@@ -1501,7 +1501,7 @@ export default function App() {
           <div className={`flex items-center gap-2 ${isSidebarMinimized ? 'lg:justify-center lg:w-full' : ''}`}>
             <div className="p-1 bg-white rounded-lg flex items-center justify-center overflow-hidden h-7 w-7 shrink-0">
               <img 
-                src={currentBusiness.logo_url || "/logo.png"} 
+                src={currentBusiness.logo_url || "/logo.png"}
                 alt="Company Logo" 
                 className="w-full h-full object-contain"
                 onError={(e) => {

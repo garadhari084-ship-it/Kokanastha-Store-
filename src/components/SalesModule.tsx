@@ -780,15 +780,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         badgeText="Revenue Stream Active"
         rightContent={
           <div className="flex items-center gap-3 flex-row-reverse">
-            {/* Quick Action Button */}
-              <button 
-                onClick={() => setIsCreateModalOpen(true)}
-                className="p-2.5 md:px-6 md:py-3 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl font-extrabold text-[13px] md:text-sm transition cursor-pointer shadow-lg flex items-center justify-center gap-2 whitespace-nowrap shrink-0 min-w-[36px]"
-              >
-                <PlusCircle size={20} />
-                <span className="hidden md:inline-block">Create Order</span>
-              </button>
-
             {/* Top Time Filter Dropdown */}
             <div className="relative shrink-0" ref={topFilterRef}>
               <button 

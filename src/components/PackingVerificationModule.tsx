@@ -154,13 +154,13 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   };
 
   // Barcode Submission Handler
-  const processBarcodeScan = (codeToVerify: string): { success: boolean; message: string; scanned?: number; total?: number } => {
+  const processBarcodeScan = (codeToVerify: string): { success: boolean; message: string; scanned?: number; total?: number; isAllScanned?: boolean } => {
     if (!selectedOrder) {
-      return { success: false, message: 'No order selected.' };
+      return { success: false, message: 'No order selected.', isAllScanned: false };
     }
     const cleanCode = codeToVerify.trim();
     if (!cleanCode) {
-      return { success: false, message: 'Empty barcode.' };
+      return { success: false, message: 'Empty barcode.', isAllScanned: false };
     }
 
     try {
@@ -175,7 +175,16 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       const total = result.required_qty || 0;
       const pending = Math.max(0, total - scanned);
 
-      const msg = `Scanned: ${prodName} | ${scanned}/${total} Verified (${pending} Pending)`;
+      reloadOrders();
+
+      const refreshedOrder = dbStore.getSalesOrders(businessId).find(o => o.id === selectedOrder.id);
+      const isAllScanned = refreshedOrder && refreshedOrder.items.length > 0
+        ? refreshedOrder.items.every(it => (it.scanned_qty || 0) >= it.qty)
+        : false;
+
+      const msg = isAllScanned
+        ? `🎉 Order #${selectedOrder.order_number} 100% Scanned & Verified!`
+        : `Scanned: ${prodName} | ${scanned}/${total} Verified (${pending} Pending)`;
 
       setRecentScanLog({
         msg,
@@ -183,17 +192,17 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       });
 
       if (audioFeedback) {
-        triggerToast(`Scanned: ${prodName} (${scanned}/${total})`, 'success');
+        triggerToast(msg, 'success');
       }
 
       setBarcodeInput('');
-      reloadOrders();
 
       return {
         success: true,
-        message: `${prodName}: ${scanned}/${total} Verified`,
+        message: msg,
         scanned,
-        total
+        total,
+        isAllScanned
       };
     } catch (err: any) {
       const errMsg = err.message || 'Scan error / product mismatch.';
@@ -206,16 +215,56 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       }
       return {
         success: false,
-        message: errMsg
+        message: errMsg,
+        isAllScanned: false
       };
     }
   };
 
-  // Helper to scan all remaining pending units for a specific item in 1 click
-  const handleScanAllForProduct = (barcodeOrSku: string, pendingQty: number) => {
-    for (let i = 0; i < pendingQty; i++) {
-      processBarcodeScan(barcodeOrSku);
-    }
+  // Helper to verify a single product completely
+  const handleVerifyProductItemCompletely = (productId: string) => {
+    if (!selectedOrder) return;
+    const currentOrder = dbStore.getSalesOrders(businessId).find(o => o.id === selectedOrder.id) || selectedOrder;
+    const prod = products.find(p => p.id === productId);
+    const updatedItems = (currentOrder.items || []).map(item => {
+      if (item.product_id === productId) {
+        return { ...item, scanned_qty: item.qty };
+      }
+      return { ...item };
+    });
+
+    dbStore.updateSalesOrder(selectedOrder.id, { items: updatedItems });
+    triggerToast(`Verified all units for ${prod?.name || 'Item'}.`, 'success');
+    setRecentScanLog({
+      msg: `Quick Verified: ${prod?.name || 'Item'}`,
+      success: true
+    });
+    reloadOrders();
+  };
+
+  // Helper to scan/verify 1 unit of a product
+  const handleScanOneForProduct = (productId: string) => {
+    const prod = products.find(p => p.id === productId);
+    const codeToScan = prod?.barcode || prod?.sku || productId;
+    processBarcodeScan(codeToScan);
+  };
+
+  // Helper to quick verify ALL remaining items in the order
+  const handleQuickVerifyAll = () => {
+    if (!selectedOrder) return;
+    const currentOrder = dbStore.getSalesOrders(businessId).find(o => o.id === selectedOrder.id) || selectedOrder;
+    const updatedItems = (currentOrder.items || []).map(item => ({
+      ...item,
+      scanned_qty: item.qty
+    }));
+
+    dbStore.updateSalesOrder(selectedOrder.id, { items: updatedItems });
+    triggerToast(`All ${totalItemsCount} items verified for Order #${selectedOrder.order_number}!`, 'success');
+    setRecentScanLog({
+      msg: `🎉 Quick Verified All: ${totalItemsCount}/${totalItemsCount} units verified.`,
+      success: true
+    });
+    reloadOrders();
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -519,6 +568,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                     <th className="py-3 px-4 text-center">Scanned Qty</th>
                     <th className="py-3 px-4 text-center">Pending Qty</th>
                     <th className="py-3 px-4 text-center">Status / Progress</th>
+                    <th className="py-3 px-4 text-center">Quick Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -589,6 +639,33 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                               />
                             </div>
                           </div>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-center">
+                          {isItemDone ? (
+                            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1">
+                              <CheckCircle2 size={14} /> Done
+                            </span>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleScanOneForProduct(it.product_id)}
+                                title="Scan 1 unit"
+                                className="px-2 py-1 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 text-[10px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                              >
+                                +1 Scan
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleVerifyProductItemCompletely(it.product_id)}
+                                title="Verify all units for this item"
+                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+                              >
+                                Verify Item
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -672,19 +749,11 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                 ) : (
                   <button
                     type="button"
-                    onClick={() => {
-                      // Scan remaining units all at once
-                      (selectedOrder?.items || []).forEach(item => {
-                        const rem = (item.qty || 0) - (item.scanned_qty || 0);
-                        if (rem > 0) {
-                          handleScanAllForProduct(item.barcode || item.sku, rem);
-                        }
-                      });
-                    }}
-                    className="px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 text-xs font-bold rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1.5"
+                    onClick={handleQuickVerifyAll}
+                    className="px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 text-xs font-bold rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
                   >
                     <CheckCircle2 size={15} />
-                    <span>Quick Verify All ({pendingItemsCount})</span>
+                    <span>Quick Verify All ({pendingItemsCount} Pending)</span>
                   </button>
                 )}
               </div>

@@ -32,6 +32,7 @@ import {
   Menu, 
   X,
   Lock,
+  PlusCircle,
   Globe,
   LockOpen,
   Database,
@@ -703,6 +704,14 @@ export default function App() {
     setDeepLinkData(actionData);
     setIsMobileMenuOpen(false);
   };
+
+  useEffect(() => {
+    const handleOpenCreateOrder = () => {
+      handleDeepLinkNavigate('sales', { openAddModal: true });
+    };
+    window.addEventListener('open-create-order', handleOpenCreateOrder);
+    return () => window.removeEventListener('open-create-order', handleOpenCreateOrder);
+  }, []);
 
   // RBAC Permission Check list
   // Checks if role is authorized to open/view this module

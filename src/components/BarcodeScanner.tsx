@@ -13,7 +13,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [currentFacingMode, setCurrentFacingMode] = useState<'environment' | 'user'>('environment');
   const [lastScanBanner, setLastScanBanner] = useState<{ success: boolean; message: string } | null>(null);
-  const [autoCloseOnMatch, setAutoCloseOnMatch] = useState<boolean>(true);
+  const [autoCloseOnMatch, setAutoCloseOnMatch] = useState<boolean>(false);
   const autoCloseRef = useRef<boolean>(true);
 
   useEffect(() => {
@@ -63,18 +63,32 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
             const res = onScanRef.current(decodedText);
             const isSuccess = res ? res.success : true;
             const msg = res ? res.message : `Verified: ${decodedText}`;
+            const isAllScanned = res?.isAllScanned || false;
 
             setLastScanBanner({
               success: isSuccess,
               message: msg
             });
 
+            if (isSuccess && isAllScanned) {
+              setLastScanBanner({
+                success: true,
+                message: `🎉 All items in this order are 100% verified! Closing camera...`
+              });
+              setTimeout(() => {
+                if (isMounted) {
+                  onClose();
+                }
+              }, 800);
+              return;
+            }
+
             if (isSuccess && autoCloseRef.current) {
               setTimeout(() => {
                 if (isMounted) {
                   onClose();
                 }
-              }, 300);
+              }, 500);
               return;
             }
           } catch (err: any) {
@@ -84,7 +98,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
             });
           }
 
-          // Reset cooldown so same or next QR code can be scanned repeatedly
+          // Reset cooldown so same or next barcode can be scanned continuously
           setTimeout(() => {
             if (isMounted) {
               isCoolingDownRef.current = false;

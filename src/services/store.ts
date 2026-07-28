@@ -417,7 +417,14 @@ class ERPStorage {
        }
           
        const { data, error } = await query;
-       if (!error && data && data.length > 0) {
+       if (!error && data) {
+          if (data.length === 0) {
+             if (key !== 'businesses' && key !== 'profiles' && key !== 'settings') {
+                (this.cache as any)[key] = [];
+                localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify([]));
+             }
+             return;
+          }
           if (key === 'profiles') {
              const existingPasswords: Record<string, string> = {};
              this.cache.profiles.forEach(p => {
@@ -1891,6 +1898,7 @@ class ERPStorage {
         for (const table of tables) {
           await supabase.from(table).delete().eq('business_id', businessId);
         }
+        await supabase.from('business_settings').update({ updated_at: new Date().toISOString() }).eq('business_id', businessId);
       } catch (e) {
         console.error('Failed to wipe Supabase on reset', e);
       }

@@ -779,13 +779,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         icon={FileText}
         badgeText="Revenue Stream Active"
         rightContent={
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-row-reverse">
             {/* Quick Action Button */}
               <button 
                 onClick={() => setIsCreateModalOpen(true)}
-                className="p-2 md:px-4 md:py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 rounded-xl font-extrabold text-[11px] transition cursor-pointer shadow-lg flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 min-w-[36px]"
+                className="p-2.5 md:px-6 md:py-3 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl font-extrabold text-[13px] md:text-sm transition cursor-pointer shadow-lg flex items-center justify-center gap-2 whitespace-nowrap shrink-0 min-w-[36px]"
               >
-                <PlusCircle size={16} />
+                <PlusCircle size={20} />
                 <span className="hidden md:inline-block">Create Order</span>
               </button>
 
@@ -1450,8 +1450,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
       {/* Sales Order Placement modal dialog */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-3xl h-[85vh] flex flex-col shadow-xl animate-in zoom-in duration-150 overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-0">
+          <div className="bg-white dark:bg-slate-900 w-full h-full flex flex-col animate-in zoom-in duration-150 overflow-hidden">
             <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b flex items-center justify-between">
               <div>
                 <h2 className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-slate-900 dark:text-white">

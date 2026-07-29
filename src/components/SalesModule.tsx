@@ -1,3 +1,4 @@
+import { PaymentCollectionModal } from './PaymentCollectionModal';
 import { PageHeader } from './PageHeader';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { formatOrderTime } from '../utils/formatters';
@@ -33,8 +34,10 @@ import {
   MapPin,
   TrendingUp,
   Edit,
+  RotateCcw,
   Plus,
-  Minus
+  Minus,
+  Loader2
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
@@ -147,6 +150,8 @@ interface SalesModuleProps {
   triggerToast: (msg: string, type: 'success' | 'error' | 'info') => void;
   openAddModalInitially?: boolean;
   selectedOrderIdInitially?: string | null;
+  deepLinkData?: any;
+  onClearDeepLink?: () => void;
 }
 
 export const SalesModule: React.FC<SalesModuleProps> = ({ 
@@ -154,7 +159,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   user, 
   triggerToast,
   openAddModalInitially = false,
-  selectedOrderIdInitially = null
+  selectedOrderIdInitially = null,
+  deepLinkData = null,
+  onClearDeepLink
 }) => {
   const [orders, setOrders] = useState<SalesOrder[]>(dbStore.getSalesOrders(businessId));
   const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
@@ -165,6 +172,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   type ColorTheme = 'midnight-gold' | 'emerald-pro' | 'royal-sapphire' | 'titanium-dark';
       const [timeHorizon, setTimeHorizon] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('today');
   const [bookingFilter, setBookingFilter] = useState<'all' | 'regular' | 'festive'>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isTopFilterMenuOpen, setIsTopFilterMenuOpen] = useState(false);
   const topFilterRef = useRef<HTMLDivElement>(null);
 
@@ -182,16 +190,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [selectedOrderForNotify, setSelectedOrderForNotify] = useState<SalesOrder | null>(null);
-
-  useEffect(() => {
-    if (openAddModalInitially && selectedOrderIdInitially) {
-      const orderToEdit = orders.find(o => o.id === selectedOrderIdInitially);
-      if (orderToEdit) {
-        handleOpenEditModal(orderToEdit);
-        setViewingInvoiceOrder(null);
-      }
-    }
-  }, []);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -240,6 +238,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<SalesOrder | null>(null);
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<SalesOrder | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Cash' | 'Card'>('UPI');
   const [viewingInvoiceOrder, setViewingInvoiceOrder] = useState<SalesOrder | null>(
     selectedOrderIdInitially && !openAddModalInitially ? orders.find(o => o.id === selectedOrderIdInitially) || null : null
@@ -357,6 +356,21 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setIsCreateModalOpen(true);
   };
 
+  const handleCloseCreateModal = () => {
+    setIsCreateModalOpen(false);
+    resetForm();
+    if (onClearDeepLink) {
+      onClearDeepLink();
+    }
+  };
+
+  useEffect(() => {
+    if (invoiceToEdit) {
+      handleOpenEditModal(invoiceToEdit);
+      setInvoiceToEdit(null);
+    }
+  }, [invoiceToEdit]);
+
   const handleOpenEditModal = (order: SalesOrder) => {
     if (order.delivery_status === 'Delivered') {
       triggerToast('Cannot edit an order that is already delivered.', 'error');
@@ -386,6 +400,32 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setRowQty(1);
     setRowPrice(0);
   };
+
+  useEffect(() => {
+    if (deepLinkData?.openAddModal || (openAddModalInitially && !deepLinkData)) {
+      if (deepLinkData?.orderId || selectedOrderIdInitially) {
+        const targetId = deepLinkData?.orderId || selectedOrderIdInitially;
+        const orderToEdit = orders.find(o => o.id === targetId);
+        if (orderToEdit) {
+          handleOpenEditModal(orderToEdit);
+          setViewingInvoiceOrder(null);
+        }
+      } else {
+        handleOpenAddModal();
+      }
+      if (onClearDeepLink) {
+        onClearDeepLink();
+      }
+    } else if (deepLinkData?.orderId) {
+      const orderToView = orders.find(o => o.id === deepLinkData.orderId);
+      if (orderToView) {
+        setViewingInvoiceOrder(orderToView);
+      }
+      if (onClearDeepLink) {
+        onClearDeepLink();
+      }
+    }
+  }, [deepLinkData, openAddModalInitially, selectedOrderIdInitially]);
 
   const handleAddLineItem = () => {
     if (!rowProductId) {
@@ -428,8 +468,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setOrderItems(orderItems.filter((_, i) => i !== idx));
   };
 
-  const handleCreateSalesOrder = (e: React.FormEvent) => {
+  const handleCreateSalesOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     if (!selectedCustomerId) {
       triggerToast('Please choose a customer profile.', 'error');
@@ -446,63 +487,67 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       return;
     }
 
-    // Handle Walk-in customer dynamic creation
-    let finalCustomerId = selectedCustomerId;
-    let finalCustomerName = 'Walk-in Customer';
-    let finalCustomerArea = selectedArea || 'Dahisar';
-    
-    if (selectedCustomerId === 'WALK_IN') {
-       let walkIn = customers.find(c => c.name === 'Walk-in Customer');
-       if (!walkIn) {
-          walkIn = dbStore.createCustomer({
-             name: 'Walk-in Customer',
-             group: 'Retail',
-             area: selectedArea || 'Dahisar',
-             gstin: '',
-             pan: '',
-             billing_address: 'Retail POS',
-             shipping_address: 'Retail POS',
-             email: '',
-             phone: '',
-             credit_limit: 0,
-             business_id: businessId,
-             active: true
-          });
-       }
-       finalCustomerId = walkIn.id;
-       finalCustomerName = walkIn.name;
-       finalCustomerArea = selectedArea || 'Dahisar';
-    } else {
-       const cObj = customers.find(c => c.id === selectedCustomerId);
-       if (cObj) {
-         finalCustomerName = cObj.name;
-         finalCustomerArea = selectedArea || (cObj.area && cObj.area !== 'Other' ? cObj.area : 'Dahisar');
-       }
-    }
-
-    // Calculate payment amount and credit balance
-    const customerObj = customers.find(c => c.id === finalCustomerId);
-    const subtotal = orderItems.reduce((acc, it) => acc + (it.qty * it.selling_price * (1 + it.gst_rate/100)), 0);
-    const finalAmount = Math.round(subtotal);
-
-    let actualPaid = 0;
-    if (paymentStatus === 'Paid') {
-      actualPaid = finalAmount;
-    } else if (paymentStatus === 'Partial') {
-      actualPaid = Math.min(finalAmount, Math.max(0, Number(paidAmount) || 0));
-    } else {
-      actualPaid = 0;
-    }
-    const unpaidBalance = Math.max(0, finalAmount - actualPaid);
-
-    if (customerObj && (customerObj.name !== 'Walk-in Customer') && (unpaidBalance > 0) && (customerObj.outstanding_amount + unpaidBalance > customerObj.credit_limit)) {
-      const confirmed = window.confirm(
-        `CREDIT LIMIT WARNING!\nThis transaction will increase debt by ${currencySymbol}${unpaidBalance.toLocaleString()} and breach authorized limit of ${currencySymbol}${customerObj.credit_limit.toLocaleString()}.\nDo you want to override and bypass credit check?`
-      );
-      if (!confirmed) return;
-    }
-
+    setIsSubmitting(true);
     try {
+      // Handle Walk-in customer dynamic creation
+      let finalCustomerId = selectedCustomerId;
+      let finalCustomerName = 'Walk-in Customer';
+      let finalCustomerArea = selectedArea || 'Dahisar';
+      
+      if (selectedCustomerId === 'WALK_IN') {
+         let walkIn = customers.find(c => c.name === 'Walk-in Customer');
+         if (!walkIn) {
+            walkIn = dbStore.createCustomer({
+               name: 'Walk-in Customer',
+               group: 'Retail',
+               area: selectedArea || 'Dahisar',
+               gstin: '',
+               pan: '',
+               billing_address: 'Retail POS',
+               shipping_address: 'Retail POS',
+               email: '',
+               phone: '',
+               credit_limit: 0,
+               business_id: businessId,
+               active: true
+            });
+         }
+         finalCustomerId = walkIn.id;
+         finalCustomerName = walkIn.name;
+         finalCustomerArea = selectedArea || 'Dahisar';
+      } else {
+         const cObj = customers.find(c => c.id === selectedCustomerId);
+         if (cObj) {
+           finalCustomerName = cObj.name;
+           finalCustomerArea = selectedArea || (cObj.area && cObj.area !== 'Other' ? cObj.area : 'Dahisar');
+         }
+      }
+
+      // Calculate payment amount and credit balance
+      const customerObj = customers.find(c => c.id === finalCustomerId);
+      const subtotal = orderItems.reduce((acc, it) => acc + (it.qty * it.selling_price * (1 + it.gst_rate/100)), 0);
+      const finalAmount = Math.round(subtotal);
+
+      let actualPaid = 0;
+      if (paymentStatus === 'Paid') {
+        actualPaid = finalAmount;
+      } else if (paymentStatus === 'Partial') {
+        actualPaid = Math.min(finalAmount, Math.max(0, Number(paidAmount) || 0));
+      } else {
+        actualPaid = 0;
+      }
+      const unpaidBalance = Math.max(0, finalAmount - actualPaid);
+
+      if (customerObj && (customerObj.name !== 'Walk-in Customer') && (unpaidBalance > 0) && (customerObj.outstanding_amount + unpaidBalance > customerObj.credit_limit)) {
+        const confirmed = window.confirm(
+          `CREDIT LIMIT WARNING!\nThis transaction will increase debt by ${currencySymbol}${unpaidBalance.toLocaleString()} and breach authorized limit of ${currencySymbol}${customerObj.credit_limit.toLocaleString()}.\nDo you want to override and bypass credit check?`
+        );
+        if (!confirmed) {
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       if (editingOrderId) {
         // Edit flow
         const existingOrder = orders.find(o => o.id === editingOrderId);
@@ -634,6 +679,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       resetForm();
     } catch (err: any) {
       console.error(err); triggerToast(err.message || 'Error occurred.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -771,9 +818,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     });
   }, [orders, timeHorizon, bookingFilter]);
 
-  // Filtered Orders for the Table (applies search on top of time horizon)
+  // Filtered Orders for the Table (applies search & status filter on top of time horizon)
   const filteredOrders = useMemo(() => {
     return horizonOrders.filter(o => {
+      if (statusFilter !== 'all' && o.status !== statusFilter) return false;
       const cust = customers.find(c => c.id === o.customer_id);
       const custName = o.customer_name || (cust ? cust.name : '');
       const query = searchQuery.toLowerCase().trim();
@@ -783,7 +831,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
              (o.area || '').toLowerCase().includes(query) ||
              (o.channel || '').toLowerCase().includes(query);
     });
-  }, [horizonOrders, customers, searchQuery]);
+  }, [horizonOrders, customers, searchQuery, statusFilter]);
 
   // Metric counts computed directly from time-horizon filtered orders
   const adjustedTotalOrders = horizonOrders.length;
@@ -808,9 +856,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         title="Sales & Bookings Master"
         subtitle="Manage B2B/B2C pipelines, bulk orders, and corporate billing cycles"
         icon={FileText}
-        badgeText="Revenue Stream Active"
         rightContent={
-          <div className="flex items-center gap-3 flex-row-reverse">
+          <div className="flex items-center gap-3">
             {/* Top Time Filter Dropdown */}
             <div className="relative shrink-0" ref={topFilterRef}>
               <button 
@@ -855,149 +902,194 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       />
 
       <div className="px-0.5 sm:px-1 space-y-4">
-        {/* Metric Cards Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {/* KPI Summary Cards Row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Total Sales */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-pointer group flex flex-col justify-between gap-1">
-            <div className="flex items-center gap-1.5">
-              <div className="p-1.5 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
-                <FileText size={14} />
+          <div className="bg-blue-50/60 dark:bg-blue-950/20 border-l-4 border-l-blue-500 border-y border-r border-slate-200/80 dark:border-slate-800 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg shrink-0">
+                  <FileText size={16} />
+                </div>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">TOTAL SALES</span>
               </div>
-              <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL SALES</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">Total</span>
             </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Total orders processed in system">Total orders processed in system</span>
-            </div>
-            <div className="text-right mt-1">
-              <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+            <div className="flex items-baseline justify-between mt-auto">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[120px]">Orders processed</span>
+              <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 {adjustedTotalOrders.toLocaleString()}
               </span>
             </div>
           </div>
 
           {/* Pending Orders */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between gap-1">
-            <div className="flex items-center gap-1.5">
-              <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
-                <Clock size={14} />
+          <div className="bg-amber-50/60 dark:bg-amber-950/20 border-l-4 border-l-amber-500 border-y border-r border-slate-200/80 dark:border-slate-800 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg shrink-0">
+                  <Clock size={16} />
+                </div>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">PENDING ORDERS</span>
               </div>
-              <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">PENDING ORDERS</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">Pending</span>
             </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Orders awaiting kitchen processing & packing">Orders awaiting processing & kitchen packing</span>
-            </div>
-            <div className="text-right mt-1">
-              <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+            <div className="flex items-baseline justify-between mt-auto">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[120px]">Awaiting packing</span>
+              <span className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
                 {adjustedPending.toLocaleString()}
               </span>
             </div>
           </div>
 
           {/* Completed Orders */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-pointer group flex flex-col justify-between gap-1">
-            <div className="flex items-center gap-1.5">
-              <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
-                <CheckCircle2 size={14} />
+          <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border-l-4 border-l-emerald-500 border-y border-r border-slate-200/80 dark:border-slate-800 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg shrink-0">
+                  <CheckCircle2 size={16} />
+                </div>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">COMPLETED</span>
               </div>
-              <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">COMPLETED</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">Delivered</span>
             </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Successfully fulfilled & delivered orders">Successfully fulfilled & delivered orders</span>
-            </div>
-            <div className="text-right mt-1">
-              <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+            <div className="flex items-baseline justify-between mt-auto">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[120px]">Fulfilled & delivered</span>
+              <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
                 {adjustedCompleted.toLocaleString()}
               </span>
             </div>
           </div>
 
           {/* Total Value */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-pointer group flex flex-col justify-between gap-1">
-            <div className="flex items-center gap-1.5">
-              <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
-                <TrendingUp size={14} />
+          <div className="bg-indigo-50/60 dark:bg-indigo-950/20 border-l-4 border-l-indigo-500 border-y border-r border-slate-200/80 dark:border-slate-800 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg shrink-0">
+                  <TrendingUp size={16} />
+                </div>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">TOTAL VALUE</span>
               </div>
-              <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL VALUE</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">Revenue</span>
             </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Gross total sales value incl. taxes">Gross total sales value incl. taxes</span>
-            </div>
-            <div className="text-right mt-1">
-              <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+            <div className="flex items-baseline justify-between mt-auto">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[120px]">Gross turnover</span>
+              <span className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight">
                 ₹{adjustedTotalRevenue.toLocaleString()}
               </span>
             </div>
           </div>
         </div>
 
-      {/* Filters & Actions Bar */}
-      <div className="flex items-center justify-between gap-2 sm:gap-3 bg-white dark:bg-slate-900 p-2.5 sm:p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-x-auto">
-        <div className="flex items-center gap-2 sm:gap-3 w-full min-w-max sm:min-w-0">
-          <div className="relative w-36 sm:w-80 shrink-0 sm:shrink">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+      {/* Unified Search & Consolidated Filters Toolbar */}
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3">
+        {/* Top Row: Search Input & Time Horizon Filter Chips */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          {/* Search Box */}
+          <div className="relative flex-1 min-w-[240px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Search..." 
+              placeholder="Search Order #, Customer name, Area zone..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 pr-7 py-1.5 sm:py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+              className="pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                <X size={13} />
+              <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X size={14} />
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-[11px] font-bold shrink-0 whitespace-nowrap">
-              <Clock size={13} className="shrink-0" />
-              <span>Horizon: <strong>{horizonLabel}</strong></span>
-              <span className="ml-1 text-[10px] bg-amber-500/20 text-amber-800 dark:text-amber-300 px-1.5 py-0.2 rounded-md font-extrabold">
-                {filteredOrders.length} {filteredOrders.length === 1 ? 'order' : 'orders'}
-              </span>
-            </span>
+          {/* Horizon Time Filter Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+            <span className="text-[10px] uppercase font-bold text-slate-400 mr-1 shrink-0">Time:</span>
+            {(['today', 'yesterday', '7days', '30days', 'all'] as const).map((h) => {
+              const labels: Record<string, string> = { today: 'Today', yesterday: 'Yesterday', '7days': '7 Days', '30days': '30 Days', all: 'All Time' };
+              const isActive = timeHorizon === h;
+              return (
+                <button
+                  key={h}
+                  onClick={() => setTimeHorizon(h)}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition cursor-pointer whitespace-nowrap border ${
+                    isActive 
+                      ? 'bg-amber-500 text-slate-950 border-amber-600 shadow-xs font-extrabold' 
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {labels[h]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-            {/* Toggle button: Regular -> Festive -> All */}
+        {/* Bottom Row: Pipeline Status Chips & Booking Type Chip */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+          {/* Pipeline Status Filter Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+            <span className="text-[10px] uppercase font-bold text-slate-400 mr-1 shrink-0">Pipeline:</span>
+            {[
+              { id: 'all', label: `All (${horizonOrders.length})` },
+              { id: 'Pending', label: `Pending (${horizonOrders.filter(o=>o.status==='Pending').length})` },
+              { id: 'Packing', label: `Packing Started (${horizonOrders.filter(o=>o.status==='Packing').length})` },
+              { id: 'Dispatched', label: `Out for Delivery (${horizonOrders.filter(o=>o.status==='Dispatched').length})` },
+              { id: 'Delivered', label: `Completed (${horizonOrders.filter(o=>o.status==='Delivered').length})` },
+            ].map((chip) => {
+              const isActive = statusFilter === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  onClick={() => setStatusFilter(chip.id)}
+                  className={`px-3 py-1 rounded-full text-[11px] font-bold transition cursor-pointer border whitespace-nowrap ${
+                    isActive 
+                      ? 'bg-slate-900 text-white border-slate-900 dark:bg-amber-500 dark:text-slate-950 dark:border-amber-500 shadow-xs' 
+                      : 'bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Booking Type Filter Chip */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">Booking:</span>
             <button
-              type="button"
-              onClick={() => {
-                setBookingFilter(prev => prev === 'all' ? 'regular' : prev === 'regular' ? 'festive' : 'all');
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold shrink-0 transition-all cursor-pointer shadow-xs border ${
+              onClick={() => setBookingFilter(prev => prev === 'all' ? 'regular' : prev === 'regular' ? 'festive' : 'all')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition cursor-pointer border ${
                 bookingFilter === 'regular'
-                  ? 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700'
+                  ? 'bg-indigo-600 text-white border-indigo-600'
                   : bookingFilter === 'festive'
-                  ? 'bg-amber-500 text-slate-950 border-amber-600 hover:bg-amber-400 font-extrabold'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-black'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
               }`}
-              title="Click to toggle filter: All -> Regular -> Festive -> All"
             >
               <Sparkles size={13} className={bookingFilter === 'festive' ? 'text-slate-950' : bookingFilter === 'regular' ? 'text-white' : 'text-amber-500'} />
-              <span>
-                Booking: <strong className="uppercase">{bookingFilter === 'all' ? 'All' : bookingFilter === 'regular' ? 'Regular' : 'Festive'}</strong>
-              </span>
+              <span className="uppercase">{bookingFilter}</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Primary orders table */}
-      <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5">
+      <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs mt-3">
         <table className="w-full text-left text-[11px] whitespace-nowrap">
-          <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[10px]">
+          <thead className="bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 font-extrabold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700 text-[10px]">
             <tr>
-              <th className="py-2 px-3">Order ID</th>
-              <th className="py-2 px-3">Customer</th>
-              <th className="py-2 px-3">Area Zone</th>
-              <th className="py-2 px-3">Pipeline Status</th>
-              <th className="py-2 px-3">Amount</th>
-              <th className="py-2 px-3">Payment</th>
-              <th className="py-2 px-3">Time</th>
-              <th className="py-2 px-3 text-right">Actions</th>
+              <th className="py-2.5 px-3">Order ID</th>
+              <th className="py-2.5 px-3">Customer</th>
+              <th className="py-2.5 px-3">Area Zone</th>
+              <th className="py-2.5 px-3">Pipeline Status</th>
+              <th className="py-2.5 px-3">Amount</th>
+              <th className="py-2.5 px-3">Payment</th>
+              <th className="py-2.5 px-3">Time</th>
+              <th className="py-2.5 px-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-black dark:divide-white bg-white dark:bg-slate-900">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
             {filteredOrders.map((o) => {
               const cust = customers.find(c => c.id === o.customer_id);
               const custName = o.customer_name || (cust ? cust.name : 'Walk-in Customer');
@@ -1006,15 +1098,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               return (
                 <tr 
                   key={o.id}
-                  className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
-                    isSelected ? 'bg-amber-50/50 dark:bg-amber-900/10' : ''
+                  className={`hover:bg-slate-100/80 dark:hover:bg-slate-800/60 even:bg-slate-50/50 dark:even:bg-slate-800/20 transition-colors ${
+                    isSelected ? 'bg-amber-50/60 dark:bg-amber-900/20' : ''
                   }`}
                 >
-                  <td className="py-1.5 px-3 font-black text-slate-900 dark:text-white">
+                  <td className="py-2 px-3 font-black text-slate-900 dark:text-white">
                     <div className="flex items-center gap-1.5">
                       <button 
                         onClick={() => setSelectedOrderForDetail(o)}
-                        className="hover:text-amber-500 cursor-pointer text-left transition-colors"
+                        className="hover:text-amber-500 cursor-pointer text-left transition-colors font-mono"
                       >
                         {o.order_number}
                       </button>
@@ -1036,7 +1128,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </div>
                   </td>
 
-                  <td className="py-1.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                  <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
                     <div className="flex items-center gap-1.5 whitespace-nowrap">
                       <span>{custName}</span>
                       {o.channel && (
@@ -1047,42 +1139,42 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </div>
                   </td>
 
-                  <td className="py-1.5 px-3 font-semibold text-slate-700 dark:text-slate-300 text-xs">
-                    <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200/80 dark:border-slate-700 font-medium text-[10px] text-slate-700 dark:text-slate-300">
+                  <td className="py-2 px-3 font-semibold text-slate-700 dark:text-slate-300 text-xs">
+                    <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/80 dark:border-slate-700 font-medium text-[10px] text-slate-700 dark:text-slate-300">
                       📍 {o.area || 'Dahisar'}
                     </span>
                   </td>
 
-                  <td className="py-1.5 px-3">
-                    <span className={`inline-flex items-center text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
-                      o.status === 'Delivered' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800/60' :
-                      o.status === 'Dispatched' ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800/60' :
-                      o.status === 'Packed' ? 'bg-yellow-50 dark:bg-yellow-950/40 text-amber-800 dark:text-yellow-300 border-yellow-300 dark:border-yellow-800/60' :
-                      o.status === 'Packing' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800/60' :
-                      o.status === 'Cancelled' ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800/60' :
-                      'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                  <td className="py-2 px-3">
+                    <span className={`inline-flex items-center text-[10px] font-bold px-3 py-1 rounded-full border ${
+                      o.status === 'Delivered' ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' :
+                      o.status === 'Returned' ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-700' :
+                      o.status === 'Dispatched' ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-700' :
+                      o.status === 'Packed' ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700' :
+                      o.status === 'Packing' ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-700' :
+                      o.status === 'Cancelled' ? 'bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700' :
+                      'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
                     }`}>
-                      {o.status === 'Pending' ? 'Pending (बुकिंग)' :
-                       o.status === 'Packing' ? 'Packing Started (पॅकिंग)' :
-                       o.status === 'Packed' ? 'Ready / Packed (तयार)' :
-                       o.status === 'Dispatched' ? 'Out for Delivery (निघाले)' :
-                       o.status === 'Delivered' ? 'Delivered (पूर्ण)' :
-                       o.status === 'Cancelled' ? 'Cancelled (रद्द)' : o.status}
+                      {o.status === 'Packing' ? 'Packing Started' :
+                       o.status === 'Packed' ? 'Ready / Packed' :
+                       o.status === 'Dispatched' ? 'Out for Delivery' :
+                       o.status === 'Delivered' ? 'Completed' : 
+                       o.status === 'Returned' ? 'Returned' : o.status}
                     </span>
                   </td>
 
-                  <td className="py-1.5 px-3 font-black text-slate-900 dark:text-white">
+                  <td className="py-2 px-3 font-black text-slate-900 dark:text-white">
                     {currencySymbol}{o.total_amount.toLocaleString()}
                   </td>
 
-                  <td className="py-1.5 px-3">
+                  <td className="py-2 px-3">
                     <div className="flex items-center gap-1.5 whitespace-nowrap">
-                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border shrink-0 ${
+                      <span className={`text-[10px] font-bold px-3 py-1 rounded-full border shrink-0 ${
                         o.payment_status === 'Paid' 
-                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' 
+                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
                           : o.payment_status === 'Partial'
-                          ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                          : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                          ? 'bg-orange-100 dark:bg-orange-950/60 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-700'
+                          : 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-700'
                       }`}>
                         {o.payment_status || 'Unpaid'}
                       </span>
@@ -1102,31 +1194,66 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </div>
                   </td>
 
-                  <td className="py-1.5 px-3 text-slate-500 font-medium text-[10px]">
+                  <td className="py-2 px-3 text-slate-500 font-medium text-[10px]">
                     {formatOrderTime(o.time, o.created_at)}
                   </td>
 
-                  <td className="py-1.5 px-3 text-right">
+                  <td className="py-2 px-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      {/* Notify button */}
+                      {/* View Order Specification / Details */}
+                      <button 
+                        onClick={() => setSelectedOrderForDetail(o)}
+                        className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition cursor-pointer"
+                        title="View Order Details"
+                      >
+                        <Eye size={15} />
+                      </button>
+
+                      {/* Collect / Record Payment */}
                       <button 
                         onClick={() => {
-                          setSelectedOrderForNotify(o);
+                          setSelectedOrderForPayment(o);
+                          setIsPaymentModalOpen(true);
                         }}
-                        className="p-1.5 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-600 rounded-lg transition"
-                        title="Send Customer Tracking via WhatsApp"
+                        className="p-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 rounded-lg transition cursor-pointer"
+                        title="Collect Payment / Record Receipt"
+                      >
+                        <CreditCard size={15} />
+                      </button>
+
+                      {/* Print Invoice */}
+                      <button 
+                        onClick={() => handlePrintInvoice(o)}
+                        className="p-1.5 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-lg transition cursor-pointer"
+                        title="Print Invoice"
+                      >
+                        <Printer size={15} />
+                      </button>
+
+                      {/* Send Customer Tracking via WhatsApp */}
+                      <button 
+                        onClick={() => setSelectedOrderForNotify(o)}
+                        className="p-1.5 hover:bg-amber-100 dark:hover:bg-amber-950/50 text-amber-600 dark:text-amber-400 rounded-lg transition cursor-pointer"
+                        title="WhatsApp Tracking Link"
                       >
                         <Send size={15} />
                       </button>
 
-                      {/* View Receipt Detail */}
-                      <button 
-                        onClick={() => setSelectedOrderForDetail(o)}
-                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg transition cursor-pointer"
-                        title="View Invoice & Specifications"
+                      {/* Quick Pipeline Status Updater */}
+                      <select
+                        value={o.status}
+                        onChange={(e) => handleQuickStatusChange(o.id, e.target.value as OrderStatus)}
+                        className="ml-1 text-[10px] font-bold py-1 px-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        title="Quick Update Pipeline Status"
                       >
-                        <ChevronRight size={18} />
-                      </button>
+                        <option value="Pending">Pending</option>
+                        <option value="Packing">Packing</option>
+                        <option value="Packed">Ready</option>
+                        <option value="Dispatched">Out for Delivery</option>
+                        <option value="Delivered">Completed</option>
+                        <option value="Returned">Returned</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
                     </div>
                   </td>
                 </tr>
@@ -1160,7 +1287,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           }}
           className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
         >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto custom-scrollbar">
             
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
@@ -1263,6 +1390,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 <DollarSign size={16} /> Collect Payment
               </button>
 
+              {selectedOrderForDetail.status === 'Delivered' && (
+                <button 
+                  onClick={() => {
+                    if (window.confirm("Mark this order as Returned? Products will be added back to inventory and order status will be updated to 'Returned'.")) {
+                      handleQuickStatusChange(selectedOrderForDetail.id, 'Returned');
+                      setSelectedOrderForDetail(null);
+                    }
+                  }}
+                  className="w-full py-3.5 bg-rose-600 hover:bg-rose-500 text-white rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md border-2 border-rose-400"
+                >
+                  <RotateCcw size={16} /> Return Order & Refund
+                </button>
+              )}
+
               <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 mt-2">
                 <button
                   onClick={() => {
@@ -1295,71 +1436,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
       {/* ================= PAYMENT COLLECTION MODAL ================= */}
       {isPaymentModalOpen && selectedOrderForPayment && (
-        <div 
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsPaymentModalOpen(false);
+        <PaymentCollectionModal
+          businessId={businessId}
+          user={user}
+          order={selectedOrderForPayment}
+          type="Sales"
+          onClose={() => {
+            setIsPaymentModalOpen(false);
+            setSelectedOrderForPayment(null);
           }}
-          className="fixed inset-0 z-[80] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
-        >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div>
-                <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">COLLECT PAYMENT</span>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">Record Cash / UPI Receipt</h3>
-              </div>
-              <button onClick={() => setIsPaymentModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-full bg-slate-100 dark:bg-slate-800 cursor-pointer">
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (!selectedOrderForPayment) return;
-              dbStore.updateSalesOrder(selectedOrderForPayment.id, { payment_status: 'Paid', payment_mode: paymentMethod });
-              dbStore.logActivity(user.id, user.name, user.role, 'Collect Payment', `Collected ₹${selectedOrderForPayment.total_amount} via ${paymentMethod} for Order ${selectedOrderForPayment.order_number}`, businessId);
-              triggerToast(`Recorded payment of ₹${selectedOrderForPayment.total_amount.toLocaleString()} via ${paymentMethod} for Order ${selectedOrderForPayment.order_number}`, 'success');
-              setOrders(dbStore.getSalesOrders(businessId));
-              setIsPaymentModalOpen(false);
-              setSelectedOrderForPayment(null);
-            }} className="space-y-4 text-[11px]">
-              <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Select Payment Mode</label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(['UPI', 'Cash', 'Card'] as const).map((m) => (
-                    <button 
-                      key={m}
-                      type="button"
-                      onClick={() => setPaymentMethod(m)}
-                      className={`p-3 rounded-xl border text-[11px] font-bold transition cursor-pointer ${
-                        paymentMethod === m 
-                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-md' 
-                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200/60 dark:border-emerald-800/50 flex justify-between items-center">
-                <span className="font-bold text-slate-700 dark:text-slate-300">Order {selectedOrderForPayment.order_number} Amount:</span>
-                <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
-                  ₹{selectedOrderForPayment.total_amount.toLocaleString()}
-                </span>
-              </div>
-
-              <button 
-                type="submit"
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs transition shadow-lg cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <CheckCircle2 size={18} /> Confirm Receipt & Close Dues
-              </button>
-            </form>
-
-          </div>
-        </div>
+          onSuccess={(updatedOrder) => {
+            setOrders(dbStore.getSalesOrders(businessId));
+          }}
+          triggerToast={triggerToast}
+        />
       )}
 
       {/* Invoice Detail printable popup modal */}
@@ -1489,7 +1579,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   </span>
                 </div>
               </div>
-              <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X size={18} /></button>
+              <button onClick={handleCloseCreateModal} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition"><X size={18} /></button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -2015,16 +2105,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   <div className="flex gap-2 w-full sm:w-auto justify-end">
                     <button 
                       type="button" 
-                      onClick={() => setIsCreateModalOpen(false)}
+                      onClick={handleCloseCreateModal}
                       className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[11px] font-semibold hover:bg-slate-300 cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button 
                       type="button" 
+                      disabled={isSubmitting}
                       onClick={handleCreateSalesOrder}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow-md cursor-pointer transition"
+                      className={`px-4 py-2 rounded-lg text-[11px] font-bold shadow-md cursor-pointer transition flex items-center gap-1.5 ${isSubmitting ? 'bg-slate-400 cursor-not-allowed text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
                     >
+                      {isSubmitting ? <Loader2 className="animate-spin" size={14} /> : null}
                       {editingOrderId ? 'Update Sales Order' : 'Compile & Place Sales Order'}
                     </button>
                   </div>
@@ -2103,7 +2195,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           }}
           className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
         >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto custom-scrollbar">
             
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>

@@ -5,7 +5,7 @@ export interface MetricDetailConfig {
   icon: any;
   iconColor: string;
   badgeText: string;
-  type: 'status' | 'to_pack' | 'deliveries_today' | 'overdue' | 'payment' | 'area' | 'all' | 'revenue' | 'receivables' | 'low_stock' | 'out_of_stock';
+  type: 'status' | 'to_pack' | 'deliveries_today' | 'overdue' | 'payment' | 'area' | 'all' | 'revenue' | 'receivables' | 'low_stock' | 'out_of_stock' | 'kitchen';
   filterValue?: string;
   description?: string;
 }
@@ -69,7 +69,9 @@ import {
   Share2,
   Calendar,
   CalendarDays,
-  Edit
+  Edit,
+  ClipboardList,
+  AlertCircle
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
 import { SalesOrder, UserProfile, OrderStatus } from '../types/erp';
@@ -355,7 +357,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const customers = dbStore.getCustomers(businessId);
   const allOrders = dbStore.getSalesOrders(businessId);
 
-  const lowStockCount = useMemo(() => products.filter(p => (p.current_stock ?? 0) <= (p.minimum_stock || 10)).length, [products]);
+  const lowStockThreshold = useMemo(() => dbStore.getSettings(businessId).low_stock_limit, [businessId]);
+  const lowStockCount = useMemo(() => products.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) <= lowStockThreshold).length, [products, lowStockThreshold]);
   const outOfStockCount = useMemo(() => products.filter(p => (p.current_stock ?? 0) === 0).length, [products]);
 
   // Modal drilldown items computation
@@ -364,10 +367,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
     const query = modalSearch.toLowerCase().trim();
 
-    if (activeMetricModal.type === 'low_stock' || activeMetricModal.type === 'out_of_stock') {
+    if (activeMetricModal.type === 'low_stock' || activeMetricModal.type === 'out_of_stock' || activeMetricModal.type === 'kitchen') {
       let prods = products;
       if (activeMetricModal.type === 'low_stock') {
-        prods = prods.filter(p => (p.current_stock ?? 0) <= (p.minimum_stock || 10));
+        prods = prods.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) <= lowStockThreshold);
       } else if (activeMetricModal.type === 'out_of_stock') {
         prods = prods.filter(p => (p.current_stock ?? 0) === 0);
       }
@@ -805,9 +808,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                   <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TO PACK</span>
                 </div>
-                <div className="flex flex-col gap-0.5 mt-0.5">
-                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Orders requiring item selection, weight verification, and box sealing in the kitchen">Orders requiring item selection, weight verification, and box sealing in the kitchen</span>
-                </div>
                 <div className="text-right mt-1">
                   <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
                     {metrics.toPackToday}
@@ -833,9 +833,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <Truck size={14} />
                   </div>
                   <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">READY</span>
-                </div>
-                <div className="flex flex-col gap-0.5 mt-0.5">
-                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Orders sealed, box-tagged, and ready at the dispatch counter">Orders sealed, box-tagged, and ready at the dispatch counter</span>
                 </div>
                 <div className="text-right mt-1">
                   <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -863,9 +860,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                   <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">IN TRANSIT</span>
                 </div>
-                <div className="flex flex-col gap-0.5 mt-0.5">
-                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Orders assigned to drivers and currently in transit to customers">Orders assigned to drivers and currently in transit to customers</span>
-                </div>
                 <div className="text-right mt-1">
                   <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
                     {metrics.deliveriesToday}
@@ -890,9 +884,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <AlertTriangle size={14} />
                   </div>
                   <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">OVERDUE</span>
-                </div>
-                <div className="flex flex-col gap-0.5 mt-0.5">
-                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Prioritize these orders to avoid customer delivery delay">Prioritize these orders to avoid customer delivery delay</span>
                 </div>
                 <div className="text-right mt-1">
                   <span className="text-xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
@@ -919,9 +910,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                   <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">PAYMENTS</span>
                 </div>
-                <div className="flex flex-col gap-0.5 mt-0.5">
-                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="View unpaid customer orders">View unpaid customer orders</span>
-                </div>
                 <div className="text-right mt-1">
                   <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
                     {metrics.pendingPaymentsCount}
@@ -946,9 +934,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <ShoppingBag size={14} />
                   </div>
                   <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL</span>
-                </div>
-                <div className="flex flex-col gap-0.5 mt-0.5">
-                  <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Master operational view of all active sales transactions">Master operational view of all active sales transactions</span>
                 </div>
                 <div className="text-right mt-1">
                   <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -976,9 +961,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                     <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">REVENUE</span>
                   </div>
-                  <div className="flex flex-col gap-0.5 mt-0.5">
-                    <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Financial ledger summarizing completed sales and collected revenue">Financial ledger summarizing completed sales and collected revenue</span>
-                  </div>
                   <div className="text-right mt-1">
                     <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
                       ₹{metrics.todaySalesAmount.toLocaleString()}
@@ -1003,9 +985,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <Boxes size={14} />
                     </div>
                     <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">LOW STOCK</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5 mt-0.5">
-                    <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Kitchen raw material & packaging stock running low">Kitchen raw material & packaging stock running low</span>
                   </div>
                   <div className="text-right mt-1">
                     <span className="text-xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
@@ -1035,9 +1014,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                     <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">OUTSTANDING</span>
                   </div>
-                  <div className="flex flex-col gap-0.5 mt-0.5">
-                    <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Track outstanding balances and send instant payment follow-up alerts">Track outstanding balances and send instant payment follow-up alerts</span>
-                  </div>
                   <div className="text-right mt-1">
                     <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
                       ₹{metrics.outstandingAmount.toLocaleString()}
@@ -1062,9 +1038,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <AlertTriangle size={14} />
                     </div>
                     <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">ZERO STOCK</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5 mt-0.5">
-                    <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2" title="Products with zero stock level requiring immediate replenishment">Products with zero stock level requiring immediate replenishment</span>
                   </div>
                   <div className="text-right mt-1">
                     <span className="text-xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
@@ -1476,7 +1449,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span className="text-[11px] font-bold text-slate-500">Inventory Status</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div 
                     onClick={() => handleOpenMetricDetail({
                       title: 'Low Stock Replenishment Alert',
@@ -1510,6 +1483,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <span className="text-xl font-black text-rose-600 dark:text-rose-400">{metrics.outOfStock} Items</span>
                     <p className="text-[10px] text-rose-700/80 dark:text-rose-400/80 mt-1">Halt online bookings</p>
                   </div>
+
+                  <div 
+                    onClick={() => handleOpenMetricDetail({
+                      title: 'Kitchen Master Inventory',
+                      subtitle: 'Full list of kitchen items and raw materials',
+                      icon: ClipboardList,
+                      iconColor: 'text-indigo-600 bg-indigo-500/10 border-indigo-200',
+                      badgeText: 'Kitchen List',
+                      type: 'kitchen',
+                      description: 'Comprehensive list of all kitchen SKUs including loose products and combos.'
+                    })}
+                    className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-2xl border border-indigo-200/60 dark:border-indigo-800/50 cursor-pointer hover:border-indigo-400 transition"
+                  >
+                    <span className="text-[11px] font-bold text-indigo-800 dark:text-indigo-300 block">Kitchen Catalog</span>
+                    <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">{products.length} Items</span>
+                    <p className="text-[10px] text-indigo-700/80 dark:text-indigo-400/80 mt-1">View all production goods</p>
+                  </div>
                 </div>
 
                 <button 
@@ -1526,27 +1516,49 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">
                     Stock Replenishment Queue
                   </h2>
-                  <span className="text-[11px] font-bold text-amber-600">Reorder Threshold: 15</span>
+                  <button 
+                    onClick={() => handleOpenMetricDetail({
+                      title: 'Low Stock Replenishment Alert',
+                      subtitle: 'Kitchen goods and packaging items at or below reorder threshold',
+                      icon: Boxes,
+                      iconColor: 'text-amber-600 bg-amber-500/10 border-amber-200',
+                      badgeText: 'Reorder Queue',
+                      type: 'low_stock',
+                      description: 'Items requiring raw material procurement or kitchen re-stocking.'
+                    })}
+                    className="text-[11px] font-bold text-amber-600 hover:text-amber-700 transition"
+                  >
+                    View Full List →
+                  </button>
                 </div>
 
                 <div className="space-y-3">
-                  {products.slice(0, 4).map(p => (
-                    <div key={p.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                      <div>
-                        <strong className="text-[11px] font-bold block text-slate-800 dark:text-slate-200">{p.name}</strong>
-                        <span className="text-[10px] text-slate-400">SKU: {p.sku}</span>
+                  {products
+                    .filter(p => (p.current_stock ?? 0) <= lowStockThreshold)
+                    .sort((a, b) => (a.current_stock ?? 0) - (b.current_stock ?? 0))
+                    .slice(0, 5)
+                    .map(p => (
+                      <div key={p.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                        <div>
+                          <strong className="text-[11px] font-bold block text-slate-800 dark:text-slate-200">{p.name}</strong>
+                          <span className="text-[10px] text-slate-400">SKU: {p.sku}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-[11px] font-extrabold px-2.5 py-1 rounded-full ${
+                            (p.current_stock ?? 0) === 0 
+                              ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200' 
+                              : 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200'
+                          }`}>
+                            {p.current_stock} {p.unit} left
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <span className={`text-[11px] font-extrabold px-2.5 py-1 rounded-full ${
-                          p.current_stock === 0 
-                            ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200' 
-                            : 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200'
-                        }`}>
-                          {p.current_stock} {p.unit} left
-                        </span>
-                      </div>
+                    ))}
+                  {products.filter(p => (p.current_stock ?? 0) <= (p.minimum_stock || 10)).length === 0 && (
+                    <div className="text-center py-4">
+                      <p className="text-[11px] text-slate-400 italic font-medium">All stocks are optimal! No reorders needed.</p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
 
@@ -1975,9 +1987,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {activeMetricModal.badgeText}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    {activeMetricModal.subtitle}
-                  </p>
                 </div>
               </div>
               <button 
@@ -1989,10 +1998,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             {/* Description & Search Bar */}
-            <div className="p-4 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium max-w-xl">
-                {activeMetricModal.description || 'Live executive records for this operational filter.'}
-              </p>
+            <div className="p-4 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-end gap-3">
               <div className="relative w-full sm:w-64 shrink-0">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input 
@@ -2020,6 +2026,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 font-bold uppercase border-b border-slate-200 dark:border-slate-800">
                       <tr>
                         <th className="py-3 px-4">Product Name</th>
+                        <th className="py-3 px-4">Category</th>
                         <th className="py-3 px-4">SKU</th>
                         <th className="py-3 px-4">Current Stock</th>
                         <th className="py-3 px-4">Min Alert Threshold</th>
@@ -2028,15 +2035,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {modalItems.products.map(p => (
-                        <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">{p.name}</td>
-                          <td className="py-3.5 px-4 font-mono text-slate-500">{p.sku}</td>
+                      {modalItems.products.map(p => {
+                        const cat = dbStore.getCategories(businessId).find(c => c.id === p.category_id);
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                            <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">{p.name}</td>
+                            <td className="py-3.5 px-4 font-medium text-slate-500">{cat?.name || 'General'}</td>
+                            <td className="py-3.5 px-4 font-mono text-slate-500">{p.sku}</td>
                           <td className="py-3.5 px-4 font-black">
-                            <span className={`px-2.5 py-1 rounded-full ${
+                            <span className={`px-2.5 py-1 rounded-full border ${
                               (p.current_stock ?? 0) === 0
-                                ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200'
-                                : 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200'
+                                ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200'
+                                : (p.current_stock ?? 0) <= lowStockThreshold
+                                  ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200'
                             }`}>
                               {p.current_stock ?? 0} {p.unit}
                             </span>
@@ -2052,7 +2064,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             </button>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -2233,7 +2246,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           }}
           className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
         >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 custom-scrollbar">
             
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
@@ -2380,7 +2393,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           }}
           className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
         >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 custom-scrollbar">
             
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
@@ -2442,7 +2455,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           }}
           className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
         >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 custom-scrollbar">
             
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>

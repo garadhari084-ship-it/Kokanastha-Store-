@@ -17,10 +17,18 @@ import {
   Image as ImageIcon,
   Loader2,
   Layers,
-  Sparkles
+  Sparkles,
+  Boxes,
+  PackagePlus,
+  PackageCheck,
+  History,
+  ArrowDownUp,
+  RefreshCw,
+  Eye,
+  Info
 } from 'lucide-react';
-import { dbStore } from '../services/store';
-import { Product, Category, UserProfile } from '../types/erp';
+import { dbStore, isComboProduct } from '../services/store';
+import { Product, Category, UserProfile, ComboItem, ComboHistoryLog } from '../types/erp';
 import { Camera } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
 import ReactBarcode from 'react-barcode';
@@ -43,15 +51,51 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedStockStatus, setSelectedStockStatus] = useState('All');
+  const [selectedType, setSelectedType] = useState<'All' | 'Product' | 'Combo'>('All');
 
-  // Modal controls
+  // Standard Product Modal controls
   const [isModalOpen, setIsModalOpen] = useState(openAddModalInitially);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [printingBarcodeProduct, setPrintingBarcodeProduct] = useState<Product | null>(null);
   const [printLabelCount, setPrintLabelCount] = useState(10);
+  const [printSalePrice, setPrintSalePrice] = useState<number | string>('');
+  const [printMrp, setPrintMrp] = useState<number | string>('');
+  const [printPackedOn, setPrintPackedOn] = useState(new Date().toISOString().split('T')[0]);
+  const [printExpiryOn, setPrintExpiryOn] = useState('');
+  const [printCompanyName, setPrintCompanyName] = useState('KOKANASTHA');
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
-  // Form parameters
+  // Combo Box Modal Controls
+  const [isComboModalOpen, setIsComboModalOpen] = useState(false);
+  const [editingCombo, setEditingCombo] = useState<Product | null>(null);
+  const [comboItems, setComboItems] = useState<ComboItem[]>([]);
+  const [selectedDropdownProdId, setSelectedDropdownProdId] = useState('');
+  const [selectedDropdownQty, setSelectedDropdownQty] = useState<number>(1);
+
+  // Packing Modal State
+  const [isPackModalOpen, setIsPackModalOpen] = useState(false);
+  const [packingCombo, setPackingCombo] = useState<Product | null>(null);
+  const [packQty, setPackQty] = useState<number>(1);
+  const [packError, setPackError] = useState<{
+    message: string;
+    missingItems?: { productName: string; required: number; available: number; missing: number }[];
+  } | null>(null);
+
+  // Breaking/Unpacking Modal State
+  const [isBreakModalOpen, setIsBreakModalOpen] = useState(false);
+  const [breakingCombo, setBreakingCombo] = useState<Product | null>(null);
+  const [breakQty, setBreakQty] = useState<number>(1);
+  const [breakReason, setBreakReason] = useState<string>('Unpacking for individual loose product demand');
+
+  // Combo Audit & Details Drawer State
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [viewingCombo, setViewingCombo] = useState<Product | null>(null);
+
+  // Delete Confirmation State
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+
+  // Standard Form parameters
   const [formName, setFormName] = useState('');
   const [formSku, setFormSku] = useState('');
   const [formBarcode, setFormBarcode] = useState('');
@@ -83,7 +127,6 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       return;
     }
 
-    // Limit size to ~2MB for localStorage safety
     if (file.size > 2 * 1024 * 1024) {
       alert('File size too large. Please upload an image under 2MB.');
       return;
@@ -102,6 +145,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     };
     reader.readAsDataURL(file);
   };
+
   const [formDescription, setFormDescription] = useState('');
   const [formActive, setFormActive] = useState(true);
 
@@ -126,6 +170,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormActive(true);
     setEditingProduct(null);
   };
+
   useEffect(() => {
     return dbStore.subscribe(() => {
       setProducts(dbStore.getProducts(businessId));
@@ -133,6 +178,18 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     });
   }, [businessId]);
 
+  useEffect(() => {
+    if (printingBarcodeProduct) {
+      setPrintSalePrice(printingBarcodeProduct.selling_price || '');
+      setPrintMrp(printingBarcodeProduct.mrp || '');
+      setPrintPackedOn(new Date().toISOString().split('T')[0]);
+      // Default expiry to 6 months later
+      const expiryDate = new Date();
+      expiryDate.setMonth(expiryDate.getMonth() + 6);
+      setPrintExpiryOn(expiryDate.toISOString().split('T')[0]);
+      setPrintCompanyName('KOKANASTHA');
+    }
+  }, [printingBarcodeProduct]);
 
   const handleOpenAddModal = () => {
     resetForm();
@@ -140,6 +197,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   };
 
   const handleOpenEditModal = (prod: Product) => {
+    if (isComboProduct(prod)) {
+      handleOpenEditComboModal(prod);
+      return;
+    }
     setEditingProduct(prod);
     setFormName(prod.name);
     setFormSku(prod.sku);
@@ -159,6 +220,198 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormDescription(prod.description);
     setFormActive(prod.active);
     setIsModalOpen(true);
+  };
+
+  // ==================== COMBO BOX HANDLERS ====================
+  const handleOpenAddComboModal = () => {
+    setEditingCombo(null);
+    setFormName('');
+    setFormSku('SKU-CMB-' + Math.floor(100 + Math.random() * 900));
+    setFormBarcode('890123450' + Math.floor(1000 + Math.random() * 9000));
+    setFormCategory(categories[0]?.id || '');
+    setFormBrand('Festive Hampers');
+    setFormUnit('Box');
+    setFormGst(5);
+    setFormPurchasePrice('');
+    setFormSellingPrice('');
+    setFormMrp('');
+    setFormOpeningStock(10);
+    setFormImage('https://images.unsplash.com/photo-1513201099705-a9746e1e201f?auto=format&fit=crop&w=400&q=80');
+    setFormDescription('Curated festive product bundle hamper box.');
+    setFormActive(true);
+
+    const looseProds = products.filter(p => !isComboProduct(p));
+    setComboItems([]);
+    setSelectedDropdownProdId('');
+    setSelectedDropdownQty(1);
+    setIsComboModalOpen(true);
+  };
+
+  const handleOpenEditComboModal = (combo: Product) => {
+    setEditingCombo(combo);
+    setFormName(combo.name);
+    setFormSku(combo.sku);
+    setFormBarcode(combo.barcode);
+    setFormCategory(combo.category_id);
+    setFormBrand(combo.brand || 'Festive Hampers');
+    setFormUnit(combo.unit || 'Box');
+    setFormGst(combo.gst_rate || 5);
+    setFormPurchasePrice(combo.purchase_price);
+    setFormSellingPrice(combo.selling_price);
+    setFormMrp(combo.mrp);
+    setFormOpeningStock(combo.opening_stock ?? combo.current_stock);
+    setFormImage(combo.image_url);
+    setFormDescription(combo.description);
+    setFormActive(combo.active);
+    setComboItems(combo.combo_items || []);
+    setSelectedDropdownProdId('');
+    setSelectedDropdownQty(1);
+    setIsComboModalOpen(true);
+  };
+
+  const handleSaveCombo = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formName.trim() || !formSku.trim() || !formBarcode.trim()) {
+      triggerToast('Combo Name, SKU, and Barcode are required.', 'error');
+      return;
+    }
+
+    if (comboItems.length === 0) {
+      triggerToast('Please add at least one component product to this Combo Box.', 'error');
+      return;
+    }
+
+    const openingStockVal = formOpeningStock !== '' && !isNaN(Number(formOpeningStock)) ? Number(formOpeningStock) : 0;
+
+    // Validate component product stock availability
+    for (const ci of comboItems) {
+      const prod = products.find(p => p.id === ci.product_id);
+      if (!prod) {
+        triggerToast('One or more component products in the bundle are invalid.', 'error');
+        return;
+      }
+      
+      const stockToAllocate = editingCombo 
+        ? Math.max(0, openingStockVal - editingCombo.current_stock) 
+        : openingStockVal;
+      
+      const totalReqQty = ci.qty * stockToAllocate;
+
+      if (prod.current_stock <= 0 && totalReqQty > 0) {
+        triggerToast(`Cannot create combo box. "${prod.name}" is out of stock (Available: 0 ${prod.unit}).`, 'error');
+        return;
+      }
+      if (totalReqQty > prod.current_stock) {
+        triggerToast(`Cannot allocate stock for ${openingStockVal} combo box(es). "${prod.name}" has only ${prod.current_stock} ${prod.unit} available in stock (Required: ${totalReqQty} ${prod.unit}).`, 'error');
+        return;
+      }
+    }
+
+    // Calculate total cost price from components
+    const componentCost = comboItems.reduce((acc, ci) => {
+      const p = products.find(prod => prod.id === ci.product_id);
+      return acc + (p ? p.purchase_price * ci.qty : 0);
+    }, 0);
+
+    const costPrice = formPurchasePrice !== '' && !isNaN(Number(formPurchasePrice)) ? Number(formPurchasePrice) : componentCost;
+    const sellPrice = formSellingPrice !== '' && !isNaN(Number(formSellingPrice)) ? Number(formSellingPrice) : componentCost;
+    const mrpVal = formMrp !== '' && !isNaN(Number(formMrp)) ? Number(formMrp) : sellPrice * 1.2;
+
+    try {
+      if (editingCombo) {
+        dbStore.updateComboBox(editingCombo.id, {
+          name: formName.trim(),
+          sku: formSku.trim(),
+          barcode: formBarcode.trim(),
+          category_id: formCategory,
+          brand: formBrand.trim(),
+          unit: formUnit.trim() || 'Box',
+          gst_rate: Number(formGst),
+          purchase_price: costPrice,
+          selling_price: sellPrice,
+          mrp: mrpVal,
+          opening_stock: openingStockVal,
+          current_stock: openingStockVal,
+          image_url: formImage.trim() || 'https://images.unsplash.com/photo-1513201099705-a9746e1e201f?auto=format&fit=crop&w=400&q=80',
+          description: formDescription.trim(),
+          active: formActive,
+          combo_items: comboItems
+        }, user.name);
+
+        triggerToast(`Combo Box "${formName}" updated successfully.`, 'success');
+        setSelectedType('Combo');
+      } else {
+        dbStore.createComboBox({
+          name: formName.trim(),
+          sku: formSku.trim(),
+          barcode: formBarcode.trim(),
+          qr_code: `${formSku.trim()}-QR`,
+          category_id: formCategory,
+          brand: formBrand.trim(),
+          unit: formUnit.trim() || 'Box',
+          hsn_code: formHsn.trim() || '2106',
+          gst_rate: Number(formGst),
+          purchase_price: costPrice,
+          selling_price: sellPrice,
+          mrp: mrpVal,
+          opening_stock: openingStockVal,
+          minimum_stock: Number(formMinStock) || 2,
+          maximum_stock: Number(formMaxStock) || 50,
+          image_url: formImage.trim() || 'https://images.unsplash.com/photo-1513201099705-a9746e1e201f?auto=format&fit=crop&w=400&q=80',
+          description: formDescription.trim(),
+          active: formActive,
+          business_id: businessId,
+          combo_items: comboItems
+        }, user.name);
+
+        triggerToast(`New Combo Box "${formName}" created and added to catalog.`, 'success');
+        setSelectedType('Combo');
+      }
+
+      setProducts(dbStore.getProducts(businessId));
+      setSelectedType('Combo');
+      setIsComboModalOpen(false);
+    } catch (err: any) {
+      triggerToast(err.message || 'Failed to save Combo Box', 'error');
+    }
+  };
+
+  // Pack Combo Action
+  const handlePackComboSubmit = () => {
+    if (!packingCombo) return;
+    setPackError(null);
+
+    const result = dbStore.packCombo(businessId, packingCombo.id, packQty, user.name);
+    if (!result.success) {
+      setPackError({
+        message: result.error || 'Failed to pack combo box.',
+        missingItems: result.missingItems
+      });
+      triggerToast(result.error || 'Insufficient stock to pack combo.', 'error');
+      return;
+    }
+
+    triggerToast(`Successfully packed ${packQty} units of "${packingCombo.name}". Component stocks updated.`, 'success');
+    setProducts(dbStore.getProducts(businessId));
+    setIsPackModalOpen(false);
+    setPackingCombo(null);
+  };
+
+  // Unpack / Break Combo Action
+  const handleBreakComboSubmit = () => {
+    if (!breakingCombo) return;
+
+    const result = dbStore.breakCombo(businessId, breakingCombo.id, breakQty, user.name, breakReason);
+    if (!result.success) {
+      triggerToast(result.error || 'Failed to break combo box.', 'error');
+      return;
+    }
+
+    triggerToast(`Successfully unpacked ${breakQty} units of "${breakingCombo.name}". Components returned to loose inventory.`, 'success');
+    setProducts(dbStore.getProducts(businessId));
+    setIsBreakModalOpen(false);
+    setBreakingCombo(null);
   };
 
   const handleSaveProduct = (e: React.FormEvent) => {
@@ -198,12 +451,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         dbStore.logActivity(user.id, user.name, user.role, 'Update Product', `Updated product metadata for SKU: ${formSku}`, businessId);
         triggerToast('Product details updated successfully.', 'success');
       } else {
-        // Create product
         dbStore.createProduct({
           name: formName.trim(),
           sku: formSku.trim(),
           barcode: formBarcode.trim(),
-          qr_code: `${formSku}-QR`,
+          qr_code: `${formSku.trim()}-QR`,
           category_id: formCategory,
           brand: formBrand.trim(),
           unit: formUnit,
@@ -212,166 +464,49 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           purchase_price: Number(formPurchasePrice),
           selling_price: Number(formSellingPrice),
           mrp: Number(formMrp),
-          opening_stock: Number(formOpeningStock),
-          minimum_stock: Number(formMinStock),
-          maximum_stock: Number(formMaxStock),
+          opening_stock: Number(formOpeningStock) || 0,
+          minimum_stock: Number(formMinStock) || 5,
+          maximum_stock: Number(formMaxStock) || 100,
           image_url: formImage.trim() || getAutoImage(formName.trim()),
           description: formDescription.trim(),
           active: formActive,
           business_id: businessId
         });
 
-        dbStore.logActivity(user.id, user.name, user.role, 'Create Product', `Added new product SKU: ${formSku} named: ${formName}`, businessId);
-        triggerToast('Product registered in catalog successfully.', 'success');
+        dbStore.logActivity(user.id, user.name, user.role, 'Create Product', `Created new SKU: ${formSku}`, businessId);
+        triggerToast('New product added to inventory catalog.', 'success');
+        setSelectedType('Product');
       }
 
       setProducts(dbStore.getProducts(businessId));
       setIsModalOpen(false);
       resetForm();
-    } catch (err: any) {
-      triggerToast(err.message || 'Error occurred.', 'error');
-    }
-  };
-
-  const handleDeleteProduct = (id: string, name: string) => {
-    if (user.role === 'Viewer') {
-      triggerToast('Unauthorized: Viewer accounts cannot modify inventory.', 'error');
-      return;
-    }
-
-    if (window.confirm(`Are you sure you want to delete "${name}" from catalog?`)) {
-      dbStore.deleteProduct(id);
-      dbStore.logActivity(user.id, user.name, user.role, 'Delete Product', `Deleted catalog item: ${name}`, businessId);
-      triggerToast('Product deleted from database.', 'success');
-      setProducts(dbStore.getProducts(businessId));
-    }
-  };
-
-  // Generate SKU / Barcode randomizer helpers
-  const handleAutoGenerateCodes = () => {
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const prefix = dbStore.getSettings(businessId).invoice_prefix || 'ERP-';
-    
-    setFormSku(`${prefix}PROD-${randomSuffix}`);
-    setFormBarcode(`890${Math.floor(1000000000 + Math.random() * 9000000000)}`);
-    triggerToast('Randomized unique SKU & EAN Barcode identifiers generated.', 'info');
-  };
-
-  // Excel Bulk Export simulation
-  const handleBulkExport = () => {
-    dbStore.logActivity(user.id, user.name, user.role, 'Export Excel', 'Bulk exported entire product catalog', businessId);
-    
-    const headers = ['SKU', 'Product Name', 'Barcode', 'Brand', 'Unit', 'Purchase Price', 'Selling Price', 'Current Stock'];
-    const rows = filteredProducts.map(p => [
-      p.sku,
-      p.name,
-      p.barcode,
-      p.brand || '',
-      p.unit,
-      p.purchase_price,
-      p.selling_price,
-      p.current_stock
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' 
-      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `catalog_export_${businessId}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    triggerToast('Bulk product list exported to CSV sheet format.', 'success');
-  };
-
-  // Excel Bulk Import simulation
-  const handleTriggerBulkImport = () => {
-    // Add 3 beautiful tech/groceries products
-    const initialLen = products.length;
-    const isTech = businessId === 'b1111111-1111-1111-1111-111111111111';
-
-    try {
-      if (isTech) {
-        dbStore.createProduct({
-          name: 'Quantum Wireless Mouse v2',
-          sku: 'ZTL-ACC-091',
-          barcode: '4512938475999',
-          qr_code: 'ZTL-ACC-091-QR',
-          category_id: categories[0]?.id || '11111111-2222-4333-8444-000000000001',
-          brand: 'SonicAura',
-          unit: 'Pcs',
-          hsn_code: '84716060',
-          gst_rate: 18,
-          purchase_price: 1500,
-          selling_price: 2999,
-          mrp: 3499,
-          opening_stock: 40,
-          minimum_stock: 5,
-          maximum_stock: 200,
-          image_url: 'https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7?w=300&q=80',
-          description: 'Ergonomic multi-device mouse with adjustable DPI levels and silent buttons.',
-          active: true,
-          business_id: businessId
-        });
-        dbStore.createProduct({
-          name: 'PixelView Portable Monitor 15.6',
-          sku: 'ZTL-SMP-008',
-          barcode: '4512938475888',
-          qr_code: 'ZTL-SMP-008-QR',
-          category_id: categories[0]?.id || '11111111-2222-4333-8444-000000000001',
-          brand: 'AeroCorp',
-          unit: 'Pcs',
-          hsn_code: '85285200',
-          gst_rate: 18,
-          purchase_price: 9500,
-          selling_price: 14999,
-          mrp: 17999,
-          opening_stock: 15,
-          minimum_stock: 3,
-          maximum_stock: 50,
-          image_url: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=300&q=80',
-          description: 'Ultra-thin portable screen with HDMI and USB-C inputs, full HD resolution.',
-          active: true,
-          business_id: businessId
-        });
-      } else {
-        dbStore.createProduct({
-          name: 'Whole Grain Wheat Flour 10kg',
-          sku: 'CFG-GRA-099',
-          barcode: '8901234567103',
-          qr_code: 'CFG-GRA-099-QR',
-          category_id: 'cat2_2',
-          brand: 'DeccanFields',
-          unit: 'Bags',
-          hsn_code: '11010000',
-          gst_rate: 5,
-          purchase_price: 310,
-          selling_price: 450,
-          mrp: 499,
-          opening_stock: 80,
-          minimum_stock: 15,
-          maximum_stock: 300,
-          image_url: 'https://images.unsplash.com/photo-1574316071802-0d684efa7bf5?w=300&q=80',
-          description: 'Premium quality organic whole wheat atta ground in traditional stone chakkis.',
-          active: true,
-          business_id: businessId
-        });
-      }
-
-      dbStore.logActivity(user.id, user.name, user.role, 'Bulk Import', 'Uploaded sheet with bulk product data', businessId);
-      triggerToast('Bulk import sheet processed. 2 new product rows appended.', 'success');
-      setProducts(dbStore.getProducts(businessId));
-      setIsBulkImportOpen(false);
     } catch (e: any) {
-      triggerToast(e.message || 'Import failed.', 'error');
+      triggerToast(e.message || 'Operation failed.', 'error');
     }
   };
 
+  const handleBulkExport = () => {
+    try {
+      const csvHeader = "ID,Name,SKU,Barcode,Category,PurchasePrice,SellingPrice,CurrentStock,IsCombo\n";
+      const csvRows = products.map(p => 
+        `"${p.id}","${p.name}","${p.sku}","${p.barcode}","${p.category_id}",${p.purchase_price},${p.selling_price},${p.current_stock},${isComboProduct(p) ? 'Yes' : 'No'}`
+      ).join("\n");
 
-  // Barcode Printing Action
+      const blob = new Blob([csvHeader + csvRows], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `inventory_catalog_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+
+      dbStore.logActivity(user.id, user.name, user.role, 'Export Catalog', 'Exported product inventory catalog to CSV', businessId);
+      triggerToast('Product catalog exported as CSV file.', 'success');
+    } catch (e) {
+      triggerToast('Export failed.', 'error');
+    }
+  };
+
   const handlePrintBarcodeSubmit = () => {
     triggerToast(`Sent barcode template containing ${printLabelCount} sheets of "${printingBarcodeProduct?.name}" to print queue.`, 'success');
     dbStore.logActivity(user.id, user.name, user.role, 'Print Barcode', `Printed ${printLabelCount} barcodes for SKU: ${printingBarcodeProduct?.sku}`, businessId);
@@ -394,42 +529,48 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       (selectedStockStatus === 'Out' && p.current_stock === 0) ||
       (selectedStockStatus === 'Healthy' && p.current_stock > lowLimit);
 
-    return matchesSearch && matchesCategory && matchesStock;
+    const matchesType = 
+      selectedType === 'All' ||
+      (selectedType === 'Product' && !isComboProduct(p)) ||
+      (selectedType === 'Combo' && isComboProduct(p));
+
+    return matchesSearch && matchesCategory && matchesStock && matchesType;
   });
 
   return (
     <div className="space-y-4 max-w-full pb-8 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="product-catalog-root">
       <PageHeader
         title="Product Catalog & Barcode Master"
-        subtitle="Track and manage inventory items, pricing margins, SKU catalogs, and barcode rendering."
+        subtitle="Manage individual products, create Combo Box bundles, track packed vs virtual stock, and print barcodes."
         icon={Package}
         rightContent={
-          <><div className="flex flex-nowrap overflow-x-auto md:flex-wrap gap-2 hide-scrollbar pb-1 sm:pb-0">
-          <button 
-            onClick={() => setIsBulkImportOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
-          >
-            <Upload size={16} className="text-indigo-600" />
-            <span className="hidden xs:inline">Import Excel</span>
-          </button>
-          <button 
-            onClick={handleBulkExport} 
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
-          >
-            <FileSpreadsheet size={16} className="text-emerald-600" />
-            <span className="hidden xs:inline">Export Catalog</span>
-          </button>
-          {user.role !== 'Viewer' && (
+          <div className="flex flex-nowrap overflow-x-auto md:flex-wrap gap-2 hide-scrollbar pb-1 sm:pb-0">
             <button 
-              onClick={handleOpenAddModal} 
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
+              onClick={handleBulkExport} 
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-xs transition-colors whitespace-nowrap shrink-0"
             >
-              <Plus size={16} />
-              <span className="hidden xs:inline">Add Product</span>
+              <FileSpreadsheet size={16} className="text-emerald-600" />
+              <span className="hidden xs:inline">Export Catalog</span>
             </button>
-          )}
-        </div>
-          </>
+            {user.role !== 'Viewer' && (
+              <>
+                <button 
+                  onClick={handleOpenAddComboModal} 
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap shrink-0 border border-purple-400/30"
+                >
+                  <Boxes size={16} />
+                  <span>+ Create Combo Box</span>
+                </button>
+                <button 
+                  onClick={handleOpenAddModal} 
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-xs transition-colors whitespace-nowrap shrink-0"
+                >
+                  <Plus size={16} />
+                  <span className="hidden xs:inline">Add Product</span>
+                </button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -437,49 +578,40 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       
       {/* Advanced Metrics Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-slate-400 dark:hover:border-slate-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md transition-all flex flex-col justify-between gap-1">
           <div className="flex items-center gap-1.5">
-            <div className="p-1.5 bg-slate-500/10 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+            <div className="p-1.5 bg-slate-500/10 text-slate-600 dark:text-slate-400 rounded-lg shrink-0">
               <Package size={14} />
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL PRODUCTS</span>
           </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Products in catalog</span>
-          </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
-              {products.length}
+              {products.filter(p => !isComboProduct(p)).length}
             </span>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md transition-all flex flex-col justify-between gap-1">
           <div className="flex items-center gap-1.5">
-            <div className="p-1.5 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
-              <Layers size={14} />
+            <div className="p-1.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-lg shrink-0">
+              <Boxes size={14} />
             </div>
-            <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">CATEGORIES</span>
-          </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Active category groups</span>
+            <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">COMBO BOX BUNDLES</span>
           </div>
           <div className="text-right mt-1">
-            <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
-              {categories.length}
+            <span className="text-lg sm:text-xl font-black text-purple-600 dark:text-purple-400 tracking-tight">
+              {products.filter(p => isComboProduct(p)).length}
             </span>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md transition-all flex flex-col justify-between gap-1">
           <div className="flex items-center gap-1.5">
-            <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+            <div className="p-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg shrink-0">
               <FileSpreadsheet size={14} />
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">STOCK VALUATION</span>
-          </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">At purchase cost levels</span>
           </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -488,15 +620,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md hover:border-rose-400 dark:hover:border-rose-600 transition-all cursor-default group flex flex-col justify-between gap-1">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md transition-all flex flex-col justify-between gap-1">
           <div className="flex items-center gap-1.5">
-            <div className="p-1.5 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+            <div className="p-1.5 bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-lg shrink-0">
               <AlertTriangle size={14} />
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">LOW STOCK ALERTS</span>
-          </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Items below par level</span>
           </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -506,29 +635,51 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         </div>
       </div>
 
-
+      {/* Filter Bar */}
       <div className="flex flex-col md:flex-row items-center gap-2">
-        <div className="flex-1 flex items-center bg-white dark:bg-slate-900 border border-black dark:border-white rounded-full px-3 py-2 shadow-xs focus-within:ring-2 focus-within:ring-indigo-500 transition-shadow w-full">
+        <div className="flex-1 flex items-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-full px-3 py-2 shadow-xs focus-within:ring-2 focus-within:ring-indigo-500 transition-shadow w-full">
           <Search size={16} className="text-slate-400 mr-2 shrink-0" />
           <input 
             type="text" 
-            placeholder="Search by product name, SKU, barcode..." 
+            placeholder="Search products or combo bundles by name, SKU, barcode..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-transparent text-[11px] sm:text-xs outline-hidden text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
           />
           {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+            <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600">
               <X size={14} />
             </button>
           )}
         </div>
         
         <div className="flex gap-2 w-full md:w-auto">
+          {/* Item Type Filter Toggle */}
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-full border border-slate-200 dark:border-slate-700 shrink-0">
+            <button
+              onClick={() => setSelectedType('All')}
+              className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all ${selectedType === 'All' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-xs' : 'text-slate-600 dark:text-slate-400'}`}
+            >
+              All Items
+            </button>
+            <button
+              onClick={() => setSelectedType('Product')}
+              className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all ${selectedType === 'Product' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-xs' : 'text-slate-600 dark:text-slate-400'}`}
+            >
+              Regular
+            </button>
+            <button
+              onClick={() => setSelectedType('Combo')}
+              className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all ${selectedType === 'Combo' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400'}`}
+            >
+              Combo Boxes 📦
+            </button>
+          </div>
+
           <select 
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="flex-1 md:w-40 bg-white dark:bg-slate-900 border border-black dark:border-white text-[11px] rounded-full px-3 py-2 font-bold cursor-pointer outline-hidden"
+            className="flex-1 md:w-36 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-[11px] rounded-full px-3 py-1.5 font-bold cursor-pointer outline-hidden"
           >
             <option value="All">All Categories</option>
             {categories.map(c => (
@@ -539,7 +690,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <select 
             value={selectedStockStatus}
             onChange={(e) => setSelectedStockStatus(e.target.value)}
-            className="flex-1 md:w-36 bg-white dark:bg-slate-900 border border-black dark:border-white text-[11px] rounded-full px-3 py-2 font-bold cursor-pointer outline-hidden"
+            className="flex-1 md:w-32 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-[11px] rounded-full px-3 py-1.5 font-bold cursor-pointer outline-hidden"
           >
             <option value="All">All Stock</option>
             <option value="Healthy">Healthy</option>
@@ -549,67 +700,78 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         </div>
       </div>
 
-      {/* Compact List View */}
-      <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5">
+      {/* Catalog Table View */}
+      <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs mt-3">
         <table className="w-full text-left text-[11px] whitespace-nowrap">
-          <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[11px]">
+          <thead className="bg-slate-800 text-white font-bold uppercase tracking-wider border-b border-slate-700 text-[10px]">
             <tr>
-              <th className="py-2.5 px-4 w-12">Img</th>
-              <th className="py-2.5 px-4">Item Details</th>
-              <th className="py-2.5 px-4">Category</th>
-              <th className="py-2.5 px-4">Pricing</th>
-              <th className="py-2.5 px-4">Stock</th>
-              <th className="py-2.5 px-4 text-right">Actions</th>
+              <th className="py-2.5 px-3 w-12">Img</th>
+              <th className="py-2.5 px-3">Item Details</th>
+              <th className="py-2.5 px-3">Type</th>
+              <th className="py-2.5 px-3">Pricing</th>
+              <th className="py-2.5 px-3">Stock State</th>
+              <th className="py-2.5 px-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-black dark:divide-white bg-white dark:bg-slate-900 text-[11px]">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 text-[11px]">
             {filteredProducts.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-8 text-center">
-                  <div className="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400">
-                    <Package size={24} className="mb-2 opacity-50" />
-                    <p className="font-bold text-xs">No products found.</p>
-                    <p className="text-[10px]">Try adjusting filters or add a new product.</p>
+                  <div className="flex flex-col items-center justify-center text-slate-500">
+                    <Package size={28} className="mb-2 opacity-50" />
+                    <p className="font-bold text-xs">No matching items found.</p>
                   </div>
                 </td>
               </tr>
             ) : (
-              filteredProducts.map((prod, idx) => {
+              filteredProducts.map((prod) => {
                 const category = categories.find(c => c.id === prod.category_id);
                 const isOut = prod.current_stock === 0;
                 const lowLimit = dbStore.getSettings(businessId).low_stock_limit || 10;
                 const isLow = prod.current_stock > 0 && prod.current_stock <= lowLimit;
-                
-                const displayImage = (!prod.image_url || prod.image_url.includes('1544244015-0df4b3ffc6b0'))
-                  ? `https://loremflickr.com/400/400/${encodeURIComponent(prod.name.toLowerCase().split(' ')[0])}?lock=${prod.id.length}`
-                  : prod.image_url;
 
                 return (
-                  <tr key={`${prod.id}-${idx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                  <tr key={prod.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                     <td className="py-2 px-3">
-                      <div className="w-9 h-9 rounded overflow-hidden border border-slate-200 dark:border-slate-700 relative group">
-                        <img src={displayImage} alt={prod.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform" referrerPolicy="no-referrer" />
+                      <div className="w-9 h-9 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 relative">
+                        <img src={prod.image_url} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       </div>
                     </td>
                     <td className="py-2 px-3">
                       <div className="flex flex-col">
-                        <span className="font-bold text-slate-800 dark:text-slate-200 line-clamp-1 text-[12px]">{prod.name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-slate-900 dark:text-white text-[12px]">{prod.name}</span>
+                          {isComboProduct(prod) && (
+                            <span className="px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 rounded border border-purple-300 dark:border-purple-700">
+                              Combo Bundle
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-[9px] mt-0.5">
-                          <span className="font-mono text-indigo-500/80 font-bold tracking-widest">{prod.sku}</span>
-                          <span className="text-slate-400">|</span>
+                          <span className="font-mono text-indigo-600 font-bold tracking-widest">{prod.sku}</span>
+                          <span className="text-slate-300">•</span>
                           <span className="font-mono text-slate-500">{prod.barcode}</span>
                         </div>
                       </div>
                     </td>
                     <td className="py-2 px-3">
-                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
-                        {category?.name || 'Uncategorized'}
-                      </span>
+                      {isComboProduct(prod) ? (
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-black text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                            <Boxes size={12} /> {prod.combo_items?.length || 0} Component Items
+                          </span>
+                          <span className="text-[9px] text-slate-400">Packed Goods</span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+                          {category?.name || 'Standard'}
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 px-3">
                       <div className="flex flex-col">
                         <span className="font-black text-slate-900 dark:text-white text-[12px]">₹{prod.selling_price.toLocaleString()}</span>
-                        <span className="text-[9px] text-slate-500 font-bold">Cost: ₹{prod.purchase_price.toLocaleString()}</span>
+                        <span className="text-[9px] text-slate-500 font-semibold">Cost: ₹{prod.purchase_price.toLocaleString()}</span>
                       </div>
                     </td>
                     <td className="py-2 px-3">
@@ -620,51 +782,94 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                           </span>
                           <span className="text-[9px] text-slate-500 font-bold">{prod.unit}</span>
                         </div>
-                        {(isOut || isLow) && (
-                          <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${isOut ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
-                            {isOut ? 'Out of Stock' : 'Low Stock'}
+                        {isComboProduct(prod) && (
+                          <span className="text-[8px] font-bold text-purple-600 uppercase">
+                            Packed Stock
                           </span>
                         )}
                       </div>
                     </td>
                     <td className="py-2 px-3 text-right">
                       <div className="flex justify-end gap-1.5 items-center">
-                        <button
-                          onClick={() => {
-                            setPrintingBarcodeProduct(prod);
-                            setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
-                          }}
-                          className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-900/30 rounded transition-colors border border-slate-200 dark:border-slate-700"
-                          title="Print Barcode"
-                        >
-                          <Barcode size={14} />
-                        </button>
+                        {isComboProduct(prod) ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPackingCombo(prod);
+                                setPackQty(1);
+                                setPackError(null);
+                                setIsPackModalOpen(true);
+                              }}
+                              className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-[10px] font-bold flex items-center gap-1 transition-colors shadow-xs"
+                              title="Pack Combo in advance"
+                            >
+                              <PackagePlus size={12} />
+                              <span>Pack</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBreakingCombo(prod);
+                                setBreakQty(1);
+                                setIsBreakModalOpen(true);
+                              }}
+                              className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold flex items-center gap-1 transition-colors shadow-xs"
+                              title="Unpack / Break combo into components"
+                            >
+                              <RefreshCw size={12} />
+                              <span>Unpack</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewingCombo(prod);
+                                setIsAuditModalOpen(true);
+                              }}
+                              className="p-2 text-slate-600 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 shadow-xs active:scale-95"
+                              title="View Bundle Details & Audit Trail"
+                            >
+                              <History size={15} />
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPrintingBarcodeProduct(prod);
+                              setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
+                            }}
+                            className="p-2 text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 shadow-xs active:scale-95"
+                            title="Print Barcode"
+                          >
+                            <Barcode size={15} />
+                          </button>
+                        )}
                         
                         {user.role !== 'Viewer' && (
                           <>
                             <button
-                              onClick={() => handleOpenEditModal(prod)}
-                              className="p-1.5 text-slate-500 hover:text-sky-600 bg-slate-50 hover:bg-sky-50 dark:bg-slate-800 dark:hover:bg-sky-900/30 rounded transition-colors border border-slate-200 dark:border-slate-700"
-                              title="Edit"
+                              type="button"
+                              onClick={() => isComboProduct(prod) ? handleOpenEditComboModal(prod) : handleOpenEditModal(prod)}
+                              className="p-2 text-slate-500 hover:text-sky-600 bg-slate-50 hover:bg-sky-50 rounded-lg transition-colors border border-slate-200 shadow-xs active:scale-95"
+                              title={isComboProduct(prod) ? "Edit Combo Box" : "Edit Product"}
                             >
-                              <Edit size={14} />
+                              <Edit size={15} />
                             </button>
                             <button
-                              onClick={() => {
-                                if (window.confirm(`Are you sure you want to delete ${prod.name}?`)) {
-                                  try {
-                                    dbStore.deleteProduct(prod.id);
-                                    setProducts(dbStore.getProducts(businessId));
-                                    triggerToast('Product deleted successfully', 'success');
-                                  } catch (err: any) {
-                                    triggerToast(err.message, 'error');
-                                  }
-                                }
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setProductToDelete(prod);
+                                setIsDeleteConfirmOpen(true);
                               }}
-                              className="p-1.5 text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-900/30 rounded transition-colors border border-slate-200 dark:border-slate-700"
-                              title="Delete"
+                              className="p-2 text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 rounded-lg transition-colors border border-slate-200 shadow-xs active:scale-95"
+                              title="Delete Item"
                             >
-                              <Trash2 size={14} />
+                              <Trash2 size={15} />
                             </button>
                           </>
                         )}
@@ -679,13 +884,741 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       </div>
       </div>
 
+      {/* ==================== CREATE / EDIT COMBO BOX MODAL ==================== */}
+      {isComboModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in duration-150 border border-slate-200 dark:border-slate-800 my-8">
+            <div className="bg-gradient-to-r from-purple-700 to-indigo-700 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Boxes size={20} />
+                <h2 className="text-sm font-bold uppercase tracking-wider">
+                  {editingCombo ? 'Edit Combo Box Bundle' : 'Create New Combo Box (Product Bundle)'}
+                </h2>
+              </div>
+              <button onClick={() => setIsComboModalOpen(false)} className="text-white/80 hover:text-white cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCombo} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+              {/* Section 1: Combo Master Details */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-3">
+                <h3 className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <Package size={14} className="text-purple-600" /> Combo Box Master Details
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Combo Name */}
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Combo Name *</label>
+                    <input 
+                      type="text"
+                      required
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                      placeholder="e.g. Festive Faral Hamper Box"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-bold rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* Category */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Category</label>
+                    <select 
+                      value={formCategory} 
+                      onChange={(e) => setFormCategory(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-bold rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                    >
+                      {categories.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* SKU */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">SKU Code *</label>
+                    <input 
+                      type="text"
+                      required
+                      value={formSku}
+                      onChange={(e) => setFormSku(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-mono rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* Barcode */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Barcode *</label>
+                    <input 
+                      type="text"
+                      required
+                      value={formBarcode}
+                      onChange={(e) => setFormBarcode(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-mono rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* Unit of Measure */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Unit of Measure *</label>
+                    <select 
+                      value={formUnit}
+                      onChange={(e) => setFormUnit(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-bold rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                    >
+                      <option value="Box">Box</option>
+                      <option value="Set">Set</option>
+                      <option value="Pkt">Pkt (Packet)</option>
+                      <option value="Pcs">Pcs (Pieces)</option>
+                      <option value="Kg">Kg (Kilogram)</option>
+                      <option value="Combo">Combo</option>
+                      <option value="Hamper">Hamper</option>
+                      <option value="Unit">Unit</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Price & Stock Fields Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
+                  {/* Purchase Price */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Purchase Price (₹)</label>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          const componentCost = comboItems.reduce((acc, ci) => {
+                            const p = products.find(prod => prod.id === ci.product_id);
+                            return acc + (p ? p.purchase_price * ci.qty : 0);
+                          }, 0);
+                          setFormPurchasePrice(componentCost);
+                        }}
+                        className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                        title="Auto-fill from component sum"
+                      >
+                        Auto Calc
+                      </button>
+                    </div>
+                    <input 
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formPurchasePrice}
+                      onChange={(e) => setFormPurchasePrice(e.target.value)}
+                      placeholder={comboItems.reduce((acc, ci) => {
+                        const p = products.find(prod => prod.id === ci.product_id);
+                        return acc + (p ? p.purchase_price * ci.qty : 0);
+                      }, 0).toString()}
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-bold text-amber-600 rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* Selling Price */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Selling Price (₹) *</label>
+                    <input 
+                      type="number"
+                      required
+                      min="0"
+                      step="0.01"
+                      value={formSellingPrice}
+                      onChange={(e) => setFormSellingPrice(e.target.value)}
+                      placeholder="e.g. 699"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-bold text-emerald-600 rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* MRP */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">MRP (₹)</label>
+                    <input 
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formMrp}
+                      onChange={(e) => setFormMrp(e.target.value)}
+                      placeholder={formSellingPrice ? (Number(formSellingPrice) * 1.2).toFixed(0) : 'e.g. 799'}
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-bold text-slate-700 dark:text-slate-300 rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* Opening Stock */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Opening Stock *</label>
+                    <input 
+                      type="number"
+                      min="0"
+                      value={formOpeningStock}
+                      onChange={(e) => setFormOpeningStock(e.target.value)}
+                      placeholder="e.g. 10"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-bold text-purple-600 rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Dropdown Product Selector & Bundle Components */}
+              <div className="border border-purple-200 dark:border-purple-900/50 bg-purple-50/40 dark:bg-purple-950/20 p-4 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-[11px] font-black uppercase tracking-wider text-purple-900 dark:text-purple-300 flex items-center gap-1.5">
+                      <Boxes size={14} /> Add Product to Combo Box (Select from Dropdown)
+                    </h3>
+                    <p className="text-[10px] text-slate-500">Choose a product from the dropdown list below and set quantity to include in this hamper bundle.</p>
+                  </div>
+
+                  <span className="text-[10px] font-bold bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full">
+                    {comboItems.length} Products Selected
+                  </span>
+                </div>
+
+                {/* Dropdown Product Quick-Add Bar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xs">
+                  <div className="flex-1 space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Select Available Product *</label>
+                    <select 
+                      value={selectedDropdownProdId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val) {
+                          const selectedProd = products.find(p => p.id === val);
+                          if (selectedProd && selectedProd.current_stock <= 0) {
+                            triggerToast(`"${selectedProd.name}" is OUT OF STOCK! (Available stock: 0 ${selectedProd.unit})`, 'error');
+                            return;
+                          }
+                        }
+                        setSelectedDropdownProdId(val);
+                      }}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden text-slate-800 dark:text-slate-100"
+                    >
+                      <option value="">-- Select Regular Product from Dropdown --</option>
+                      {products.filter(p => !isComboProduct(p)).map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} (SKU: {p.sku}) — ₹{p.selling_price} | Available Stock: {p.current_stock} {p.unit}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="w-full sm:w-24 space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Quantity *</label>
+                    <input 
+                      type="number"
+                      min="1"
+                      value={selectedDropdownQty}
+                      onChange={(e) => setSelectedDropdownQty(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold text-center rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+
+                  <div className="sm:self-end pt-1 sm:pt-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!selectedDropdownProdId) {
+                          triggerToast('Please select a product from the dropdown list', 'warning');
+                          return;
+                        }
+
+                        const selProd = products.find(p => p.id === selectedDropdownProdId);
+                        if (!selProd) {
+                          triggerToast('Selected product not found', 'error');
+                          return;
+                        }
+
+                        if (selProd.current_stock <= 0) {
+                          triggerToast(`Cannot add "${selProd.name}" — Product is OUT OF STOCK! (Available stock: 0 ${selProd.unit})`, 'error');
+                          return;
+                        }
+
+                        const existingIndex = comboItems.findIndex(ci => ci.product_id === selectedDropdownProdId);
+                        const existingQty = existingIndex >= 0 ? comboItems[existingIndex].qty : 0;
+                        const totalRequested = existingQty + selectedDropdownQty;
+
+                        if (totalRequested > selProd.current_stock) {
+                          triggerToast(`Cannot add ${selectedDropdownQty} units. Only ${selProd.current_stock} ${selProd.unit} available in stock for "${selProd.name}"!`, 'error');
+                          return;
+                        }
+
+                        if (existingIndex >= 0) {
+                          const updated = [...comboItems];
+                          updated[existingIndex].qty = totalRequested;
+                          setComboItems(updated);
+                          triggerToast(`Updated "${selProd.name}" quantity to ${totalRequested}`, 'info');
+                        } else {
+                          setComboItems([...comboItems, { product_id: selectedDropdownProdId, qty: selectedDropdownQty }]);
+                          triggerToast(`Added ${selectedDropdownQty} x "${selProd.name}" to combo bundle`, 'success');
+                        }
+                        setSelectedDropdownProdId('');
+                        setSelectedDropdownQty(1);
+                      }}
+                      className="w-full sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors shrink-0"
+                    >
+                      <Plus size={14} /> Add to Combo
+                    </button>
+                  </div>
+                </div>
+
+                {/* Selected Combo Products List */}
+                <div className="space-y-2 pt-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      Bundle Component Items ({comboItems.length})
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const avail = products.filter(p => !isComboProduct(p) && p.current_stock > 0 && !comboItems.some(ci => ci.product_id === p.id));
+                        if (avail.length === 0) {
+                          triggerToast('No in-stock regular products available to add.', 'warning');
+                          return;
+                        }
+                        setComboItems([...comboItems, { product_id: avail[0].id, qty: 1 }]);
+                      }}
+                      className="text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <Plus size={12} /> Add New Row
+                    </button>
+                  </div>
+
+                  {comboItems.length === 0 ? (
+                    <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-center text-[11px] text-slate-500">
+                      No products added to combo yet. Select a product from the dropdown above and click "+ Add to Combo".
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {comboItems.map((ci, idx) => {
+                        const prod = products.find(p => p.id === ci.product_id);
+                        const itemCost = prod ? prod.purchase_price * ci.qty : 0;
+                        const itemPrice = prod ? prod.selling_price * ci.qty : 0;
+
+                        return (
+                          <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                            <div className="flex-1 min-w-0 flex items-center gap-2">
+                              <span className="w-5 h-5 flex items-center justify-center rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-[10px] font-black shrink-0">
+                                {idx + 1}
+                              </span>
+
+                              {/* Dropdown to change product */}
+                              <select
+                                value={ci.product_id}
+                                onChange={(e) => {
+                                  const targetId = e.target.value;
+                                  const targetProd = products.find(p => p.id === targetId);
+                                  if (targetProd && targetProd.current_stock <= 0) {
+                                    triggerToast(`"${targetProd.name}" is OUT OF STOCK! (Available stock: 0 ${targetProd.unit})`, 'error');
+                                    return;
+                                  }
+                                  if (targetProd && ci.qty > targetProd.current_stock) {
+                                    triggerToast(`Quantity adjusted to available stock (${targetProd.current_stock} ${targetProd.unit}) for "${targetProd.name}".`, 'warning');
+                                    const updated = [...comboItems];
+                                    updated[idx].product_id = targetId;
+                                    updated[idx].qty = targetProd.current_stock;
+                                    setComboItems(updated);
+                                    return;
+                                  }
+                                  const updated = [...comboItems];
+                                  updated[idx].product_id = targetId;
+                                  setComboItems(updated);
+                                }}
+                                className="w-full bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold rounded-lg border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-hidden truncate"
+                              >
+                                {products.filter(p => !isComboProduct(p)).map(p => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name} (SKU: {p.sku} | Available Stock: {p.current_stock} {p.unit} | Cost: ₹{p.purchase_price})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="flex items-center gap-3 justify-between sm:justify-end shrink-0">
+                              <div className="text-[10px] text-slate-500 font-mono">
+                                Cost: <span className="text-amber-600 font-bold">₹{itemCost}</span>
+                                <span className="mx-1">•</span>
+                                Sell: <span className="text-emerald-600 font-bold">₹{itemPrice}</span>
+                              </div>
+
+                              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">
+                                <span className="text-[10px] text-slate-500 font-bold">Qty:</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={ci.qty}
+                                  onChange={(e) => {
+                                    const newQty = parseInt(e.target.value) || 1;
+                                    if (prod && newQty > prod.current_stock) {
+                                      triggerToast(`Cannot set ${newQty} units. Only ${prod.current_stock} ${prod.unit} available in stock for "${prod.name}"!`, 'error');
+                                      const updated = [...comboItems];
+                                      updated[idx].qty = Math.max(1, prod.current_stock);
+                                      setComboItems(updated);
+                                      return;
+                                    }
+                                    const updated = [...comboItems];
+                                    updated[idx].qty = Math.max(1, newQty);
+                                    setComboItems(updated);
+                                  }}
+                                  className="w-10 text-center font-bold text-[11px] bg-transparent outline-hidden text-slate-800 dark:text-slate-100"
+                                />
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setComboItems(comboItems.filter((_, i) => i !== idx));
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors cursor-pointer"
+                                title="Remove from combo"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Real-time Component Cost Summary */}
+                  {comboItems.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-between pt-2.5 border-t border-purple-200 dark:border-purple-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 gap-2">
+                      <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-md border border-amber-200 dark:border-amber-800">
+                        <span>Component Cost Total:</span>
+                        <span className="text-amber-700 dark:text-amber-400 font-black">₹{comboItems.reduce((sum, ci) => {
+                          const p = products.find(prod => prod.id === ci.product_id);
+                          return sum + (p ? p.purchase_price * ci.qty : 0);
+                        }, 0).toLocaleString()}</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-md border border-emerald-200 dark:border-emerald-800">
+                        <span>Component Selling Total:</span>
+                        <span className="text-emerald-700 dark:text-emerald-400 font-black">₹{comboItems.reduce((sum, ci) => {
+                          const p = products.find(prod => prod.id === ci.product_id);
+                          return sum + (p ? p.selling_price * ci.qty : 0);
+                        }, 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Bundle Description</label>
+                <textarea
+                  rows={2}
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="Details of what is included inside this festive hamper box..."
+                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                />
+              </div>
+
+              {/* Footer Buttons */}
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsComboModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold hover:bg-slate-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg text-[11px] font-bold hover:bg-purple-700 cursor-pointer shadow-md"
+                >
+                  Save Combo Box
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== PACK COMBO MODAL ==================== */}
+      {isPackModalOpen && packingCombo && (
+        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in duration-150 border border-slate-200 dark:border-slate-800">
+            <div className="bg-purple-700 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <PackagePlus size={18} />
+                <h2 className="text-xs font-bold uppercase tracking-wider">Pack Combo Boxes (Finished Goods)</h2>
+              </div>
+              <button onClick={() => setIsPackModalOpen(false)} className="text-white/80 hover:text-white cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="p-3 bg-purple-50 dark:bg-purple-950/30 rounded-xl border border-purple-200 dark:border-purple-800">
+                <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase">Combo Box Template</span>
+                <p className="text-sm font-black text-slate-900 dark:text-white">{packingCombo.name}</p>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">SKU: {packingCombo.sku} | Current Packed Stock: {packingCombo.current_stock} Box(es)</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Quantity to Pack</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={packQty}
+                  onChange={(e) => {
+                    setPackQty(Math.max(1, parseInt(e.target.value) || 1));
+                    setPackError(null);
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-sm font-bold rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                />
+              </div>
+
+              {/* Component Stock Check Preview */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Component Stock Requirements:</span>
+                <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 divide-y divide-slate-200 dark:divide-slate-700 text-[11px]">
+                  {packingCombo.combo_items?.map((ci, idx) => {
+                    const prod = products.find(p => p.id === ci.product_id);
+                    const reqTotal = ci.qty * packQty;
+                    const avail = prod ? prod.current_stock : 0;
+                    const isEnough = avail >= reqTotal;
+
+                    return (
+                      <div key={idx} className="py-1.5 flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{prod?.name || 'Unknown'}</span>
+                          <span className="text-[9px] text-slate-400 block">{ci.qty} per box × {packQty} boxes = {reqTotal} required</span>
+                        </div>
+                        <div className="text-right">
+                          <span className={`font-black ${isEnough ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {avail} Available
+                          </span>
+                          {!isEnough && (
+                            <span className="text-[9px] font-bold text-rose-500 block">Short by {reqTotal - avail}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Insufficient Stock Alert */}
+              {packError && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-xl space-y-2 text-[11px]">
+                  <p className="font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                    <AlertTriangle size={14} /> {packError.message}
+                  </p>
+                  {packError.missingItems && (
+                    <table className="w-full text-[10px] mt-1 border-t border-rose-200 dark:border-rose-800 pt-1">
+                      <thead>
+                        <tr className="text-left font-bold text-rose-800 dark:text-rose-400">
+                          <th>Item</th>
+                          <th>Needed</th>
+                          <th>In Stock</th>
+                          <th>Missing</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {packError.missingItems.map((mi, idx) => (
+                          <tr key={idx}>
+                            <td className="font-bold">{mi.productName}</td>
+                            <td>{mi.required}</td>
+                            <td>{mi.available}</td>
+                            <td className="text-rose-600 font-bold">{mi.missing}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsPackModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold hover:bg-slate-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePackComboSubmit}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg text-[11px] font-bold hover:bg-purple-700 cursor-pointer shadow-md"
+                >
+                  Confirm & Pack Stock
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== UNPACK / BREAK COMBO MODAL ==================== */}
+      {isBreakModalOpen && breakingCombo && (
+        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in duration-150 border border-slate-200 dark:border-slate-800">
+            <div className="bg-amber-600 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RefreshCw size={18} />
+                <h2 className="text-xs font-bold uppercase tracking-wider">Unpack / Break Combo Box (Reverse Packing)</h2>
+              </div>
+              <button onClick={() => setIsBreakModalOpen(false)} className="text-white/80 hover:text-white cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800">
+                <span className="text-[10px] font-bold text-amber-600 uppercase">Selected Bundle</span>
+                <p className="text-sm font-black text-slate-900 dark:text-white">{breakingCombo.name}</p>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">Available Packed Stock: {breakingCombo.current_stock} Box(es)</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Quantity to Unpack/Break</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={breakingCombo.current_stock}
+                  value={breakQty}
+                  onChange={(e) => setBreakQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-sm font-bold rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Reason for Breakdown</label>
+                <input
+                  type="text"
+                  value={breakReason}
+                  onChange={(e) => setBreakReason(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl space-y-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Components to be returned to loose stock:</span>
+                <ul className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 space-y-0.5">
+                  {breakingCombo.combo_items?.map((ci, idx) => {
+                    const prod = products.find(p => p.id === ci.product_id);
+                    return (
+                      <li key={idx}>
+                        • +{ci.qty * breakQty} {prod?.unit || 'units'} of {prod?.name || 'Item'}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsBreakModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold hover:bg-slate-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBreakComboSubmit}
+                  className="px-4 py-2 bg-amber-600 text-white rounded-lg text-[11px] font-bold hover:bg-amber-700 cursor-pointer shadow-md"
+                >
+                  Confirm & Break Bundle
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== COMBO AUDIT TRAIL & DETAILS DRAWER ==================== */}
+      {isAuditModalOpen && viewingCombo && (
+        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in duration-150 border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <History size={18} className="text-purple-400" />
+                <h2 className="text-xs font-bold uppercase tracking-wider">Combo Box Audit Trail & Specifications</h2>
+              </div>
+              <button onClick={() => setIsAuditModalOpen(false)} className="text-white/80 hover:text-white cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Header Info */}
+              <div className="flex items-start gap-4 p-3 bg-purple-50 dark:bg-purple-950/30 rounded-xl border border-purple-200 dark:border-purple-800">
+                <img src={viewingCombo.image_url} alt={viewingCombo.name} className="w-14 h-14 object-cover rounded-lg border border-purple-300" />
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">{viewingCombo.name}</h3>
+                  <p className="text-[10px] text-slate-500 font-mono">SKU: {viewingCombo.sku} | Barcode: {viewingCombo.barcode}</p>
+                  <div className="flex gap-3 text-[11px] font-bold text-purple-700 dark:text-purple-300 mt-1">
+                    <span>Packed Goods Stock: {viewingCombo.current_stock} Box(es)</span>
+                    <span>Selling Price: ₹{viewingCombo.selling_price}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Component Specs Table */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-500">Component Items Mapping</h4>
+                <table className="w-full text-left text-[11px] bg-slate-50 dark:bg-slate-800/60 rounded-xl overflow-hidden">
+                  <thead className="bg-slate-200 dark:bg-slate-700 font-bold uppercase text-[9px] text-slate-700 dark:text-slate-200">
+                    <tr>
+                      <th className="p-2">Component Product</th>
+                      <th className="p-2">Qty per Combo</th>
+                      <th className="p-2">Current Loose Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                    {viewingCombo.combo_items?.map((ci, idx) => {
+                      const prod = products.find(p => p.id === ci.product_id);
+                      return (
+                        <tr key={idx}>
+                          <td className="p-2 font-bold">{prod?.name || 'Product'}</td>
+                          <td className="p-2 font-mono">x{ci.qty}</td>
+                          <td className="p-2 font-bold text-indigo-600">{prod?.current_stock} {prod?.unit}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Transaction Audit Logs */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-500">History & Audit Log</h4>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {dbStore.getComboLogs(businessId, viewingCombo.id).map((log) => (
+                    <div key={log.id} className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px]">
+                      <div className="flex items-center justify-between">
+                        <span className={`font-black uppercase tracking-wider px-1.5 py-0.5 rounded text-[8px] ${
+                          log.action === 'Created' ? 'bg-blue-100 text-blue-700' :
+                          log.action === 'Packed' ? 'bg-purple-100 text-purple-700' :
+                          log.action === 'Unpacked' || log.action === 'Auto-Broken' ? 'bg-amber-100 text-amber-700' :
+                          'bg-emerald-100 text-emerald-700'
+                        }`}>
+                          {log.action}
+                        </span>
+                        <span className="text-slate-400 font-mono">{new Date(log.created_at).toLocaleString()}</span>
+                      </div>
+                      <p className="font-semibold text-slate-800 dark:text-slate-200 mt-1">{log.details}</p>
+                      <p className="text-[9px] text-slate-400 mt-0.5">By {log.performed_by}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barcode Print Setup Modal */}
       {printingBarcodeProduct && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-xl animate-in zoom-in duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg overflow-hidden shadow-xl animate-in zoom-in duration-150 my-auto border border-slate-200 dark:border-slate-800">
             <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                <Printer />
+                <Printer size={16} />
                 <span>Barcode Generator & Print Station</span>
               </h2>
               <button onClick={() => setPrintingBarcodeProduct(null)} className="text-slate-400 hover:text-white cursor-pointer">
@@ -693,37 +1626,104 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
-              <div className="text-center p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
-                <h3 className="text-[11px] font-bold text-slate-800 dark:text-slate-200 mb-2">{printingBarcodeProduct.name}</h3>
-                
-                {/* Real Scannable Barcode using react-barcode */}
-                <div className="flex justify-center">
-                  <ReactBarcode 
-                    value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || printingBarcodeProduct.id} 
-                    height={48} 
-                    displayValue={false} 
-                    width={1.5}
-                    margin={0}
-                    background="transparent"
-                  />
+            <div className="p-6 space-y-6">
+              {/* LIVE PREVIEW - Matching the provided image style */}
+              <div className="flex flex-col items-center justify-center">
+                <span className="text-[10px] font-bold text-slate-500 uppercase mb-2">Live Print Preview</span>
+                <div className="p-6 bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col items-center text-center w-[220px]">
+                  <span className="text-[11px] font-black text-slate-900 uppercase mb-1 leading-tight">{printingBarcodeProduct.name}</span>
+                  <div className="py-1">
+                    <ReactBarcode 
+                      value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                      height={40} 
+                      width={1.2}
+                      fontSize={11}
+                      margin={0}
+                      displayValue={true}
+                    />
+                  </div>
+                  <div className="flex flex-col items-center gap-0.5 mt-1 text-slate-900 font-bold uppercase" style={{ fontSize: '10px' }}>
+                    <div className="flex items-center gap-1">
+                      <span>MRP:</span>
+                      <span className="font-black">₹{printMrp}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span>Sale Price:</span>
+                      <span className="font-black">₹{printSalePrice}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span>PACKED ON:</span>
+                      <span className="font-black">{printPackedOn}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span>EXPIRY ON:</span>
+                      <span className="font-black">{printExpiryOn}</span>
+                    </div>
+                    <div className="mt-1 font-black tracking-widest border-t border-slate-200 pt-0.5 w-full">
+                      {printCompanyName}
+                    </div>
+                  </div>
                 </div>
-                
-                <span className="font-mono text-[11px] text-slate-400 block mt-1 tracking-widest">{printingBarcodeProduct.barcode}</span>
-                <span className="text-[10px] text-slate-400 font-mono">SKU: {printingBarcodeProduct.sku}</span>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Number of Labels to Print</label>
-                <input 
-                  type="number" 
-                  min={1} 
-                  max={500} 
-                  value={printLabelCount}
-                  onChange={(e) => setPrintLabelCount(Math.min(500, Math.max(1, Number(e.target.value))))}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
-                />
-                <span className="text-[10px] text-slate-400">Fits 24 labels per sheet (A4 standard format)</span>
+              {/* Editable Controls */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">MRP (₹)</label>
+                  <input 
+                    type="number"
+                    value={printMrp}
+                    onChange={(e) => setPrintMrp(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Sale Price (₹)</label>
+                  <input 
+                    type="number"
+                    value={printSalePrice}
+                    onChange={(e) => setPrintSalePrice(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Packed On</label>
+                  <input 
+                    type="date"
+                    value={printPackedOn}
+                    onChange={(e) => setPrintPackedOn(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Expiry On</label>
+                  <input 
+                    type="date"
+                    value={printExpiryOn}
+                    onChange={(e) => setPrintExpiryOn(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Company / Brand</label>
+                  <input 
+                    type="text"
+                    value={printCompanyName}
+                    onChange={(e) => setPrintCompanyName(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Labels to Print</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    max="500"
+                    value={printLabelCount}
+                    onChange={(e) => setPrintLabelCount(parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -731,13 +1731,14 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   onClick={() => setPrintingBarcodeProduct(null)}
                   className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold hover:bg-slate-200 cursor-pointer"
                 >
-                  Close
+                  Cancel
                 </button>
                 <button 
                   onClick={handlePrintBarcodeSubmit}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold hover:bg-indigo-700 cursor-pointer"
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold hover:bg-indigo-700 cursor-pointer flex items-center gap-2"
                 >
-                  Send to Printer
+                  <Printer size={14} />
+                  <span>Send to Barcode Printer</span>
                 </button>
               </div>
             </div>
@@ -745,124 +1746,75 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         </div>
       )}
 
-      {/* Bulk Import Dialog Modal */}
-      {isBulkImportOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg overflow-hidden shadow-xl animate-in zoom-in duration-150">
-            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">
-                <Upload />
-                <span>Bulk Import via Excel / CSV</span>
-              </h2>
-              <button onClick={() => setIsBulkImportOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="p-8 border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-500 rounded-xl transition text-center space-y-2 cursor-pointer" onClick={handleTriggerBulkImport}>
-                <Upload size={32} className="mx-auto text-slate-400" />
-                <h3 className="text-[11px] font-bold text-slate-700 dark:text-slate-200">Drag & Drop Inventory Spreadsheet</h3>
-                <p className="text-[10px] text-slate-400">or click here to search local directory files (.csv, .xlsx supported)</p>
-                <div className="inline-block bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded text-[10px] font-semibold text-indigo-600 mt-2">
-                  Use Preset Sample Sheet
-                </div>
-              </div>
-
-              <div className="space-y-1 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg text-[11px] text-slate-500">
-                <p className="font-semibold text-slate-700 dark:text-slate-300">Mandatory CSV Columns:</p>
-                <p className="font-mono text-[10px]">SKU, Name, Barcode, SellingPrice, PurchasePrice, OpeningStock</p>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4">
-                <button 
-                  onClick={() => setIsBulkImportOpen(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold hover:bg-slate-200 cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Add/Edit Form Modal */}
+      {/* Standard Add/Edit Product Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden shadow-xl animate-in zoom-in duration-150">
-            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
-              <h2 className="text-xs font-bold uppercase tracking-wider">
-                {editingProduct ? 'Update Inventory Catalog details' : 'Register New Catalog Item'}
+        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in duration-150 border border-slate-200 dark:border-slate-800 my-8">
+            <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                <Package />
+                <span>{editingProduct ? 'Edit Catalog Product Specifications' : 'New Individual Product Master'}</span>
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="p-6 space-y-4 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <form onSubmit={handleSaveProduct} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="space-y-1 md:col-span-2">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Product Name / Trade Title *</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Product Name *</label>
                   <input 
                     type="text" 
                     required
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g. AeroMax Pro 5G Phone"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                    placeholder="e.g. Bhajani Chakli 1kg"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Brand / Manufacturer</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Category</label>
+                  <select 
+                    value={formCategory} 
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  >
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">SKU Identifier *</label>
                   <input 
                     type="text" 
-                    value={formBrand}
-                    onChange={(e) => setFormBrand(e.target.value)}
-                    placeholder="e.g. AeroCorp"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                    required
+                    value={formSku}
+                    onChange={(e) => setFormSku(e.target.value)}
+                    placeholder="e.g. SKU-CHK-101"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">SKU Code *</label>
-                  <div className="flex gap-1.5">
-                    <input 
-                      type="text" 
-                      required
-                      value={formSku}
-                      onChange={(e) => setFormSku(e.target.value)}
-                      placeholder="ZTL-SMP-001"
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
-                    />
-                    <button 
-                      type="button"
-                      onClick={handleAutoGenerateCodes}
-                      className="px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[11px]"
-                      title="Auto Generate Codes"
-                    >
-                      <Sparkles size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Scan Verification Barcode (Unique EAN/UPC) *</label>
-                  <div className="flex gap-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Barcode Number *</label>
+                  <div className="flex gap-1">
                     <input 
                       type="text" 
                       required
                       value={formBarcode}
                       onChange={(e) => setFormBarcode(e.target.value)}
-                      placeholder="e.g. 4512938475012"
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
+                      placeholder="8901234500001"
+                      className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => setIsScannerOpen(true)}
-                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 dark:bg-white dark:hover:bg-slate-200 text-white dark:text-slate-900 rounded-lg text-[11px] font-semibold cursor-pointer shrink-0 flex items-center gap-1.5"
-                      title="Scan Barcode with Camera"
+                      className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg border border-indigo-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                      title="Scan Barcode / QR Code via Camera"
                     >
                       <Camera size={14} />
                       <span className="hidden sm:inline">Scan</span>
@@ -871,225 +1823,89 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Category Group</label>
-                  <select 
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
-                  >
-                    {categories.map((c, idx) => (
-                      <option key={`${c.id}-${idx}`} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Unit of Measure (UOM)</label>
-                  <select 
-                    value={formUnit}
-                    onChange={(e) => setFormUnit(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
-                  >
-                    <option value="Pcs">Pcs (Pieces)</option>
-                    <option value="Bottles">Bottles</option>
-                    <option value="Bags">Bags</option>
-                    <option value="Boxes">Boxes</option>
-                    <option value="Kg">Kg (Kilograms)</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">HSN Tariff Code</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Brand</label>
                   <input 
                     type="text" 
-                    value={formHsn}
-                    onChange={(e) => setFormHsn(e.target.value)}
-                    placeholder="85171300"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
+                    value={formBrand}
+                    onChange={(e) => setFormBrand(e.target.value)}
+                    placeholder="Kokanastha Special"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">GST Rate %</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Unit of Measure</label>
                   <select 
-                    value={formGst}
-                    onChange={(e) => setFormGst(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                    value={formUnit} 
+                    onChange={(e) => setFormUnit(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                   >
-                    <option value={0}>0% (Tax Exempt)</option>
-                    <option value={5}>5% (Grains/Essential)</option>
-                    <option value={12}>12% (Dairy/Processed)</option>
-                    <option value={18}>18% (Electronics/IT)</option>
-                    <option value={28}>28% (Luxury Goods)</option>
+                    <option value="Kg">Kg (Kilogram)</option>
+                    <option value="Gram">Gram</option>
+                    <option value="Pkt">Pkt (Packet)</option>
+                    <option value="Box">Box</option>
+                    <option value="Pcs">Pcs (Pieces)</option>
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Purchase Cost (₹) *</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Purchase Price (₹)</label>
                   <input 
                     type="number" 
-                    required
                     value={formPurchasePrice}
                     onChange={(e) => setFormPurchasePrice(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
+                    placeholder="220"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Selling Price (₹) *</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Selling Price (₹)</label>
                   <input 
                     type="number" 
-                    required
                     value={formSellingPrice}
                     onChange={(e) => setFormSellingPrice(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
+                    placeholder="320"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">MRP (Maximum Retail) (₹) *</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">MRP (₹)</label>
                   <input 
                     type="number" 
-                    required
                     value={formMrp}
                     onChange={(e) => setFormMrp(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
+                    placeholder="350"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                   />
                 </div>
 
                 {!editingProduct && (
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase">Opening Stock Qty</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Opening Loose Stock</label>
                     <input 
                       type="number" 
                       value={formOpeningStock}
                       onChange={(e) => setFormOpeningStock(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
+                      placeholder="10"
+                      className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                     />
                   </div>
                 )}
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Min Stock (Low-Stock Limit)</label>
-                  <input 
-                    type="number" 
-                    value={formMinStock}
-                    onChange={(e) => setFormMinStock(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Max Stock (Safety limit)</label>
-                  <input 
-                    type="number" 
-                    value={formMaxStock}
-                    onChange={(e) => setFormMaxStock(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1 md:col-span-3">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Product Image</label>
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`group relative border-2 border-dashed rounded-xl transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center min-h-[120px] ${
-                      formImage 
-                        ? 'border-indigo-200 bg-indigo-50/10' 
-                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-indigo-400 hover:bg-indigo-50/30'
-                    }`}
-                  >
-                    <input 
-                      type="file" 
-                      ref={fileInputRef}
-                      onChange={handleFileUpload}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                    
-                    {isUploading ? (
-                      <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="text-indigo-500 animate-spin" size={24} />
-                        <span className="text-[10px] font-bold text-slate-500">Processing...</span>
-                      </div>
-                    ) : formImage ? (
-                      <div className="w-full h-full relative group">
-                        <img 
-                          src={formImage} 
-                          alt="Preview" 
-                          className="w-full h-32 object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
-                          <div className="flex items-center gap-2 bg-white/90 dark:bg-slate-900/90 px-3 py-1.5 rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform">
-                            <Upload size={14} className="text-indigo-600" />
-                            <span className="text-[10px] font-black text-slate-900 dark:text-white uppercase">Change Photo</span>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2 py-4">
-                        <div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-full shadow-sm flex items-center justify-center group-hover:scale-110 transition-transform">
-                          <Upload size={20} className="text-slate-400 group-hover:text-indigo-500" />
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[10px] font-bold text-slate-900 dark:text-white">Click to upload product photo</p>
-                          <p className="text-[9px] text-slate-500">Drag and drop also supported (Max 2MB)</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="mt-2">
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const url = window.prompt('Paste external Image URL:', formImage.startsWith('data:') ? '' : formImage);
-                        if (url !== null) setFormImage(url);
-                      }}
-                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 uppercase tracking-tight transition-colors"
-                    >
-                      <ImageIcon size={12} />
-                      Or use image URL instead
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1 md:col-span-3">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Full Product Specifications</label>
-                  <textarea 
-                    rows={2}
-                    value={formDescription}
-                    onChange={(e) => setFormDescription(e.target.value)}
-                    placeholder="Detailed dimensions, features, notes..."
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
-                  />
-                </div>
-
-                <div className="md:col-span-3 flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="form-active" 
-                    checked={formActive} 
-                    onChange={(e) => setFormActive(e.target.checked)}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="form-active" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">Mark as Active in Catalog</label>
-                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button 
                   type="button" 
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold hover:bg-slate-200 cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold hover:bg-slate-200 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold hover:bg-indigo-700 cursor-pointer"
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-700 cursor-pointer shadow-md"
                 >
                   Save Product
                 </button>
@@ -1098,58 +1914,81 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           </div>
         </div>
       )}
+
       {isScannerOpen && (
         <BarcodeScanner 
           onClose={() => setIsScannerOpen(false)}
           onScan={async (scannedData) => {
             setIsScannerOpen(false);
             try {
-              // Try to parse as JSON if it's a rich QR code containing product info
               const data = JSON.parse(scannedData);
-              
               if (data.barcode) setFormBarcode(data.barcode);
               else setFormBarcode(scannedData);
-              
               if (data.name) setFormName(data.name);
               if (data.sku) setFormSku(data.sku);
-              if (data.brand) setFormBrand(data.brand);
-              if (data.unit) setFormUnit(data.unit);
-              if (data.hsn_code) setFormHsn(data.hsn_code);
-              if (data.gst_rate !== undefined) setFormGst(Number(data.gst_rate));
-              if (data.purchase_price !== undefined) setFormPurchasePrice(Number(data.purchase_price));
-              if (data.selling_price !== undefined) setFormSellingPrice(Number(data.selling_price));
-              if (data.mrp !== undefined) setFormMrp(Number(data.mrp));
-              if (data.description) setFormDescription(data.description);
-              
               triggerToast('QR code scanned: Product info populated!', 'success');
             } catch (e) {
-              // Not JSON, assume it's just a standard barcode string (EAN/UPC)
               setFormBarcode(scannedData);
               triggerToast('Barcode scanned successfully', 'success');
-              
-              // If it's a numeric barcode, let's try to fetch basic info from OpenFoodFacts
-              if (/^\d{8,14}$/.test(scannedData)) {
-                try {
-                  triggerToast('Looking up product details online...', 'info');
-                  const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${scannedData}.json`);
-                  if (response.ok) {
-                    const json = await response.json();
-                    if (json && json.product) {
-                      if (json.product.product_name) setFormName(json.product.product_name);
-                      if (json.product.brands) setFormBrand(json.product.brands.split(',')[0]);
-                      if (json.product.image_url) setFormImage(json.product.image_url);
-                      triggerToast('Product details found and populated!', 'success');
-                    } else {
-                      triggerToast('Product not found in global database.', 'info');
-                    }
-                  }
-                } catch (fetchErr) {
-                  console.error('Failed to fetch from OpenFoodFacts', fetchErr);
-                }
-              }
             }
           }}
         />
+      )}
+
+      {/* ==================== DELETE CONFIRMATION MODAL ==================== */}
+      {isDeleteConfirmOpen && productToDelete && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in duration-200 border border-slate-200 dark:border-slate-800">
+            <div className="bg-rose-50 dark:bg-rose-900/20 p-6 text-center">
+              <div className="mx-auto w-16 h-16 bg-rose-100 dark:bg-rose-900/40 rounded-full flex items-center justify-center mb-4">
+                <Trash2 size={32} className="text-rose-600 dark:text-rose-400" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Confirm Deletion</h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Are you sure you want to delete <span className="font-bold text-slate-900 dark:text-white">"{productToDelete.name}"</span>?
+              </p>
+              <p className="text-xs text-rose-600 dark:text-rose-400 mt-3 font-semibold bg-rose-50 dark:bg-rose-950/30 py-1.5 px-3 rounded-lg inline-block border border-rose-100 dark:border-rose-900/30">
+                This action is permanent and cannot be undone.
+              </p>
+            </div>
+            
+            <div className="p-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeleteConfirmOpen(false);
+                  setProductToDelete(null);
+                }}
+                className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                No, Keep it
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const result = dbStore.deleteProduct(productToDelete.id);
+                    if (result.success) {
+                      dbStore.logActivity(user.id, user.name, user.role, 'Delete Product', `Deleted product: ${productToDelete.name} (SKU: ${productToDelete.sku})`, businessId);
+                      const updatedList = dbStore.getProducts(businessId);
+                      setProducts(updatedList);
+                      triggerToast('Product deleted successfully', 'success');
+                      setIsDeleteConfirmOpen(false);
+                      setProductToDelete(null);
+                    } else {
+                      triggerToast(result.error || 'Failed to delete product', 'error');
+                    }
+                  } catch (err: any) {
+                    triggerToast(err.message || 'An error occurred', 'error');
+                  }
+                }}
+                className="flex-1 px-4 py-3 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-colors shadow-lg shadow-rose-200 dark:shadow-none cursor-pointer active:scale-95"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

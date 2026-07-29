@@ -362,9 +362,6 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL CUSTOMERS</span>
             </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Active accounts in master</span>
-            </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
                 {totalCustomers}
@@ -378,9 +375,6 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                 <DollarSign size={14} />
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL RECEIVABLE</span>
-            </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Combined outstanding balance</span>
             </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -396,9 +390,6 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">AVG CREDIT LIMIT</span>
             </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Average line of credit given</span>
-            </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
                 ₹{avgCreditLimit.toLocaleString()}
@@ -412,9 +403,6 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                 <ShieldAlert size={14} />
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">LIMIT EXCEEDED</span>
-            </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Accounts over credit limit</span>
             </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">

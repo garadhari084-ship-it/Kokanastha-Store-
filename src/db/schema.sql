@@ -115,6 +115,8 @@ CREATE TABLE IF NOT EXISTS products (
     maximum_stock INTEGER NOT NULL DEFAULT 1000,
     image_url TEXT,
     description TEXT,
+    is_combo BOOLEAN DEFAULT FALSE,
+    combo_items JSONB DEFAULT '[]'::jsonb,
     active BOOLEAN DEFAULT TRUE,
     business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -123,6 +125,24 @@ CREATE TABLE IF NOT EXISTS products (
     CONSTRAINT unique_sku_per_business UNIQUE (business_id, sku),
     CONSTRAINT unique_barcode_per_business UNIQUE (business_id, barcode)
 );
+
+-- Ensure is_combo and combo_items columns exist if products table was created previously
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name='products' AND column_name='is_combo'
+    ) THEN
+        ALTER TABLE products ADD COLUMN is_combo BOOLEAN DEFAULT FALSE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name='products' AND column_name='combo_items'
+    ) THEN
+        ALTER TABLE products ADD COLUMN combo_items JSONB DEFAULT '[]'::jsonb;
+    END IF;
+END $$;
 
 -- Customers Table
 CREATE TABLE IF NOT EXISTS customers (
@@ -563,30 +583,31 @@ CREATE POLICY dev_public_customer_subscriptions ON customer_subscriptions FOR AL
 -- ====================================================================
 -- REALTIME SUBSCRIPTIONS
 -- ====================================================================
--- Run this in Supabase SQL Editor to enable Realtime for all tables
--- so changes sync instantly across all devices
+-- Safely add tables to supabase_realtime publication without throwing errors if already present
 
-BEGIN;
-  DROP PUBLICATION IF EXISTS supabase_realtime;
-  CREATE PUBLICATION supabase_realtime;
-COMMIT;
+DO $$ 
+DECLARE
+    tbl text;
+    tables text[] := ARRAY[
+      'businesses', 'users_profiles', 'categories', 'products', 'customers', 
+      'suppliers', 'purchase_orders', 'purchase_order_items', 'sales_orders', 
+      'sales_order_items', 'packing_sessions', 'packing_scan_logs', 'stock_logs', 
+      'system_audit_logs', 'chat_messages', 'business_settings', 'loyalty_configs', 
+      'loyalty_logs', 'customer_subscriptions'
+    ];
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+        CREATE PUBLICATION supabase_realtime;
+    END IF;
 
-ALTER PUBLICATION supabase_realtime ADD TABLE businesses;
-ALTER PUBLICATION supabase_realtime ADD TABLE users_profiles;
-ALTER PUBLICATION supabase_realtime ADD TABLE categories;
-ALTER PUBLICATION supabase_realtime ADD TABLE products;
-ALTER PUBLICATION supabase_realtime ADD TABLE customers;
-ALTER PUBLICATION supabase_realtime ADD TABLE suppliers;
-ALTER PUBLICATION supabase_realtime ADD TABLE purchase_orders;
-ALTER PUBLICATION supabase_realtime ADD TABLE purchase_order_items;
-ALTER PUBLICATION supabase_realtime ADD TABLE sales_orders;
-ALTER PUBLICATION supabase_realtime ADD TABLE sales_order_items;
-ALTER PUBLICATION supabase_realtime ADD TABLE packing_sessions;
-ALTER PUBLICATION supabase_realtime ADD TABLE packing_scan_logs;
-ALTER PUBLICATION supabase_realtime ADD TABLE stock_logs;
-ALTER PUBLICATION supabase_realtime ADD TABLE system_audit_logs;
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE business_settings;
-ALTER PUBLICATION supabase_realtime ADD TABLE loyalty_configs;
-ALTER PUBLICATION supabase_realtime ADD TABLE loyalty_logs;
-ALTER PUBLICATION supabase_realtime ADD TABLE customer_subscriptions;
+    FOREACH tbl IN ARRAY tables LOOP
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_publication_rel pr
+            JOIN pg_class c ON c.oid = pr.prrelid
+            JOIN pg_publication p ON p.oid = pr.prpubid
+            WHERE p.pubname = 'supabase_realtime' AND c.relname = tbl
+        ) THEN
+            EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE %I', tbl);
+        END IF;
+    END LOOP;
+END $$;

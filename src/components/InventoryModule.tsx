@@ -149,9 +149,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">ASSET VALUATION</span>
           </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Calculated at current purchase cost levels.</span>
-          </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
               ₹{totalValuation.toLocaleString()}
@@ -165,9 +162,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               <ArrowUpRight size={14} />
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">SALES REVENUE</span>
-          </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Expected revenue if sold at retail catalog.</span>
           </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -183,9 +177,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">PROFIT MARGIN</span>
           </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-emerald-600 font-bold leading-tight line-clamp-2">+{(((totalRetailValuation - totalValuation) / (totalValuation || 1)) * 100).toFixed(1)}% markup ratio</span>
-          </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
               ₹{(totalRetailValuation - totalValuation).toLocaleString()}
@@ -199,9 +190,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               <AlertTriangle size={14} />
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">LOW STOCK ALERTS</span>
-          </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Items below par level (10)</span>
           </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">

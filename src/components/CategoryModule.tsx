@@ -80,25 +80,20 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
       return;
     }
     
-    // Check if category is used by any products
-    const isUsed = products.some(p => p.category_id === id);
-    if (isUsed) {
-      triggerToast('Cannot delete category: it is currently assigned to one or more products.', 'error');
-      return;
-    }
-
-    // Check if it has subcategories
-    const hasChildren = categories.some(c => c.parent_id === id);
-    if (hasChildren) {
-      triggerToast('Cannot delete category: it has subcategories. Reassign them first.', 'error');
-      return;
-    }
-
     if (window.confirm(`Are you sure you want to delete Category "${name}"?`)) {
-      dbStore.deleteCategory(id);
-      dbStore.logActivity(user.id, user.name, user.role, 'Delete Category', `Deleted category: ${name}`, businessId);
-      triggerToast('Category removed.', 'success');
-      setCategories(dbStore.getCategories(businessId));
+      try {
+        const result = dbStore.deleteCategory(id);
+        if (result.success) {
+          dbStore.logActivity(user.id, user.name, user.role, 'Delete Category', `Deleted category: ${name}`, businessId);
+          triggerToast('Category removed successfully.', 'success');
+          // Manual update for immediate feedback
+          setCategories(dbStore.getCategories(businessId));
+        } else {
+          triggerToast(result.error || 'Category could not be deleted.', 'error');
+        }
+      } catch (err: any) {
+        triggerToast(err.message || 'Error deleting category.', 'error');
+      }
     }
   };
 
@@ -149,9 +144,6 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL CATEGORIES</span>
             </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">All hierarchy levels</span>
-            </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
                 {categories.length}
@@ -165,9 +157,6 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
                 <Network size={14} />
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">PRIMARY LEVEL</span>
-            </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Top-level categories</span>
             </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -183,9 +172,6 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">SUBCATEGORIES</span>
             </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Nested grouping</span>
-            </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
                 {subCategoryCount}
@@ -199,9 +185,6 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
                 <Hexagon size={14} />
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">UNUSED</span>
-            </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Categories without products</span>
             </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">

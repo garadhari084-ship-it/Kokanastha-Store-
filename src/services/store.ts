@@ -20,7 +20,9 @@ import {
   LoyaltyLog,
   CustomerSubscription,
   SubscriptionPlan,
-  DEFAULT_LOYALTY_CONFIG
+  DEFAULT_LOYALTY_CONFIG,
+  ComboItem,
+  ComboHistoryLog
 } from '../types/erp';
 
 // ====================================================================
@@ -93,9 +95,123 @@ const SO_1006_ID = 'd1111111-1111-4111-8111-111111111006';
 const SO_1007_ID = 'd1111111-1111-4111-8111-111111111007';
 const SO_1008_ID = 'd1111111-1111-4111-8111-111111111008';
 
-const PRE_SEEDED_CATEGORIES: Category[] = [];
+const PROD_4_COMBO_ID = 'b4444444-4444-4444-8444-444444444444';
 
-const PRE_SEEDED_PRODUCTS: Product[] = [];
+const PRE_SEEDED_CATEGORIES: Category[] = [
+  {
+    id: CAT_1_ID,
+    name: 'Faral & Festive Sweets',
+    parent_id: null,
+    business_id: BIZ_ID,
+    active: true,
+    created_at: new Date().toISOString()
+  }
+];
+
+const PRE_SEEDED_PRODUCTS: Product[] = [
+  {
+    id: PROD_1_ID,
+    name: 'Bhajani Chakli 1kg',
+    sku: 'SKU-CHK-101',
+    barcode: '8901234500001',
+    qr_code: 'SKU-CHK-101-QR',
+    category_id: CAT_1_ID,
+    brand: 'Kokanastha Special',
+    unit: 'Kg',
+    hsn_code: '2106',
+    gst_rate: 5,
+    purchase_price: 220,
+    selling_price: 320,
+    mrp: 350,
+    opening_stock: 0,
+    current_stock: 0, // Loose stock set to 0 initially so auto-break (reverse packing) can be tested immediately!
+    minimum_stock: 5,
+    maximum_stock: 50,
+    image_url: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=400&q=80',
+    description: 'Crispy crunchy traditional Maharashtrian Bhajani Chakli.',
+    active: true,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: PROD_2_ID,
+    name: 'Poha Chivda 500g',
+    sku: 'SKU-CHV-102',
+    barcode: '8901234500002',
+    qr_code: 'SKU-CHV-102-QR',
+    category_id: CAT_1_ID,
+    brand: 'Kokanastha Special',
+    unit: 'Pkt',
+    hsn_code: '2106',
+    gst_rate: 5,
+    purchase_price: 110,
+    selling_price: 180,
+    mrp: 200,
+    opening_stock: 15,
+    current_stock: 15,
+    minimum_stock: 5,
+    maximum_stock: 50,
+    image_url: 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?auto=format&fit=crop&w=400&q=80',
+    description: 'Thin poha chivda fried with cashews and roasted peanuts.',
+    active: true,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: PROD_3_ID,
+    name: 'Besan Laddu 500g',
+    sku: 'SKU-LAD-103',
+    barcode: '8901234500003',
+    qr_code: 'SKU-LAD-103-QR',
+    category_id: CAT_1_ID,
+    brand: 'Kokanastha Special',
+    unit: 'Box',
+    hsn_code: '2106',
+    gst_rate: 5,
+    purchase_price: 160,
+    selling_price: 240,
+    mrp: 280,
+    opening_stock: 12,
+    current_stock: 12,
+    minimum_stock: 5,
+    maximum_stock: 50,
+    image_url: 'https://images.unsplash.com/photo-1541781774459-bb2af2f05b55?auto=format&fit=crop&w=400&q=80',
+    description: 'Pure ghee roasted besan laddu with cardamom and pistachios.',
+    active: true,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: PROD_4_COMBO_ID,
+    name: 'Diwali Festive Delight Combo Box',
+    sku: 'SKU-CMB-201',
+    barcode: '8901234500099',
+    qr_code: 'SKU-CMB-201-QR',
+    category_id: CAT_1_ID,
+    brand: 'Festive Hampers',
+    unit: 'Box',
+    hsn_code: '2106',
+    gst_rate: 5,
+    purchase_price: 490,
+    selling_price: 699,
+    mrp: 830,
+    opening_stock: 10,
+    current_stock: 10, // 10 Packed Combos in finished goods inventory!
+    minimum_stock: 2,
+    maximum_stock: 20,
+    image_url: 'https://images.unsplash.com/photo-1513201099705-a9746e1e201f?auto=format&fit=crop&w=400&q=80',
+    description: 'Festive hamper containing Bhajani Chakli 1kg (x1), Poha Chivda 500g (x1), Besan Laddu 500g (x1).',
+    active: true,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString(),
+    is_combo: true,
+    combo_items: [
+      { product_id: PROD_1_ID, qty: 1 },
+      { product_id: PROD_2_ID, qty: 1 },
+      { product_id: PROD_3_ID, qty: 1 }
+    ]
+  }
+];
 
 const PRE_SEEDED_CUSTOMERS: Customer[] = [];
 
@@ -148,6 +264,32 @@ const PRE_SEEDED_STOCK_LOGS: StockLog[] = [];
 const PRE_SEEDED_SYSTEM_AUDIT_LOGS: SystemAuditLog[] = [];
 
 export type TimeHorizon = 'today' | 'yesterday' | '7days' | '30days' | 'all' | 'custom';
+
+export function isComboProduct(p: Partial<Product> | null | undefined): boolean {
+  if (!p) return false;
+  
+  // 1. Check explicit is_combo flag
+  const flag = p.is_combo;
+  const isComboFlag = flag === true || 
+                     (flag as any) === 1 || 
+                     String(flag).toLowerCase() === 'true';
+  
+  // 2. Check combo_items (recipe)
+  // Check if it's a non-empty array
+  let hasItems = false;
+  if (Array.isArray(p.combo_items)) {
+    hasItems = p.combo_items.length > 0;
+  } else if (typeof p.combo_items === 'string') {
+    try {
+      const parsed = JSON.parse(p.combo_items);
+      hasItems = Array.isArray(parsed) && parsed.length > 0;
+    } catch (e) {
+      hasItems = false;
+    }
+  }
+  
+  return Boolean(isComboFlag || hasItems);
+}
 
 export function isOrderInTimeHorizon(
   order: SalesOrder, 
@@ -266,6 +408,7 @@ class ERPStorage {
     messages: ChatMessage[];
     loyaltyLogs: LoyaltyLog[];
     subscriptions: CustomerSubscription[];
+    comboLogs: ComboHistoryLog[];
   };
 
   private bc: BroadcastChannel | null = null;
@@ -291,7 +434,8 @@ class ERPStorage {
       packingSessions: this.load('packingSessions', []),
       messages: this.load('messages', []),
       loyaltyLogs: this.load('loyaltyLogs', PRE_SEEDED_LOYALTY_LOGS),
-      subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS)
+      subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS),
+      comboLogs: this.load('comboLogs', [])
     };
 
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -330,7 +474,8 @@ class ERPStorage {
       packingSessions: this.load('packingSessions', []),
       messages: this.load('messages', []),
       loyaltyLogs: this.load('loyaltyLogs', PRE_SEEDED_LOYALTY_LOGS),
-      subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS)
+      subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS),
+      comboLogs: this.load('comboLogs', [])
     };
     this.notify();
   }
@@ -412,7 +557,8 @@ class ERPStorage {
        settings: 'business_settings',
        messages: 'chat_messages',
        loyaltyLogs: 'loyalty_logs',
-       subscriptions: 'customer_subscriptions'
+       subscriptions: 'customer_subscriptions',
+       comboLogs: 'combo_history_logs'
     };
        const syncPromises = Object.entries(tables).map(async ([key, table]) => {
        try {
@@ -461,6 +607,9 @@ class ERPStorage {
              const mergedSales = (data || []).map((so: any) => {
                const existingSO = (this.cache.sales || []).find(s => s.id === so.id);
                if (existingSO && this.pendingUploads.has(existingSO.id)) return existingSO;
+               if (so.status === 'Cancelled' && so.dispatch_notes?.includes('[SYSTEM_RETURNED]')) {
+                 so.status = 'Returned';
+               }
                const rawItems = (itemsByOrder[so.id] && itemsByOrder[so.id].length > 0) ? itemsByOrder[so.id] : (so.items || []);
                const mergedItems = rawItems.map((rit: any) => {
                  const existingItem = existingSO?.items?.find((eit: any) => eit.product_id === rit.product_id || eit.id === rit.id);
@@ -551,11 +700,44 @@ class ERPStorage {
        settings: 'business_settings',
        messages: 'chat_messages',
        loyaltyLogs: 'loyalty_logs',
-       subscriptions: 'customer_subscriptions'
+       subscriptions: 'customer_subscriptions',
+       comboLogs: 'combo_history_logs'
     };
     
     const tableName = tables[key];
     if (!tableName) return;
+
+    const isValidUUID = (val: any): boolean => {
+        if (typeof val !== 'string') return false;
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+    };
+
+    const legacyIdMap: Record<string, string> = {
+        'biz-1': BIZ_ID,
+        'c1': CUST_1_ID,
+        'c2': CUST_2_ID,
+        'c3': CUST_3_ID,
+        'p1': PROD_1_ID,
+        'p2': PROD_2_ID,
+        'p3': PROD_3_ID,
+        'p4': PROD_4_COMBO_ID,
+        'cat1': CAT_1_ID,
+        'cat1_1': CAT_1_ID,
+        'cat1_2': CAT_1_ID,
+        'so-1001': SO_1001_ID,
+        'so-1002': SO_1002_ID,
+        'so-1003': SO_1003_ID,
+        'so-1004': SO_1004_ID,
+        'so-1005': SO_1005_ID,
+        'so-1006': SO_1006_ID,
+        'so-1007': SO_1007_ID,
+        'so-1008': SO_1008_ID,
+        'l1': 'e1111111-1111-4111-8111-111111111001',
+        'l2': 'e1111111-1111-4111-8111-111111111002',
+        'l3': 'e1111111-1111-4111-8111-111111111003',
+        'sub-1': 'f1111111-1111-4111-8111-111111111001',
+        'sub-2': 'f1111111-1111-4111-8111-111111111002'
+    };
 
     if (dataItem) {
         if (Array.isArray(dataItem)) {
@@ -566,7 +748,19 @@ class ERPStorage {
     }
     
     if (isDelete && deleteId) {
-       const { error } = await supabase.from(tableName).delete().eq(tableName === 'business_settings' ? 'business_id' : 'id', deleteId);
+       const finalDeleteId = legacyIdMap[deleteId] || deleteId;
+       
+       // Handle manual cascading deletes for products to avoid foreign key errors in Supabase
+       if (tableName === 'products') {
+         try {
+           await supabase.from('stock_logs').delete().eq('product_id', finalDeleteId);
+           await supabase.from('combo_history_logs').delete().eq('combo_id', finalDeleteId);
+         } catch (e) {
+           console.warn('Cascading delete warning:', e);
+         }
+       }
+
+       const { error } = await supabase.from(tableName).delete().eq(tableName === 'business_settings' ? 'business_id' : 'id', finalDeleteId);
        if (error) {
          if (error.code === 'PGRST205') return; // Ignore missing table
          console.error(`Supabase delete error on ${tableName}:`, JSON.stringify(error));
@@ -578,37 +772,6 @@ class ERPStorage {
        let payload = Array.isArray(dataItem) ? [...dataItem] : { ...dataItem };
        let salesItems = [];
        let purchaseItems = [];
-
-       const isValidUUID = (val: any): boolean => {
-           if (typeof val !== 'string') return false;
-           return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-       };
-
-       const legacyIdMap: Record<string, string> = {
-           'biz-1': BIZ_ID,
-           'c1': CUST_1_ID,
-           'c2': CUST_2_ID,
-           'c3': CUST_3_ID,
-           'p1': PROD_1_ID,
-           'p2': PROD_2_ID,
-           'p3': PROD_3_ID,
-           'cat1': CAT_1_ID,
-           'cat1_1': CAT_1_ID,
-           'cat1_2': CAT_1_ID,
-           'so-1001': SO_1001_ID,
-           'so-1002': SO_1002_ID,
-           'so-1003': SO_1003_ID,
-           'so-1004': SO_1004_ID,
-           'so-1005': SO_1005_ID,
-           'so-1006': SO_1006_ID,
-           'so-1007': SO_1007_ID,
-           'so-1008': SO_1008_ID,
-           'l1': 'e1111111-1111-4111-8111-111111111001',
-           'l2': 'e1111111-1111-4111-8111-111111111002',
-           'l3': 'e1111111-1111-4111-8111-111111111003',
-           'sub-1': 'f1111111-1111-4111-8111-111111111001',
-           'sub-2': 'f1111111-1111-4111-8111-111111111002'
-       };
 
        const sanitizeUUID = (val: any, isNullable = false): string | null => {
            if (!val) return isNullable ? null : crypto.randomUUID();
@@ -658,6 +821,10 @@ class ERPStorage {
            }
            if (tableName === 'sales_orders') {
                delete clean.area;
+               if (clean.status === 'Returned') {
+                 clean.status = 'Cancelled';
+                 clean.dispatch_notes = (clean.dispatch_notes || '') + ' [SYSTEM_RETURNED]';
+               }
                clean.customer_id = sanitizeUUID(clean.customer_id, true);
                if (clean.customer_id && Array.isArray(this.cache.customers) && !this.cache.customers.some((c: any) => c.id === clean.customer_id)) {
                    clean.customer_id = null;
@@ -1003,32 +1170,52 @@ class ERPStorage {
     throw new Error('Category not found');
   }
 
-  public deleteCategory(id: string): boolean {
+  public deleteCategory(id: string): { success: boolean; error?: string } {
+    if (!id) return { success: false, error: 'Category ID is missing.' };
+    
+    // Check if category is used by any products
+    const isUsedByProduct = this.cache.products.some(p => p.category_id === id);
+    if (isUsedByProduct) {
+      return { success: false, error: 'Cannot delete category: it is currently assigned to one or more products.' };
+    }
+
+    // Check if it has subcategories
+    const hasChildren = this.cache.categories.some(c => c.parent_id === id);
+    if (hasChildren) {
+      return { success: false, error: 'Cannot delete category: it has subcategories. Please remove or reassign subcategories first.' };
+    }
+
     const initialLen = this.cache.categories.length;
     this.cache.categories = this.cache.categories.filter(c => c.id !== id);
     if (this.cache.categories.length !== initialLen) {
       this.save('categories', null, true, id);
-      return true;
+      return { success: true };
     }
-    return false;
+    return { success: false, error: 'Category not found.' };
   }
 
   // Product Operations
   public getProducts(businessId: string): Product[] {
-    return this.cache.products.filter(p => p.business_id === businessId);
+    return this.cache.products
+      .filter(p => p.business_id === businessId)
+      .map(p => ({
+        ...p,
+        is_combo: isComboProduct(p)
+      }));
   }
 
   public createProduct(prod: Omit<Product, 'id' | 'created_at' | 'current_stock'>): Product {
     const newProd: Product = {
       ...prod,
       id: crypto.randomUUID(),
-      current_stock: prod.opening_stock,
+      current_stock: 0, // Initialized to 0, will be updated by addStockLog below
+      is_combo: false,
       created_at: new Date().toISOString()
     };
     this.cache.products.push(newProd);
     this.save('products', newProd);
 
-    // Add stock log for opening stock
+    // Add stock log for opening stock - this will trigger the DB to update current_stock
     if (prod.opening_stock > 0) {
       this.addStockLog(newProd.id, prod.opening_stock, 'In', 'Opening Stock Entry', 'System', prod.business_id);
     }
@@ -1046,14 +1233,596 @@ class ERPStorage {
     throw new Error('Product not found');
   }
 
-  public deleteProduct(id: string): boolean {
-    const initialLen = this.cache.products.length;
-    this.cache.products = this.cache.products.filter(p => p.id !== id);
-    if (this.cache.products.length !== initialLen) {
-      this.save('products', null, true, id);
-      return true;
+  public deleteProduct(id: string): { success: boolean; error?: string } {
+    if (!id) return { success: false, error: 'Product ID is missing.' };
+    
+    // Normalize ID - some parts of the system might use legacy short IDs (p1, p2...)
+    // while others use full UUIDs. We must handle both.
+    const legacyIdMap: Record<string, string> = {
+      'p1': PROD_1_ID,
+      'p2': PROD_2_ID,
+      'p3': PROD_3_ID,
+      'p4': PROD_4_COMBO_ID
+    };
+
+    let lookupId = id;
+    let legacyId = null;
+
+    if (legacyIdMap[id]) {
+      // Input was a legacy key (e.g. 'p1')
+      lookupId = legacyIdMap[id];
+      legacyId = id;
+    } else {
+      // Input was likely a UUID, check if it maps to a legacy key
+      const foundKey = Object.keys(legacyIdMap).find(k => legacyIdMap[k] === id);
+      if (foundKey) {
+        legacyId = foundKey;
+      }
     }
-    return false;
+
+    // 1. Check if used in any Sales Orders
+    const usedInSales = this.cache.sales.some(order => 
+      order.items && order.items.some((item: any) => 
+        item.product_id === lookupId || (legacyId && item.product_id === legacyId)
+      )
+    );
+    if (usedInSales) {
+      return { success: false, error: 'Cannot delete product: it is linked to one or more Sales Orders. Consider marking it as inactive instead.' };
+    }
+
+    // 2. Check if used in any Purchase Orders
+    const usedInPurchases = this.cache.purchases.some(order => 
+      order.items && order.items.some((item: any) => 
+        item.product_id === lookupId || (legacyId && item.product_id === legacyId)
+      )
+    );
+    if (usedInPurchases) {
+      return { success: false, error: 'Cannot delete product: it is linked to one or more Purchase Orders.' };
+    }
+
+    // 3. Check if used as a component in any Combo products (EXCLUDING the product itself if it is a combo)
+    const usedInCombos = this.cache.products.some(p => {
+      if (p.id === lookupId || (legacyId && p.id === legacyId)) return false; 
+      
+      let items: any[] = [];
+      if (Array.isArray(p.combo_items)) items = p.combo_items;
+      else if (typeof p.combo_items === 'string') {
+        try { items = JSON.parse(p.combo_items); } catch(e) {}
+      }
+      return items.some((item: any) => 
+        item.product_id === lookupId || (legacyId && item.product_id === legacyId)
+      );
+    });
+    if (usedInCombos) {
+      return { success: false, error: 'Cannot delete product: it is a component in one or more Combo Bundles.' };
+    }
+    
+    const initialLen = this.cache.products.length;
+    this.cache.products = this.cache.products.filter(p => 
+      p.id !== lookupId && (!legacyId || p.id !== legacyId)
+    );
+    
+    if (this.cache.products.length !== initialLen) {
+      // Delete associated stock logs and combo history locally
+      this.cache.stockLogs = this.cache.stockLogs.filter(log => 
+        log.product_id !== lookupId && (!legacyId || log.product_id !== legacyId)
+      );
+      localStorage.setItem('omnipack_erp_stockLogs', JSON.stringify(this.cache.stockLogs));
+      
+      this.cache.comboLogs = (this.cache.comboLogs || []).filter((log: any) => 
+        log.combo_id !== lookupId && (!legacyId || log.combo_id !== legacyId)
+      );
+      localStorage.setItem('omnipack_erp_comboLogs', JSON.stringify(this.cache.comboLogs));
+      
+      this.save('products', null, true, lookupId);
+      this.notify();
+      return { success: true };
+    }
+    
+    return { success: false, error: 'Product not found in catalog.' };
+  }
+
+  // ==================== COMBO BOX (PRODUCT BUNDLE) OPERATIONS ====================
+  public getComboLogs(businessId: string, comboId?: string): ComboHistoryLog[] {
+    let logs = this.cache.comboLogs || [];
+    if (businessId) logs = logs.filter(l => l.business_id === businessId);
+    if (comboId) logs = logs.filter(l => l.combo_id === comboId);
+    return [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  public addComboLog(
+    businessId: string,
+    comboId: string,
+    comboName: string,
+    action: ComboHistoryLog['action'],
+    qty: number,
+    performedBy: string,
+    details: string
+  ): ComboHistoryLog {
+    const newLog: ComboHistoryLog = {
+      id: crypto.randomUUID(),
+      business_id: businessId,
+      combo_id: comboId,
+      combo_name: comboName,
+      action,
+      qty,
+      performed_by: performedBy,
+      details,
+      created_at: new Date().toISOString()
+    };
+    if (!this.cache.comboLogs) this.cache.comboLogs = [];
+    this.cache.comboLogs.unshift(newLog);
+    this.save('comboLogs', newLog);
+    return newLog;
+  }
+
+  public createComboBox(
+    comboData: Omit<Product, 'id' | 'created_at' | 'current_stock'> & { combo_items: { product_id: string; qty: number }[] },
+    userName: string
+  ): Product {
+    const openingStock = comboData.opening_stock || 0;
+    const newCombo: Product = {
+      ...comboData,
+      id: crypto.randomUUID(),
+      is_combo: true,
+      current_stock: openingStock,
+      created_at: new Date().toISOString()
+    };
+    this.cache.products.push(newCombo);
+    this.save('products', newCombo);
+
+    // Automatically reduce regular component product stock for initial combo opening stock
+    if (openingStock > 0 && comboData.combo_items && comboData.combo_items.length > 0) {
+      comboData.combo_items.forEach(item => {
+        const reqQty = item.qty * openingStock;
+        const prod = this.cache.products.find(p => p.id === item.product_id);
+        if (prod) {
+          this.addStockLog(
+            prod.id,
+            -reqQty,
+            'Out',
+            `Allocated to initial stock of Combo Box '${newCombo.name}' (x${openingStock})`,
+            userName,
+            comboData.business_id
+          );
+        }
+      });
+    }
+
+    this.addComboLog(
+      comboData.business_id,
+      newCombo.id,
+      newCombo.name,
+      'Created',
+      newCombo.current_stock,
+      userName,
+      `Created Combo Box template with ${comboData.combo_items.length} component items.${openingStock > 0 ? ` Reduced component stocks for ${openingStock} initial combo box(es).` : ''}`
+    );
+
+    return newCombo;
+  }
+
+  public updateComboBox(
+    id: string,
+    updates: Partial<Product>,
+    userName: string
+  ): Product {
+    const index = this.cache.products.findIndex(p => p.id === id);
+    if (index !== -1) {
+      const old = this.cache.products[index];
+      
+      // 1. Handle Recipe (combo_items) Changes
+      // If the recipe changes, we need to adjust stock of components based on CURRENT combo stock
+      if (updates.combo_items && old.current_stock > 0) {
+        const oldItems = old.combo_items || [];
+        const newItems = updates.combo_items;
+        const currentComboStock = old.current_stock;
+
+        // Detect additions or quantity increases in the recipe
+        newItems.forEach(newItem => {
+          const oldItem = oldItems.find(oi => oi.product_id === newItem.product_id);
+          const oldQty = oldItem ? oldItem.qty : 0;
+          const qtyDiff = newItem.qty - oldQty;
+
+          if (qtyDiff !== 0) {
+            const prod = this.cache.products.find(p => p.id === newItem.product_id);
+            if (prod) {
+              this.addStockLog(
+                prod.id,
+                -(qtyDiff * currentComboStock),
+                qtyDiff > 0 ? 'Out' : 'In',
+                `Recipe modified for Combo Box '${old.name}'`,
+                userName,
+                old.business_id
+              );
+            }
+          }
+        });
+
+        // Detect removals from the recipe
+        oldItems.forEach(oldItem => {
+          if (!newItems.find(ni => ni.product_id === oldItem.product_id)) {
+            const prod = this.cache.products.find(p => p.id === oldItem.product_id);
+            if (prod) {
+              this.addStockLog(
+                prod.id,
+                oldItem.qty * currentComboStock,
+                'In',
+                `Item removed from recipe of Combo Box '${old.name}'`,
+                userName,
+                old.business_id
+              );
+            }
+          }
+        });
+      }
+
+      // 2. Handle Stock Quantity Changes (Packed Stock Adjustment)
+      const newStock = updates.opening_stock ?? updates.current_stock ?? old.current_stock;
+      const stockDiff = newStock - old.current_stock;
+
+      const updated = { ...old, ...updates, current_stock: newStock, is_combo: true };
+      this.cache.products[index] = updated;
+      this.save('products', updated);
+
+      // Adjust component product stocks if combo box stock changed (using the NEW recipe)
+      if (stockDiff !== 0 && updated.combo_items && updated.combo_items.length > 0) {
+        updated.combo_items.forEach(item => {
+          const adjQty = item.qty * stockDiff;
+          const prod = this.cache.products.find(p => p.id === item.product_id);
+          if (prod) {
+            this.addStockLog(
+              prod.id,
+              -adjQty,
+              stockDiff > 0 ? 'Out' : 'In',
+              `Stock adjustment for Combo Box '${updated.name}' (${stockDiff > 0 ? '+' : ''}${stockDiff})`,
+              userName,
+              updated.business_id
+            );
+          }
+        });
+      }
+
+      this.addComboLog(
+        updated.business_id,
+        updated.id,
+        updated.name,
+        'Updated',
+        stockDiff,
+        userName,
+        `Updated Combo Box specifications and component product mappings.${stockDiff !== 0 ? ` Adjusted components by ${stockDiff} unit(s).` : ''}`
+      );
+
+      return updated;
+    }
+    throw new Error('Combo Box not found');
+  }
+
+  public packCombo(
+    businessId: string,
+    comboId: string,
+    packQty: number,
+    userName: string
+  ): { 
+    success: boolean; 
+    error?: string; 
+    missingItems?: { productName: string; required: number; available: number; missing: number }[];
+    combo?: Product;
+  } {
+    if (packQty <= 0) return { success: false, error: 'Packing quantity must be greater than zero.' };
+
+    const combo = this.cache.products.find(p => p.id === comboId && p.business_id === businessId);
+    if (!combo || !isComboProduct(combo) || !combo.combo_items || combo.combo_items.length === 0) {
+      return { success: false, error: 'Invalid Combo Box template selected.' };
+    }
+
+    // Step 1: Validate stock availability of all component items
+    const missingItems: { productName: string; required: number; available: number; missing: number }[] = [];
+    combo.combo_items.forEach(item => {
+      const prod = this.cache.products.find(p => p.id === item.product_id);
+      const reqQty = item.qty * packQty;
+      const availQty = prod ? prod.current_stock : 0;
+      if (availQty < reqQty) {
+        missingItems.push({
+          productName: prod ? prod.name : 'Unknown Product',
+          required: reqQty,
+          available: availQty,
+          missing: reqQty - availQty
+        });
+      }
+    });
+
+    if (missingItems.length > 0) {
+      return {
+        success: false,
+        error: `Insufficient stock of component products to pack ${packQty} combo box(es).`,
+        missingItems
+      };
+    }
+
+    // Step 2: Deduct required component stocks & log stock movements
+    combo.combo_items.forEach(item => {
+      const reqQty = item.qty * packQty;
+      const prod = this.cache.products.find(p => p.id === item.product_id);
+      if (prod) {
+        this.addStockLog(
+          prod.id,
+          -reqQty,
+          'Out',
+          `Packed into Combo Box '${combo.name}' (x${packQty})`,
+          userName,
+          businessId
+        );
+      }
+    });
+
+    // Step 3: Increase finished Combo Box stock
+    this.addStockLog(
+      combo.id,
+      packQty,
+      'In',
+      `Packed ${packQty} finished Combo Box(es)`,
+      userName,
+      businessId
+    );
+
+    // Step 4: Record Combo Audit Trail
+    this.addComboLog(
+      businessId,
+      combo.id,
+      combo.name,
+      'Packed',
+      packQty,
+      userName,
+      `Packed ${packQty} finished units. Components deducted from loose product inventory.`
+    );
+
+    const updatedCombo = this.cache.products.find(p => p.id === comboId);
+    return { success: true, combo: updatedCombo };
+  }
+
+  public breakCombo(
+    businessId: string,
+    comboId: string,
+    breakQty: number,
+    userName: string,
+    reason: string = 'Manual breakdown'
+  ): { success: boolean; error?: string; combo?: Product } {
+    if (breakQty <= 0) return { success: false, error: 'Breakdown quantity must be greater than zero.' };
+
+    const combo = this.cache.products.find(p => p.id === comboId && p.business_id === businessId);
+    if (!combo || !isComboProduct(combo) || !combo.combo_items || combo.combo_items.length === 0) {
+      return { success: false, error: 'Invalid Combo Box template selected.' };
+    }
+
+    if (combo.current_stock < breakQty) {
+      return {
+        success: false,
+        error: `Cannot break ${breakQty} unit(s). Only ${combo.current_stock} packed '${combo.name}' available in stock.`
+      };
+    }
+
+    // Step 1: Reduce finished Combo Box stock
+    this.addStockLog(
+      combo.id,
+      -breakQty,
+      'Out',
+      `Unpacked/Broken Combo Box (x${breakQty}): ${reason}`,
+      userName,
+      businessId
+    );
+
+    // Step 2: Return component products back to loose inventory
+    combo.combo_items.forEach(item => {
+      const returnQty = item.qty * breakQty;
+      const prod = this.cache.products.find(p => p.id === item.product_id);
+      if (prod) {
+        this.addStockLog(
+          prod.id,
+          returnQty,
+          'In',
+          `Returned from broken Combo '${combo.name}' (x${breakQty})`,
+          userName,
+          businessId
+        );
+      }
+    });
+
+    // Step 3: Record Combo Audit Trail
+    this.addComboLog(
+      businessId,
+      combo.id,
+      combo.name,
+      'Unpacked',
+      breakQty,
+      userName,
+      `Unpacked/Broken ${breakQty} unit(s). Reason: ${reason}. Component items returned to loose stock.`
+    );
+
+    const updatedCombo = this.cache.products.find(p => p.id === comboId);
+    return { success: true, combo: updatedCombo };
+  }
+
+  public autoBreakComboForMissingItem(
+    businessId: string,
+    productId: string,
+    requiredQty: number,
+    userName: string
+  ): { success: boolean; brokenCount: number; message?: string } {
+    const prod = this.cache.products.find(p => p.id === productId && p.business_id === businessId);
+    if (!prod) return { success: false, brokenCount: 0, message: 'Product not found' };
+
+    let currentStock = prod.current_stock;
+    if (currentStock >= requiredQty) {
+      return { success: true, brokenCount: 0 };
+    }
+
+    let deficit = requiredQty - currentStock;
+
+    // Find candidate packed combo boxes containing this product
+    const candidateCombos = this.cache.products.filter(
+      p => p.business_id === businessId &&
+      isComboProduct(p) &&
+      p.current_stock > 0 &&
+      p.combo_items?.some(ci => ci.product_id === productId)
+    );
+
+    if (candidateCombos.length === 0) {
+      return { success: false, brokenCount: 0, message: `No packed combo boxes contain "${prod.name}" to auto-break.` };
+    }
+
+    let totalBroken = 0;
+    for (const combo of candidateCombos) {
+      const ci = combo.combo_items?.find(i => i.product_id === productId);
+      if (!ci || ci.qty <= 0) continue;
+
+      const unitsPerCombo = ci.qty;
+      const combosNeeded = Math.ceil(deficit / unitsPerCombo);
+      const combosToBreak = Math.min(combosNeeded, combo.current_stock);
+
+      if (combosToBreak > 0) {
+        const result = this.breakCombo(
+          businessId,
+          combo.id,
+          combosToBreak,
+          userName,
+          `Auto-break (reverse packing) to fulfill out-of-stock item '${prod.name}'`
+        );
+
+        if (result.success) {
+          totalBroken += combosToBreak;
+          this.addComboLog(
+            businessId,
+            combo.id,
+            combo.name,
+            'Auto-Broken',
+            combosToBreak,
+            userName,
+            `Auto-broken ${combosToBreak} box(es) to fulfill customer request for ${requiredQty}x '${prod.name}'. Remaining items returned to stock.`
+          );
+
+          // Re-fetch current stock
+          const freshProd = this.cache.products.find(p => p.id === productId);
+          currentStock = freshProd ? freshProd.current_stock : currentStock;
+          deficit = requiredQty - currentStock;
+
+          if (deficit <= 0) break;
+        }
+      }
+    }
+
+    return {
+      success: deficit <= 0,
+      brokenCount: totalBroken,
+      message: totalBroken > 0 
+        ? `Auto-broke ${totalBroken} packed Combo Box(es) to satisfy stock requirement for ${prod.name}.`
+        : `Insufficient packed combos to supply missing ${deficit} units of ${prod.name}.`
+    };
+  }
+
+  public processComboSale(
+    businessId: string,
+    comboId: string,
+    sellQty: number,
+    userName: string
+  ): { 
+    success: boolean; 
+    fromPacked: number; 
+    fromVirtual: number; 
+    error?: string;
+    missingItems?: { productName: string; required: number; available: number; missing: number }[];
+  } {
+    const combo = this.cache.products.find(p => p.id === comboId && p.business_id === businessId);
+    if (!combo || !isComboProduct(combo)) return { success: false, fromPacked: 0, fromVirtual: 0, error: 'Not a valid combo box' };
+
+    const fromPacked = sellQty;
+    const fromVirtual = 0;
+
+    // Validate virtual combo component availability
+    if (fromVirtual > 0) {
+      const missingItems: { productName: string; required: number; available: number; missing: number }[] = [];
+      combo.combo_items?.forEach(item => {
+        let prod = this.cache.products.find(p => p.id === item.product_id);
+        const reqQty = item.qty * fromVirtual;
+        let availQty = prod ? prod.current_stock : 0;
+
+        // Try auto-break if component stock is insufficient
+        if (prod && availQty < reqQty) {
+          this.autoBreakComboForMissingItem(businessId, prod.id, reqQty, userName);
+          prod = this.cache.products.find(p => p.id === item.product_id);
+          availQty = prod ? prod.current_stock : 0;
+        }
+
+        if (availQty < reqQty) {
+          missingItems.push({
+            productName: prod ? prod.name : 'Component Product',
+            required: reqQty,
+            available: availQty,
+            missing: reqQty - availQty
+          });
+        }
+      });
+
+      if (missingItems.length > 0) {
+        return {
+          success: false,
+          fromPacked: 0,
+          fromVirtual: 0,
+          error: `Insufficient component stock to fulfill Virtual Combo sale of ${fromVirtual} unit(s).`,
+          missingItems
+        };
+      }
+    }
+
+    // Step 1: Process Packed portion
+    if (fromPacked > 0) {
+      this.addStockLog(
+        combo.id,
+        -fromPacked,
+        'Out',
+        `Sold Packed Combo Box (x${fromPacked})`,
+        userName,
+        businessId
+      );
+      this.addComboLog(
+        businessId,
+        combo.id,
+        combo.name,
+        'Packed Sale',
+        fromPacked,
+        userName,
+        `Sold ${fromPacked} packed unit(s) directly from finished goods inventory.`
+      );
+    }
+
+    // Step 2: Process Virtual portion
+    if (fromVirtual > 0) {
+      combo.combo_items?.forEach(item => {
+        const reqQty = item.qty * fromVirtual;
+        const prod = this.cache.products.find(p => p.id === item.product_id);
+        if (prod) {
+          this.addStockLog(
+            prod.id,
+            -reqQty,
+            'Out',
+            `Sold Virtual Combo '${combo.name}' (x${fromVirtual})`,
+            userName,
+            businessId
+          );
+        }
+      });
+      this.addComboLog(
+        businessId,
+        combo.id,
+        combo.name,
+        'Virtual Sale',
+        fromVirtual,
+        userName,
+        `Sold ${fromVirtual} virtual combo unit(s). Deducted component product stocks dynamically.`
+      );
+    }
+
+    return { success: true, fromPacked, fromVirtual };
   }
 
   // Customer Operations
@@ -1486,12 +2255,20 @@ class ERPStorage {
     };
     this.cache.sales.unshift(newSO);
     this.save('sales', newSO);
+
+    // Ensure stock is reduced if order is created in a dispatched/delivered state
+    this.syncOrderStock(newSO);
+
     return newSO;
   }
 
   public deleteSalesOrder(id: string): boolean {
     const index = this.cache.sales.findIndex(s => s.id === id);
     if (index !== -1) {
+      const order = this.cache.sales[index];
+      // Return stock if order was active (not already cancelled)
+      this.syncOrderStock({ ...order, status: 'Cancelled' }, order.status);
+
       this.cache.sales.splice(index, 1);
       this.save('sales', null, true, id);
       return true;
@@ -1507,17 +2284,45 @@ class ERPStorage {
       this.cache.sales[index] = newSO;
       this.save('sales', newSO);
 
-      // Handle stock out when order becomes Dispatched or Delivered
-      const isDispatched = (status: OrderStatus) => status === 'Dispatched' || status === 'Delivered';
-      if (!isDispatched(oldSO.status) && isDispatched(newSO.status)) {
-        newSO.items.forEach(item => {
-          this.addStockLog(item.product_id, -item.qty, 'Out', `Dispatch for order ${newSO.order_number}`, 'System', newSO.business_id);
-        });
-      }
+      // Handle stock synchronization
+      this.syncOrderStock(newSO, oldSO.status);
 
       return newSO;
     }
     throw new Error('Sales Order not found');
+  }
+
+  private syncOrderStock(order: SalesOrder, oldStatus?: OrderStatus) {
+    const isStockAffecting = (status: OrderStatus) => status !== 'Cancelled' && status !== 'Returned';
+    const wasAffecting = oldStatus ? isStockAffecting(oldStatus) : false;
+    const nowAffecting = isStockAffecting(order.status);
+
+    if (!wasAffecting && nowAffecting) {
+      // Stock OUT: Order became active (created or un-cancelled/un-returned)
+      order.items.forEach(item => {
+        const prod = this.cache.products.find(p => p.id === item.product_id);
+        if (prod && isComboProduct(prod)) {
+          this.processComboSale(order.business_id, item.product_id, item.qty, 'System');
+        } else if (prod) {
+          // Individual product: check if auto-break combo is required for missing stock
+          if (prod.current_stock < item.qty) {
+            this.autoBreakComboForMissingItem(order.business_id, item.product_id, item.qty, 'System');
+          }
+          this.addStockLog(item.product_id, -item.qty, 'Out', `Order ${order.order_number} ${order.status}`, 'System', order.business_id);
+        }
+      });
+    } else if (wasAffecting && !nowAffecting) {
+      // Stock IN: Order became inactive (cancelled or returned)
+      const logType: StockLog['type'] = order.status === 'Returned' ? 'Return' : 'In';
+      const logNote = order.status === 'Returned' ? `Order ${order.order_number} returned` : `Order ${order.order_number} cancelled`;
+      
+      order.items.forEach(item => {
+        const prod = this.cache.products.find(p => p.id === item.product_id);
+        if (prod) {
+          this.addStockLog(item.product_id, item.qty, logType, logNote, 'System', order.business_id);
+        }
+      });
+    }
   }
 
   // Stock log and Inventory operations
@@ -1544,11 +2349,14 @@ class ERPStorage {
       business_id: businessId
     };
 
-    // Update product current stock level in memory
+    // Update product current stock level in memory cache for immediate UI feedback.
+    // IMPORTANT: We DO NOT call this.save('products', ...) here because there is a 
+    // database trigger (trg_stock_logs_on_insert) in Supabase that automatically 
+    // updates the products table when a new stock_log is inserted. 
+    // Manual updates here would cause a double reduction/increase bug.
     const productIndex = this.cache.products.findIndex(p => p.id === productId);
     if (productIndex !== -1) {
       this.cache.products[productIndex].current_stock += changeQty;
-      this.save('products', this.cache.products[productIndex]);
     }
 
     this.cache.stockLogs.push(newLog);
@@ -1873,6 +2681,7 @@ class ERPStorage {
     localStorage.removeItem('omnipack_erp_messages');
     localStorage.removeItem('omnipack_erp_loyaltyLogs');
     localStorage.removeItem('omnipack_erp_subscriptions');
+    localStorage.removeItem('omnipack_erp_comboLogs');
 
     this.cache = {
       businesses: PRE_SEEDED_BUSINESSES,
@@ -1889,7 +2698,8 @@ class ERPStorage {
       packingSessions: [],
       messages: [],
       loyaltyLogs: PRE_SEEDED_LOYALTY_LOGS,
-      subscriptions: PRE_SEEDED_SUBSCRIPTIONS
+      subscriptions: PRE_SEEDED_SUBSCRIPTIONS,
+      comboLogs: []
     };
   }
 

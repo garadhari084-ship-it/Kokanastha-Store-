@@ -1,3 +1,4 @@
+import { PaymentCollectionModal } from './PaymentCollectionModal';
 import { PageHeader } from './PageHeader';
 import React, { useEffect, useState } from 'react';
 import { 
@@ -847,158 +848,20 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
 
       {/* Record / Update Payment Modal */}
       {paymentModalPO && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-800">
-            <div className="bg-emerald-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-800/80 flex items-center justify-center">
-                  <Banknote size={18} className="text-emerald-300" />
-                </div>
-                <div>
-                  <h2 className="text-xs font-bold uppercase tracking-wider">Record Purchase Payment</h2>
-                  <p className="text-[10px] text-emerald-200 font-mono">{paymentModalPO.order_number} - Total: ₹{paymentModalPO.total_amount.toLocaleString()}</p>
-                </div>
-              </div>
-              <button onClick={() => setPaymentModalPO(null)} className="text-emerald-200 hover:text-white transition-colors cursor-pointer p-1">
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSavePaymentRecord} className="p-6 space-y-4">
-              {/* Payment Type Selection */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Select Payment Option *</label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPaymentOption('Paid');
-                      setPaymentAmountInput(paymentModalPO.total_amount);
-                    }}
-                    className={`py-2 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center ${
-                      paymentOption === 'Paid' 
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' 
-                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    Payment Done
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPaymentOption('Partial');
-                      const currPaid = paymentModalPO.paid_amount || 0;
-                      setPaymentAmountInput(currPaid > 0 ? currPaid : Math.round(paymentModalPO.total_amount / 2));
-                    }}
-                    className={`py-2 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center ${
-                      paymentOption === 'Partial' 
-                        ? 'bg-amber-600 text-white border-amber-600 shadow-sm' 
-                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    Part Payment
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPaymentOption('Unpaid');
-                      setPaymentAmountInput(0);
-                    }}
-                    className={`py-2 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center ${
-                      paymentOption === 'Unpaid' 
-                        ? 'bg-rose-600 text-white border-rose-600 shadow-sm' 
-                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    Unpaid
-                  </button>
-                </div>
-              </div>
-
-              {/* Paid Amount Field (if Partial or Paid) */}
-              {paymentOption === 'Partial' && (
-                <div className="space-y-1 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-200 dark:border-amber-800">
-                  <div className="flex justify-between items-center text-xs mb-1">
-                    <label className="font-bold text-amber-900 dark:text-amber-300">Enter Part Payment Amount (₹)</label>
-                    <span className="text-[10px] text-amber-700 dark:text-amber-400">Total Order: ₹{paymentModalPO.total_amount.toLocaleString()}</span>
-                  </div>
-                  <input
-                    type="number"
-                    min="1"
-                    max={paymentModalPO.total_amount}
-                    value={paymentAmountInput}
-                    onChange={(e) => setPaymentAmountInput(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-sm font-bold font-mono rounded-lg border border-amber-300 dark:border-amber-700 focus:outline-hidden focus:ring-1 focus:ring-amber-500"
-                    placeholder="e.g. 5000"
-                  />
-                  <div className="flex justify-between text-[11px] text-amber-800 dark:text-amber-400 pt-1">
-                    <span>Remaining Outstanding:</span>
-                    <span className="font-bold">₹{Math.max(0, paymentModalPO.total_amount - paymentAmountInput).toLocaleString()}</span>
-                  </div>
-                </div>
-              )}
-
-              {paymentOption !== 'Unpaid' && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Payment Mode *</label>
-                      <select
-                        value={paymentModeInput}
-                        onChange={(e) => setPaymentModeInput(e.target.value as any)}
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
-                      >
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI / QR Code</option>
-                        <option value="Bank Transfer">Bank Transfer / NEFT</option>
-                        <option value="Cheque">Cheque</option>
-                        <option value="Credit Card">Credit / Debit Card</option>
-                        <option value="Other">Other Mode</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Payment Date *</label>
-                      <input
-                        type="date"
-                        value={paymentDateInput}
-                        onChange={(e) => setPaymentDateInput(e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-xs font-semibold font-mono rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Transaction Ref / Notes</label>
-                    <input
-                      type="text"
-                      value={paymentNotesInput}
-                      onChange={(e) => setPaymentNotesInput(e.target.value)}
-                      placeholder="e.g. UTR #9823471029, Cheque #004123, Paid via HDFC"
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-xs rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                </>
-              )}
-
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPaymentModalPO(null)}
-                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
-                >
-                  <Check size={14} /> Save Payment Record
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <PaymentCollectionModal
+          businessId={businessId}
+          user={user}
+          order={paymentModalPO}
+          type="Purchase"
+          onClose={() => setPaymentModalPO(null)}
+          onSuccess={(updatedPO) => {
+            setPurchases(dbStore.getPurchaseOrders(businessId));
+            if (viewingOrder && viewingOrder.id === updatedPO.id) {
+              setViewingOrder(updatedPO as PurchaseOrder);
+            }
+          }}
+          triggerToast={triggerToast}
+        />
       )}
 
       {/* Create New PO Modal */}

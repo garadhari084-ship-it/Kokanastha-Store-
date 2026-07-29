@@ -321,9 +321,6 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL VENDORS</span>
             </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Active suppliers in master</span>
-            </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
                 {totalSuppliers}
@@ -337,9 +334,6 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
                 <DollarSign size={14} />
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">TOTAL PAYABLE</span>
-            </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Combined outstanding payable</span>
             </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -355,9 +349,6 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">AVG PAYABLE</span>
             </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Average payable per vendor</span>
-            </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
                 ₹{avgPayable.toLocaleString()}
@@ -371,9 +362,6 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
                 <ShoppingBag size={14} />
               </div>
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">PENDING POS</span>
-            </div>
-            <div className="flex flex-col gap-0.5 mt-0.5">
-              <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Active purchase orders</span>
             </div>
             <div className="text-right mt-1">
               <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">

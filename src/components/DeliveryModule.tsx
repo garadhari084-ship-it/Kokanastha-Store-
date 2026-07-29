@@ -20,6 +20,7 @@ import {
   Eye,
   CreditCard,
   QrCode,
+  RotateCcw,
   Building2,
   LayoutGrid,
   Banknote,
@@ -43,15 +44,15 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   triggerToast
 }) => {
   const [orders, setOrders] = useState<SalesOrder[]>(
-    dbStore.getSalesOrders(businessId).filter(o => ['Packed', 'Dispatched', 'Delivered'].includes(o.status))
+    dbStore.getSalesOrders(businessId).filter(o => ['Packed', 'Dispatched', 'Delivered', 'Returned'].includes(o.status))
   );
   const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'All' | 'Pending Delivery' | 'Ready to Dispatch' | 'In Transit' | 'Delivered'>('Pending Delivery');
+  const [activeFilter, setActiveFilter] = useState<'All' | 'Pending Delivery' | 'Ready to Dispatch' | 'In Transit' | 'Delivered' | 'Returned'>('Pending Delivery');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   
   const reloadOrders = () => {
-    setOrders(dbStore.getSalesOrders(businessId).filter(o => ['Packed', 'Dispatched', 'Delivered'].includes(o.status)));
+    setOrders(dbStore.getSalesOrders(businessId).filter(o => ['Packed', 'Dispatched', 'Delivered', 'Returned'].includes(o.status)));
   };
 
   useEffect(() => {
@@ -200,6 +201,8 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
         if (o.status !== 'Dispatched') return false;
       } else if (activeFilter === 'Delivered') {
         if (o.status !== 'Delivered') return false;
+      } else if (activeFilter === 'Returned') {
+        if (o.status !== 'Returned') return false;
       }
       
       // Apply search query
@@ -218,6 +221,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   const readyCount = orders.filter(o => o.status === 'Packed').length;
   const transitCount = orders.filter(o => o.status === 'Dispatched').length;
   const deliveredCount = orders.filter(o => o.status === 'Delivered').length;
+  const returnedCount = orders.filter(o => o.status === 'Returned').length;
   const codPendingCount = orders.filter(o => (o.status === 'Dispatched' || o.status === 'Packed') && o.payment_status !== 'Paid').length;
   const codPendingAmount = orders.filter(o => (o.status === 'Dispatched' || o.status === 'Packed') && o.payment_status !== 'Paid')
     .reduce((sum, o) => sum + Math.max(0, o.total_amount - (o.paid_amount || 0)), 0);
@@ -340,9 +344,6 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">READY TO DISPATCH</span>
           </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Orders packed and ready</span>
-          </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
               {readyCount}
@@ -361,9 +362,6 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
               <Truck size={14} />
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">IN TRANSIT</span>
-          </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Orders out for delivery</span>
           </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -384,9 +382,6 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">DELIVERED</span>
           </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">Successfully completed deliveries</span>
-          </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
               {deliveredCount}
@@ -406,9 +401,6 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
             </div>
             <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">COD PENDING</span>
           </div>
-          <div className="flex flex-col gap-0.5 mt-0.5">
-            <span className="text-[11px] text-slate-800 dark:text-slate-200 leading-tight line-clamp-2">From {codPendingCount} pending deliveries</span>
-          </div>
           <div className="text-right mt-1">
             <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
               ₹{codPendingAmount.toLocaleString()}
@@ -426,6 +418,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
             { id: 'Ready to Dispatch', label: `Ready to Dispatch (${readyCount})` },
             { id: 'In Transit', label: `In Transit (${transitCount})` },
             { id: 'Delivered', label: `Delivered (${deliveredCount})` },
+            { id: 'Returned', label: `Returned (${returnedCount})` },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -715,6 +708,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                     <td className="py-2.5 px-3">
                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
                         o.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-300' :
+                        o.status === 'Returned' ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/80 dark:text-rose-300' :
                         o.status === 'Dispatched' ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/80 dark:text-indigo-300' :
                         'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/80 dark:text-amber-300'
                       }`}>
@@ -755,8 +749,27 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                       )}
                       
                       {o.status === 'Delivered' && (
-                        <div className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded font-bold text-[10px] flex items-center gap-1 border border-slate-200 dark:border-slate-700">
-                          <CheckCircle2 size={12} /> Done
+                        <div className="flex gap-1">
+                          <div className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded font-bold text-[10px] flex items-center gap-1 border border-slate-200 dark:border-slate-700">
+                            <CheckCircle2 size={12} /> Done
+                          </div>
+                          <button 
+                            onClick={() => {
+                              if (window.confirm("Mark as Returned? Product will be added back to inventory.")) {
+                                performStatusUpdate(o, 'Returned');
+                              }
+                            }}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded border border-rose-200 dark:border-rose-800 cursor-pointer"
+                            title="Return Order"
+                          >
+                            <RotateCcw size={12} />
+                          </button>
+                        </div>
+                      )}
+                      
+                      {o.status === 'Returned' && (
+                        <div className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded font-bold text-[10px] flex items-center gap-1 border border-rose-200 dark:border-rose-800">
+                          <RotateCcw size={12} /> Returned
                         </div>
                       )}
                     </td>

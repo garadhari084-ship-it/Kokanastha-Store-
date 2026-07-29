@@ -71,34 +71,30 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   }, [selectedTheme]);
 
   return (
-    <div className={`relative rounded-none p-3 sm:px-4 sm:py-3.5 bg-gradient-to-r ${themeStyles.banner} border shadow-2xl transition-all duration-300 mb-4 w-full`}>
+    <div className={`relative rounded-2xl p-2.5 sm:px-4 sm:py-2.5 bg-gradient-to-r ${themeStyles.banner} border shadow-xl transition-all duration-300 mb-3 w-full`}>
       {/* Glow ambient spots */}
-      <div className="absolute inset-0 overflow-hidden rounded-none pointer-events-none">
+      <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl"></div>
         <div className="absolute bottom-0 left-1/4 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl"></div>
       </div>
 
-      <div className="relative z-10 flex flex-col gap-2 w-full">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between w-full gap-3">
+      <div className="relative z-10 flex flex-col gap-1.5 w-full">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between w-full gap-2">
           {/* Title & Subtitle block */}
           <div className="flex-1 min-w-0 text-left">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-base sm:text-lg md:text-xl lg:text-2xl font-black tracking-tight text-white flex items-center gap-2.5 whitespace-nowrap">
-                <Icon className={`${themeStyles.accentText} shrink-0`} />
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-sm sm:text-base md:text-lg font-black tracking-tight text-white flex items-center gap-2 whitespace-nowrap">
+                <Icon className={`${themeStyles.accentText} shrink-0`} size={20} />
                 <span className="whitespace-nowrap">{title}</span>
               </h1>
 
               {badgeText && (
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] sm:text-[11px] font-bold ${themeStyles.badge}`}>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-bold ${themeStyles.badge}`}>
                   {badgeActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>}
                   {badgeText}
                 </span>
               )}
             </div>
-
-            <p className="text-[11px] sm:text-xs font-medium text-slate-300 leading-relaxed mt-1 block">
-              {subtitle}
-            </p>
           </div>
 
           {/* Right side controls */}

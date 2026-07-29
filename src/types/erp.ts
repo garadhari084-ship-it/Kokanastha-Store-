@@ -58,6 +58,11 @@ export interface Category {
   created_at: string;
 }
 
+export interface ComboItem {
+  product_id: string;
+  qty: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -80,6 +85,22 @@ export interface Product {
   description: string;
   active: boolean;
   business_id: string;
+  created_at: string;
+  
+  // Combo Box / Product Bundle attributes
+  is_combo?: boolean;
+  combo_items?: ComboItem[];
+}
+
+export interface ComboHistoryLog {
+  id: string;
+  business_id: string;
+  combo_id: string;
+  combo_name: string;
+  action: 'Created' | 'Updated' | 'Packed' | 'Unpacked' | 'Virtual Sale' | 'Packed Sale' | 'Auto-Broken';
+  qty: number;
+  performed_by: string;
+  details: string;
   created_at: string;
 }
 
@@ -126,6 +147,23 @@ export interface PurchaseItem {
   gst_rate: number;
 }
 
+export interface PaymentRecord {
+  id: string;
+  order_id: string;
+  order_number: string;
+  type: 'Sales' | 'Purchase';
+  amount: number;
+  payment_mode: string;
+  reference_no?: string;
+  bank_account?: string;
+  payment_date: string;
+  notes?: string;
+  receipt_number: string;
+  collected_by: string;
+  business_id: string;
+  created_at: string;
+}
+
 export interface PurchaseOrder {
   id: string;
   order_number: string;
@@ -135,9 +173,12 @@ export interface PurchaseOrder {
   status: 'Draft' | 'Ordered' | 'Received' | 'Cancelled';
   payment_status: 'Unpaid' | 'Partial' | 'Paid';
   paid_amount?: number;
-  payment_mode?: 'Cash' | 'UPI' | 'Bank Transfer' | 'Cheque' | 'Credit Card' | 'Other';
+  payment_mode?: 'Cash' | 'UPI' | 'Bank Transfer' | 'Cheque' | 'Credit Card' | 'Other' | string;
+  payment_reference?: string;
+  payment_bank?: string;
   payment_notes?: string;
   payment_date?: string;
+  payment_history?: PaymentRecord[];
   items: PurchaseItem[];
   total_amount: number;
   business_id: string;
@@ -152,7 +193,7 @@ export interface SalesItem {
   gst_rate: number;
 }
 
-export type OrderStatus = 'Pending' | 'Packing' | 'Packed' | 'Dispatched' | 'Delivered' | 'Cancelled';
+export type OrderStatus = 'Pending' | 'Packing' | 'Packed' | 'Dispatched' | 'Delivered' | 'Cancelled' | 'Returned';
 
 export interface SalesOrder {
   id: string;
@@ -169,6 +210,11 @@ export interface SalesOrder {
   payment_status: 'Unpaid' | 'Partial' | 'Paid';
   payment_mode?: 'Cash' | 'UPI / QR' | 'Card' | 'Bank Transfer' | 'Credit / On Account' | string;
   paid_amount?: number;
+  payment_reference?: string;
+  payment_bank?: string;
+  payment_notes?: string;
+  payment_date?: string;
+  payment_history?: PaymentRecord[];
   delivery_status: OrderStatus;
   items: SalesItem[];
   advance_booking: boolean;

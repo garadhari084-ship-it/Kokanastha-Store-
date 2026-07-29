@@ -701,7 +701,7 @@ export default function App() {
   // Deep linking helper
   const handleDeepLinkNavigate = (view: string, actionData?: any) => {
     setActiveView(view);
-    setDeepLinkData(actionData);
+    setDeepLinkData(actionData ? { ...actionData, _ts: Date.now() } : null);
     setIsMobileMenuOpen(false);
   };
 
@@ -980,6 +980,8 @@ export default function App() {
             triggerToast={triggerToast}
             openAddModalInitially={deepLinkData?.openAddModal || false}
             selectedOrderIdInitially={deepLinkData?.orderId || null}
+            deepLinkData={deepLinkData}
+            onClearDeepLink={() => setDeepLinkData(null)}
           />
         );
       case 'packing':
@@ -1573,18 +1575,18 @@ export default function App() {
                     triggerToast(`Unauthorized: ${currentUser.role} cannot browse this view.`, 'error');
                   }
                 }}
-                className={`w-full flex items-center justify-between ${isSidebarMinimized ? 'lg:justify-center' : ''} px-3 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition ${
+                className={`w-full flex items-center justify-between ${isSidebarMinimized ? 'lg:justify-center' : ''} px-3 py-3 rounded-xl text-xs cursor-pointer transition ${
                   isActive 
-                    ? 'bg-indigo-600 text-white' 
+                    ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-900/30' 
                     : isAuthorized 
-                      ? 'text-slate-400 hover:bg-slate-800 hover:text-white' 
+                      ? 'text-slate-300 font-medium hover:bg-slate-800/80 hover:text-white' 
                       : 'text-slate-600 cursor-not-allowed'
                 }`}
                 title={isSidebarMinimized ? item.label : undefined}
               >
                 <div className={`flex items-center gap-2.5 ${isSidebarMinimized ? 'lg:justify-center' : ''}`}>
-                  <div className="relative">
-                    <item.icon size={16} className={`${isActive ? 'text-white' : 'text-slate-400'} ${isSidebarMinimized ? 'lg:w-5 lg:h-5' : ''}`} />
+                  <div className="relative shrink-0">
+                    <item.icon size={18} className={`${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`} />
                     {item.id === 'inbox' && unreadMessagesCount > 0 && isSidebarMinimized && (
                       <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full font-black shadow-sm ring-1 ring-slate-900 animate-in zoom-in duration-150">
                         {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}

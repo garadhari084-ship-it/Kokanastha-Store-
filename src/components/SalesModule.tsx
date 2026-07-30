@@ -37,7 +37,9 @@ import {
   RotateCcw,
   Plus,
   Minus,
-  Loader2
+  Loader2,
+  UserPlus,
+  Save
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
@@ -56,6 +58,7 @@ interface CustomDropdownProps {
   options: CustomDropdownOption[];
   placeholder?: string;
   className?: string;
+  searchable?: boolean;
 }
 
 const CustomDropdown: React.FC<CustomDropdownProps> = ({
@@ -63,10 +66,14 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
   onChange,
   options,
   placeholder = 'Select...',
-  className = ''
+  className = '',
+  searchable = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const selectedOption = options.find(o => o.value === value);
 
@@ -80,41 +87,136 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const filteredOptions = options.filter(opt => 
+    opt.label.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  useEffect(() => {
+    if (isOpen && searchable && searchInputRef.current) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+    }
+    if (!isOpen) {
+      setSearchTerm('');
+      setActiveIndex(0);
+    }
+  }, [isOpen, searchable]);
+
+  // Reset active index when search term changes
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [searchTerm]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isOpen) {
+      if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        setIsOpen(true);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setActiveIndex(prev => (prev + 1) % Math.max(1, filteredOptions.length));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setActiveIndex(prev => (prev - 1 + filteredOptions.length) % Math.max(1, filteredOptions.length));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (filteredOptions[activeIndex] && !filteredOptions[activeIndex].disabled) {
+          onChange(filteredOptions[activeIndex].value);
+          setIsOpen(false);
+        }
+        break;
+      case 'Escape':
+        setIsOpen(false);
+        break;
+      case 'Tab':
+        setIsOpen(false);
+        break;
+    }
+  };
+
   return (
-    <div ref={containerRef} className="relative w-full">
-      <button
-        type="button"
+    <div ref={containerRef} className="relative w-full" onKeyDown={handleKeyDown}>
+      <div
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none flex items-center justify-between gap-2 text-left cursor-pointer transition-colors hover:border-slate-300 dark:hover:border-slate-600 ${className}`}
+        className={`w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus-within:ring-1 focus-within:ring-indigo-500 flex items-center justify-between gap-2 text-left cursor-pointer transition-colors hover:border-slate-300 dark:hover:border-slate-600 ${className} ${isOpen ? 'ring-1 ring-indigo-500' : ''}`}
       >
-        <span className="truncate font-medium">
-          {selectedOption ? selectedOption.label : <span className="text-slate-400">{placeholder}</span>}
-        </span>
+        <div className="flex-1 flex items-center overflow-hidden">
+          {isOpen && searchable ? (
+            <div className="flex items-center w-full group">
+              <Search size={12} className="text-indigo-500 mr-2 shrink-0" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Type to search..."
+                className="w-full bg-transparent border-none outline-none text-[11px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 font-bold"
+                onClick={(e) => e.stopPropagation()}
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSearchTerm('');
+                    searchInputRef.current?.focus();
+                  }}
+                  className="px-1.5 py-0.5 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded text-[9px] font-black text-rose-500 hover:text-rose-600 transition-colors cursor-pointer border border-rose-200 dark:border-rose-800/50 flex items-center gap-1"
+                >
+                  <RotateCcw size={10} />
+                  <span>CLEAR</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <span className="truncate font-medium">
+              {selectedOption ? selectedOption.label : <span className="text-slate-400">{placeholder}</span>}
+            </span>
+          )}
+        </div>
         <ChevronDown size={14} className={`text-slate-400 transition-transform duration-150 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+      </div>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-52 overflow-y-auto py-1 animate-in fade-in zoom-in-95 duration-100">
-          {options.map((opt, idx) => (
-            <button
-              key={`${opt.value}-${idx}`}
-              type="button"
-              disabled={opt.disabled}
-              onClick={() => {
-                if (!opt.disabled) {
-                  onChange(opt.value);
-                  setIsOpen(false);
-                }
-              }}
-              className={`w-full text-left px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer truncate block ${
-                opt.value === value
-                  ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 font-bold'
-                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60'
-              } ${opt.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-64 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+          <div className="overflow-y-auto py-1 max-h-60">
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((opt, idx) => (
+                <button
+                  key={`${opt.value}-${idx}`}
+                  type="button"
+                  disabled={opt.disabled}
+                  onMouseEnter={() => setActiveIndex(idx)}
+                  onClick={() => {
+                    if (!opt.disabled) {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                    }
+                  }}
+                  className={`w-full text-left px-3 py-2 text-[11px] font-medium transition-colors cursor-pointer truncate block ${
+                    opt.value === value
+                      ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 font-bold border-l-2 border-indigo-500'
+                      : idx === activeIndex
+                        ? 'bg-slate-100 dark:bg-slate-700 text-indigo-600 dark:text-indigo-400'
+                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                  } ${opt.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {opt.label}
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic">
+                No matching options found
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -271,6 +373,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [paidAmount, setPaidAmount] = useState<number | string>('');
   const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
+  const [isNewCustomerSelected, setIsNewCustomerSelected] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerAddress, setNewCustomerAddress] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
 
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState<string>('');
@@ -331,6 +437,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setPaidAmount('');
     setPointsToRedeem(0);
     setOrderItems([]);
+    setIsNewCustomerSelected(false);
+    setNewCustomerName('');
+    setNewCustomerAddress('');
+    setNewCustomerPhone('');
     setRowProductId('');
     setRowQty(1);
     setRowPrice(0);
@@ -472,9 +582,24 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     e.preventDefault();
     if (isSubmitting) return;
 
-    if (!selectedCustomerId) {
+    if (!selectedCustomerId && !isNewCustomerSelected) {
       triggerToast('Please choose a customer profile.', 'error');
       return;
+    }
+
+    if (isNewCustomerSelected) {
+      if (!newCustomerName.trim()) {
+        triggerToast('Please enter new customer name.', 'error');
+        return;
+      }
+      if (!newCustomerPhone.trim()) {
+        triggerToast('Please enter new customer mobile number.', 'error');
+        return;
+      }
+      if (!newCustomerAddress.trim()) {
+        triggerToast('Please enter new customer address.', 'error');
+        return;
+      }
     }
 
     if (orderItems.length === 0) {
@@ -489,12 +614,31 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
     setIsSubmitting(true);
     try {
-      // Handle Walk-in customer dynamic creation
+      // Handle Walk-in / New Customer dynamic creation
       let finalCustomerId = selectedCustomerId;
-      let finalCustomerName = 'Walk-in Customer';
+      let finalCustomerName = '';
       let finalCustomerArea = selectedArea || 'Dahisar';
       
-      if (selectedCustomerId === 'WALK_IN') {
+      if (isNewCustomerSelected) {
+        const newCust = dbStore.createCustomer({
+          name: newCustomerName.trim(),
+          group: 'Retail',
+          area: selectedArea || 'Dahisar',
+          gstin: '',
+          pan: '',
+          billing_address: newCustomerAddress.trim(),
+          shipping_address: newCustomerAddress.trim(),
+          email: '',
+          phone: newCustomerPhone.trim(),
+          credit_limit: 0,
+          business_id: businessId,
+          active: true
+        });
+        finalCustomerId = newCust.id;
+        finalCustomerName = newCust.name;
+        finalCustomerArea = selectedArea || 'Dahisar';
+        triggerToast(`New customer "${newCust.name}" registered successfully.`, 'success');
+      } else if (selectedCustomerId === 'WALK_IN') {
          let walkIn = customers.find(c => c.name === 'Walk-in Customer');
          if (!walkIn) {
             walkIn = dbStore.createCustomer({
@@ -526,7 +670,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       // Calculate payment amount and credit balance
       const customerObj = customers.find(c => c.id === finalCustomerId);
       const subtotal = orderItems.reduce((acc, it) => acc + (it.qty * it.selling_price * (1 + it.gst_rate/100)), 0);
-      const finalAmount = Math.round(subtotal);
+      
+      const config = dbStore.getLoyaltyConfig(businessId);
+      const pointVal = config?.point_value || 1;
+      const actualRedeem = Math.min(customerObj?.loyalty_points || 0, pointsToRedeem);
+      const discountAmount = actualRedeem * pointVal;
+      
+      const finalAmount = Math.max(0, Math.round(subtotal) - discountAmount);
 
       let actualPaid = 0;
       if (paymentStatus === 'Paid') {
@@ -570,6 +720,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           advance_booking: isAdvanceBooking,
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
+          discount_amount: discountAmount,
+          points_redeemed: actualRedeem,
           is_updated: true,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
         });
@@ -622,6 +774,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           advance_booking: isAdvanceBooking,
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
+          discount_amount: discountAmount,
+          points_redeemed: actualRedeem,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
           business_id: businessId
         });
@@ -862,12 +1016,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             <div className="relative shrink-0" ref={topFilterRef}>
               <button 
                 onClick={() => setIsTopFilterMenuOpen(!isTopFilterMenuOpen)}
-                className="h-9 px-3 flex items-center gap-2 bg-slate-950/70 border border-white/10 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-200 cursor-pointer hover:bg-slate-900 transition-colors text-xs font-bold"
+                className="h-8 px-3 flex items-center gap-2 bg-white/10 border border-white/10 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-200 cursor-pointer hover:bg-white/20 transition-colors text-[10px] font-bold"
                 title="Filter by Time"
               >
-                <Filter size={15} className="text-amber-500 shrink-0" />
+                <Filter size={14} className="text-amber-500 shrink-0" />
                 <span className="hidden sm:inline-block text-amber-400 font-extrabold">{horizonLabel}</span>
-                <ChevronDown size={14} className="text-slate-400" />
+                <ChevronDown size={12} className="text-slate-400" />
               </button>
               
               {isTopFilterMenuOpen && (
@@ -905,7 +1059,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         {/* KPI Summary Cards Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Total Sales */}
-          <div className="bg-blue-50/60 dark:bg-blue-950/20 border-l-4 border-l-blue-500 border-y border-r border-slate-200/80 dark:border-slate-800 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
+          <div className="bg-blue-50/80 dark:bg-blue-950/30 border-l-4 border-l-blue-500 border-y border-r border-blue-200 dark:border-blue-800/60 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
             <div className="flex items-center justify-between gap-1.5">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg shrink-0">
@@ -924,7 +1078,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           </div>
 
           {/* Pending Orders */}
-          <div className="bg-amber-50/60 dark:bg-amber-950/20 border-l-4 border-l-amber-500 border-y border-r border-slate-200/80 dark:border-slate-800 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
+          <div className="bg-amber-50/80 dark:bg-amber-950/30 border-l-4 border-l-amber-500 border-y border-r border-amber-200 dark:border-amber-800/60 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
             <div className="flex items-center justify-between gap-1.5">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg shrink-0">
@@ -943,7 +1097,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           </div>
 
           {/* Completed Orders */}
-          <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border-l-4 border-l-emerald-500 border-y border-r border-slate-200/80 dark:border-slate-800 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
+          <div className="bg-emerald-50/80 dark:bg-emerald-950/30 border-l-4 border-l-emerald-500 border-y border-r border-emerald-200 dark:border-emerald-800/60 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
             <div className="flex items-center justify-between gap-1.5">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg shrink-0">
@@ -962,7 +1116,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           </div>
 
           {/* Total Value */}
-          <div className="bg-indigo-50/60 dark:bg-indigo-950/20 border-l-4 border-l-indigo-500 border-y border-r border-slate-200/80 dark:border-slate-800 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
+          <div className="bg-indigo-50/80 dark:bg-indigo-950/30 border-l-4 border-l-indigo-500 border-y border-r border-indigo-200 dark:border-indigo-800/60 p-3 sm:p-3.5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-2 h-28">
             <div className="flex items-center justify-between gap-1.5">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg shrink-0">
@@ -1585,7 +1739,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase block">
+                  <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
                     <span>Invoice Number *</span>
                   </label>
                   <input 
@@ -1598,31 +1752,130 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 </div>
 
                 <div className="md:col-span-2 space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Select Customer Party</label>
-                  <CustomDropdown 
-                    value={selectedCustomerId}
-                    onChange={(val) => {
-                      setSelectedCustomerId(val);
-                      const c = customers.find(cust => cust.id === val);
-                      if (c?.area && c.area !== 'Other') {
-                        setSelectedArea(c.area);
-                      } else if (val === 'WALK_IN' || !c?.area || c.area === 'Other') {
-                        setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
-                      }
-                    }}
-                    placeholder="-- Select Customer --"
-                    options={[
-                      { value: 'WALK_IN', label: 'Walk-in Customer (Instant POS)' },
-                      ...customers.map(c => ({
-                        value: c.id,
-                        label: `${c.name} (Credit outstanding: ${currencySymbol}${c.outstanding_amount.toLocaleString()})`
-                      }))
-                    ]}
-                  />
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Select Customer Party</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextState = !isNewCustomerSelected;
+                        setIsNewCustomerSelected(nextState);
+                        if (nextState) {
+                          setSelectedCustomerId('');
+                          setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
+                        } else {
+                          setSelectedCustomerId('WALK_IN');
+                        }
+                      }}
+                      className={`text-[11px] font-bold px-3 py-1 rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
+                        isNewCustomerSelected 
+                          ? 'bg-rose-600 border-rose-500 text-white shadow-sm' 
+                          : 'bg-white dark:bg-slate-800 border-indigo-200 dark:border-indigo-800 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-700 shadow-sm'
+                      }`}
+                    >
+                      {isNewCustomerSelected ? <RotateCcw size={12} /> : <UserPlus size={12} />}
+                      {isNewCustomerSelected ? 'Cancel' : 'Add New Customer'}
+                    </button>
+                  </div>
+
+                  {!isNewCustomerSelected ? (
+                    <CustomDropdown 
+                      value={selectedCustomerId}
+                      onChange={(val) => {
+                        setSelectedCustomerId(val);
+                        const c = customers.find(cust => cust.id === val);
+                        if (c?.area && c.area !== 'Other') {
+                          setSelectedArea(c.area);
+                        } else if (val === 'WALK_IN' || !c?.area || c.area === 'Other') {
+                          setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
+                        }
+                      }}
+                      placeholder="-- Select Customer --"
+                      searchable={true}
+                      options={[
+                        { value: 'WALK_IN', label: 'Walk-in Customer (Instant POS)' },
+                        ...customers.map(c => ({
+                          value: c.id,
+                          label: `${c.name} (Credit outstanding: ${currencySymbol}${c.outstanding_amount.toLocaleString()} | Points: ${c.loyalty_points || 0})`
+                        }))
+                      ]}
+                    />
+                  ) : (
+                    <div className="h-10 px-3 flex items-center bg-indigo-50/50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl text-indigo-600 dark:text-indigo-400 text-xs font-bold italic">
+                      <Sparkles size={14} className="mr-2 animate-pulse" />
+                      Creating New Customer Profile...
+                    </div>
+                  )}
                 </div>
 
+                {isNewCustomerSelected && (
+                  <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-4 gap-4 bg-indigo-50/30 dark:bg-indigo-950/20 p-4 rounded-xl border border-indigo-200/50 dark:border-indigo-800/50 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">Customer Name *</label>
+                      <input 
+                        type="text"
+                        value={newCustomerName}
+                        onChange={(e) => setNewCustomerName(e.target.value)}
+                        placeholder="Full Name"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-indigo-200 dark:border-indigo-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">Mobile Number *</label>
+                      <input 
+                        type="text"
+                        value={newCustomerPhone}
+                        onChange={(e) => setNewCustomerPhone(e.target.value)}
+                        placeholder="10-digit Mobile"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-indigo-200 dark:border-indigo-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">Address / Street *</label>
+                      <input 
+                        type="text"
+                        value={newCustomerAddress}
+                        onChange={(e) => setNewCustomerAddress(e.target.value)}
+                        placeholder="Billing Address"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-indigo-200 dark:border-indigo-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!newCustomerName.trim() || !newCustomerPhone.trim() || !newCustomerAddress.trim()) {
+                            triggerToast('Name, Phone and Address are required.', 'error');
+                            return;
+                          }
+                          const newCust = dbStore.createCustomer({
+                            name: newCustomerName.trim(),
+                            group: 'Retail',
+                            area: selectedArea || 'Dahisar',
+                            gstin: '',
+                            pan: '',
+                            billing_address: newCustomerAddress.trim(),
+                            shipping_address: newCustomerAddress.trim(),
+                            email: '',
+                            phone: newCustomerPhone.trim(),
+                            credit_limit: 0,
+                            business_id: businessId,
+                            active: true
+                          });
+                          setSelectedCustomerId(newCust.id);
+                          setIsNewCustomerSelected(false);
+                          triggerToast(`New customer "${newCust.name}" saved and selected.`, 'success');
+                        }}
+                        className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Save size={14} />
+                        <span>Save Customer</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Area Zone Location</label>
+                  <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Area Zone Location</label>
                   {(() => {
                     const areaZoneList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
                       ? currentBiz.area_zones 
@@ -1647,8 +1900,26 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   const config = dbStore.getLoyaltyConfig(businessId);
                   const pointVal = config?.point_value || 1;
 
+                  // Calculate estimated points earned for current order
+                  const taxableVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price), 0);
+                  const taxVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price * (item.gst_rate / 100)), 0);
+                  const totalOrderAmount = Math.round(taxableVal + taxVal);
+                  
+                  const actualRedeem = Math.min(pts, pointsToRedeem);
+                  const discountAmount = actualRedeem * pointVal;
+                  const netSpend = Math.max(0, totalOrderAmount - discountAmount);
+                  
+                  const basePoints = Math.floor(netSpend / (config.spend_per_point || 100));
+                  const newLifetimeSpend = (selCust.lifetime_spend || 0) + totalOrderAmount;
+                  const newTier = dbStore.calculateCustomerTier(newLifetimeSpend, config);
+                  
+                  let multiplier = 1.0;
+                  if (newTier === 'Gold') multiplier = config.gold_multiplier || 1.25;
+                  if (newTier === 'Platinum') multiplier = config.platinum_multiplier || 1.5;
+                  const pointsEarned = Math.floor(basePoints * multiplier);
+
                   return (
-                    <div className="md:col-span-4 p-2.5 bg-gradient-to-r from-amber-50 to-indigo-50 dark:from-amber-950/40 dark:to-indigo-950/40 rounded-xl border border-amber-200/80 dark:border-amber-800/60 flex items-center justify-between text-xs">
+                    <div className="md:col-span-4 p-2.5 bg-gradient-to-r from-amber-50 to-indigo-50 dark:from-amber-950/40 dark:to-indigo-950/40 rounded-xl border border-amber-200/80 dark:border-amber-800/60 flex flex-wrap items-center justify-between gap-3 text-xs">
                       <div className="flex items-center gap-2">
                         <span className="p-1.5 bg-amber-500 text-white rounded-lg font-black text-[10px]">
                           {tier === 'Platinum' ? '💎 PLATINUM' : tier === 'Gold' ? '🥇 GOLD' : '🥈 SILVER'}
@@ -1663,29 +1934,42 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         </div>
                       </div>
 
-                      {pts > 0 && (
-                        <div className="flex items-center gap-2">
-                          <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
-                            Redeem Points:
-                          </label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={pts}
-                            value={pointsToRedeem}
-                            onChange={e => setPointsToRedeem(Math.min(pts, Math.max(0, Number(e.target.value))))}
-                            className="w-20 px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-center text-xs focus:outline-none"
-                            placeholder="0"
-                          />
-                        </div>
-                      )}
+                      <div className="flex items-center gap-4">
+                        {pointsEarned > 0 && (
+                          <div className="flex flex-col items-end">
+                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                              Expected Bonus
+                            </span>
+                            <span className="font-black text-indigo-700 dark:text-indigo-300">
+                              +{pointsEarned} Pts
+                            </span>
+                          </div>
+                        )}
+
+                        {(pts > 0 || pointsToRedeem > 0) && (
+                          <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-700 pl-4">
+                            <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                              Redeem Points:
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={pts}
+                              value={pointsToRedeem}
+                              onChange={e => setPointsToRedeem(Math.min(pts, Math.max(0, Number(e.target.value))))}
+                              className="w-20 px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-center text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
+                              placeholder="0"
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}
 
                 {selectedCustomerId !== 'WALK_IN' ? (
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase">Delivery Date</label>
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Date</label>
                     <input 
                       type="date"
                       value={deliveryDate}
@@ -1738,7 +2022,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       onChange={(e) => handleToggleAdvanceBooking(e.target.checked)}
                       className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
                     />
-                    <label htmlFor="advance-chk-sub" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
+                    <label htmlFor="advance-chk-sub" className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
                       <Sparkles size={14} className="text-indigo-500" />
                       <span>Flag as Advance Booking</span>
                     </label>
@@ -1752,7 +2036,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       onChange={(e) => handleToggleFestiveBooking(e.target.checked)}
                       className="h-4 w-4 text-amber-600 cursor-pointer rounded"
                     />
-                    <label htmlFor="festive-chk-sub" className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase flex items-center gap-1 cursor-pointer">
+                    <label htmlFor="festive-chk-sub" className="text-[11px] font-black text-amber-800 dark:text-amber-300 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
                       <Sparkles size={14} className="text-amber-500" />
                       <span>Festive Booking</span>
                     </label>
@@ -1763,7 +2047,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               {/* Add item rows */}
               <div className="bg-slate-50 dark:bg-slate-850 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-[11px] font-bold text-slate-500 uppercase">Add Product Line</h4>
+                  <h4 className="text-[12px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest flex items-center gap-2">
+                    <div className="h-1 w-8 bg-indigo-500 rounded-full"></div>
+                    Add Product Line
+                  </h4>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
                       Default Tax Rate: {defaultTenantTax}%
@@ -1775,7 +2062,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                   <div className="md:col-span-4">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Product SKU *</label>
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block mb-1">Product SKU *</label>
                     <CustomDropdown 
                       value={rowProductId}
                       onChange={(pId) => {
@@ -1790,6 +2077,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         }
                       }}
                       placeholder="-- Choose Product SKU --"
+                      searchable={true}
                       options={[
                         { value: '', label: '-- Choose Product SKU --' },
                         ...products.map(p => ({
@@ -1801,7 +2089,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Qty</label>
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block mb-1">Qty</label>
                     <div className="flex items-center">
                       <button
                         type="button"
@@ -1830,7 +2118,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Price ({currencySymbol})</label>
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block mb-1">Price ({currencySymbol})</label>
                     <input 
                       type="number" 
                       placeholder="Unit Price"
@@ -1840,7 +2128,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Tax Rate (%)</label>
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block mb-1">Tax Rate (%)</label>
                     <input 
                       type="number" 
                       min={0}
@@ -1866,11 +2154,14 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
               {/* Lines Grid Table */}
               <div className="space-y-2">
-                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Line Items Billing Grid</h4>
+                <h4 className="text-[12px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-widest flex items-center gap-2">
+                  <div className="h-1 w-8 bg-emerald-500 rounded-full"></div>
+                  Line Items Billing Grid
+                </h4>
                 <div className="border border-slate-100 dark:border-slate-800 rounded-xl overflow-x-auto text-[11px]">
                   <table className="w-full text-left">
                     <thead>
-                      <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase text-slate-500">
+                      <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] font-black uppercase text-slate-900 dark:text-slate-100 tracking-wider">
                         <th className="p-3">Product Name</th>
                         <th className="p-3 text-right font-mono">Qty</th>
                         <th className="p-3 text-right font-mono">Selling Price ({currencySymbol})</th>
@@ -1982,9 +2273,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               {/* Payment Settlement Options */}
               <div className="bg-slate-50 dark:bg-slate-850 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-800 pb-2">
-                  <h4 className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1.5">
-                    <CreditCard size={14} className="text-indigo-500" />
-                    <span>Payment & Settlement Options</span>
+                  <h4 className="text-[12px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest flex items-center gap-2">
+                    <div className="h-1 w-8 bg-indigo-500 rounded-full"></div>
+                    Payment & Settlement Options
                   </h4>
                   {(() => {
                     const taxableVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price), 0);
@@ -2013,7 +2304,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block">
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
                       Payment Status <span className="text-rose-500">*</span>
                     </label>
                     <CustomDropdown 
@@ -2040,7 +2331,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
                   {(paymentStatus === 'Paid' || paymentStatus === 'Partial') && (
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block">Payment Method / Mode</label>
+                      <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">Payment Method / Mode</label>
                       <CustomDropdown 
                         value={paymentMode}
                         onChange={(val) => setPaymentMode(val)}
@@ -2058,7 +2349,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
                   {paymentStatus === 'Partial' && (
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block">Advance / Received Amount ({currencySymbol})</label>
+                      <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">Advance / Received Amount ({currencySymbol})</label>
                       <input 
                         type="number"
                         min={0}
@@ -2077,26 +2368,42 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             {(() => {
               const taxableVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price), 0);
               const taxVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price * (item.gst_rate / 100)), 0);
-              const totalVal = Math.round(taxableVal + taxVal);
+              
+              const config = dbStore.getLoyaltyConfig(businessId);
+              const pointVal = config?.point_value || 1;
+              const selCust = customers.find(c => c.id === selectedCustomerId);
+              const pts = selCust?.loyalty_points || 0;
+              const actualRedeem = Math.min(pts, pointsToRedeem);
+              const discountAmount = actualRedeem * pointVal;
+              
+              const totalVal = Math.max(0, Math.round(taxableVal + taxVal) - discountAmount);
 
               return (
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                   <div className="flex items-center gap-4 text-left font-mono text-[11px]">
                     <div>
-                      <span className="text-[10px] text-slate-400 uppercase block font-sans">Base Subtotal</span>
+                      <span className="text-[10px] text-slate-900 dark:text-slate-100 uppercase block font-black tracking-wider mb-0.5">Base Subtotal</span>
                       <strong className="font-bold text-slate-700 dark:text-slate-300">
                         {currencySymbol}{taxableVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </strong>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 uppercase block font-sans">Total Tax (GST)</span>
+                      <span className="text-[10px] text-slate-900 dark:text-slate-100 uppercase block font-black tracking-wider mb-0.5">Total Tax (GST)</span>
                       <strong className="font-bold text-emerald-600 dark:text-emerald-400">
                         +{currencySymbol}{taxVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </strong>
                     </div>
-                    <div className="border-l border-slate-200 dark:border-slate-700 pl-3">
-                      <span className="text-[10px] text-slate-400 uppercase block font-sans font-bold">Grand Total Value</span>
-                      <strong className="text-sm font-black text-indigo-600 dark:text-indigo-400">
+                    {discountAmount > 0 && (
+                      <div>
+                        <span className="text-[10px] text-slate-900 dark:text-slate-100 uppercase block font-black tracking-wider mb-0.5">Discount</span>
+                        <strong className="font-bold text-rose-600 dark:text-rose-400">
+                          -{currencySymbol}{discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </strong>
+                      </div>
+                    )}
+                    <div className="border-l border-slate-200 dark:border-slate-700 pl-4">
+                      <span className="text-[11px] text-indigo-700 dark:text-indigo-400 uppercase block font-black tracking-widest mb-0.5">Grand Total Value</span>
+                      <strong className="text-lg font-black text-indigo-600 dark:text-indigo-400">
                         {currencySymbol}{totalVal.toLocaleString()}
                       </strong>
                     </div>

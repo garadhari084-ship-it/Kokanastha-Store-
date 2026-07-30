@@ -230,49 +230,48 @@ export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
         title="Compliance, Margins & Tax Analytics"
         subtitle="Advanced financial intelligence, tax liability simulations, and margin trend analysis."
         icon={Activity}
-        rightContent={
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="hidden lg:flex bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/50">
-              {(['month', 'quarter', 'year', 'all'] as const).map(preset => (
-                <button
-                  key={preset}
-                  onClick={() => handlePresetChange(preset)}
-                  className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${
-                    datePreset === preset 
-                      ? 'bg-slate-800 text-amber-400 shadow-sm ring-1 ring-slate-600' 
-                      : 'text-slate-300 hover:text-slate-100'
-                  }`}
-                >
-                  {preset}
-                </button>
-              ))}
-            </div>
-            <div className="bg-slate-900 p-1 rounded-lg border border-slate-700 shadow-sm flex items-center gap-2 text-[11px] font-mono">
-              <Calendar size={12} className="text-amber-500 ml-1.5" />
-              <input 
-                type="date" 
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent focus:outline-hidden text-slate-200 w-[90px] [color-scheme:dark]"
-              />
-              <span className="text-slate-500">-</span>
-              <input 
-                type="date" 
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent focus:outline-hidden text-slate-200 w-[90px] mr-1 [color-scheme:dark]"
-              />
-            </div>
-            <button 
-              onClick={handleExportReport}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-[11px] font-bold shadow-sm transition-all cursor-pointer"
-            >
-              <Download size={14} />
-              <span className="hidden sm:inline">Export</span>
-            </button>
+      >
+        <div className="flex flex-wrap items-center gap-2 w-full justify-end">
+          <div className="hidden lg:flex bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/50">
+            {(['month', 'quarter', 'year', 'all'] as const).map(preset => (
+              <button
+                key={preset}
+                onClick={() => handlePresetChange(preset)}
+                className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${
+                  datePreset === preset 
+                    ? 'bg-slate-800 text-amber-400 shadow-sm ring-1 ring-slate-600' 
+                    : 'text-slate-300 hover:text-slate-100 cursor-pointer'
+                }`}
+              >
+                {preset}
+              </button>
+            ))}
           </div>
-        }
-      />
+          <div className="bg-slate-900 p-1 rounded-lg border border-slate-700 shadow-sm flex items-center gap-2 text-[11px] font-mono">
+            <Calendar size={12} className="text-amber-500 ml-1.5" />
+            <input 
+              type="date" 
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-transparent focus:outline-hidden text-slate-200 w-[90px] [color-scheme:dark]"
+            />
+            <span className="text-slate-500">-</span>
+            <input 
+              type="date" 
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-transparent focus:outline-hidden text-slate-200 w-[90px] mr-1 [color-scheme:dark]"
+            />
+          </div>
+          <button 
+            onClick={handleExportReport}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 rounded-xl text-[10px] sm:text-[11px] font-bold shadow-md transition-all cursor-pointer border border-amber-400/30"
+          >
+            <Download size={14} />
+            <span>Generate Report</span>
+          </button>
+        </div>
+      </PageHeader>
 
       {/* Row 1: High Density Bento KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

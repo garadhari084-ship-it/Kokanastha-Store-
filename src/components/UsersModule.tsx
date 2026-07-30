@@ -204,17 +204,17 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
         icon={Fingerprint}
         rightContent={
           <div className="flex items-center gap-2">
-            <div className="hidden sm:flex bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/50 mr-2 shadow-inner">
+            <div className="hidden sm:flex bg-slate-900/60 rounded-xl p-0.5 border border-slate-700/50 mr-1 shadow-inner">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-slate-800 text-amber-400 shadow-sm ring-1 ring-slate-600' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${viewMode === 'grid' ? 'bg-slate-800 text-amber-400 shadow-sm ring-1 ring-slate-600' : 'text-slate-400 hover:text-slate-200'}`}
                 title="Grid View"
               >
                 <LayoutGrid size={14} />
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-slate-800 text-amber-400 shadow-sm ring-1 ring-slate-600' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${viewMode === 'list' ? 'bg-slate-800 text-amber-400 shadow-sm ring-1 ring-slate-600' : 'text-slate-400 hover:text-slate-200'}`}
                 title="List View"
               >
                 <List size={14} />
@@ -223,10 +223,10 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
             {(currentUser.role === 'Super Admin' || currentUser.role === 'Admin') && (
               <button 
                 onClick={() => setIsAddModalOpen(true)}
-                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-[11px] font-extrabold rounded-lg transition-all shadow-lg shadow-amber-500/20 cursor-pointer border border-amber-300"
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap border border-indigo-400/30"
               >
                 <UserPlus size={14} />
-                <span className="hidden sm:inline">Add New User</span>
+                <span>Add New User</span>
               </button>
             )}
           </div>

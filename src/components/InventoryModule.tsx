@@ -122,20 +122,20 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         subtitle="Record stock-ins, transfers, damages, and audit stock history ledgers."
         icon={ClipboardList}
         rightContent={
-          <>
-{user.role !== 'Viewer' && (
-          <button 
-            onClick={() => {
-              if (autoProductId) setSelectedProductId(autoProductId);
-              setIsAdjustModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold cursor-pointer"
-          >
-            <PlusCircle size={16} />
-            <span>Inward / Adjust Stock</span>
-          </button>
-        )}
-          </>
+          <div className="flex items-center gap-2">
+            {user.role !== 'Viewer' && (
+              <button 
+                onClick={() => {
+                  if (autoProductId) setSelectedProductId(autoProductId);
+                  setIsAdjustModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap border border-indigo-400/30"
+              >
+                <PlusCircle size={14} />
+                <span>Inward / Adjust Stock</span>
+              </button>
+            )}
+          </div>
         }
       />
 

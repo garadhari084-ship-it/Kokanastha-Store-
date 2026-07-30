@@ -124,9 +124,9 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
             {user.role !== 'Viewer' && (
               <button 
                 onClick={handleOpenAddModal}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold cursor-pointer transition-colors shadow-sm"
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap border border-indigo-400/30"
               >
-                <FolderPlus size={16} />
+                <FolderPlus size={14} />
                 <span>Create Category</span>
               </button>
             )}

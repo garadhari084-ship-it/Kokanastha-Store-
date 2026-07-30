@@ -368,38 +368,37 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
         title="Loyalty & Recurring Subscriptions"
         subtitle="In-House Core Customer Retention Engine & Auto-Billing Pipeline"
         icon={Award}
-        rightContent={
-          <div className="flex items-center gap-1.5 p-1 bg-white/10 dark:bg-slate-900/60 backdrop-blur-md rounded-xl border border-white/20">
-            <button
-              onClick={() => setActiveTab('loyalty')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                activeTab === 'loyalty'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-200 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              <Award size={15} />
-              Loyalty Program
-            </button>
-            <button
-              onClick={() => setActiveTab('subscriptions')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                activeTab === 'subscriptions'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-200 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              <RefreshCw size={15} />
-              Subscriptions
-              {dueSubsCount > 0 && (
-                <span className="px-1.5 py-0.5 text-[10px] font-black bg-amber-500 text-white rounded-full">
-                  {dueSubsCount}
-                </span>
-              )}
-            </button>
-          </div>
-        }
-      />
+      >
+        <div className="flex items-center gap-1.5 p-1 bg-white/10 dark:bg-slate-900/60 backdrop-blur-md rounded-xl border border-white/20 w-full justify-end">
+          <button
+            onClick={() => setActiveTab('loyalty')}
+            className={`px-3.5 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'loyalty'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-200 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Award size={14} />
+            Loyalty Program
+          </button>
+          <button
+            onClick={() => setActiveTab('subscriptions')}
+            className={`px-3.5 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'subscriptions'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-200 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <RefreshCw size={14} />
+            Subscriptions
+            {dueSubsCount > 0 && (
+              <span className="px-1.5 py-0.5 text-[10px] font-black bg-amber-500 text-white rounded-full">
+                {dueSubsCount}
+              </span>
+            )}
+          </button>
+        </div>
+      </PageHeader>
 
       {/* ========================================================================= */}
       {/* TAB 1: LOYALTY PROGRAM (3.12) */}

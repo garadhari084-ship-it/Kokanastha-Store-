@@ -23,8 +23,9 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
 
   const items = order.items || [];
   const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
-  const delivery = order.total_amount > subTotal ? (order.total_amount - subTotal) : 0;
-  const totalAmount = order.total_amount || (subTotal + delivery);
+  const discount = order.discount_amount || 0;
+  const delivery = order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0;
+  const totalAmount = order.total_amount || (subTotal + delivery - discount);
   const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
 
@@ -259,6 +260,12 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               <span className="font-sans text-slate-600">Sub Total</span>
               <span>{currencySymbol} {subTotal.toFixed(2)}</span>
             </div>
+            {discount > 0 && (
+              <div className="flex justify-between font-mono text-rose-600">
+                <span className="font-sans">Discount</span>
+                <span>-{currencySymbol} {discount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-mono text-slate-600">
               <span className="font-sans">DELIVERY:</span>
               <span>{currencySymbol} {delivery.toFixed(2)}</span>

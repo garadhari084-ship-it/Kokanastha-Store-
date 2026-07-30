@@ -395,24 +395,23 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
         title="Procurement & Purchase Lifecycle"
         subtitle="Manage supplier purchase orders, track inbound deliveries, and audit accounts payable & payments."
         icon={ShoppingBag}
-        rightContent={
-          <div className="flex flex-wrap gap-2">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer shadow-sm transition-colors">
-              <FileSpreadsheet size={16} className="text-emerald-600" />
-              <span>Export CSV</span>
+      >
+        <div className="flex flex-wrap gap-2 w-full justify-end">
+          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap border border-white/10">
+            <FileSpreadsheet size={14} className="text-emerald-400" />
+            <span>Export CSV</span>
+          </button>
+          {user.role !== 'Viewer' && (
+            <button 
+              onClick={handleOpenAddModal} 
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap border border-indigo-400/30"
+            >
+              <PlusCircle size={14} />
+              <span>Create Purchase Order</span>
             </button>
-            {user.role !== 'Viewer' && (
-              <button 
-                onClick={handleOpenAddModal} 
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold cursor-pointer shadow-sm transition-colors"
-              >
-                <PlusCircle size={16} />
-                <span>Create Purchase Order</span>
-              </button>
-            )}
-          </div>
-        }
-      />
+          )}
+        </div>
+      </PageHeader>
 
       <div className="px-0.5 sm:px-1 space-y-4">
         {/* Advanced KPI Grid */}

@@ -363,21 +363,6 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         title="Barcode Packing Verification Station"
         subtitle="Verify order items item-by-item with barcode scans and assign dispatch delivery partners."
         icon={ClipboardCheck}
-        rightContent={
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setAudioFeedback(!audioFeedback)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer border transition-colors ${
-                audioFeedback 
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-400' 
-                  : 'bg-slate-50 border-slate-200 text-slate-400 dark:bg-slate-800 dark:border-slate-700'
-              }`}
-            >
-              <Volume2 size={15} />
-              <span>Sound Beep {audioFeedback ? 'ON' : 'OFF'}</span>
-            </button>
-          </div>
-        }
       />
 
       <div className="px-0.5 sm:px-1 space-y-3">

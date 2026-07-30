@@ -33,8 +33,10 @@ export async function generateBillOfSupplyHTML(
   const items = order.items || [];
   const logoBase64 = businessObj?.logo_url ? await urlToBase64(businessObj.logo_url) : "";
   const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
-  const delivery = order.total_amount > subTotal ? (order.total_amount - subTotal) : 0;
-  const totalAmount = order.total_amount || (subTotal + delivery);
+  const discount = order.discount_amount || 0;
+  // If there's a discount, the logic for delivery/tax needs to be careful.
+  const delivery = order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0;
+  const totalAmount = order.total_amount || (subTotal + delivery - discount);
   const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
 
@@ -404,6 +406,12 @@ export async function generateBillOfSupplyHTML(
           <td>Sub Total</td>
           <td style="text-align: right;">₹ ${subTotal.toFixed(2)}</td>
         </tr>
+        ${discount > 0 ? `
+        <tr>
+          <td>Discount</td>
+          <td style="text-align: right; color: #e11d48;">-₹ ${discount.toFixed(2)}</td>
+        </tr>
+        ` : ''}
         <tr>
           <td>DELIVERY:</td>
           <td style="text-align: right;">₹ ${delivery.toFixed(2)}</td>
@@ -524,8 +532,9 @@ export async function generate3InchBillHTML(
   });
 
   const subTotal = (order.items || []).reduce((sum: number, it: any) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
+  const discount = order.discount_amount || 0;
   const delivery = order.shipping_charges || 0;
-  const total = order.total_amount || (subTotal + delivery);
+  const total = order.total_amount || (subTotal + delivery - discount);
 
   const bankName = businessObj?.bank_name || "NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN";
   const accountNo = businessObj?.account_number || "092110100000085";
@@ -639,11 +648,29 @@ export async function generate3InchBillHTML(
   <div class="dashed-line"></div>
 
   <table class="totals-table">
+    ${discount > 0 ? `
+    <tr>
+      <td>Qty: ${totalQty}</td>
+      <td style="text-align: right; font-weight: normal;">Sub Total</td>
+      <td style="text-align: right; width: 60px;">${subTotal.toFixed(2)}</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td style="text-align: right; font-weight: normal; color: #e11d48;">Discount</td>
+      <td style="text-align: right; color: #e11d48;">-${discount.toFixed(2)}</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td style="text-align: right; font-weight: normal;">DELIVERY</td>
+      <td style="text-align: right; width: 60px;">${delivery.toFixed(2)}</td>
+    </tr>
+    ` : `
     <tr>
       <td>Qty: ${totalQty}</td>
       <td style="text-align: right; font-weight: normal;">DELIVERY</td>
       <td style="text-align: right; width: 60px;">${delivery.toFixed(2)}</td>
     </tr>
+    `}
     <tr>
       <td></td>
       <td style="text-align: right;">Total</td>

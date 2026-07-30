@@ -282,34 +282,33 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
         title="Supplier & Vendor Master"
         subtitle="Add, edit, delete, and audit vendor profiles and payable histories."
         icon={Truck}
-        rightContent={
-          <div className="flex flex-nowrap overflow-x-auto md:flex-wrap gap-2 hide-scrollbar pb-1 sm:pb-0">
+      >
+        <div className="flex flex-nowrap overflow-x-auto md:flex-wrap gap-2 hide-scrollbar w-full justify-end">
+          <button 
+            onClick={handleExportCSV} 
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap shrink-0 border border-white/10"
+          >
+            <FileSpreadsheet size={14} className="text-emerald-400" />
+            <span>Export Excel</span>
+          </button>
+          <button 
+            onClick={handleExportPDF} 
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap shrink-0 border border-white/10"
+          >
+            <FileText size={14} className="text-rose-400" />
+            <span>Print Payable PDF</span>
+          </button>
+          {user.role !== 'Viewer' && (
             <button 
-              onClick={handleExportCSV} 
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
+              onClick={handleOpenAddModal} 
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap shrink-0 border border-indigo-400/30"
             >
-              <FileSpreadsheet size={16} className="text-emerald-600" />
-              <span className="hidden xs:inline">Export Excel</span>
+              <PlusCircle size={14} />
+              <span>Register Vendor</span>
             </button>
-            <button 
-              onClick={handleExportPDF} 
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
-            >
-              <FileText size={16} className="text-rose-600" />
-              <span className="hidden xs:inline">Print Payable PDF</span>
-            </button>
-            {user.role !== 'Viewer' && (
-              <button 
-                onClick={handleOpenAddModal} 
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-sm transition-colors whitespace-nowrap shrink-0"
-              >
-                <PlusCircle size={16} />
-                <span className="hidden xs:inline">Register Vendor</span>
-              </button>
-            )}
-          </div>
-        }
-      />
+          )}
+        </div>
+      </PageHeader>
 
       <div className="px-0.5 sm:px-1 space-y-4">
         {/* KPI Stats Grid */}

@@ -676,6 +676,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         }`}
         icon={LayoutDashboard}
         badgeText={`Role: ${userRole}`}
+        showThemeSelector={true}
         rightContent={
 
           <div className="flex items-center gap-3 flex-row-reverse">
@@ -800,7 +801,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   filterValue: 'TO_PACK',
                   description: 'Orders requiring item selection, weight verification, and box sealing in the kitchen.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                className="bg-amber-50/80 dark:bg-amber-950/30 border-l-4 border-l-amber-500 border-y border-r border-amber-200 dark:border-amber-800/60 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
                 <div className="flex items-center gap-1.5">
                   <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
@@ -826,7 +827,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   filterValue: 'PACKED',
                   description: 'Orders sealed, box-tagged, and ready at the dispatch counter.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-yellow-400 dark:hover:border-yellow-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                className="bg-yellow-50/80 dark:bg-yellow-950/30 border-l-4 border-l-yellow-500 border-y border-r border-yellow-200 dark:border-yellow-800/60 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-yellow-400 dark:hover:border-yellow-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
                 <div className="flex items-center gap-1.5">
                   <div className="p-1.5 bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
@@ -852,7 +853,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   filterValue: 'DISPATCHED',
                   description: 'Orders assigned to drivers and currently in transit to customers.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                className="bg-indigo-50/80 dark:bg-indigo-950/30 border-l-4 border-l-indigo-500 border-y border-r border-indigo-200 dark:border-indigo-800/60 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
                 <div className="flex items-center gap-1.5">
                   <div className="p-1.5 bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
@@ -877,7 +878,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'overdue',
                   description: 'Prioritize these orders to avoid customer delivery delay.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-rose-400 dark:hover:border-rose-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                className="bg-rose-50/80 dark:bg-rose-950/30 border-l-4 border-l-rose-500 border-y border-r border-rose-200 dark:border-rose-800/60 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-rose-400 dark:hover:border-rose-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
                 <div className="flex items-center gap-1.5">
                   <div className="p-1.5 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
@@ -897,15 +898,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   title: 'Pending Payments & Uncollected Dues',
                   subtitle: 'Orders with pending balance requiring payment collection',
                   icon: DollarSign,
-                  iconColor: 'text-amber-600 bg-amber-500/10 border-amber-200',
+                  iconColor: 'text-fuchsia-600 bg-fuchsia-500/10 border-fuchsia-200',
                   badgeText: 'Unpaid Receipts',
                   type: 'payment',
                   description: 'View unpaid customer orders. Collect payment or dispatch WhatsApp reminders.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                className="bg-fuchsia-50/80 dark:bg-fuchsia-950/30 border-l-4 border-l-fuchsia-500 border-y border-r border-fuchsia-200 dark:border-fuchsia-800/60 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-fuchsia-400 dark:hover:border-fuchsia-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
                 <div className="flex items-center gap-1.5">
-                  <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                  <div className="p-1.5 bg-fuchsia-500/10 dark:bg-fuchsia-500/20 text-fuchsia-600 dark:text-fuchsia-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
                     <DollarSign size={14} />
                   </div>
                   <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">PAYMENTS</span>
@@ -927,7 +928,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   type: 'all',
                   description: 'Master operational view of all active sales transactions.'
                 })}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-sky-400 dark:hover:border-sky-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                className="bg-sky-50/80 dark:bg-sky-950/30 border-l-4 border-l-sky-500 border-y border-r border-sky-200 dark:border-sky-800/60 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-sky-400 dark:hover:border-sky-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
               >
                 <div className="flex items-center gap-1.5">
                   <div className="p-1.5 bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
@@ -953,7 +954,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     type: 'revenue',
                     description: 'Financial ledger summarizing completed sales and collected revenue.'
                   })}
-                  className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                  className="bg-emerald-50/80 dark:bg-emerald-950/30 border-l-4 border-l-emerald-500 border-y border-r border-emerald-200 dark:border-emerald-800/60 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
                 >
                   <div className="flex items-center gap-1.5">
                     <div className="p-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
@@ -973,21 +974,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     title: 'Low Stock Replenishment Alert',
                     subtitle: 'Kitchen raw material & packaging stock running low',
                     icon: Boxes,
-                    iconColor: 'text-amber-600 bg-amber-500/10 border-amber-200',
+                    iconColor: 'text-purple-600 bg-purple-500/10 border-purple-200',
                     badgeText: 'Low Stock',
                     type: 'low_stock',
                     description: 'Items requiring restock or supplier re-orders.'
                   })}
-                  className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                  className="bg-purple-50/80 dark:bg-purple-950/30 border-l-4 border-l-purple-500 border-y border-r border-purple-200 dark:border-purple-800/60 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-purple-400 dark:hover:border-purple-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
                 >
                   <div className="flex items-center gap-1.5">
-                    <div className="p-1.5 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                    <div className="p-1.5 bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
                       <Boxes size={14} />
                     </div>
                     <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">LOW STOCK</span>
                   </div>
                   <div className="text-right mt-1">
-                    <span className="text-xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
+                    <span className="text-xl font-black text-purple-600 dark:text-purple-400 tracking-tight">
                       {lowStockCount}
                     </span>
                   </div>
@@ -1001,15 +1002,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     title: 'Outstanding Accounts Receivable',
                     subtitle: 'Customer receivables pending payment settlement',
                     icon: Clock,
-                    iconColor: 'text-orange-600 bg-orange-500/10 border-orange-200',
+                    iconColor: 'text-teal-600 bg-teal-500/10 border-teal-200',
                     badgeText: 'Receivables',
                     type: 'receivables',
                     description: 'Track outstanding balances and send instant payment follow-up alerts.'
                   })}
-                  className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-orange-400 dark:hover:border-orange-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                  className="bg-teal-50/80 dark:bg-teal-950/30 border-l-4 border-l-teal-500 border-y border-r border-teal-200 dark:border-teal-800/60 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-teal-400 dark:hover:border-teal-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
                 >
                   <div className="flex items-center gap-1.5">
-                    <div className="p-1.5 bg-orange-500/10 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                    <div className="p-1.5 bg-teal-500/10 dark:bg-teal-500/20 text-teal-600 dark:text-teal-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
                       <Clock size={14} />
                     </div>
                     <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">OUTSTANDING</span>
@@ -1026,21 +1027,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     title: 'Out of Stock Critical Alert',
                     subtitle: 'Products with zero stock level requiring immediate replenishment',
                     icon: AlertTriangle,
-                    iconColor: 'text-rose-600 bg-rose-500/10 border-rose-200',
+                    iconColor: 'text-red-600 bg-red-500/10 border-red-200',
                     badgeText: 'Zero Stock',
                     type: 'out_of_stock',
                     description: 'Zero stock SKUs requiring kitchen cooking or purchasing.'
                   })}
-                  className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-rose-400 dark:hover:border-rose-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
+                  className="bg-red-50/80 dark:bg-red-950/30 border-l-4 border-l-red-500 border-y border-r border-red-200 dark:border-red-800/60 p-2 rounded-xl shadow-xs hover:shadow-md hover:border-red-400 dark:hover:border-red-600 transition-all cursor-pointer group flex flex-col justify-between gap-1"
                 >
                   <div className="flex items-center gap-1.5">
-                    <div className="p-1.5 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+                    <div className="p-1.5 bg-red-500/10 dark:bg-red-500/20 text-red-600 dark:text-red-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
                       <AlertTriangle size={14} />
                     </div>
                     <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">ZERO STOCK</span>
                   </div>
                   <div className="text-right mt-1">
-                    <span className="text-xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
+                    <span className="text-xl font-black text-red-600 dark:text-red-400 tracking-tight">
                       {outOfStockCount}
                     </span>
                   </div>

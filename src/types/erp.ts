@@ -221,6 +221,8 @@ export interface SalesOrder {
   festive_booking?: boolean;
   total_amount: number;
   is_updated?: boolean;
+  discount_amount?: number;
+  points_redeemed?: number;
   business_id: string;
   created_at: string;
   qr_code_data: string; // Custom string packing verification scan

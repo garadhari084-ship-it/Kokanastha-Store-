@@ -138,14 +138,16 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({ businessId, triggerT
         subtitle="Immutable chronological timeline of all warehouse activities, login sessions, and system mutations."
         icon={ShieldAlert}
         rightContent={
-          <button 
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className={`flex items-center gap-1.5 px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold shadow-lg shadow-slate-900/20 dark:shadow-white/20 transition-all active:scale-95 ${isRefreshing ? 'opacity-70 cursor-not-allowed' : 'hover:bg-slate-800 dark:hover:bg-slate-100'}`}
-          >
-            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">{isRefreshing ? 'Synchronizing...' : 'Refresh Feed'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className={`flex items-center gap-1.5 px-4 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] sm:text-[11px] font-bold shadow-md transition-all whitespace-nowrap border border-white/10 active:scale-95 ${isRefreshing ? 'opacity-70 cursor-not-allowed' : ''}`}
+            >
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+              <span>{isRefreshing ? 'Synchronizing...' : 'Refresh Feed'}</span>
+            </button>
+          </div>
         }
       />
 

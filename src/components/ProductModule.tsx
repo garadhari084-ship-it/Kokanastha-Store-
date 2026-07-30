@@ -543,36 +543,35 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         title="Product Catalog & Barcode Master"
         subtitle="Manage individual products, create Combo Box bundles, track packed vs virtual stock, and print barcodes."
         icon={Package}
-        rightContent={
-          <div className="flex flex-nowrap overflow-x-auto md:flex-wrap gap-2 hide-scrollbar pb-1 sm:pb-0">
-            <button 
-              onClick={handleBulkExport} 
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-xs transition-colors whitespace-nowrap shrink-0"
-            >
-              <FileSpreadsheet size={16} className="text-emerald-600" />
-              <span className="hidden xs:inline">Export Catalog</span>
-            </button>
-            {user.role !== 'Viewer' && (
-              <>
-                <button 
-                  onClick={handleOpenAddComboModal} 
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap shrink-0 border border-purple-400/30"
-                >
-                  <Boxes size={16} />
-                  <span>+ Create Combo Box</span>
-                </button>
-                <button 
-                  onClick={handleOpenAddModal} 
-                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] sm:text-[11px] font-semibold cursor-pointer shadow-xs transition-colors whitespace-nowrap shrink-0"
-                >
-                  <Plus size={16} />
-                  <span className="hidden xs:inline">Add Product</span>
-                </button>
-              </>
-            )}
-          </div>
-        }
-      />
+      >
+        <div className="flex flex-nowrap overflow-x-auto md:flex-wrap gap-2 hide-scrollbar w-full justify-end">
+          <button 
+            onClick={handleBulkExport} 
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap shrink-0 border border-white/10"
+          >
+            <FileSpreadsheet size={14} className="text-emerald-400" />
+            <span>Export Catalog</span>
+          </button>
+          {user.role !== 'Viewer' && (
+            <>
+              <button 
+                onClick={handleOpenAddComboModal} 
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap shrink-0 border border-purple-400/30"
+              >
+                <Boxes size={14} />
+                <span>Create Combo Box</span>
+              </button>
+              <button 
+                onClick={handleOpenAddModal} 
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap shrink-0 border border-purple-400/30"
+              >
+                <Plus size={14} />
+                <span>Add Product SKU</span>
+              </button>
+            </>
+          )}
+        </div>
+      </PageHeader>
 
       <div className="px-0.5 sm:px-1 space-y-4">
       
@@ -832,6 +831,18 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                               title="View Bundle Details & Audit Trail"
                             >
                               <History size={15} />
+                            </button>
+                            
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPrintingBarcodeProduct(prod);
+                                setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
+                              }}
+                              className="p-2 text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 shadow-xs active:scale-95"
+                              title="Print Barcode"
+                            >
+                              <Barcode size={15} />
                             </button>
                           </>
                         ) : (
@@ -1961,7 +1972,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 }}
                 className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
               >
-                No, Keep it
+                No
               </button>
               <button
                 type="button"
@@ -1984,7 +1995,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 }}
                 className="flex-1 px-4 py-3 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-colors shadow-lg shadow-rose-200 dark:shadow-none cursor-pointer active:scale-95"
               >
-                Yes, Delete
+                Yes
               </button>
             </div>
           </div>

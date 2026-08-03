@@ -832,7 +832,9 @@ class ERPStorage {
                if (clean.sku === '' || clean.sku === null) {
                    clean.sku = 'SKU-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
                }
-               if (clean.barcode === '') clean.barcode = null;
+               if (!clean.barcode) {
+                   clean.barcode = 'BAR-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+               }
            }
            if (tableName === 'categories') {
                clean.parent_id = sanitizeUUID(clean.parent_id, true);

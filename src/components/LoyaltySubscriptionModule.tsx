@@ -98,7 +98,19 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
   const [selectedQtyForSub, setSelectedQtyForSub] = useState(1);
 
   // Loyalty Config form
-  const [configForm, setConfigForm] = useState<LoyaltyConfig>({
+  const [configForm, setConfigForm] = useState<{
+    enabled: boolean;
+    spend_per_point: number | string;
+    point_value: number | string;
+    silver_min_spend: number | string;
+    gold_min_spend: number | string;
+    platinum_min_spend: number | string;
+    gold_multiplier: number | string;
+    platinum_multiplier: number | string;
+    welcome_bonus_points: number | string;
+    birthday_bonus_points: number | string;
+    point_expiry_days: number | string;
+  }>({
     enabled: true,
     spend_per_point: 100,
     point_value: 1,
@@ -127,21 +139,49 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
   const loyaltyLogs = dbStore.getLoyaltyLogs(undefined, businessId);
 
   useEffect(() => {
-    if (loyaltyConfig) {
-      setConfigForm(loyaltyConfig);
+    if (loyaltyConfig && !isConfigModalOpen) {
+      setConfigForm({ ...loyaltyConfig });
     }
-  }, [syncTick, businessId]);
+  }, [syncTick, businessId, isConfigModalOpen]);
+
+  const handleOpenConfigModal = () => {
+    const cfg = dbStore.getLoyaltyConfig(businessId);
+    if (cfg) {
+      setConfigForm({ ...cfg });
+    }
+    setIsConfigModalOpen(true);
+  };
 
   // Handle Loyalty Config Save
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
-    dbStore.updateLoyaltyConfig(businessId, configForm);
+    const parseNum = (val: any, defaultVal: number, min: number = 0) => {
+      const num = Number(val);
+      if (isNaN(num) || val === '') return defaultVal;
+      return Math.max(min, num);
+    };
+
+    const cleanConfig: LoyaltyConfig = {
+      enabled: !!configForm.enabled,
+      spend_per_point: parseNum(configForm.spend_per_point, 100, 1),
+      point_value: parseNum(configForm.point_value, 1, 0.01),
+      silver_min_spend: parseNum(configForm.silver_min_spend, 0, 0),
+      gold_min_spend: parseNum(configForm.gold_min_spend, 10000, 0),
+      platinum_min_spend: parseNum(configForm.platinum_min_spend, 20000, 0),
+      gold_multiplier: parseNum(configForm.gold_multiplier, 1, 1),
+      platinum_multiplier: parseNum(configForm.platinum_multiplier, 1.5, 1),
+      welcome_bonus_points: parseNum(configForm.welcome_bonus_points, 50, 0),
+      birthday_bonus_points: parseNum(configForm.birthday_bonus_points, 100, 0),
+      point_expiry_days: parseNum(configForm.point_expiry_days, 365, 1)
+    };
+
+    dbStore.updateLoyaltyConfig(businessId, cleanConfig);
     dbStore.logActivity(
       user.id,
       user.name,
       user.role,
       'Update Loyalty Rules',
-      `Updated loyalty program settings (1 pt per ₹${configForm.spend_per_point})`,
+      `Updated loyalty program settings (1 pt per ₹${cleanConfig.spend_per_point})`,
       businessId
     );
     triggerToast('Loyalty program rules saved successfully.', 'success');
@@ -516,7 +556,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
               </button>
 
               <button
-                onClick={() => setIsConfigModalOpen(true)}
+                onClick={handleOpenConfigModal}
                 className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
               >
                 <Settings size={15} />
@@ -980,8 +1020,10 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     type="number"
                     required
                     min={1}
+                    step="any"
                     value={configForm.spend_per_point}
-                    onChange={e => setConfigForm({ ...configForm, spend_per_point: Number(e.target.value) })}
+                    onFocus={e => e.target.select()}
+                    onChange={e => setConfigForm({ ...configForm, spend_per_point: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                   <span className="text-[10px] text-slate-400 mt-0.5 block">e.g. ₹100 spend = 1 pt</span>
@@ -994,10 +1036,11 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                   <input
                     type="number"
                     required
-                    min={0.1}
-                    step={0.1}
+                    min={0.01}
+                    step="any"
                     value={configForm.point_value}
-                    onChange={e => setConfigForm({ ...configForm, point_value: Number(e.target.value) })}
+                    onFocus={e => e.target.select()}
+                    onChange={e => setConfigForm({ ...configForm, point_value: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                   <span className="text-[10px] text-slate-400 mt-0.5 block">e.g. 1 point = ₹1 discount</span>
@@ -1014,8 +1057,11 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     </label>
                     <input
                       type="number"
+                      min={0}
+                      step="any"
                       value={configForm.gold_min_spend}
-                      onChange={e => setConfigForm({ ...configForm, gold_min_spend: Number(e.target.value) })}
+                      onFocus={e => e.target.select()}
+                      onChange={e => setConfigForm({ ...configForm, gold_min_spend: e.target.value === '' ? '' : Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
                     />
                   </div>
@@ -1025,9 +1071,11 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     </label>
                     <input
                       type="number"
-                      step={0.05}
+                      min={0}
+                      step="any"
                       value={configForm.gold_multiplier}
-                      onChange={e => setConfigForm({ ...configForm, gold_multiplier: Number(e.target.value) })}
+                      onFocus={e => e.target.select()}
+                      onChange={e => setConfigForm({ ...configForm, gold_multiplier: e.target.value === '' ? '' : Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
                     />
                   </div>
@@ -1040,8 +1088,11 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     </label>
                     <input
                       type="number"
+                      min={0}
+                      step="any"
                       value={configForm.platinum_min_spend}
-                      onChange={e => setConfigForm({ ...configForm, platinum_min_spend: Number(e.target.value) })}
+                      onFocus={e => e.target.select()}
+                      onChange={e => setConfigForm({ ...configForm, platinum_min_spend: e.target.value === '' ? '' : Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
                     />
                   </div>
@@ -1051,9 +1102,11 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     </label>
                     <input
                       type="number"
-                      step={0.05}
+                      min={0}
+                      step="any"
                       value={configForm.platinum_multiplier}
-                      onChange={e => setConfigForm({ ...configForm, platinum_multiplier: Number(e.target.value) })}
+                      onFocus={e => e.target.select()}
+                      onChange={e => setConfigForm({ ...configForm, platinum_multiplier: e.target.value === '' ? '' : Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
                     />
                   </div>
@@ -1067,8 +1120,11 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                   </label>
                   <input
                     type="number"
+                    min={0}
+                    step="any"
                     value={configForm.welcome_bonus_points}
-                    onChange={e => setConfigForm({ ...configForm, welcome_bonus_points: Number(e.target.value) })}
+                    onFocus={e => e.target.select()}
+                    onChange={e => setConfigForm({ ...configForm, welcome_bonus_points: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
                   />
                 </div>
@@ -1078,8 +1134,11 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                   </label>
                   <input
                     type="number"
+                    min={0}
+                    step="any"
                     value={configForm.birthday_bonus_points}
-                    onChange={e => setConfigForm({ ...configForm, birthday_bonus_points: Number(e.target.value) })}
+                    onFocus={e => e.target.select()}
+                    onChange={e => setConfigForm({ ...configForm, birthday_bonus_points: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
                   />
                 </div>

@@ -158,6 +158,9 @@ CREATE TABLE IF NOT EXISTS customers (
     phone VARCHAR(20) NOT NULL,
     credit_limit DECIMAL(15,2) DEFAULT 0.00,
     outstanding_amount DECIMAL(15,2) DEFAULT 0.00,
+    loyalty_points INTEGER DEFAULT 0,
+    loyalty_tier VARCHAR(50) DEFAULT 'Silver',
+    lifetime_spend DECIMAL(15,2) DEFAULT 0.00,
     active BOOLEAN DEFAULT TRUE,
     business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -413,6 +416,16 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customer_subscriptions' AND column_name='auto_renew') THEN
         ALTER TABLE customer_subscriptions ADD COLUMN auto_renew BOOLEAN DEFAULT TRUE;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='loyalty_points') THEN
+        ALTER TABLE customers ADD COLUMN loyalty_points INTEGER DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='loyalty_tier') THEN
+        ALTER TABLE customers ADD COLUMN loyalty_tier VARCHAR(50) DEFAULT 'Silver';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='lifetime_spend') THEN
+        ALTER TABLE customers ADD COLUMN lifetime_spend DECIMAL(15,2) DEFAULT 0.00;
     END IF;
     
     -- Drop strict foreign key constraints to prevent sync failures when customers or orders are managed loosely

@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
+import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
 import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
 import { BillOfSupplyView } from './BillOfSupplyView';
 
@@ -372,6 +373,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [paidAmount, setPaidAmount] = useState<number | string>('');
   const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
+  const [customDiscount, setCustomDiscount] = useState<number | string>('');
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
   const [isNewCustomerSelected, setIsNewCustomerSelected] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
@@ -401,11 +403,44 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     return isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`;
   };
 
+  const recalculateOrderPrices = (
+    items: SalesItem[],
+    cust: Customer | undefined,
+    advBooking: boolean,
+    festBooking: boolean
+  ): SalesItem[] => {
+    const isLoyal = isLoyalMember(cust);
+    return items.map(it => {
+      if (it.is_overridden) return it;
+      const p = products.find(prod => prod.id === it.product_id);
+      if (!p) return it;
+
+      const evalRes = calculateApplicablePrice(p, {
+        isLoyalMember: isLoyal,
+        isAdvanceBooking: advBooking,
+        isDiwaliSale: festBooking,
+        business: currentBiz,
+        orderDate
+      });
+
+      return {
+        ...it,
+        selling_price: evalRes.appliedPrice,
+        normal_rate: evalRes.normalRate,
+        rate_type: evalRes.rateType,
+        rate_reason: evalRes.rateReason,
+        unit_savings: evalRes.unitSavings
+      };
+    });
+  };
+
   const handleToggleAdvanceBooking = (val: boolean) => {
     setIsAdvanceBooking(val);
     if (!editingOrderId) {
       setCustomInvoiceNumber(getSuggestedInvoiceNumber(isFestiveBooking, val));
     }
+    const cust = customers.find(c => c.id === selectedCustomerId);
+    setOrderItems(prev => recalculateOrderPrices(prev, cust, val, isFestiveBooking));
   };
 
   const handleToggleFestiveBooking = (val: boolean) => {
@@ -413,13 +448,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     if (!editingOrderId) {
       setCustomInvoiceNumber(getSuggestedInvoiceNumber(val, isAdvanceBooking));
     }
+    const cust = customers.find(c => c.id === selectedCustomerId);
+    setOrderItems(prev => recalculateOrderPrices(prev, cust, isAdvanceBooking, val));
   };
 
   // Quick line-item row helper
   const [rowProductId, setRowProductId] = useState('');
-  const [rowQty, setRowQty] = useState(1);
-  const [rowPrice, setRowPrice] = useState(0);
-  const [rowTaxRate, setRowTaxRate] = useState<number>(defaultTenantTax);
+  const [rowQty, setRowQty] = useState<number | string>(1);
+  const [rowPrice, setRowPrice] = useState<number | string>(0);
+  const [rowTaxRate, setRowTaxRate] = useState<number | string>(defaultTenantTax);
 
   const resetForm = () => {
     setEditingOrderId(null);
@@ -436,6 +473,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setPaymentMode('Cash');
     setPaidAmount('');
     setPointsToRedeem(0);
+    setCustomDiscount('');
     setOrderItems([]);
     setIsNewCustomerSelected(false);
     setNewCustomerName('');
@@ -493,6 +531,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setEditingOrderId(order.id);
     setCustomInvoiceNumber(order.order_number);
     setSelectedCustomerId(order.customer_id);
+    setPointsToRedeem(order.points_redeemed || 0);
     setSelectedArea(order.area || 'Dahisar');
     setOrderDate(order.order_date || getLocalTodayDate());
     setOrderTime(order.time || getLocalCurrentTimeInput());
@@ -502,6 +541,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setPaymentStatus(order.payment_status);
     setPaymentMode(order.payment_mode || 'Cash');
     setPaidAmount(order.paid_amount || 0);
+    setCustomDiscount(order.discount_amount || 0);
     setOrderItems([...order.items]);
     setIsCreateModalOpen(true);
     
@@ -542,7 +582,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       triggerToast('Choose a product SKU to append.', 'error');
       return;
     }
-    if (rowQty <= 0) {
+    const finalQty = Math.max(1, Number(rowQty) || 1);
+    if (finalQty <= 0) {
       triggerToast('Quantity must be greater than zero.', 'error');
       return;
     }
@@ -555,17 +596,44 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       return;
     }
 
-    const itemGst = typeof rowTaxRate === 'number' && !isNaN(rowTaxRate)
-      ? rowTaxRate
+    const selCust = customers.find(c => c.id === selectedCustomerId);
+    const evalRes = calculateApplicablePrice(prod, {
+      isLoyalMember: isLoyalMember(selCust),
+      isAdvanceBooking,
+      isDiwaliSale: isFestiveBooking,
+      business: currentBiz,
+      orderDate
+    });
+
+    const isCustomPrice = rowPrice !== '' && !isNaN(Number(rowPrice)) && Number(rowPrice) !== evalRes.appliedPrice;
+    const finalPrice = rowPrice !== '' && !isNaN(Number(rowPrice)) ? Number(rowPrice) : evalRes.appliedPrice;
+    const finalTax = rowTaxRate !== '' && !isNaN(Number(rowTaxRate))
+      ? Number(rowTaxRate)
       : (typeof prod.gst_rate === 'number' && !isNaN(prod.gst_rate) && prod.gst_rate >= 0 ? prod.gst_rate : defaultTenantTax);
 
     const newItem: SalesItem = {
       product_id: rowProductId,
-      qty: rowQty,
+      qty: finalQty,
       scanned_qty: 0,
-      selling_price: rowPrice || prod.selling_price,
-      gst_rate: itemGst
+      selling_price: finalPrice,
+      gst_rate: finalTax,
+      normal_rate: evalRes.normalRate,
+      rate_type: isCustomPrice ? 'OVERRIDE' : evalRes.rateType,
+      rate_reason: isCustomPrice ? 'Admin Price Override' : evalRes.rateReason,
+      unit_savings: Math.max(0, evalRes.normalRate - finalPrice),
+      is_overridden: isCustomPrice
     };
+
+    if (isCustomPrice) {
+      dbStore.logActivity(
+        user.id,
+        user.name,
+        user.role,
+        'Price Override',
+        `Admin price override for ${prod.name} (SKU: ${prod.sku}): calculated ${evalRes.rateType} ₹${evalRes.appliedPrice} -> overridden to ₹${finalPrice}`,
+        businessId
+      );
+    }
 
     setOrderItems([...orderItems, newItem]);
     setRowProductId('');
@@ -667,16 +735,25 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
          }
       }
 
+      const cleanItems: SalesItem[] = orderItems.map(it => ({
+        ...it,
+        qty: Math.max(1, Number(it.qty) || 1),
+        selling_price: Math.max(0, Number(it.selling_price) || 0),
+        gst_rate: Math.max(0, Number(it.gst_rate) || 0),
+      }));
+
       // Calculate payment amount and credit balance
       const customerObj = customers.find(c => c.id === finalCustomerId);
-      const subtotal = orderItems.reduce((acc, it) => acc + (it.qty * it.selling_price * (1 + it.gst_rate/100)), 0);
+      const subtotal = cleanItems.reduce((acc, it) => acc + (it.qty * it.selling_price * (1 + it.gst_rate/100)), 0);
       
       const config = dbStore.getLoyaltyConfig(businessId);
       const pointVal = config?.point_value || 1;
       const actualRedeem = Math.min(customerObj?.loyalty_points || 0, pointsToRedeem);
-      const discountAmount = actualRedeem * pointVal;
+      const calculatedDiscount = customDiscount !== '' && !isNaN(Number(customDiscount))
+        ? Math.max(0, Number(customDiscount))
+        : (actualRedeem * pointVal);
       
-      const finalAmount = Math.max(0, Math.round(subtotal) - discountAmount);
+      const finalAmount = Math.max(0, Math.round(subtotal) - calculatedDiscount);
 
       let actualPaid = 0;
       if (paymentStatus === 'Paid') {
@@ -716,11 +793,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           payment_status: paymentStatus,
           payment_mode: paymentMode,
           paid_amount: actualPaid,
-          items: orderItems,
+          items: cleanItems,
           advance_booking: isAdvanceBooking,
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
-          discount_amount: discountAmount,
+          discount_amount: calculatedDiscount,
           points_redeemed: actualRedeem,
           is_updated: true,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
@@ -770,11 +847,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           payment_mode: paymentMode,
           paid_amount: actualPaid,
           delivery_status: 'Pending',
-          items: orderItems,
+          items: cleanItems,
           advance_booking: isAdvanceBooking,
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
-          discount_amount: discountAmount,
+          discount_amount: calculatedDiscount,
           points_redeemed: actualRedeem,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
           business_id: businessId
@@ -1393,21 +1470,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         <Send size={15} />
                       </button>
 
-                      {/* Quick Pipeline Status Updater */}
-                      <select
-                        value={o.status}
-                        onChange={(e) => handleQuickStatusChange(o.id, e.target.value as OrderStatus)}
-                        className="ml-1 text-[10px] font-bold py-1 px-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500"
-                        title="Quick Update Pipeline Status"
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="Packing">Packing</option>
-                        <option value="Packed">Ready</option>
-                        <option value="Dispatched">Out for Delivery</option>
-                        <option value="Delivered">Completed</option>
-                        <option value="Returned">Returned</option>
-                        <option value="Cancelled">Cancelled</option>
-                      </select>
                     </div>
                   </td>
                 </tr>
@@ -1762,8 +1824,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         if (nextState) {
                           setSelectedCustomerId('');
                           setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
+                          setOrderItems(prev => recalculateOrderPrices(prev, undefined, isAdvanceBooking, isFestiveBooking));
                         } else {
                           setSelectedCustomerId('WALK_IN');
+                          setOrderItems(prev => recalculateOrderPrices(prev, undefined, isAdvanceBooking, isFestiveBooking));
                         }
                       }}
                       className={`text-[11px] font-bold px-3 py-1 rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -1783,10 +1847,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       onChange={(val) => {
                         setSelectedCustomerId(val);
                         const c = customers.find(cust => cust.id === val);
-                        if (c?.area && c.area !== 'Other') {
-                          setSelectedArea(c.area);
-                        } else if (val === 'WALK_IN' || !c?.area || c.area === 'Other') {
+                        if (c) {
+                          setPointsToRedeem(c.loyalty_points || 0);
+                          if (c.area && c.area !== 'Other') {
+                            setSelectedArea(c.area);
+                          } else {
+                            setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
+                          }
+                          setOrderItems(prev => recalculateOrderPrices(prev, c, isAdvanceBooking, isFestiveBooking));
+                        } else {
+                          setPointsToRedeem(0);
                           setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
+                          setOrderItems(prev => recalculateOrderPrices(prev, undefined, isAdvanceBooking, isFestiveBooking));
                         }
                       }}
                       placeholder="-- Select Customer --"
@@ -1862,7 +1934,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             active: true
                           });
                           setSelectedCustomerId(newCust.id);
+                          setPointsToRedeem(newCust.loyalty_points || 0);
                           setIsNewCustomerSelected(false);
+                          setOrderItems(prev => recalculateOrderPrices(prev, newCust, isAdvanceBooking, isFestiveBooking));
                           triggerToast(`New customer "${newCust.name}" saved and selected.`, 'success');
                         }}
                         className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer"
@@ -1946,22 +2020,34 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           </div>
                         )}
 
-                        {(pts > 0 || pointsToRedeem > 0) && (
-                          <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-700 pl-4">
-                            <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                              Redeem Points:
-                            </label>
-                            <input
-                              type="number"
-                              min={0}
-                              max={pts}
-                              value={pointsToRedeem}
-                              onChange={e => setPointsToRedeem(Math.min(pts, Math.max(0, Number(e.target.value))))}
-                              className="w-20 px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-center text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
-                              placeholder="0"
-                            />
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-700 pl-4">
+                          <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                            Redeem Points:
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={pts > 0 ? pts : undefined}
+                            value={pointsToRedeem}
+                            onFocus={e => e.target.select()}
+                            onChange={e => {
+                              const valStr = e.target.value;
+                              if (valStr === '') {
+                                setPointsToRedeem(0);
+                                setCustomDiscount(0);
+                              } else {
+                                const num = parseInt(valStr, 10);
+                                if (!isNaN(num)) {
+                                  const clamped = Math.max(0, pts > 0 ? Math.min(pts, num) : num);
+                                  setPointsToRedeem(clamped);
+                                  setCustomDiscount(clamped * pointVal);
+                                }
+                              }
+                            }}
+                            className="w-20 px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-center text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
+                            placeholder="0"
+                          />
+                        </div>
                       </div>
                     </div>
                   );
@@ -2069,7 +2155,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         setRowProductId(pId);
                         const prod = products.find(p => p.id === pId);
                         if (prod) {
-                          setRowPrice(prod.selling_price);
+                          const selCust = customers.find(c => c.id === selectedCustomerId);
+                          const evalRes = calculateApplicablePrice(prod, {
+                            isLoyalMember: isLoyalMember(selCust),
+                            isAdvanceBooking,
+                            isDiwaliSale: isFestiveBooking,
+                            business: currentBiz,
+                            orderDate
+                          });
+                          setRowPrice(evalRes.appliedPrice);
                           const defaultTax = (defaultTenantTax === 0 || prod.gst_rate === 18 || typeof prod.gst_rate !== 'number' || isNaN(prod.gst_rate))
                             ? defaultTenantTax
                             : prod.gst_rate;
@@ -2080,10 +2174,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       searchable={true}
                       options={[
                         { value: '', label: '-- Choose Product SKU --' },
-                        ...products.map(p => ({
-                          value: p.id,
-                          label: `${p.name} (SKU: ${p.sku} | Price: ${currencySymbol}${p.selling_price.toLocaleString()})`
-                        }))
+                        ...products.map(p => {
+                          const selCust = customers.find(c => c.id === selectedCustomerId);
+                          const evalRes = calculateApplicablePrice(p, {
+                            isLoyalMember: isLoyalMember(selCust),
+                            isAdvanceBooking,
+                            isDiwaliSale: isFestiveBooking,
+                            business: currentBiz,
+                            orderDate
+                          });
+                          return {
+                            value: p.id,
+                            label: `${p.name} (SKU: ${p.sku} | ${evalRes.rateType}: ${currencySymbol}${evalRes.appliedPrice.toLocaleString()})`
+                          };
+                        })
                       ]}
                       className="bg-white dark:bg-slate-800 font-medium"
                     />
@@ -2093,7 +2197,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     <div className="flex items-center">
                       <button
                         type="button"
-                        onClick={() => setRowQty(Math.max(1, rowQty - 1))}
+                        onClick={() => setRowQty(Math.max(1, (Number(rowQty) || 1) - 1))}
                         className="px-2 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-l-lg border border-r-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
                         title="Decrease Quantity"
                       >
@@ -2104,12 +2208,26 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         min={1}
                         placeholder="Qty"
                         value={rowQty}
-                        onChange={(e) => setRowQty(Math.max(1, Number(e.target.value)))}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === '') {
+                            setRowQty('');
+                          } else {
+                            const num = parseInt(v, 10);
+                            setRowQty(isNaN(num) ? '' : Math.max(1, num));
+                          }
+                        }}
+                        onBlur={() => {
+                          if (rowQty === '' || Number(rowQty) < 1) {
+                            setRowQty(1);
+                          }
+                        }}
                         className="w-full px-2 py-2 bg-white dark:bg-slate-800 text-[11px] text-center border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono text-slate-900 dark:text-slate-100 font-bold"
                       />
                       <button
                         type="button"
-                        onClick={() => setRowQty(rowQty + 1)}
+                        onClick={() => setRowQty((Number(rowQty) || 0) + 1)}
                         className="px-2 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-r-lg border border-l-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
                         title="Increase Quantity"
                       >
@@ -2121,9 +2239,25 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block mb-1">Price ({currencySymbol})</label>
                     <input 
                       type="number" 
+                      min={0}
+                      step="any"
                       placeholder="Unit Price"
                       value={rowPrice}
-                      onChange={(e) => setRowPrice(Number(e.target.value))}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '') {
+                          setRowPrice('');
+                        } else {
+                          const num = parseFloat(v);
+                          setRowPrice(isNaN(num) ? '' : num);
+                        }
+                      }}
+                      onBlur={() => {
+                        if (rowPrice === '') {
+                          setRowPrice(0);
+                        }
+                      }}
                       className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono text-slate-900 dark:text-slate-100"
                     />
                   </div>
@@ -2136,7 +2270,21 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       step={0.1}
                       placeholder="Tax %"
                       value={rowTaxRate}
-                      onChange={(e) => setRowTaxRate(Number(e.target.value))}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '') {
+                          setRowTaxRate('');
+                        } else {
+                          const num = parseFloat(v);
+                          setRowTaxRate(isNaN(num) ? '' : num);
+                        }
+                      }}
+                      onBlur={() => {
+                        if (rowTaxRate === '') {
+                          setRowTaxRate(defaultTenantTax);
+                        }
+                      }}
                       className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono text-slate-900 dark:text-slate-100 font-bold text-indigo-600 dark:text-indigo-400"
                     />
                   </div>
@@ -2173,19 +2321,52 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
                       {orderItems.map((it, idx) => {
                         const p = products.find(prod => prod.id === it.product_id);
-                        const baseVal = it.qty * it.selling_price;
-                        const taxVal = baseVal * (it.gst_rate / 100);
+                        const itemQty = Number(it.qty) || 0;
+                        const itemPrice = Number(it.selling_price) || 0;
+                        const itemTax = Number(it.gst_rate) || 0;
+                        const baseVal = itemQty * itemPrice;
+                        const taxVal = baseVal * (itemTax / 100);
                         const itemTotal = baseVal + taxVal;
                         return (
                           <tr key={idx}>
-                            <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">{p?.name || 'Unknown Item'}</td>
+                            <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>{p?.name || 'Unknown Item'}</span>
+                                {it.rate_type === 'LMR' && (
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-extrabold rounded border border-indigo-200 dark:border-indigo-800">
+                                    👑 LMR
+                                  </span>
+                                )}
+                                {it.rate_type === 'ABR' && (
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-extrabold rounded border border-blue-200 dark:border-blue-800">
+                                    📅 ABR
+                                  </span>
+                                )}
+                                {it.rate_type === 'DDR' && (
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-extrabold rounded border border-amber-200 dark:border-amber-800">
+                                    ✨ DDR
+                                  </span>
+                                )}
+                                {it.is_overridden && (
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-extrabold rounded border border-rose-200 dark:border-rose-800">
+                                    ⚙️ OVERRIDE
+                                  </span>
+                                )}
+                              </div>
+                              {it.rate_reason && (
+                                <div className="text-[9.5px] text-slate-500 font-normal">
+                                  {it.rate_reason}
+                                </div>
+                              )}
+                            </td>
                             <td className="p-3 text-right font-sans font-bold">
                               <div className="flex items-center justify-end">
                                 <button
                                   type="button"
                                   onClick={() => {
                                     const updated = [...orderItems];
-                                    updated[idx].qty = Math.max(1, updated[idx].qty - 1);
+                                    const curQty = Number(updated[idx].qty) || 1;
+                                    updated[idx].qty = Math.max(1, curQty - 1);
                                     setOrderItems(updated);
                                   }}
                                   className="px-1.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-l border border-r-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
@@ -2197,10 +2378,24 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                                   type="number" 
                                   min={1}
                                   value={it.qty}
+                                  onFocus={(e) => e.target.select()}
                                   onChange={(e) => {
+                                    const val = e.target.value;
                                     const updated = [...orderItems];
-                                    updated[idx].qty = Math.max(1, Number(e.target.value));
+                                    if (val === '') {
+                                      (updated[idx] as any).qty = '';
+                                    } else {
+                                      const num = parseInt(val, 10);
+                                      (updated[idx] as any).qty = isNaN(num) ? '' : Math.max(1, num);
+                                    }
                                     setOrderItems(updated);
+                                  }}
+                                  onBlur={() => {
+                                    if (it.qty === ('' as any) || Number(it.qty) < 1) {
+                                      const updated = [...orderItems];
+                                      updated[idx].qty = 1;
+                                      setOrderItems(updated);
+                                    }
                                   }}
                                   className="w-12 px-1 py-1 text-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] focus:outline-hidden text-slate-900 dark:text-slate-100 font-bold"
                                 />
@@ -2208,7 +2403,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                                   type="button"
                                   onClick={() => {
                                     const updated = [...orderItems];
-                                    updated[idx].qty = updated[idx].qty + 1;
+                                    const curQty = Number(updated[idx].qty) || 0;
+                                    updated[idx].qty = curQty + 1;
                                     setOrderItems(updated);
                                   }}
                                   className="px-1.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-r border border-l-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
@@ -2221,11 +2417,30 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             <td className="p-3 text-right">
                               <input 
                                 type="number" 
+                                min={0}
+                                step="any"
                                 value={it.selling_price}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => {
+                                  const val = e.target.value;
                                   const updated = [...orderItems];
-                                  updated[idx].selling_price = Number(e.target.value);
+                                  if (val === '') {
+                                    (updated[idx] as any).selling_price = '';
+                                  } else {
+                                    const num = parseFloat(val);
+                                    (updated[idx] as any).selling_price = isNaN(num) ? '' : num;
+                                    updated[idx].is_overridden = true;
+                                    updated[idx].rate_type = 'OVERRIDE';
+                                    updated[idx].rate_reason = 'Admin Price Override';
+                                  }
                                   setOrderItems(updated);
+                                }}
+                                onBlur={() => {
+                                  if (it.selling_price === ('' as any) || isNaN(Number(it.selling_price))) {
+                                    const updated = [...orderItems];
+                                    updated[idx].selling_price = 0;
+                                    setOrderItems(updated);
+                                  }
                                 }}
                                 className="w-24 px-2 py-1 text-right bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[11px] focus:outline-hidden text-slate-900 dark:text-slate-100"
                               />
@@ -2237,10 +2452,24 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                                 max={100}
                                 step={0.1}
                                 value={it.gst_rate}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => {
+                                  const val = e.target.value;
                                   const updated = [...orderItems];
-                                  updated[idx].gst_rate = Number(e.target.value);
+                                  if (val === '') {
+                                    (updated[idx] as any).gst_rate = '';
+                                  } else {
+                                    const num = parseFloat(val);
+                                    (updated[idx] as any).gst_rate = isNaN(num) ? '' : num;
+                                  }
                                   setOrderItems(updated);
+                                }}
+                                onBlur={() => {
+                                  if (it.gst_rate === ('' as any) || isNaN(Number(it.gst_rate))) {
+                                    const updated = [...orderItems];
+                                    updated[idx].gst_rate = 0;
+                                    setOrderItems(updated);
+                                  }
                                 }}
                                 className="w-16 px-2 py-1 text-right bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[11px] focus:outline-hidden text-slate-900 dark:text-slate-100"
                               />
@@ -2278,8 +2507,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     Payment & Settlement Options
                   </h4>
                   {(() => {
-                    const taxableVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price), 0);
-                    const taxVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price * (item.gst_rate / 100)), 0);
+                    const taxableVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
+                    const taxVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
                     const totalVal = Math.round(taxableVal + taxVal);
                     const computedPaid = paymentStatus === 'Paid' 
                       ? totalVal 
@@ -2366,20 +2595,36 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
             {/* Bottom Actions Footer */}
             {(() => {
-              const taxableVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price), 0);
-              const taxVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price * (item.gst_rate / 100)), 0);
+              const taxableVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
+              const taxVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
               
               const config = dbStore.getLoyaltyConfig(businessId);
               const pointVal = config?.point_value || 1;
               const selCust = customers.find(c => c.id === selectedCustomerId);
               const pts = selCust?.loyalty_points || 0;
-              const actualRedeem = Math.min(pts, pointsToRedeem);
-              const discountAmount = actualRedeem * pointVal;
+              const actualRedeem = Math.min(pts, Number(pointsToRedeem) || 0);
+              const discountAmount = customDiscount !== '' && !isNaN(Number(customDiscount))
+                ? Math.max(0, Number(customDiscount))
+                : (actualRedeem * pointVal);
               
               const totalVal = Math.max(0, Math.round(taxableVal + taxVal) - discountAmount);
+              const savingsInfo = calculateOrderSavings(orderItems, products);
 
               return (
-                <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-3">
+                  {savingsInfo.totalSavings > 0 && (
+                    <div className="px-3 py-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/80 dark:to-teal-950/80 border border-emerald-300 dark:border-emerald-800 rounded-xl text-emerald-950 dark:text-emerald-200 text-xs font-bold flex items-center justify-between gap-2 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">🎉</span>
+                        <span className="font-extrabold">{savingsInfo.bannerMessage}</span>
+                      </div>
+                      <span className="text-[10px] font-mono font-black text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700">
+                        Total Member Savings: {currencySymbol}{savingsInfo.totalSavings.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                   <div className="flex items-center gap-4 text-left font-mono text-[11px]">
                     <div>
                       <span className="text-[10px] text-slate-900 dark:text-slate-100 uppercase block font-black tracking-wider mb-0.5">Base Subtotal</span>
@@ -2393,14 +2638,34 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         +{currencySymbol}{taxVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </strong>
                     </div>
-                    {discountAmount > 0 && (
-                      <div>
-                        <span className="text-[10px] text-slate-900 dark:text-slate-100 uppercase block font-black tracking-wider mb-0.5">Discount</span>
-                        <strong className="font-bold text-rose-600 dark:text-rose-400">
-                          -{currencySymbol}{discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </strong>
-                      </div>
-                    )}
+                    <div>
+                      <span className="text-[10px] text-rose-600 dark:text-rose-400 uppercase block font-black tracking-wider mb-0.5">
+                        Discount ({currencySymbol})
+                      </span>
+                      <input 
+                        type="number"
+                        min={0}
+                        step="any"
+                        placeholder="0"
+                        value={customDiscount}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setCustomDiscount('');
+                          } else {
+                            const num = parseFloat(val);
+                            setCustomDiscount(isNaN(num) ? '' : Math.max(0, num));
+                          }
+                        }}
+                        onBlur={() => {
+                          if (customDiscount === '') {
+                            setCustomDiscount(0);
+                          }
+                        }}
+                        className="w-24 px-2 py-1 bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-700 rounded-lg text-xs font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-hidden focus:ring-2 focus:ring-rose-500 shadow-xs text-right"
+                      />
+                    </div>
                     <div className="border-l border-slate-200 dark:border-slate-700 pl-4">
                       <span className="text-[11px] text-indigo-700 dark:text-indigo-400 uppercase block font-black tracking-widest mb-0.5">Grand Total Value</span>
                       <strong className="text-lg font-black text-indigo-600 dark:text-indigo-400">
@@ -2428,7 +2693,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </button>
                   </div>
                 </div>
-              );
+              </div>
+            );
             })()}
           </div>
         </div>

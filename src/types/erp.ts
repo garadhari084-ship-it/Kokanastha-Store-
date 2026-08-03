@@ -23,6 +23,9 @@ export interface Business {
   default_theme?: string;
   enable_auto_whatsapp?: boolean;
   enable_auto_sms?: boolean;
+  enable_ddr?: boolean;
+  ddr_start_date?: string;
+  ddr_end_date?: string;
   default_dispatch_zone?: string;
   area_zones?: string[];
   last_supabase_sync?: string;
@@ -87,6 +90,18 @@ export interface Product {
   business_id: string;
   created_at: string;
   
+  // Multi-Level Pricing Rates
+  rate_lmr?: number; // LMR - Loyal Membership Rate
+  rate_abr?: number; // ABR - Advance Booking Rate
+  rate_ddr?: number; // DDR - Diwali Discount Rate
+  rate_nr?: number;  // NR - Normal Rate (defaults to selling_price)
+
+  // Purchase to Inventory Conversion
+  purchase_unit?: string; // e.g., 'Kg'
+  selling_unit?: string; // e.g., 'Packet'
+  pack_size?: number; // e.g., 250 (grams)
+  auto_conversion?: boolean;
+
   // Combo Box / Product Bundle attributes
   is_combo?: boolean;
   combo_items?: ComboItem[];
@@ -120,6 +135,7 @@ export interface Customer {
   loyalty_points?: number;
   lifetime_spend?: number;
   loyalty_tier?: 'Silver' | 'Gold' | 'Platinum';
+  is_loyal_member?: boolean; // Kokanastha Loyal Member Program enrollee
   birthday?: string;
   anniversary?: string;
   business_id: string;
@@ -179,6 +195,7 @@ export interface PurchaseOrder {
   payment_notes?: string;
   payment_date?: string;
   payment_history?: PaymentRecord[];
+  invoice_image?: string;
   items: PurchaseItem[];
   total_amount: number;
   business_id: string;
@@ -189,8 +206,16 @@ export interface SalesItem {
   product_id: string;
   qty: number;
   scanned_qty: number; // for packing verification
-  selling_price: number;
+  selling_price: number; // Applied selling price
   gst_rate: number;
+  
+  // Multi-Level Pricing Details
+  normal_rate?: number; // NR (Normal Reference Price)
+  rate_type?: 'LMR' | 'ABR' | 'DDR' | 'NR' | 'OVERRIDE';
+  rate_reason?: string; // e.g., 'Loyal Membership Discount', 'Advance Booking Benefit', 'Diwali Festival Discount', etc.
+  unit_savings?: number; // NR - selling_price
+  is_overridden?: boolean;
+  original_calc_price?: number;
 }
 
 export type OrderStatus = 'Pending' | 'Packing' | 'Packed' | 'Dispatched' | 'Delivered' | 'Cancelled' | 'Returned';
@@ -222,7 +247,6 @@ export interface SalesOrder {
   total_amount: number;
   is_updated?: boolean;
   discount_amount?: number;
-  points_redeemed?: number;
   business_id: string;
   created_at: string;
   qr_code_data: string; // Custom string packing verification scan

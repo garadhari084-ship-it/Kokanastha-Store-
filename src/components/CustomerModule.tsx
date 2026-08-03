@@ -41,6 +41,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   const [formEmail, setFormEmail] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formCreditLimit, setFormCreditLimit] = useState<number>(0);
+  const [formIsLoyalMember, setFormIsLoyalMember] = useState<boolean>(false);
   
   // Custom Area additions
   const [isAddingArea, setIsAddingArea] = useState(false);
@@ -63,6 +64,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormEmail('');
     setFormPhone('');
     setFormCreditLimit(0);
+    setFormIsLoyalMember(false);
     
     setEditingCustomer(null);
     setIsModalOpen(true);
@@ -80,6 +82,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormEmail(cust.email || '');
     setFormPhone(cust.phone);
     setFormCreditLimit(cust.credit_limit);
+    setFormIsLoyalMember(cust.is_loyal_member || false);
     setIsModalOpen(true);
   };
 
@@ -105,7 +108,8 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           shipping_address: formShipping,
           email: formEmail,
           phone: cleanPhone,
-          credit_limit: formCreditLimit
+          credit_limit: formCreditLimit,
+          is_loyal_member: formIsLoyalMember
         });
         dbStore.logActivity(user.id, user.name, user.role, 'Update Customer', `Updated customer profile: ${formName}`, businessId);
         triggerToast('Customer updated successfully.', 'success');
@@ -121,6 +125,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           email: formEmail,
           phone: cleanPhone,
           credit_limit: formCreditLimit,
+          is_loyal_member: formIsLoyalMember,
           business_id: businessId,
           active: true,
           
@@ -609,6 +614,29 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                     <option value="Wholesale">Wholesale</option>
                     <option value="Distributor">Distributor</option>
                   </select>
+                </div>
+
+                <div className="col-span-full p-3 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">👑</span>
+                    <div>
+                      <div className="text-[11px] font-black text-indigo-950 dark:text-indigo-200">
+                        Kokanastha Loyal Membership Program
+                      </div>
+                      <div className="text-[9.5px] text-indigo-700 dark:text-indigo-300 font-medium">
+                        Enrolls customer for LMR (Loyal Membership Rate - Lowest Price)
+                      </div>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={formIsLoyalMember} 
+                      onChange={(e) => setFormIsLoyalMember(e.target.checked)}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
                 </div>
 
                 <div className="space-y-1">

@@ -110,6 +110,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   });
   const [formPurchasePrice, setFormPurchasePrice] = useState<number | string>('');
   const [formSellingPrice, setFormSellingPrice] = useState<number | string>('');
+  const [formRateLmr, setFormRateLmr] = useState<number | string>('');
+  const [formRateAbr, setFormRateAbr] = useState<number | string>('');
+  const [formRateDdr, setFormRateDdr] = useState<number | string>('');
   const [formMrp, setFormMrp] = useState<number | string>('');
   const [formOpeningStock, setFormOpeningStock] = useState<number | string>('');
   const [formMinStock, setFormMinStock] = useState<number | string>('');
@@ -117,6 +120,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [formImage, setFormImage] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [formPurchaseUnit, setFormPurchaseUnit] = useState('Kg');
+  const [formSellingUnit, setFormSellingUnit] = useState('Packet');
+  const [formPackSize, setFormPackSize] = useState<number | string>('');
+  const [formAutoConversion, setFormAutoConversion] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -161,6 +169,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormGst(typeof currentBiz?.tax_rate_default === 'number' && !isNaN(currentBiz.tax_rate_default) ? currentBiz.tax_rate_default : 0);
     setFormPurchasePrice('');
     setFormSellingPrice('');
+    setFormRateLmr('');
+    setFormRateAbr('');
+    setFormRateDdr('');
     setFormMrp('');
     setFormOpeningStock('');
     setFormMinStock('');
@@ -168,6 +179,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormImage('');
     setFormDescription('');
     setFormActive(true);
+    setFormPurchaseUnit('Kg');
+    setFormSellingUnit('Packet');
+    setFormPackSize('');
+    setFormAutoConversion(false);
     setEditingProduct(null);
   };
 
@@ -212,6 +227,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormGst(prod.gst_rate);
     setFormPurchasePrice(prod.purchase_price);
     setFormSellingPrice(prod.selling_price);
+    setFormRateLmr(prod.rate_lmr ?? prod.selling_price);
+    setFormRateAbr(prod.rate_abr ?? prod.selling_price);
+    setFormRateDdr(prod.rate_ddr ?? prod.selling_price);
     setFormMrp(prod.mrp);
     setFormOpeningStock(prod.opening_stock);
     setFormMinStock(prod.minimum_stock);
@@ -219,6 +237,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormImage(prod.image_url);
     setFormDescription(prod.description);
     setFormActive(prod.active);
+    setFormPurchaseUnit(prod.purchase_unit || 'Kg');
+    setFormSellingUnit(prod.selling_unit || 'Packet');
+    setFormPackSize(prod.pack_size || '');
+    setFormAutoConversion(prod.auto_conversion || false);
     setIsModalOpen(true);
   };
 
@@ -234,6 +256,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormGst(5);
     setFormPurchasePrice('');
     setFormSellingPrice('');
+    setFormRateLmr('');
+    setFormRateAbr('');
+    setFormRateDdr('');
     setFormMrp('');
     setFormOpeningStock(10);
     setFormImage('https://images.unsplash.com/photo-1513201099705-a9746e1e201f?auto=format&fit=crop&w=400&q=80');
@@ -258,6 +283,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormGst(combo.gst_rate || 5);
     setFormPurchasePrice(combo.purchase_price);
     setFormSellingPrice(combo.selling_price);
+    setFormRateLmr(combo.rate_lmr ?? combo.selling_price);
+    setFormRateAbr(combo.rate_abr ?? combo.selling_price);
+    setFormRateDdr(combo.rate_ddr ?? combo.selling_price);
     setFormMrp(combo.mrp);
     setFormOpeningStock(combo.opening_stock ?? combo.current_stock);
     setFormImage(combo.image_url);
@@ -330,6 +358,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           gst_rate: Number(formGst),
           purchase_price: costPrice,
           selling_price: sellPrice,
+          rate_nr: sellPrice,
+          rate_lmr: formRateLmr !== '' && !isNaN(Number(formRateLmr)) ? Number(formRateLmr) : sellPrice,
+          rate_abr: formRateAbr !== '' && !isNaN(Number(formRateAbr)) ? Number(formRateAbr) : sellPrice,
+          rate_ddr: formRateDdr !== '' && !isNaN(Number(formRateDdr)) ? Number(formRateDdr) : sellPrice,
           mrp: mrpVal,
           opening_stock: openingStockVal,
           current_stock: openingStockVal,
@@ -354,6 +386,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           gst_rate: Number(formGst),
           purchase_price: costPrice,
           selling_price: sellPrice,
+          rate_nr: sellPrice,
+          rate_lmr: formRateLmr !== '' && !isNaN(Number(formRateLmr)) ? Number(formRateLmr) : sellPrice,
+          rate_abr: formRateAbr !== '' && !isNaN(Number(formRateAbr)) ? Number(formRateAbr) : sellPrice,
+          rate_ddr: formRateDdr !== '' && !isNaN(Number(formRateDdr)) ? Number(formRateDdr) : sellPrice,
           mrp: mrpVal,
           opening_stock: openingStockVal,
           minimum_stock: Number(formMinStock) || 2,
@@ -440,12 +476,20 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           gst_rate: Number(formGst),
           purchase_price: Number(formPurchasePrice),
           selling_price: Number(formSellingPrice),
+          rate_nr: Number(formSellingPrice),
+          rate_lmr: formRateLmr !== '' && !isNaN(Number(formRateLmr)) ? Number(formRateLmr) : Number(formSellingPrice),
+          rate_abr: formRateAbr !== '' && !isNaN(Number(formRateAbr)) ? Number(formRateAbr) : Number(formSellingPrice),
+          rate_ddr: formRateDdr !== '' && !isNaN(Number(formRateDdr)) ? Number(formRateDdr) : Number(formSellingPrice),
           mrp: Number(formMrp),
           minimum_stock: Number(formMinStock),
           maximum_stock: Number(formMaxStock),
           image_url: formImage.trim() || getAutoImage(formName.trim()),
           description: formDescription.trim(),
-          active: formActive
+          active: formActive,
+          purchase_unit: formPurchaseUnit,
+          selling_unit: formSellingUnit,
+          pack_size: Number(formPackSize) || undefined,
+          auto_conversion: formAutoConversion
         });
 
         dbStore.logActivity(user.id, user.name, user.role, 'Update Product', `Updated product metadata for SKU: ${formSku}`, businessId);
@@ -463,6 +507,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           gst_rate: Number(formGst),
           purchase_price: Number(formPurchasePrice),
           selling_price: Number(formSellingPrice),
+          rate_nr: Number(formSellingPrice),
+          rate_lmr: formRateLmr !== '' && !isNaN(Number(formRateLmr)) ? Number(formRateLmr) : Number(formSellingPrice),
+          rate_abr: formRateAbr !== '' && !isNaN(Number(formRateAbr)) ? Number(formRateAbr) : Number(formSellingPrice),
+          rate_ddr: formRateDdr !== '' && !isNaN(Number(formRateDdr)) ? Number(formRateDdr) : Number(formSellingPrice),
           mrp: Number(formMrp),
           opening_stock: Number(formOpeningStock) || 0,
           minimum_stock: Number(formMinStock) || 5,
@@ -470,7 +518,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           image_url: formImage.trim() || getAutoImage(formName.trim()),
           description: formDescription.trim(),
           active: formActive,
-          business_id: businessId
+          business_id: businessId,
+          purchase_unit: formPurchaseUnit,
+          selling_unit: formSellingUnit,
+          pack_size: Number(formPackSize) || undefined,
+          auto_conversion: formAutoConversion
         });
 
         dbStore.logActivity(user.id, user.name, user.role, 'Create Product', `Created new SKU: ${formSku}`, businessId);
@@ -1025,9 +1077,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     />
                   </div>
 
-                  {/* Selling Price */}
+                  {/* Selling Price - Normal Rate (NR) */}
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Selling Price (₹) *</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Normal Rate - NR (₹) *</label>
                     <input 
                       type="number"
                       required
@@ -1037,6 +1089,48 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       onChange={(e) => setFormSellingPrice(e.target.value)}
                       placeholder="e.g. 699"
                       className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-bold text-emerald-600 rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* Loyal Membership Rate - LMR */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Loyal Member Rate - LMR (₹)</label>
+                    <input 
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formRateLmr}
+                      onChange={(e) => setFormRateLmr(e.target.value)}
+                      placeholder={formSellingPrice ? `${formSellingPrice}` : 'Loyal rate'}
+                      className="w-full px-3 py-1.5 bg-indigo-50/50 dark:bg-indigo-950/30 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 rounded-lg border border-indigo-200 dark:border-indigo-800 focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* Advance Booking Rate - ABR */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Advance Booking Rate - ABR (₹)</label>
+                    <input 
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formRateAbr}
+                      onChange={(e) => setFormRateAbr(e.target.value)}
+                      placeholder={formSellingPrice ? `${formSellingPrice}` : 'Advance rate'}
+                      className="w-full px-3 py-1.5 bg-blue-50/50 dark:bg-blue-950/30 text-[11px] font-bold text-blue-700 dark:text-blue-300 rounded-lg border border-blue-200 dark:border-blue-800 focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* Diwali Discount Rate - DDR */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">Diwali Discount Rate - DDR (₹)</label>
+                    <input 
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formRateDdr}
+                      onChange={(e) => setFormRateDdr(e.target.value)}
+                      placeholder={formSellingPrice ? `${formSellingPrice}` : 'Diwali rate'}
+                      className="w-full px-3 py-1.5 bg-amber-50/50 dark:bg-amber-950/30 text-[11px] font-bold text-amber-700 dark:text-amber-300 rounded-lg border border-amber-200 dark:border-amber-800 focus:outline-hidden"
                     />
                   </div>
 
@@ -1871,13 +1965,46 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Selling Price (₹)</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">NR - Normal Rate (₹)</label>
                   <input 
                     type="number" 
                     value={formSellingPrice}
                     onChange={(e) => setFormSellingPrice(e.target.value)}
                     placeholder="320"
-                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">LMR - Loyal Member Rate (₹)</label>
+                  <input 
+                    type="number" 
+                    value={formRateLmr}
+                    onChange={(e) => setFormRateLmr(e.target.value)}
+                    placeholder={formSellingPrice ? `${formSellingPrice}` : 'Loyal rate'}
+                    className="w-full px-3 py-1.5 bg-indigo-50/50 dark:bg-indigo-950/30 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 rounded-lg border border-indigo-200 dark:border-indigo-800 focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">ABR - Advance Booking Rate (₹)</label>
+                  <input 
+                    type="number" 
+                    value={formRateAbr}
+                    onChange={(e) => setFormRateAbr(e.target.value)}
+                    placeholder={formSellingPrice ? `${formSellingPrice}` : 'Advance rate'}
+                    className="w-full px-3 py-1.5 bg-blue-50/50 dark:bg-blue-950/30 text-[11px] font-bold text-blue-700 dark:text-blue-300 rounded-lg border border-blue-200 dark:border-blue-800 focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase">DDR - Diwali Discount Rate (₹)</label>
+                  <input 
+                    type="number" 
+                    value={formRateDdr}
+                    onChange={(e) => setFormRateDdr(e.target.value)}
+                    placeholder={formSellingPrice ? `${formSellingPrice}` : 'Diwali rate'}
+                    className="w-full px-3 py-1.5 bg-amber-50/50 dark:bg-amber-950/30 text-[11px] font-bold text-amber-700 dark:text-amber-300 rounded-lg border border-amber-200 dark:border-amber-800 focus:outline-hidden"
                   />
                 </div>
 
@@ -1890,6 +2017,74 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     placeholder="350"
                     className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                   />
+                </div>
+
+                <div className="md:col-span-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="checkbox"
+                      id="auto_conversion"
+                      checked={formAutoConversion}
+                      onChange={(e) => setFormAutoConversion(e.target.checked)}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                    />
+                    <label htmlFor="auto_conversion" className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                      Enable Purchase to Inventory Auto Conversion
+                    </label>
+                  </div>
+                  
+                  {formAutoConversion && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-xl border border-indigo-100 dark:border-indigo-900/50 mt-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">Purchase Unit</label>
+                        <select 
+                          value={formPurchaseUnit} 
+                          onChange={(e) => setFormPurchaseUnit(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden"
+                        >
+                          <option value="Kg">Kg (Kilogram)</option>
+                          <option value="Ltr">Liter</option>
+                          <option value="Gram">Gram</option>
+                          <option value="Box">Box</option>
+                        </select>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">Selling Unit</label>
+                        <select 
+                          value={formSellingUnit} 
+                          onChange={(e) => setFormSellingUnit(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden"
+                        >
+                          <option value="Packet">Packet</option>
+                          <option value="Unit">Unit</option>
+                          <option value="Pcs">Pieces</option>
+                          <option value="Gram">Gram</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">Pack Size</label>
+                        <div className="flex gap-1 items-center">
+                          <input 
+                            type="number" 
+                            required={formAutoConversion}
+                            value={formPackSize}
+                            onChange={(e) => setFormPackSize(e.target.value)}
+                            placeholder="e.g. 250"
+                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden"
+                          />
+                          <span className="text-[10px] font-bold text-slate-500">
+                            {formPurchaseUnit === 'Kg' ? 'g' : formPurchaseUnit === 'Ltr' ? 'ml' : 'units'}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="md:col-span-3 text-[10px] text-slate-500 italic">
+                        Conversion Formula: {formPurchaseUnit === 'Kg' || formPurchaseUnit === 'Ltr' ? `(Purchase Qty * 1000) / Pack Size = ${formSellingUnit}s` : `Purchase Qty * Pack Size = ${formSellingUnit}s`}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {!editingProduct && (

@@ -1,192 +1,211 @@
--- Run this in your Supabase SQL Editor
+-- SUPABASE POSTGRESQL SCHEMA FOR KOKANASTHA FARAL ERP
+-- This schema represents the entities used in the application.
 
--- 1. Businesses
-CREATE TABLE public.businesses (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  gstin TEXT,
-  pan TEXT,
-  billing_address TEXT,
-  shipping_address TEXT,
-  email TEXT,
-  phone TEXT,
-  invoice_prefix TEXT,
-  tax_rate_default NUMERIC DEFAULT 0,
-  logo_url TEXT,
-  login_cover_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Business
+CREATE TABLE businesses (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    gstin TEXT,
+    pan TEXT,
+    billing_address TEXT,
+    shipping_address TEXT,
+    email TEXT,
+    phone TEXT,
+    invoice_prefix TEXT,
+    festive_invoice_prefix TEXT,
+    tax_rate_default NUMERIC,
+    currency_symbol TEXT,
+    auto_backup BOOLEAN,
+    low_stock_threshold INTEGER,
+    audit_retention_days INTEGER,
+    default_theme TEXT,
+    enable_auto_whatsapp BOOLEAN,
+    enable_auto_sms BOOLEAN,
+    default_dispatch_zone TEXT,
+    area_zones TEXT[],
+    upi_id TEXT,
+    bank_name TEXT,
+    account_number TEXT,
+    ifsc_code TEXT,
+    account_holder TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. User Profiles
-CREATE TABLE public.users_profiles (
-  id UUID PRIMARY KEY, -- links to auth.users if needed
-  email TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
-  role TEXT NOT NULL,
-  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE,
-  active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- Users
+CREATE TABLE user_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    active BOOLEAN DEFAULT TRUE,
+    password_hash TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. Categories
-CREATE TABLE public.categories (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  parent_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
-  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE,
-  active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- Categories
+CREATE TABLE categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    parent_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. Products
-CREATE TABLE public.products (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  sku TEXT,
-  barcode TEXT,
-  qr_code TEXT,
-  category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
-  brand TEXT,
-  unit TEXT,
-  hsn_code TEXT,
-  gst_rate NUMERIC DEFAULT 0,
-  purchase_price NUMERIC DEFAULT 0,
-  selling_price NUMERIC DEFAULT 0,
-  mrp NUMERIC DEFAULT 0,
-  opening_stock NUMERIC DEFAULT 0,
-  current_stock NUMERIC DEFAULT 0,
-  minimum_stock NUMERIC DEFAULT 0,
-  maximum_stock NUMERIC DEFAULT 0,
-  image_url TEXT,
-  description TEXT,
-  active BOOLEAN DEFAULT TRUE,
-  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- Products
+CREATE TABLE products (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    sku TEXT UNIQUE,
+    barcode TEXT,
+    qr_code TEXT,
+    category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+    brand TEXT,
+    unit TEXT,
+    purchase_price NUMERIC,
+    selling_price NUMERIC,
+    mrp NUMERIC,
+    gst_rate NUMERIC,
+    hsn_code TEXT,
+    current_stock INTEGER DEFAULT 0,
+    min_stock_level INTEGER DEFAULT 10,
+    batch_no TEXT,
+    expiry_date DATE,
+    rack_location TEXT,
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    rate_lmr NUMERIC,
+    rate_abr NUMERIC,
+    rate_ddr NUMERIC,
+    rate_nr NUMERIC,
+    purchase_unit TEXT,
+    selling_unit TEXT,
+    pack_size NUMERIC,
+    auto_conversion BOOLEAN DEFAULT FALSE,
+    is_combo BOOLEAN DEFAULT FALSE,
+    combo_items JSONB
 );
 
--- 5. Customers
-CREATE TABLE public.customers (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  "group" TEXT,
-  area TEXT,
-  gstin TEXT,
-  pan TEXT,
-  billing_address TEXT,
-  shipping_address TEXT,
-  email TEXT,
-  phone TEXT,
-  credit_limit NUMERIC DEFAULT 0,
-  outstanding_amount NUMERIC DEFAULT 0,
-  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE,
-  active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- Customers
+CREATE TABLE customers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    customer_group TEXT,
+    area TEXT,
+    gstin TEXT,
+    pan TEXT,
+    billing_address TEXT,
+    shipping_address TEXT,
+    email TEXT,
+    phone TEXT,
+    credit_limit NUMERIC DEFAULT 0,
+    outstanding_amount NUMERIC DEFAULT 0,
+    loyalty_points NUMERIC DEFAULT 0,
+    lifetime_spend NUMERIC DEFAULT 0,
+    loyalty_tier TEXT,
+    is_loyal_member BOOLEAN DEFAULT FALSE,
+    birthday DATE,
+    anniversary DATE,
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 6. Suppliers
-CREATE TABLE public.suppliers (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  gstin TEXT,
-  phone TEXT,
-  email TEXT,
-  address TEXT,
-  outstanding_amount NUMERIC DEFAULT 0,
-  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- Suppliers
+CREATE TABLE suppliers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    gstin TEXT,
+    phone TEXT,
+    email TEXT,
+    address TEXT,
+    outstanding_amount NUMERIC DEFAULT 0,
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 7. Purchase Orders
-CREATE TABLE public.purchase_orders (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_number TEXT NOT NULL,
-  supplier_id UUID REFERENCES public.suppliers(id) ON DELETE CASCADE,
-  order_date DATE,
-  delivery_date DATE,
-  status TEXT NOT NULL,
-  payment_status TEXT NOT NULL,
-  items JSONB NOT NULL DEFAULT '[]'::jsonb,
-  total_amount NUMERIC DEFAULT 0,
-  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- Purchase Orders
+CREATE TABLE purchase_orders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_number TEXT NOT NULL,
+    supplier_id UUID REFERENCES suppliers(id),
+    order_date DATE,
+    delivery_date DATE,
+    status TEXT,
+    payment_status TEXT,
+    paid_amount NUMERIC DEFAULT 0,
+    payment_mode TEXT,
+    payment_reference TEXT,
+    payment_bank TEXT,
+    payment_notes TEXT,
+    payment_date DATE,
+    payment_history JSONB,
+    items JSONB NOT NULL,
+    total_amount NUMERIC NOT NULL,
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 8. Sales Orders
-CREATE TABLE public.sales_orders (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_number TEXT NOT NULL,
-  customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE,
-  customer_name TEXT,
-  area TEXT,
-  channel TEXT,
-  time TEXT,
-  is_overdue BOOLEAN DEFAULT FALSE,
-  order_date DATE,
-  status TEXT NOT NULL,
-  payment_status TEXT NOT NULL,
-  delivery_status TEXT NOT NULL,
-  rack_location TEXT,
-  rack_section TEXT,
-  items JSONB NOT NULL DEFAULT '[]'::jsonb,
-  advance_booking BOOLEAN DEFAULT FALSE,
-  total_amount NUMERIC DEFAULT 0,
-  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE,
-  qr_code_data TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- Sales Orders
+CREATE TABLE sales_orders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_number TEXT NOT NULL,
+    customer_id UUID REFERENCES customers(id),
+    customer_name TEXT,
+    area TEXT,
+    channel TEXT,
+    time TEXT,
+    is_overdue BOOLEAN DEFAULT FALSE,
+    order_date DATE,
+    delivery_date DATE,
+    status TEXT,
+    payment_status TEXT,
+    payment_mode TEXT,
+    paid_amount NUMERIC DEFAULT 0,
+    payment_reference TEXT,
+    payment_bank TEXT,
+    payment_notes TEXT,
+    payment_date DATE,
+    payment_history JSONB,
+    delivery_status TEXT,
+    items JSONB NOT NULL,
+    advance_booking BOOLEAN DEFAULT FALSE,
+    festive_booking BOOLEAN DEFAULT FALSE,
+    total_amount NUMERIC NOT NULL,
+    is_updated BOOLEAN DEFAULT FALSE,
+    discount_amount NUMERIC DEFAULT 0,
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    qr_code_data TEXT,
+    delivery_partner TEXT,
+    delivery_person_name TEXT,
+    delivery_person_phone TEXT,
+    tracking_number TEXT,
+    dispatch_notes TEXT,
+    dispatched_at TIMESTAMP WITH TIME ZONE,
+    packing_started_at TIMESTAMP WITH TIME ZONE,
+    packing_completed_at TIMESTAMP WITH TIME ZONE,
+    rack_location TEXT,
+    rack_section TEXT,
+    points_earned NUMERIC DEFAULT 0,
+    points_redeemed NUMERIC DEFAULT 0,
+    loyalty_discount NUMERIC DEFAULT 0,
+    subscription_id UUID
 );
 
--- 9. Packing Sessions
-CREATE TABLE public.packing_sessions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id UUID REFERENCES public.sales_orders(id) ON DELETE CASCADE,
-  packing_staff_id UUID REFERENCES public.users_profiles(id) ON DELETE CASCADE,
-  start_time TIMESTAMPTZ,
-  end_time TIMESTAMPTZ,
-  total_scans INTEGER DEFAULT 0,
-  status TEXT NOT NULL,
-  logs JSONB NOT NULL DEFAULT '[]'::jsonb,
-  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE
+-- Stock Logs
+CREATE TABLE stock_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    change_qty INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    notes TEXT,
+    created_by TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE
 );
-
--- 10. Stock Logs
-CREATE TABLE public.stock_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id UUID REFERENCES public.products(id) ON DELETE CASCADE,
-  change_qty NUMERIC NOT NULL,
-  type TEXT NOT NULL,
-  notes TEXT,
-  created_by UUID REFERENCES public.users_profiles(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE
-);
-
--- 11. System Audit Logs
-CREATE TABLE public.system_audit_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES public.users_profiles(id) ON DELETE CASCADE,
-  user_name TEXT,
-  user_role TEXT,
-  action TEXT NOT NULL,
-  details TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE
-);
-
--- 12. Business Settings
-CREATE TABLE public.business_settings (
-  business_id UUID PRIMARY KEY REFERENCES public.businesses(id) ON DELETE CASCADE,
-  business_name TEXT,
-  gstin TEXT,
-  invoice_prefix TEXT,
-  low_stock_limit NUMERIC DEFAULT 10,
-  barcode_format TEXT DEFAULT 'EAN-13',
-  qr_size NUMERIC DEFAULT 150,
-  enable_email_alerts BOOLEAN DEFAULT FALSE,
-  enable_sms_alerts BOOLEAN DEFAULT FALSE,
-  theme TEXT DEFAULT 'light'
-);
-
--- Enable RLS (Row Level Security) - Optional but recommended for production
--- ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
--- CREATE POLICY "Users can access their business products" ON public.products FOR ALL USING (business_id = auth.uid()); -- Note: needs correct auth setup.
 

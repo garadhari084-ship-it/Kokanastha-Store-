@@ -73,6 +73,9 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [defaultTheme, setDefaultTheme] = useState<string>(business?.default_theme || 'midnight-gold');
   const [enableAutoWhatsapp, setEnableAutoWhatsapp] = useState<boolean>(business?.enable_auto_whatsapp ?? true);
   const [enableAutoSms, setEnableAutoSms] = useState<boolean>(business?.enable_auto_sms ?? true);
+  const [enableDdr, setEnableDdr] = useState<boolean>(business?.enable_ddr ?? false);
+  const [ddrStartDate, setDdrStartDate] = useState<string>(business?.ddr_start_date || '2026-10-01');
+  const [ddrEndDate, setDdrEndDate] = useState<string>(business?.ddr_end_date || '2026-10-20');
   const [defaultDispatchZone, setDefaultDispatchZone] = useState<string>(business?.default_dispatch_zone || 'Dahisar');
   
   // Dynamic Area Zone Locations
@@ -117,6 +120,9 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       setDefaultTheme(updated.default_theme || 'midnight-gold');
       setEnableAutoWhatsapp(updated.enable_auto_whatsapp ?? true);
       setEnableAutoSms(updated.enable_auto_sms ?? true);
+      setEnableDdr(updated.enable_ddr ?? false);
+      setDdrStartDate(updated.ddr_start_date || '2026-10-01');
+      setDdrEndDate(updated.ddr_end_date || '2026-10-20');
       setDefaultDispatchZone(updated.default_dispatch_zone || 'Dahisar');
       if (updated.area_zones && updated.area_zones.length > 0) {
         setAreaZones(updated.area_zones);
@@ -317,6 +323,9 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         default_theme: defaultTheme,
         enable_auto_whatsapp: enableAutoWhatsapp,
         enable_auto_sms: enableAutoSms,
+        enable_ddr: enableDdr,
+        ddr_start_date: ddrStartDate,
+        ddr_end_date: ddrEndDate,
         default_dispatch_zone: defaultDispatchZone,
         area_zones: areaZones,
         upi_id: upiId.trim().substring(0, 255),
@@ -511,6 +520,60 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   placeholder="FEST-KF-"
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500 uppercase"
                 />
+              </div>
+
+              {/* Diwali Discount Rate (DDR) Auto-Pricing Settings */}
+              <div className="col-span-1 sm:col-span-2 lg:col-span-4 p-4 bg-amber-50/70 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800 space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="text-amber-600 dark:text-amber-400 shrink-0" size={18} />
+                    <div>
+                      <h4 className="text-xs font-black text-amber-950 dark:text-amber-200 uppercase tracking-wide">
+                        Diwali Discount Rate (DDR) Auto-Festival Pricing
+                      </h4>
+                      <p className="text-[10px] text-amber-700 dark:text-amber-300 font-medium">
+                        Automatically applies Diwali Discount Rate (DDR) during your configured festival dates on Create Order
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input 
+                      type="checkbox" 
+                      checked={enableDdr} 
+                      onChange={(e) => setEnableDdr(e.target.checked)} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+
+                {enableDdr && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-amber-200/60 dark:border-amber-800/60">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase">
+                        Festive Start Date (e.g. 1st Oct)
+                      </label>
+                      <input 
+                        type="date" 
+                        value={ddrStartDate}
+                        onChange={(e) => setDdrStartDate(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-800 dark:text-slate-200 rounded-xl border border-amber-300 dark:border-amber-700 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase">
+                        Festive End Date (e.g. 20th Oct)
+                      </label>
+                      <input 
+                        type="date" 
+                        value={ddrEndDate}
+                        onChange={(e) => setDdrEndDate(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-800 dark:text-slate-200 rounded-xl border border-amber-300 dark:border-amber-700 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">

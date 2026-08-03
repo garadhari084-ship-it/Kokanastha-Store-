@@ -406,6 +406,7 @@ class ERPStorage {
     auditLogs: SystemAuditLog[];
     packingSessions: PackingSession[];
     messages: ChatMessage[];
+    loyaltyConfigs: LoyaltyConfig[];
     loyaltyLogs: LoyaltyLog[];
     subscriptions: CustomerSubscription[];
     comboLogs: ComboHistoryLog[];
@@ -433,6 +434,7 @@ class ERPStorage {
       auditLogs: this.load('auditLogs', PRE_SEEDED_SYSTEM_AUDIT_LOGS),
       packingSessions: this.load('packingSessions', []),
       messages: this.load('messages', []),
+      loyaltyConfigs: this.load('loyaltyConfigs', []),
       loyaltyLogs: this.load('loyaltyLogs', PRE_SEEDED_LOYALTY_LOGS),
       subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS),
       comboLogs: this.load('comboLogs', [])
@@ -473,6 +475,7 @@ class ERPStorage {
       auditLogs: this.load('auditLogs', PRE_SEEDED_SYSTEM_AUDIT_LOGS),
       packingSessions: this.load('packingSessions', []),
       messages: this.load('messages', []),
+      loyaltyConfigs: this.load('loyaltyConfigs', []),
       loyaltyLogs: this.load('loyaltyLogs', PRE_SEEDED_LOYALTY_LOGS),
       subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS),
       comboLogs: this.load('comboLogs', [])
@@ -557,6 +560,7 @@ class ERPStorage {
        settings: 'business_settings',
        messages: 'chat_messages',
        loyaltyLogs: 'loyalty_logs',
+       loyaltyConfigs: 'loyalty_configs',
        subscriptions: 'customer_subscriptions',
        comboLogs: 'combo_history_logs'
     };
@@ -572,7 +576,7 @@ class ERPStorage {
        const { data, error } = await query;
        if (!error && data) {
           if (data.length === 0) {
-             if (key !== 'businesses' && key !== 'profiles' && key !== 'settings') {
+             if (key !== 'businesses' && key !== 'profiles' && key !== 'settings' && key !== 'loyaltyConfigs') {
                 (this.cache as any)[key] = [];
                 localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify([]));
              }
@@ -637,7 +641,10 @@ class ERPStorage {
                return {
                  ...existingCust,
                  ...cust,
-                 area: cust.area || existingCust?.area || undefined
+                 area: cust.area || existingCust?.area || undefined,
+                 loyalty_points: typeof cust.loyalty_points === 'number' ? cust.loyalty_points : (existingCust?.loyalty_points || 0),
+                 loyalty_tier: cust.loyalty_tier || existingCust?.loyalty_tier || 'Silver',
+                 lifetime_spend: typeof cust.lifetime_spend === 'number' ? cust.lifetime_spend : (existingCust?.lifetime_spend || 0)
                };
              });
              this.cache.customers = mergedCustomers;
@@ -700,6 +707,7 @@ class ERPStorage {
        settings: 'business_settings',
        messages: 'chat_messages',
        loyaltyLogs: 'loyalty_logs',
+       loyaltyConfigs: 'loyalty_configs',
        subscriptions: 'customer_subscriptions',
        comboLogs: 'combo_history_logs'
     };
@@ -804,10 +812,16 @@ class ERPStorage {
                delete clean.invoice_prefix;
                clean.business_id = sanitizeUUID(clean.business_id, false);
            }
+           if (tableName === 'loyalty_configs') {
+               clean.business_id = sanitizeUUID(clean.business_id, false);
+           }
            if (tableName === 'customers') {
                delete clean.area;
                if (clean.pan) clean.pan = String(clean.pan).substring(0, 10);
                if (clean.gstin) clean.gstin = String(clean.gstin).substring(0, 15);
+               clean.loyalty_points = Number(clean.loyalty_points || 0);
+               clean.lifetime_spend = Number(clean.lifetime_spend || 0);
+               if (!clean.loyalty_tier) clean.loyalty_tier = 'Silver';
            }
            if (tableName === 'suppliers') {
                if (clean.pan) clean.pan = String(clean.pan).substring(0, 10);
@@ -815,6 +829,10 @@ class ERPStorage {
            }
            if (tableName === 'products') {
                clean.category_id = sanitizeUUID(clean.category_id, true);
+               if (clean.sku === '' || clean.sku === null) {
+                   clean.sku = 'SKU-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+               }
+               if (clean.barcode === '') clean.barcode = null;
            }
            if (tableName === 'categories') {
                clean.parent_id = sanitizeUUID(clean.parent_id, true);
@@ -834,6 +852,7 @@ class ERPStorage {
                        const si = { ...i, sales_order_id: clean.id };
                        si.id = sanitizeUUID(si.id, false);
                        si.product_id = sanitizeUUID(si.product_id, false);
+                       delete si.is_overridden;
                        salesItems.push(si);
                    });
                }
@@ -846,6 +865,7 @@ class ERPStorage {
                        const pi = { ...i, purchase_order_id: clean.id };
                        pi.id = sanitizeUUID(pi.id, false);
                        pi.product_id = sanitizeUUID(pi.product_id, false);
+                       delete pi.is_overridden;
                        purchaseItems.push(pi);
                    });
                }
@@ -884,19 +904,10 @@ class ERPStorage {
            }
            if (tableName === 'loyalty_logs') {
                clean.customer_id = sanitizeUUID(clean.customer_id, true);
-               if (clean.customer_id && Array.isArray(this.cache.customers) && !this.cache.customers.some((c: any) => c.id === clean.customer_id)) {
-                   clean.customer_id = null;
-               }
                clean.order_id = sanitizeUUID(clean.order_id, true);
-               if (clean.order_id && Array.isArray(this.cache.sales) && !this.cache.sales.some((s: any) => s.id === clean.order_id)) {
-                   clean.order_id = null;
-               }
            }
            if (tableName === 'customer_subscriptions') {
                clean.customer_id = sanitizeUUID(clean.customer_id, true);
-               if (clean.customer_id && Array.isArray(this.cache.customers) && !this.cache.customers.some((c: any) => c.id === clean.customer_id)) {
-                   clean.customer_id = null;
-               }
                clean.last_order_id = sanitizeUUID(clean.last_order_id, true);
                if (!clean.next_delivery_date && clean.next_billing_date) {
                    clean.next_delivery_date = clean.next_billing_date;
@@ -952,6 +963,7 @@ class ERPStorage {
              if ('order_id' in copy) copy.order_id = null;
              if ('customer_id' in copy) copy.customer_id = null;
              if ('last_order_id' in copy) copy.last_order_id = null;
+             if ('product_id' in copy) copy.product_id = null;
              return copy;
            }
            return item;
@@ -1205,6 +1217,9 @@ class ERPStorage {
   }
 
   public createProduct(prod: Omit<Product, 'id' | 'created_at' | 'current_stock'>): Product {
+    if (!prod.sku || prod.sku.trim() === '') {
+      prod.sku = 'SKU-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+    }
     const newProd: Product = {
       ...prod,
       id: crypto.randomUUID(),
@@ -1881,13 +1896,25 @@ class ERPStorage {
 
   // ==================== LOYALTY & SUBSCRIPTION OPERATIONS ====================
   public getLoyaltyConfig(businessId: string): LoyaltyConfig {
+    if (this.cache.loyaltyConfigs) {
+      const cfg = this.cache.loyaltyConfigs.find(l => (l as any).business_id === businessId);
+      if (cfg) return cfg;
+    }
     const biz = this.getBusiness(businessId);
     return biz?.loyalty_config || DEFAULT_LOYALTY_CONFIG;
   }
 
   public updateLoyaltyConfig(businessId: string, updates: Partial<LoyaltyConfig>): LoyaltyConfig {
     const currentConfig = this.getLoyaltyConfig(businessId);
-    const updated = { ...currentConfig, ...updates };
+    const updated = { ...currentConfig, ...updates, business_id: businessId };
+    if (!this.cache.loyaltyConfigs) this.cache.loyaltyConfigs = [];
+    const idx = this.cache.loyaltyConfigs.findIndex(l => (l as any).business_id === businessId);
+    if (idx !== -1) {
+      this.cache.loyaltyConfigs[idx] = updated;
+    } else {
+      this.cache.loyaltyConfigs.push(updated);
+    }
+    this.save('loyaltyConfigs', updated);
     this.updateBusiness(businessId, { loyalty_config: updated });
     return updated;
   }
@@ -2172,7 +2199,16 @@ class ERPStorage {
     // If order received immediately, trigger stock ledger in-movement
     if (newPO.status === 'Received') {
       newPO.items.forEach(item => {
-        this.addStockLog(item.product_id, item.qty, 'In', `Received purchase order ${newPO.order_number}`, 'System', newPO.business_id);
+        let actualQty = item.qty;
+        const prod = this.cache.products.find(p => p.id === item.product_id);
+        if (prod && prod.auto_conversion && prod.pack_size) {
+            if (prod.purchase_unit === 'Kg' || prod.purchase_unit === 'Ltr') {
+                actualQty = (item.qty * 1000) / prod.pack_size;
+            } else {
+                actualQty = item.qty * prod.pack_size;
+            }
+        }
+        this.addStockLog(item.product_id, actualQty, 'In', `Received purchase order ${newPO.order_number}`, 'System', newPO.business_id);
       });
     }
 
@@ -2190,7 +2226,16 @@ class ERPStorage {
       // Check transition from non-received to received
       if (oldPO.status !== 'Received' && newPO.status === 'Received') {
         newPO.items.forEach(item => {
-          this.addStockLog(item.product_id, item.qty, 'In', `Received purchase order ${newPO.order_number}`, 'System', newPO.business_id);
+          let actualQty = item.qty;
+          const prod = this.cache.products.find(p => p.id === item.product_id);
+          if (prod && prod.auto_conversion && prod.pack_size) {
+              if (prod.purchase_unit === 'Kg' || prod.purchase_unit === 'Ltr') {
+                  actualQty = (item.qty * 1000) / prod.pack_size;
+              } else {
+                  actualQty = item.qty * prod.pack_size;
+              }
+          }
+          this.addStockLog(item.product_id, actualQty, 'In', `Received purchase order ${newPO.order_number}`, 'System', newPO.business_id);
         });
       }
 
@@ -2697,6 +2742,7 @@ class ERPStorage {
       auditLogs: PRE_SEEDED_SYSTEM_AUDIT_LOGS,
       packingSessions: [],
       messages: [],
+      loyaltyConfigs: [],
       loyaltyLogs: PRE_SEEDED_LOYALTY_LOGS,
       subscriptions: PRE_SEEDED_SUBSCRIPTIONS,
       comboLogs: []

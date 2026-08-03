@@ -740,12 +740,30 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                       )}
                       
                       {o.status === 'Dispatched' && (
-                        <button 
-                          onClick={() => handleUpdateStatus(o, 'Delivered')}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-black text-[10px] transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
-                        >
-                          <CheckCircle2 size={12} /> Deliver
-                        </button>
+                        <div className="flex gap-1 items-center">
+                          <button 
+                            onClick={() => handleUpdateStatus(o, 'Delivered')}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-black text-[10px] transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                          >
+                            <CheckCircle2 size={12} /> Deliver
+                          </button>
+                          
+                          {/* Quick Pipeline Status Updater (Moved from Sales Module) */}
+                          <select
+                            value={o.status}
+                            onChange={(e) => handleUpdateStatus(o, e.target.value as any)}
+                            className="text-[10px] font-bold py-1 px-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            title="Quick Update Pipeline Status"
+                          >
+                            <option value="Pending">Pending</option>
+                            <option value="Packing">Packing</option>
+                            <option value="Packed">Ready</option>
+                            <option value="Dispatched">Out for Delivery</option>
+                            <option value="Delivered">Completed</option>
+                            <option value="Returned">Returned</option>
+                            <option value="Cancelled">Cancelled</option>
+                          </select>
+                        </div>
                       )}
                       
                       {o.status === 'Delivered' && (

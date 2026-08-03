@@ -2,7 +2,7 @@ import { PaymentCollectionModal } from './PaymentCollectionModal';
 import { PageHeader } from './PageHeader';
 import React, { useEffect, useState } from 'react';
 import { 
-  ShoppingBag, PlusCircle, Search, Truck, FileText, Calendar, DollarSign, X, Check, CheckCircle, Clock, Package, Download, Building, ArrowRight, Printer, AlertTriangle, ChevronRight, FileSpreadsheet, Store, CreditCard, QrCode, Wallet, CheckCircle2, Receipt, Banknote
+  ShoppingBag, PlusCircle, Search, Truck, FileText, Calendar, DollarSign, X, Check, CheckCircle, Clock, Package, Download, Building, ArrowRight, Printer, AlertTriangle, ChevronRight, FileSpreadsheet, Store, CreditCard, QrCode, Wallet, CheckCircle2, Receipt, Banknote, PackagePlus
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { PurchaseOrder, Supplier, Product, UserProfile, PurchaseItem } from '../types/erp';
@@ -28,6 +28,9 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
+  
+  // State for Purchase to Inventory Auto Conversion Modal
+  const [orderToReceive, setOrderToReceive] = useState<PurchaseOrder | null>(null);
 
   // Quick Payment Modal State
   const [paymentModalPO, setPaymentModalPO] = useState<PurchaseOrder | null>(null);
@@ -41,9 +44,15 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [items, setItems] = useState<PurchaseItem[]>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const uploadInputRef = React.useRef<HTMLInputElement>(null);
   
   // Initial Payment Form states on Create PO
+  const [initialOrderStatus, setInitialOrderStatus] = useState<'Draft' | 'Ordered' | 'Received'>('Received');
   const [initialPaymentStatus, setInitialPaymentStatus] = useState<'Unpaid' | 'Partial' | 'Paid'>('Unpaid');
+  const [pendingPOToConfirm, setPendingPOToConfirm] = useState<any>(null);
+  const [uploadedInvoice, setUploadedInvoice] = useState<string | null>(null);
   const [initialPaidAmount, setInitialPaidAmount] = useState<number>(0);
   const [initialPaymentMode, setInitialPaymentMode] = useState<'Cash' | 'UPI' | 'Bank Transfer' | 'Cheque' | 'Credit Card' | 'Other'>('UPI');
   const [initialPaymentNotes, setInitialPaymentNotes] = useState<string>('');
@@ -52,11 +61,13 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
   const [rowProductId, setRowProductId] = useState('');
   const [rowQty, setRowQty] = useState(10);
   const [rowPrice, setRowPrice] = useState(0);
+  const [rowGst, setRowGst] = useState(0);
 
   const resetForm = () => {
     setSelectedSupplierId(suppliers[0]?.id || '');
     setDeliveryDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
     setItems([]);
+    setInitialOrderStatus('Received');
     setInitialPaymentStatus('Unpaid');
     setInitialPaidAmount(0);
     setInitialPaymentMode('UPI');
@@ -64,6 +75,8 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
     setRowProductId('');
     setRowQty(10);
     setRowPrice(0);
+    setRowGst(0);
+    setUploadedInvoice(null);
   };
 
   useEffect(() => {
@@ -73,6 +86,111 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
       setProducts(dbStore.getProducts(businessId));
     });
   }, [businessId]);
+
+  
+  const handleScanInvoice = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      triggerToast('Please upload an image file.', 'error');
+      return;
+    }
+
+    setIsScanning(true);
+    triggerToast('Scanning invoice, please wait...', 'info');
+
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result as string;
+        setUploadedInvoice(base64String);
+        try {
+          const res = await fetch('/api/scan-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64String })
+          });
+
+          if (!res.ok) {
+            throw new Error('Failed to scan invoice');
+          }
+
+          const data = await res.json();
+          
+          if (data.supplierName) {
+            // Find or create supplier
+            const sName = (data.supplierName || '').toLowerCase().trim();
+            const sPhone = (data.supplierPhone || '').trim();
+            let supplier = suppliers.find(s => s.name.toLowerCase().trim() === sName || (sPhone && s.phone === sPhone));
+            if (!supplier) {
+                const newSupplier: any = {
+                    name: (data.supplierName || '').trim() || 'Scanned Supplier',
+                    phone: sPhone,
+                    address: '',
+                    gstin: data.supplierGstin || '',
+                    business_id: businessId,
+                    email: ''
+                };
+                supplier = dbStore.createSupplier(newSupplier);
+                setSuppliers(dbStore.getSuppliers(businessId));
+            }
+            setSelectedSupplierId(supplier.id);
+          }
+
+          if (data.items && data.items.length > 0) {
+              const newItems = [];
+              for (const it of data.items) {
+                  const searchName = (it.name || '').toLowerCase().trim();
+                  let prod = dbStore.getProducts(businessId).find(p => p.name.toLowerCase().trim() === searchName);
+                  if (!prod) {
+                      // create product
+                      const newProd: any = {
+                          name: (it.name || '').trim() || 'Scanned Item',
+                          category: 'Uncategorized',
+                          hsn_code: '',
+                          purchase_price: it.price || 0,
+                          selling_price: (it.price || 0) * 1.2,
+                          gst_rate: it.gst_rate || 0,
+                          min_stock_level: 5,
+                          unit: 'Unit',
+                          purchase_unit: 'Unit',
+                          business_id: businessId,
+                          auto_conversion: false,
+                          sku: '',
+                          barcode: '',
+                          qr_code: '',
+                          category_id: ''
+                      };
+                      prod = dbStore.createProduct(newProd);
+                  }
+                  newItems.push({
+                      product_id: prod.id,
+                      qty: it.qty || 1,
+                      received_qty: 0,
+                      purchase_price: it.price || prod.purchase_price,
+                      gst_rate: it.gst_rate || prod.gst_rate
+                  });
+              }
+              setItems(newItems);
+              setProducts(dbStore.getProducts(businessId));
+          }
+          
+          triggerToast('Invoice scanned and mapped successfully!', 'success');
+        } catch(err: any) {
+            triggerToast(err.message || 'Error processing invoice', 'error');
+        } finally {
+            setIsScanning(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            if (uploadInputRef.current) uploadInputRef.current.value = '';
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      triggerToast(err.message || 'Error reading image', 'error');
+      setIsScanning(false);
+    }
+  };
 
   const handleOpenAddModal = () => {
     if (suppliers.length === 0) {
@@ -93,6 +211,7 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
     const prod = products.find(p => p.id === pId);
     if (prod) {
       setRowPrice(prod.purchase_price);
+      setRowGst(prod.gst_rate);
     }
   };
 
@@ -119,13 +238,14 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
       qty: rowQty,
       received_qty: 0,
       purchase_price: rowPrice,
-      gst_rate: prod.gst_rate
+      gst_rate: rowGst
     };
 
     setItems([...items, newItem]);
     setRowProductId('');
     setRowQty(10);
     setRowPrice(0);
+    setRowGst(0);
   };
 
   const handleRemoveItem = (prodId: string) => {
@@ -256,6 +376,7 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
       totalAmount += (lineTotal + tax);
     });
 
+    
     const poNumber = `PO-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2, '0')}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
 
     let calcPaidAmount = 0;
@@ -266,34 +387,50 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
       calcPaidAmount = Math.min(totalAmount, Math.max(0, initialPaidAmount));
       if (calcPaidAmount >= totalAmount) {
         finalPayStatus = 'Paid';
-        calcPaidAmount = totalAmount;
-      } else if (calcPaidAmount <= 0) {
-        finalPayStatus = 'Unpaid';
-        calcPaidAmount = 0;
       }
     } else {
       calcPaidAmount = 0;
     }
-
-    try {
-      dbStore.createPurchaseOrder({
+    
+    const newPOData = {
         order_number: poNumber,
         supplier_id: selectedSupplierId,
         order_date: new Date().toISOString().split('T')[0],
         delivery_date: deliveryDate,
-        status: 'Draft',
+        status: initialOrderStatus,
         payment_status: finalPayStatus,
         paid_amount: calcPaidAmount,
         payment_mode: initialPaymentMode,
         payment_notes: initialPaymentNotes.trim(),
         payment_date: calcPaidAmount > 0 ? new Date().toISOString().split('T')[0] : undefined,
+        invoice_image: uploadedInvoice,
         items: items,
         total_amount: totalAmount,
         business_id: businessId
+    };
+
+    if (initialOrderStatus === 'Received') {
+      const hasAutoConversion = items.some(item => {
+        const prod = products.find(p => p.id === item.product_id);
+        return prod && prod.auto_conversion;
       });
-      dbStore.logActivity(user.id, user.name, user.role, 'Create PO', `Generated new Purchase Order: ${poNumber}`, businessId);
-      triggerToast(`Purchase Order ${poNumber} created successfully.`, 'success');
+      if (hasAutoConversion) {
+        setPendingPOToConfirm(newPOData);
+        return;
+      }
+    }
+
+    executeSavePO(newPOData);
+  };
+
+  const executeSavePO = (poData: any) => {
+    try {
+      dbStore.createPurchaseOrder(poData);
+      dbStore.logActivity(user.id, user.name, user.role, 'Create PO', `Generated new Purchase Order: ${poData.order_number}`, businessId);
+      triggerToast(`Purchase Order ${poData.order_number} created successfully.`, 'success');
       setIsModalOpen(false);
+      setPendingPOToConfirm(null);
+      setPurchases(dbStore.getPurchaseOrders(businessId));
     } catch (e: any) {
       triggerToast(e.message || 'Error creating PO', 'error');
     }
@@ -675,7 +812,21 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
                             </tr>
                           );
                         })}
+
                       </tbody>
+                      <tfoot className="bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700">
+                        <tr>
+                          <td className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400">Total</td>
+                          <td className="py-2.5 px-4 text-right font-black text-slate-900 dark:text-white">
+                            {viewingOrder.items.reduce((sum, item) => sum + item.qty, 0)}
+                          </td>
+                          <td colSpan={2}></td>
+                          <td className="py-2.5 px-4 text-right font-bold text-indigo-600 dark:text-indigo-400">
+                            ₹{viewingOrder.total_amount.toLocaleString(undefined, {minimumFractionDigits:2})}
+                          </td>
+                        </tr>
+                      </tfoot>
+
                     </table>
                   </div>
                 </div>
@@ -699,8 +850,17 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
                       {viewingOrder.status === 'Ordered' && (
                         <button 
                           onClick={() => {
-                            if (window.confirm('Receiving this PO will automatically increase inventory stock in the ledger. Proceed?')) {
-                              handleUpdateStatus(viewingOrder.id, 'Received');
+                            const hasAutoConversion = viewingOrder.items.some(item => {
+                              const prod = products.find(p => p.id === item.product_id);
+                              return prod && prod.auto_conversion;
+                            });
+                            
+                            if (hasAutoConversion) {
+                              setOrderToReceive(viewingOrder);
+                            } else {
+                              if (window.confirm('Receiving this PO will automatically increase inventory stock in the ledger. Proceed?')) {
+                                handleUpdateStatus(viewingOrder.id, 'Received');
+                              }
                             }
                           }}
                           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
@@ -868,10 +1028,49 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in duration-200">
             <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shrink-0">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <PlusCircle size={16} className="text-indigo-600" />
-                Draft New Purchase Order
-              </h2>
+              <div className="flex items-center gap-4">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <PlusCircle size={16} className="text-indigo-600" />
+                  Draft New Purchase Order
+                </h2>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      ref={fileInputRef}
+                      onChange={handleScanInvoice}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isScanning}
+                      className="px-3 py-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-200 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                    >
+                      {isScanning ? 'Scanning...' : 'Camera'}
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={uploadInputRef}
+                      onChange={handleScanInvoice}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => uploadInputRef.current?.click()}
+                      disabled={isScanning}
+                      className="px-3 py-1.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-lg text-xs font-bold hover:bg-indigo-200 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                    >
+                      {isScanning ? 'Uploading...' : 'Upload'}
+                    </button>
+                  </div>
+                </div>
+              </div>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer transition-colors p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700">
                 <X size={18} />
               </button>
@@ -904,7 +1103,19 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
                 </div>
               </div>
 
-              {/* Add Item Row */}
+              
+                {uploadedInvoice && (
+                  <div className="mb-4">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Invoice Attachment</p>
+                    <div className="relative inline-block border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                      <img src={uploadedInvoice} alt="Invoice" className="h-32 object-contain" />
+                      <button type="button" onClick={() => setUploadedInvoice(null)} className="absolute top-1 right-1 bg-rose-500 text-white rounded p-1 hover:bg-rose-600">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+{/* Add Item Row */}
               <div>
                 <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2 border-b border-slate-200 dark:border-slate-700 pb-2">Add Line Items</h3>
                 <div className="flex flex-wrap md:flex-nowrap items-end gap-3 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
@@ -941,6 +1152,17 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
                       className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-900 text-xs rounded border border-slate-300 dark:border-slate-600 text-right"
                     />
                   </div>
+                  <div className="w-24 space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500">GST %</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      value={rowGst}
+                      onChange={(e) => setRowGst(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-900 text-xs rounded border border-slate-300 dark:border-slate-600 text-right"
+                    />
+                  </div>
+                  
                   <button 
                     type="button"
                     onClick={handleAddRowItem}
@@ -973,9 +1195,45 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
                         return (
                           <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
                             <td className="py-2.5 px-4 font-medium">{getProductName(item.product_id)}</td>
-                            <td className="py-2.5 px-4 text-right font-bold">{item.qty}</td>
-                            <td className="py-2.5 px-4 text-right">₹{item.purchase_price.toLocaleString()}</td>
-                            <td className="py-2.5 px-4 text-right text-slate-500 text-[10px]">{item.gst_rate}%</td>
+                            <td className="py-2.5 px-2 text-right font-bold">
+                              <input 
+                                type="number" 
+                                min="1" 
+                                value={item.qty} 
+                                onChange={(e) => {
+                                  const newItems = [...items];
+                                  newItems[idx].qty = parseFloat(e.target.value) || 0;
+                                  setItems(newItems);
+                                }}
+                                className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs text-right font-bold inline-block"
+                              />
+                            </td>
+                            <td className="py-2.5 px-2 text-right flex items-center justify-end gap-1">
+                              ₹ <input 
+                                type="number" 
+                                min="0" 
+                                value={item.purchase_price} 
+                                onChange={(e) => {
+                                  const newItems = [...items];
+                                  newItems[idx].purchase_price = parseFloat(e.target.value) || 0;
+                                  setItems(newItems);
+                                }}
+                                className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs text-right"
+                              />
+                            </td>
+                            <td className="py-2.5 px-2 text-right">
+                              <input 
+                                type="number" 
+                                min="0" 
+                                value={item.gst_rate} 
+                                onChange={(e) => {
+                                  const newItems = [...items];
+                                  newItems[idx].gst_rate = parseFloat(e.target.value) || 0;
+                                  setItems(newItems);
+                                }}
+                                className="w-16 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs text-right inline-block"
+                              /> %
+                            </td>
                             <td className="py-2.5 px-4 text-right font-black text-indigo-600 dark:text-indigo-400">₹{lineTotal.toLocaleString()}</td>
                             <td className="py-2.5 px-2 text-center">
                               <button 
@@ -989,23 +1247,57 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
                         );
                       })}
                     </tbody>
+
                     <tfoot className="bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700">
                       <tr>
-                        <td colSpan={4} className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider">
+                        <td className="py-3 px-4 font-bold text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider">
+                          Total Quantity:
+                        </td>
+                        <td className="py-3 px-2 text-right font-black text-slate-900 dark:text-white">
+                          {items.reduce((sum, i) => sum + i.qty, 0)}
+                        </td>
+                        <td colSpan={1} className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider">
                           Gross PO Value:
                         </td>
-                        <td className="py-3 px-4 text-right font-black text-sm text-slate-900 dark:text-white">
+                        <td colSpan={2} className="py-3 px-4 text-right font-black text-sm text-slate-900 dark:text-white">
                           ₹{items.reduce((sum, i) => sum + (i.qty * i.purchase_price) * (1 + i.gst_rate/100), 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
                         </td>
                         <td></td>
                       </tr>
+
                     </tfoot>
                   </table>
                 </div>
               )}
+              
+              {items.length > 0 && selectedSupplierId && (
+                  <div className="mt-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm">
+                    <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Party / Vendor Details (As Per Invoice)</h3>
+                    <div className="text-xs text-slate-700 dark:text-slate-300 grid grid-cols-2 gap-2">
+                      <p><span className="font-semibold">Name:</span> {suppliers.find(s => s.id === selectedSupplierId)?.name || 'Unknown'}</p>
+                      <p><span className="font-semibold">Phone:</span> {suppliers.find(s => s.id === selectedSupplierId)?.phone || 'N/A'}</p>
+                      <p><span className="font-semibold">GSTIN:</span> {suppliers.find(s => s.id === selectedSupplierId)?.gstin || 'N/A'}</p>
+                      <p className="col-span-2"><span className="font-semibold">Address:</span> {suppliers.find(s => s.id === selectedSupplierId)?.address || 'N/A'}</p>
+                    </div>
+                  </div>
+              )}
 
               {/* Payment Details Section */}
               <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 border-b border-slate-200 dark:border-slate-700 pb-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Purchase Entry Status *</label>
+                    <select
+                      value={initialOrderStatus}
+                      onChange={(e) => setInitialOrderStatus(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="Draft">Save as Draft</option>
+                      <option value="Ordered">Mark as Ordered (Pending Delivery)</option>
+                      <option value="Received">Direct Purchase (Received Goods)</option>
+                    </select>
+                  </div>
+                </div>
                 <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                   <CreditCard size={14} className="text-emerald-600" /> Initial Payment Setup
                 </h3>
@@ -1091,6 +1383,84 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
           </div>
         </div>
       )}
+      {/* Purchase to Inventory Auto Conversion Modal */}
+      {(orderToReceive || pendingPOToConfirm) && (
+        <div className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in duration-200 border border-slate-200 dark:border-slate-800">
+            <div className="bg-indigo-600 text-white px-6 py-4 flex items-center gap-2">
+              <PackagePlus size={18} />
+              <h2 className="text-sm font-bold uppercase tracking-wider">Inventory Auto Conversion</h2>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
+                The following items will be automatically converted into your selling units. The Purchase Bill will remain exactly as received from the supplier.
+              </p>
+              
+              <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+                {(orderToReceive || pendingPOToConfirm).items.map((item: any, idx: number) => {
+                  const prod = products.find(p => p.id === item.product_id);
+                  if (!prod || !prod.auto_conversion || !prod.pack_size) return null;
+                  
+                  let calculatedPackets = 0;
+                  if (prod.purchase_unit === 'Kg' || prod.purchase_unit === 'Ltr') {
+                    calculatedPackets = (item.qty * 1000) / prod.pack_size;
+                  } else {
+                    calculatedPackets = item.qty * prod.pack_size;
+                  }
+
+                  return (
+                    <div key={idx} className="bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded-xl p-3">
+                      <p className="font-bold text-slate-800 dark:text-slate-200 text-sm mb-2">{prod.name}</p>
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Supplier Invoice:</span>
+                          <span className="font-bold text-slate-700 dark:text-slate-300">{item.qty} {prod.purchase_unit}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Pack Size:</span>
+                          <span className="font-bold text-slate-700 dark:text-slate-300">
+                            {prod.pack_size} {prod.purchase_unit === 'Kg' ? 'g' : prod.purchase_unit === 'Ltr' ? 'ml' : 'units'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-t border-indigo-200/50 dark:border-indigo-800/50 pt-1 mt-1">
+                          <span className="font-bold text-indigo-700 dark:text-indigo-400">Inventory to be Added:</span>
+                          <span className="font-black text-indigo-700 dark:text-indigo-400">
+                            {calculatedPackets} {prod.selling_unit}s
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  onClick={() => { setOrderToReceive(null); setPendingPOToConfirm(null); }}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (pendingPOToConfirm) {
+                      executeSavePO(pendingPOToConfirm);
+                    } else if (orderToReceive) {
+                      handleUpdateStatus(orderToReceive.id, 'Received');
+                      setOrderToReceive(null);
+                    }
+                  }}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-2 shadow-md transition-colors"
+                >
+                  <CheckCircle size={14} /> Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

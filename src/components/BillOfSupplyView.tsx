@@ -4,6 +4,7 @@ import { SalesOrder, Customer, Business, Product } from '../types/erp';
 import { numberToWordsIndian } from '../utils/invoiceTemplate';
 import { buildUpiPayString, buildBillVerificationString } from '../utils/qrCode';
 import { formatOrderTime } from '../utils/formatters';
+import { calculateOrderSavings } from '../utils/pricing';
 
 interface BillOfSupplyViewProps {
   order: SalesOrder;
@@ -72,6 +73,8 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const accountNo = businessObj?.account_number || '092110100000085';
   const ifscCode = businessObj?.ifsc_code || 'NKGS0000092';
   const accountHolder = businessObj?.account_holder || bName;
+
+  const savingsInfo = calculateOrderSavings(items, products);
 
   return (
     <div className="bg-white text-slate-900 px-0.5 sm:px-1 py-6 sm:py-8 font-sans text-[11px] leading-relaxed shadow-lg max-w-2xl mx-auto rounded-xl border border-slate-200">
@@ -145,6 +148,17 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
         </div>
       </div>
 
+      {/* Savings Highlight Banner */}
+      {savingsInfo.totalSavings > 0 && (
+        <div className="mb-3 px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-950 font-bold text-center text-[11px] flex items-center justify-center gap-2">
+          <span className="text-sm">🎉</span>
+          <span>{savingsInfo.bannerMessage}</span>
+          <span className="text-[9px] font-mono text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200">
+            Saved {currencySymbol}{savingsInfo.totalSavings.toLocaleString()}
+          </span>
+        </div>
+      )}
+
       {/* Table */}
       <div className="border-y border-slate-950 mb-4 overflow-x-auto">
         <table className="w-full text-left border-collapse">
@@ -154,8 +168,8 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               <th className="py-2 px-2">Item name</th>
               <th className="py-2 px-2 text-center">Item Code</th>
               <th className="py-2 px-2 text-center">Quantity</th>
-              <th className="py-2 px-2 text-right">Price/unit</th>
-              <th className="py-2 px-2 text-right">Final Rate</th>
+              <th className="py-2 px-2 text-right">Normal Rate</th>
+              <th className="py-2 px-2 text-right">Applied Rate</th>
               <th className="py-2 px-2 text-right">Amount</th>
             </tr>
           </thead>
@@ -165,17 +179,35 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               const itemCode = p?.barcode || p?.sku || p?.hsn_code || '38655039462';
               const itemName = p?.name || 'Faral / Sweet Item';
               const price = it.selling_price || 0;
+              const normalRate = typeof it.normal_rate === 'number' && !isNaN(it.normal_rate) && it.normal_rate > 0 
+                ? it.normal_rate 
+                : (p ? (typeof p.selling_price === 'number' ? p.selling_price : price) : price);
               const qty = it.qty || 1;
               const amount = qty * price;
 
               return (
                 <tr key={idx} className="hover:bg-slate-50">
                   <td className="py-1.5 px-1 text-center font-mono text-slate-500">{idx + 1}</td>
-                  <td className="py-1.5 px-2 font-extrabold text-slate-900 uppercase">{itemName}</td>
+                  <td className="py-1.5 px-2 font-extrabold text-slate-900 uppercase">
+                    <div>{itemName}</div>
+                    {it.rate_reason && normalRate > price && (
+                      <span className="text-[8.5px] font-semibold text-emerald-700 block">
+                        ✓ {it.rate_reason}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1.5 px-2 text-center font-mono text-slate-600">{itemCode}</td>
                   <td className="py-1.5 px-2 text-center font-bold text-slate-900">{qty}</td>
-                  <td className="py-1.5 px-2 text-right font-mono">{currencySymbol} {price.toFixed(2)}</td>
-                  <td className="py-1.5 px-2 text-right font-mono">{price.toFixed(2)}</td>
+                  <td className="py-1.5 px-2 text-right font-mono text-slate-500">
+                    {normalRate > price ? (
+                      <span className="line-through text-slate-400">{currencySymbol} {normalRate.toFixed(2)}</span>
+                    ) : (
+                      <span>{currencySymbol} {normalRate.toFixed(2)}</span>
+                    )}
+                  </td>
+                  <td className="py-1.5 px-2 text-right font-mono font-bold text-slate-900">
+                    {currencySymbol} {price.toFixed(2)}
+                  </td>
                   <td className="py-1.5 px-2 text-right font-mono font-black text-slate-950">{currencySymbol} {amount.toFixed(2)}</td>
                 </tr>
               );

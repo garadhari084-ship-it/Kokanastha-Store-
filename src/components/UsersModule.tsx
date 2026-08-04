@@ -16,6 +16,12 @@ interface UsersModuleProps {
   triggerToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
+const ALL_PAGES = [
+  'dashboard', 'sales', 'packing', 'item_stock_live_report', 'delivery', 
+  'inventory', 'products', 'categories', 'parties', 'loyalty', 
+  'suppliers', 'purchases', 'reports', 'users', 'settings', 'audit', 'inbox'
+];
+
 export const UsersModule: React.FC<UsersModuleProps> = ({ 
   businessId, 
   user: currentUser, 
@@ -40,6 +46,15 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
   const [newUserRole, setNewUserRole] = useState<UserRole>('Viewer');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [selectedAllowedPages, setSelectedAllowedPages] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (newUserRole === 'Super Admin' || newUserRole === 'Admin') {
+      setSelectedAllowedPages(ALL_PAGES);
+    } else if (isAddModalOpen) {
+      // For new users who are not admins, start with empty selection
+      setSelectedAllowedPages([]);
+    }
+  }, [newUserRole, isAddModalOpen]);
 
   const loadData = () => {
     setUsers(dbStore.getUsers(businessId));
@@ -624,7 +639,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
               </div>
 
               {/* Page Level Access for Super Admin */}
-              {isEditModalOpen && currentUser.role === 'Super Admin' && (
+              {(isAddModalOpen || isEditModalOpen) && currentUser.role === 'Super Admin' && (
                 <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
                   <label className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
                     <LayoutGrid size={14} />

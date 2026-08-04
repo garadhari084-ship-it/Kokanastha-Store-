@@ -665,14 +665,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="space-y-6 max-w-full pb-12 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="executive-dashboard-root">
       
       <PageHeader
-        title="Executive Command Center"
+        title="Business Dashboard"
         subtitle={`Welcome, ${user?.name || 'User'} • ${
-          userRole === 'Super Admin' ? 'Full Control & Financial Oversight' :
-          userRole === 'Admin' ? 'Administrator Portal & Sales Oversight' :
-          userRole === 'Manager' ? 'Operations, Logistics & Stock Control' :
-          userRole === 'Sales Staff' ? 'Sales Desk, Order Booking & Unpaid Collections' :
-          userRole === 'Packing Staff' ? 'Kitchen Queue, Packaging & Route Dispatch' :
-          'Read-Only Operational View'
+          userRole === 'Super Admin' ? 'Executive Control & Financial Insights' :
+          userRole === 'Admin' ? 'Management Portal & Sales Insights' :
+          userRole === 'Manager' ? 'Operations & Stock Control' :
+          'Operational Insights & Workflow'
         }`}
         icon={LayoutDashboard}
         badgeText={`Role: ${userRole}`}

@@ -744,9 +744,9 @@ export default function App() {
     // Super Admin has total access to everything
     if (role === 'Super Admin') return true;
 
-    // If explicit allowed_pages are set, they OVERRIDE the default role behavior
+    // If explicit allowed_pages are set, they add to the default role behavior
     if (currentUser.allowed_pages && currentUser.allowed_pages.length > 0) {
-      return currentUser.allowed_pages.includes(view);
+      if (currentUser.allowed_pages.includes(view)) return true;
     }
 
     // Default Role-Based Access (Fallback)
@@ -754,7 +754,7 @@ export default function App() {
     
     switch (view) {
       case 'dashboard':
-        return role === 'Manager' || role === 'Admin' || role === 'Viewer';
+        return true; // Now accessible to everyone by default
       case 'inbox':
         return true;
       case 'sales':

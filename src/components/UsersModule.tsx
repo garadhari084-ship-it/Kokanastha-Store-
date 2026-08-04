@@ -118,8 +118,8 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
         (updates as any).password_hash = newUserPassword;
       }
       dbStore.updateUser(selectedUser.id, updates);
-      triggerToast(`Identity ${newUserName} updated successfully.`, 'success');
-      dbStore.logActivity(currentUser.id, currentUser.name, currentUser.role, 'Update Identity', `Updated identity ${newUserName}`, businessId);
+      triggerToast(`Identity ${newUserName} updated successfully. Permissions are now live.`, 'success');
+      dbStore.logActivity(currentUser.id, currentUser.name, currentUser.role, 'Update Identity', `Updated identity ${newUserName} permissions`, businessId);
       setIsEditModalOpen(false);
       setSelectedUser(null);
     } catch (e: any) {
@@ -629,10 +629,13 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
               {/* Page Level Access for Super Admin */}
               {(isEditModalOpen || isAddModalOpen) && currentUser.role === 'Super Admin' && (
                 <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  <label className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                    <LayoutGrid size={14} />
-                    Granular Page Access
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                      <LayoutGrid size={14} />
+                      Granular Page Access
+                    </label>
+                    <span className="text-[9px] text-slate-400 italic">Supabase SQL required for persistence</span>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       { id: 'dashboard', label: 'Dashboard' },

@@ -444,9 +444,18 @@ export default function App() {
             const sessionData = localStorage.getItem('omnipack_session');
             if (sessionData) {
               try {
-                const { businessId } = JSON.parse(sessionData);
+                const { businessId, userId } = JSON.parse(sessionData);
                 if (businessId) {
                   await dbStore.syncFromSupabase(businessId);
+                  
+                  // If it's a profile update for the CURRENT user, force update state immediately
+                  if (payload.table === 'users_profiles' && payload.new && payload.new.id === userId) {
+                    const updatedProfile = dbStore.getUsers(businessId).find(u => u.id === userId);
+                    if (updatedProfile) {
+                      setCurrentUser({ ...updatedProfile });
+                    }
+                  }
+
                   // Force re-render of App to trickle down changes
                   setSyncTick(prev => prev + 1);
                 }

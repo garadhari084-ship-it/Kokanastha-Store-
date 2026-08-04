@@ -5,7 +5,7 @@ import {
   ClipboardCheck, 
   Layers, 
   Package, 
-  Users, 
+  Users, History, 
   Truck, 
   ShoppingBag, 
   BarChart3, 
@@ -55,7 +55,9 @@ import { DeliveryModule } from './components/DeliveryModule';
 import { InventoryModule } from './components/InventoryModule';
 import { ProductModule } from './components/ProductModule';
 import { CategoryModule } from './components/CategoryModule';
+import { PartiesLayout } from './components/PartiesLayout';
 import { CustomerModule } from './components/CustomerModule';
+import { PartiesModule } from './components/PartiesModule';
 import { SupplierModule } from './components/SupplierModule';
 import { PurchaseModule } from './components/PurchaseModule';
 import { ReportsModule } from './components/ReportsModule';
@@ -64,6 +66,8 @@ import { SettingsModule } from './components/SettingsModule';
 import { UsersModule } from './components/UsersModule';
 import { InboxModule } from './components/InboxModule';
 import { LoyaltySubscriptionModule } from './components/LoyaltySubscriptionModule';
+
+import { ItemStockLiveReportModule } from './components/ItemStockLiveReportModule';
 
 interface Toast {
   id: string;
@@ -301,6 +305,7 @@ export default function App() {
   }, [isMobileMenuOpen]);
 
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
   const [changePasswordData, setChangePasswordData] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
@@ -585,11 +590,15 @@ export default function App() {
                 .from('users_profiles')
                 .select('*')
                 .eq('id', data.user.id)
-                .maybeSingle();
-
-              if (dbProfile) {
-                profile = dbProfile as UserProfile;
+                .maybeSingle();            if (dbProfile) {
+              // Polyfill for allowed_pages if Supabase column is missing but local cache has it
+              const localUsers = JSON.parse(localStorage.getItem('omnipack_erp_db') || '{}')?.profiles || [];
+              const localUser = localUsers.find(u => u.id === dbProfile.id);
+              if (localUser && localUser.allowed_pages && !dbProfile.allowed_pages) {
+                  dbProfile.allowed_pages = localUser.allowed_pages;
               }
+              profile = dbProfile as UserProfile;
+            }
             } catch (err) {
               console.warn('Could not select from users_profiles in Supabase:', err);
             }
@@ -719,7 +728,16 @@ export default function App() {
     if (!currentUser) return false;
     const role = currentUser.role;
 
-    if (role === 'Super Admin' || role === 'Admin') return true;
+    // Super Admin has total access to everything
+    if (role === 'Super Admin') return true;
+
+    // If explicit allowed_pages are set, they OVERRIDE the default role behavior
+    if (currentUser.allowed_pages && currentUser.allowed_pages.length > 0) {
+      return currentUser.allowed_pages.includes(view);
+    }
+
+    // Default Role-Based Access (Fallback)
+    // Admin used to have full access, now restricted to default switch or allowed_pages
     
     switch (view) {
       case 'dashboard':
@@ -728,6 +746,7 @@ export default function App() {
       case 'sales':
         return role === 'Manager' || role === 'Sales Staff' || role === 'Viewer';
       case 'packing':
+      case 'item_stock_live_report':
         return role === 'Manager' || role === 'Packing Staff' || role === 'Viewer';
       case 'delivery':
         return role === 'Manager' || role === 'Packing Staff' || role === 'Viewer';
@@ -736,11 +755,13 @@ export default function App() {
       case 'products':
       case 'categories':
         return role === 'Manager' || role === 'Sales Staff' || role === 'Viewer';
+      case 'parties':
       case 'customers':
+      case 'parties_history':
       case 'loyalty_subscriptions':
       case 'loyalty':
       case 'subscriptions':
-        return role === 'Manager' || role === 'Sales Staff' || role === 'Viewer';
+      
       case 'suppliers':
       case 'purchases':
         return role === 'Manager' || role === 'Viewer';
@@ -870,12 +891,13 @@ export default function App() {
     { id: 'dashboard', label: 'Executive Desk', icon: LayoutDashboard },
     { id: 'sales', label: 'Sales & Bookings', icon: FileText },
     { id: 'packing', label: 'Packing Verification', icon: ClipboardCheck, highlight: true },
+    { id: 'item_stock_live_report', label: 'Item Stock Live Report', icon: Package },
     { id: 'delivery', label: 'Delivery & Dispatch', icon: Truck },
     { id: 'inventory', label: 'Inventory Ledger', icon: Layers },
     { id: 'products', label: 'Product Catalog', icon: Package },
     { id: 'categories', label: 'Inventory Categories', icon: Layers },
-    { id: 'customers', label: 'Customers Master', icon: Users },
-    { id: 'loyalty_subscriptions', label: 'Loyalty & Subscriptions', icon: Award },
+    { id: 'parties', label: 'Parties', icon: Users },
+    { id: 'loyalty', label: 'Loyalty Program', icon: Award },
     { id: 'suppliers', label: 'Suppliers directory', icon: Truck },
     { id: 'purchases', label: 'Purchase & Expense', icon: ShoppingBag },
     { id: 'reports', label: 'Compliance Reports', icon: BarChart3 },
@@ -994,6 +1016,18 @@ export default function App() {
             onNavigate={handleDeepLinkNavigate}
           />
         );
+      case 'item_stock_live_report':
+        return (
+          <ItemStockLiveReportModule 
+            businessId={currentBusiness.id} 
+            user={currentUser} 
+            triggerToast={triggerToast}
+            onCreateOrder={() => {
+              setActiveView('sales');
+              setDeepLinkData({ openAddModal: true });
+            }}
+          />
+        );
       case 'delivery':
         return (
           <DeliveryModule 
@@ -1024,6 +1058,14 @@ export default function App() {
       case 'categories':
         return (
           <CategoryModule 
+            businessId={currentBusiness.id} 
+            user={currentUser} 
+            triggerToast={triggerToast} 
+          />
+        );
+      case 'parties':
+        return (
+          <PartiesLayout 
             businessId={currentBusiness.id} 
             user={currentUser} 
             triggerToast={triggerToast} 
@@ -1559,28 +1601,21 @@ export default function App() {
         </div>
         {/* Navigation Items list */}
         <nav className={`flex-1 overflow-y-auto py-6 space-y-1 px-4 overscroll-contain scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent ${isSidebarMinimized ? 'lg:px-3' : ''}`}>
-          {menuItems.map(item => {
-            const isAuthorized = hasAccessToView(item.id);
+          {menuItems.filter(item => hasAccessToView(item.id)).map(item => {
             const isActive = activeView === item.id;
 
             return (
               <button
                 key={item.id}
                 onClick={() => {
-                  if (isAuthorized) {
-                    setActiveView(item.id);
-                    setDeepLinkData(null);
-                    setIsMobileMenuOpen(false);
-                  } else {
-                    triggerToast(`Unauthorized: ${currentUser.role} cannot browse this view.`, 'error');
-                  }
+                  setActiveView(item.id);
+                  setDeepLinkData(null);
+                  setIsMobileMenuOpen(false);
                 }}
                 className={`w-full flex items-center justify-between ${isSidebarMinimized ? 'lg:justify-center' : ''} px-3 py-3 rounded-xl text-xs cursor-pointer transition ${
                   isActive 
                     ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-900/30' 
-                    : isAuthorized 
-                      ? 'text-slate-300 font-medium hover:bg-slate-800/80 hover:text-white' 
-                      : 'text-slate-600 cursor-not-allowed'
+                    : 'text-slate-300 font-medium hover:bg-slate-800/80 hover:text-white' 
                 }`}
                 title={isSidebarMinimized ? item.label : undefined}
               >
@@ -1600,8 +1635,6 @@ export default function App() {
                     {unreadMessagesCount}
                   </span>
                 )}
-                {!isAuthorized && <Lock size={12} className={`text-slate-600 ${isSidebarMinimized ? 'lg:hidden' : ''}`} />}
-                {item.highlight && isAuthorized && <span className={`w-2 h-2 rounded-full bg-emerald-500 animate-ping ${isSidebarMinimized ? 'lg:absolute lg:right-4 lg:top-4' : ''}`} />}
               </button>
             );
           })}

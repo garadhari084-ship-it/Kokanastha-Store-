@@ -129,10 +129,10 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
             Transportation Details
           </div>
           <div className="text-slate-700 space-y-0.5">
-            <div><span className="text-slate-500">Transport Name:</span> Direct Express</div>
-            <div><span className="text-slate-500">Delivery Date:</span> {order.order_date}</div>
+            <div><span className="text-slate-500">Transport Name:</span> {order.delivery_type && order.delivery_type.toLowerCase().includes('courier') ? 'Global Courier' : 'Direct Express'}</div>
+            <div><span className="text-slate-500">Delivery Date:</span> {order.delivery_date || order.order_date}</div>
             <div><span className="text-slate-500">Delivery Location:</span> {order.area || 'Dahisar'}</div>
-            <div><span className="text-slate-500">Delivery Type:</span> Local Dispatch</div>
+            <div><span className="text-slate-500">Delivery Type:</span> {order.delivery_type || 'Local Dispatch'}</div>
           </div>
         </div>
 

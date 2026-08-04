@@ -300,8 +300,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (user.role !== 'Super Admin' && user.role !== 'Admin') {
-      triggerToast('Unauthorized: Only Super Admins or Admins can modify tenant parameters.', 'error');
+    if (user.role !== 'Super Admin') {
+      triggerToast('Unauthorized: Only Super Admins can modify organization-wide tenant parameters.', 'error');
       return;
     }
 

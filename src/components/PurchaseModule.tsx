@@ -643,7 +643,7 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
 
         {/* Main List Table */}
         <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-xs mt-2">
-          <table className="w-full text-left text-xs whitespace-nowrap">
+          <table className="w-full text-left text-xs">
             <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700 text-[10px]">
               <tr>
                 <th className="py-3 px-4">PO Details</th>

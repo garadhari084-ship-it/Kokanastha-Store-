@@ -592,12 +592,14 @@ class ERPStorage {
              try {
                const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
                Object.assign(existingPasswords, saved);
-             } catch(e) {}
-
-             const mergedProfiles = data.map((p: any) => ({
-               ...p,
-               password_hash: (p as any).password_hash || existingPasswords[p.email?.toLowerCase()?.trim()] || undefined
-             }));
+             } catch(e) {}             const mergedProfiles = data.map((p: any) => {
+               const localUser = this.cache.profiles.find(localP => localP.id === p.id);
+               return {
+                 ...p,
+                 password_hash: (p as any).password_hash || existingPasswords[p.email?.toLowerCase()?.trim()] || undefined,
+                 allowed_pages: p.allowed_pages || localUser?.allowed_pages || undefined
+               };
+             });
              this.cache.profiles = mergedProfiles;
              localStorage.setItem(`omnipack_erp_profiles`, JSON.stringify(mergedProfiles));
           } else if (key === 'sales') {
@@ -854,7 +856,7 @@ class ERPStorage {
                        const si = { ...i, sales_order_id: clean.id };
                        si.id = sanitizeUUID(si.id, false);
                        si.product_id = sanitizeUUID(si.product_id, false);
-                       delete si.is_overridden;
+                       delete si.is_overridden; delete si.normal_rate; delete si.rate_type; delete si.rate_reason; delete si.unit_savings; delete si.original_calc_price;
                        salesItems.push(si);
                    });
                }

@@ -39,6 +39,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState<UserRole>('Viewer');
   const [newUserPassword, setNewUserPassword] = useState('');
+  const [selectedAllowedPages, setSelectedAllowedPages] = useState<string[]>([]);
 
   const loadData = () => {
     setUsers(dbStore.getUsers(businessId));
@@ -89,8 +90,8 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
   };
 
   const openEditModal = (u: UserProfile) => {
-    if (currentUser.role !== 'Super Admin' && currentUser.role !== 'Admin' && currentUser.id !== u.id) {
-      triggerToast('Unauthorized: You can only edit your own profile.', 'error');
+    if (currentUser.role !== 'Super Admin' && currentUser.id !== u.id) {
+      triggerToast('Unauthorized: Only Super Admin can edit other user profiles.', 'error');
       return;
     }
     setSelectedUser(u);
@@ -98,6 +99,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
     setNewUserEmail(u.email);
     setNewUserRole(u.role);
     setNewUserPassword('');
+    setSelectedAllowedPages(u.allowed_pages || []);
     setIsEditModalOpen(true);
   };
 
@@ -105,7 +107,12 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
     e.preventDefault();
     if (!selectedUser) return;
     try {
-      const updates: Partial<UserProfile> = { name: newUserName, email: newUserEmail, role: newUserRole };
+      const updates: Partial<UserProfile> = { 
+        name: newUserName, 
+        email: newUserEmail, 
+        role: newUserRole,
+        allowed_pages: selectedAllowedPages 
+      };
       if (newUserPassword.trim() !== '') {
         (updates as any).password_hash = newUserPassword;
       }
@@ -120,8 +127,8 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
   };
 
   const toggleUserStatus = (u: UserProfile) => {
-    if (currentUser.role !== 'Super Admin' && currentUser.role !== 'Admin') {
-      triggerToast('Unauthorized: Only Admins can modify status.', 'error');
+    if (currentUser.role !== 'Super Admin') {
+      triggerToast('Unauthorized: Only Super Admin can modify user status.', 'error');
       return;
     }
     if (u.id === currentUser.id) {
@@ -220,7 +227,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
                 <List size={14} />
               </button>
             </div>
-            {(currentUser.role === 'Super Admin' || currentUser.role === 'Admin') && (
+            {currentUser.role === 'Super Admin' && (
               <button 
                 onClick={() => setIsAddModalOpen(true)}
                 className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap border border-indigo-400/30"
@@ -428,7 +435,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
           ) : (
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs whitespace-nowrap">
+                <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 uppercase text-[10px] font-extrabold tracking-wider">
                     <tr>
                       <th className="px-5 py-4">Identity</th>
@@ -536,7 +543,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
       {(isAddModalOpen || isEditModalOpen) && (
         <div className="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 relative overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 relative overflow-hidden">
                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-bl-full pointer-events-none blur-xl"></div>
               <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2.5 uppercase tracking-wide relative z-10">
                 {isAddModalOpen ? (
@@ -551,7 +558,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
                      <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                        <Edit2 size={16} />
                     </div>
-                    Modify Configuration
+                    Modify Identity: {selectedUser?.name}
                   </>
                 )}
               </h3>
@@ -563,7 +570,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
               </button>
             </div>
             
-            <form id="unifiedUserForm" onSubmit={isAddModalOpen ? handleCreateUser : handleEditUser} className="p-6 overflow-y-auto space-y-5">
+            <form id="unifiedUserForm" onSubmit={isAddModalOpen ? handleCreateUser : handleEditUser} className="p-6 overflow-y-auto space-y-5 max-h-[70vh]">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Fingerprint size={12} />
@@ -602,7 +609,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
                   <select
                     value={newUserRole} onChange={e => setNewUserRole(e.target.value as UserRole)}
                     className="w-full pl-10 pr-10 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-700/60 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all dark:text-white cursor-pointer appearance-none relative"
-                    disabled={isEditModalOpen && currentUser.role !== 'Super Admin' && selectedUser?.id !== currentUser.id}
+                    disabled={isEditModalOpen && currentUser.role !== 'Super Admin'}
                   >
                     <option value="Super Admin">Super Admin</option>
                     <option value="Admin">Admin</option>
@@ -614,6 +621,57 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
                   <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
               </div>
+
+              {/* Page Level Access for Super Admin */}
+              {isEditModalOpen && currentUser.role === 'Super Admin' && (
+                <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <label className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                    <LayoutGrid size={14} />
+                    Granular Page Access
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'dashboard', label: 'Dashboard' },
+                      { id: 'sales', label: 'Sales' },
+                      { id: 'packing', label: 'Packing' },
+                      { id: 'item_stock_live_report', label: 'Item Stock Live' },
+                      { id: 'delivery', label: 'Delivery' },
+                      { id: 'inventory', label: 'Inventory' },
+                      { id: 'products', label: 'Products' },
+                      { id: 'categories', label: 'Categories' },
+                      { id: 'parties', label: 'Parties' },
+                      { id: 'loyalty', label: 'Loyalty' },
+                      { id: 'suppliers', label: 'Suppliers' },
+                      { id: 'purchases', label: 'Purchases' },
+                      { id: 'reports', label: 'Reports' },
+                      { id: 'users', label: 'Users' },
+                      { id: 'settings', label: 'Settings' },
+                      { id: 'audit', label: 'Audit Logs' },
+                      { id: 'inbox', label: 'Inbox' }
+                    ].map(page => (
+                      <label key={page.id} className="flex items-center gap-2 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg cursor-pointer hover:border-indigo-500/50 transition-colors">
+                        <input 
+                          type="checkbox"
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          checked={selectedAllowedPages.includes(page.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedAllowedPages([...selectedAllowedPages, page.id]);
+                            } else {
+                              setSelectedAllowedPages(selectedAllowedPages.filter(p => p !== page.id));
+                            }
+                          }}
+                        />
+                        <span className="text-[11px] font-medium text-slate-700 dark:text-slate-300">{page.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-slate-400 italic">
+                    If any pages are selected, they will strictly define this user's sidebar. If none are selected, role-based defaults apply.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Key size={12} />

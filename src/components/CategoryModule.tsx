@@ -218,7 +218,7 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
 
         {/* Compact List View */}
         <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5">
-          <table className="w-full text-left text-[11px] whitespace-nowrap">
+          <table className="w-full text-left text-[11px]">
             <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[11px]">
               <tr>
                 <th className="py-2.5 px-4">Category Name</th>

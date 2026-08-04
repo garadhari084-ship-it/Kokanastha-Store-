@@ -1,18 +1,13 @@
 const fs = require('fs');
-let content = fs.readFileSync('src/components/PurchaseModule.tsx', 'utf8');
-
-const parts = content.split("import { PaymentCollectionModal } from './PaymentCollectionModal';");
-
-if (parts.length === 2) {
-    const injectedCode = parts[0];
-    let restOfFile = "import { PaymentCollectionModal } from './PaymentCollectionModal';" + parts[1];
-    
-    // We need to put injectedCode inside handleSavePO.
-    // Let's find where handleSavePO starts.
-    const hookStart = restOfFile.indexOf("const handleSavePO = (e: React.FormEvent) => {");
-    
-    if (hookStart !== -1) {
-        // find where the old handleSavePO ends. Actually, the greedy regex destroyed everything from poNumber to the LAST catch block!
-        // We need to restore it. 
-    }
-}
+let lines = fs.readFileSync('src/components/PackingVerificationModule.tsx', 'utf8').split('\n');
+lines.splice(1046, 0, ...`                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+      {filteredQueue.length === 0 && (
+        <div className="col-span-full bg-slate-50 dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center text-slate-500 space-y-3">`.split('\n'));
+fs.writeFileSync('src/components/PackingVerificationModule.tsx', lines.join('\n'));

@@ -99,9 +99,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const canCreateOrder = userRole !== 'Viewer' && userRole !== 'Packing Staff';
   const canCollectPayment = userRole !== 'Viewer' && userRole !== 'Packing Staff';
-  const canDeleteOrder = userRole === 'Super Admin' || userRole === 'Admin';
+  const canDeleteOrder = userRole === 'Super Admin';
   const canEditOrder = userRole !== 'Viewer' && userRole !== 'Packing Staff';
-  const showFinancials = userRole === 'Super Admin' || userRole === 'Admin' || userRole === 'Manager' || userRole === 'Sales Staff';
+  const showFinancials = userRole === 'Super Admin' || userRole === 'Admin' || userRole === 'Manager';
   const canMassDispatch = userRole !== 'Viewer';
 
   // Allowed Dashboard Tabs per User Role
@@ -1790,7 +1790,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Orders Table */}
         <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5">
-          <table className="w-full text-left text-[11px] whitespace-nowrap">
+          <table className="w-full text-left text-[11px]">
             <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white">
               <tr>
                 <th className="py-2.5 px-4 w-10">

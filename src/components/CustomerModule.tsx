@@ -41,6 +41,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   const [formEmail, setFormEmail] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formCreditLimit, setFormCreditLimit] = useState<number>(0);
+  const [formImageUrl, setFormImageUrl] = useState('');
   const [formIsLoyalMember, setFormIsLoyalMember] = useState<boolean>(false);
   
   // Custom Area additions
@@ -64,6 +65,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormEmail('');
     setFormPhone('');
     setFormCreditLimit(0);
+    setFormImageUrl('');
     setFormIsLoyalMember(false);
     
     setEditingCustomer(null);
@@ -82,6 +84,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormEmail(cust.email || '');
     setFormPhone(cust.phone);
     setFormCreditLimit(cust.credit_limit);
+    setFormImageUrl(cust.image_url || '');
     setFormIsLoyalMember(cust.is_loyal_member || false);
     setIsModalOpen(true);
   };
@@ -109,7 +112,8 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           email: formEmail,
           phone: cleanPhone,
           credit_limit: formCreditLimit,
-          is_loyal_member: formIsLoyalMember
+          is_loyal_member: formIsLoyalMember,
+          image_url: formImageUrl
         });
         dbStore.logActivity(user.id, user.name, user.role, 'Update Customer', `Updated customer profile: ${formName}`, businessId);
         triggerToast('Customer updated successfully.', 'success');
@@ -453,7 +457,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
 
         {/* Compact List View */}
         <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5">
-          <table className="w-full text-left text-[11px] whitespace-nowrap">
+          <table className="w-full text-left text-[11px]">
             <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[11px]">
               <tr>
                 <th className="py-2.5 px-4">Customer Details</th>
@@ -481,9 +485,17 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                   
                   return (
                     <tr key={`${cust.id}-${idx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="py-2 px-4">
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
+                      <td className="py-2 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleOpenEditModal(cust)}>
+                        <div className="flex items-center gap-3">
+                          {cust.image_url ? (
+                            <img src={cust.image_url} alt={cust.name} className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700 text-slate-500">
+                              <Users size={14} />
+                            </div>
+                          )}
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-800 dark:text-slate-200 line-clamp-1 text-[12px]">{cust.name}</span>
                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
                               cust.group === 'Wholesale' ? 'bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-900/30 dark:border-violet-800 dark:text-violet-300' :
@@ -498,7 +510,8 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                             {cust.email && <span className="flex items-center gap-0.5 text-slate-500"><Mail size={10} /> {cust.email}</span>}
                           </div>
                         </div>
-                      </td>
+                      </div>
+                    </td>
                       <td className="py-2 px-4">
                         <div className="flex flex-col font-mono text-[10px] space-y-0.5">
                           <p><span className="text-slate-400 uppercase mr-1">GST:</span><span className="font-bold">{cust.gstin || 'Unregistered'}</span></p>
@@ -555,13 +568,15 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                               >
                                 <Edit size={14} />
                               </button>
-                              <button
-                                onClick={() => handleDeleteCustomer(cust.id, cust.name)}
-                                className="p-1.5 text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-900/30 rounded transition-colors border border-slate-200 dark:border-slate-700"
-                                title="Delete Customer"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                              {user.role === 'Super Admin' && (
+                                <button
+                                  onClick={() => handleDeleteCustomer(cust.id, cust.name)}
+                                  className="p-1.5 text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-900/30 rounded transition-colors border border-slate-200 dark:border-slate-700"
+                                  title="Delete Customer"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
@@ -590,6 +605,37 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
             
             <form onSubmit={handleSaveCustomer} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Customer Profile Image</label>
+                  <div className="flex items-center gap-4">
+                    {formImageUrl ? (
+                      <img src={formImageUrl} alt="Preview" className="w-16 h-16 rounded-full object-cover border border-slate-200" />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 text-slate-400">
+                        <Users size={24} />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setFormImageUrl(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="w-full text-[11px]"
+                      />
+                      <p className="text-[9px] text-slate-400 mt-1">Upload a shop or profile picture (max 1MB recommended).</p>
+                    </div>
+                  </div>
+                </div>
+
                 
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-500 uppercase">Customer / Company Name *</label>

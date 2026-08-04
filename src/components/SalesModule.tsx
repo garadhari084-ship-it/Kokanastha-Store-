@@ -14,6 +14,7 @@ import {
   Printer, 
   Mail, 
   Eye, 
+  Share2,
   CornerDownRight, 
   ExternalLink,
   ChevronRight,
@@ -368,7 +369,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [orderTime, setOrderTime] = useState<string>(getLocalCurrentTimeInput);
   const [deliveryDate, setDeliveryDate] = useState<string>(getLocalTodayDate);
   const [isAdvanceBooking, setIsAdvanceBooking] = useState(false);
+  const [isFulfilledImmediately, setIsFulfilledImmediately] = useState(false);
   const [isFestiveBooking, setIsFestiveBooking] = useState(false);
+  const [deliveryType, setDeliveryType] = useState<string>('Self pickup');
   const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partial' | 'Unpaid' | ''>('');
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [paidAmount, setPaidAmount] = useState<number | string>('');
@@ -381,6 +384,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
 
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [isSubmitDropdownOpen, setIsSubmitDropdownOpen] = useState(false);
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState<string>('');
 
   const getSuggestedInvoiceNumber = (isFestive: boolean, isAdvance: boolean) => {
@@ -467,7 +471,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setOrderDate(getLocalTodayDate());
     setOrderTime(getLocalCurrentTimeInput());
     setDeliveryDate(getLocalTodayDate());
+    setDeliveryType('Self pickup');
     setIsAdvanceBooking(false);
+    setIsFulfilledImmediately(false);
     setIsFestiveBooking(false);
     setPaymentStatus('');
     setPaymentMode('Cash');
@@ -536,7 +542,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setOrderDate(order.order_date || getLocalTodayDate());
     setOrderTime(order.time || getLocalCurrentTimeInput());
     setDeliveryDate(order.delivery_date || getLocalTodayDate());
+    setDeliveryType(order.delivery_type || 'Self pickup');
     setIsAdvanceBooking(order.advance_booking || false);
+    setIsFulfilledImmediately(order.status === 'Delivered');
     setIsFestiveBooking(order.festive_booking || false);
     setPaymentStatus(order.payment_status);
     setPaymentMode(order.payment_mode || 'Cash');
@@ -646,11 +654,50 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setOrderItems(orderItems.filter((_, i) => i !== idx));
   };
 
-  const handleCreateSalesOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const calculatedTotals = useMemo(() => {
+    const taxableVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
+    const taxVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
+    const subtotalBeforeDiscount = Math.round(taxableVal + taxVal);
+
+    const config = dbStore.getLoyaltyConfig(businessId);
+    const pointVal = config?.point_value || 1;
+    const selCust = customers.find(c => c.id === selectedCustomerId);
+    const pts = selCust?.loyalty_points || 0;
+    const actualRedeem = Math.min(pts, Number(pointsToRedeem) || 0);
+    
+    const discountAmount = customDiscount !== '' && !isNaN(Number(customDiscount))
+      ? Math.max(0, Number(customDiscount))
+      : (actualRedeem * pointVal);
+    
+    const finalAmount = Math.max(0, subtotalBeforeDiscount - discountAmount);
+    
+    let computedPaid = 0;
+    if (paymentStatus === 'Paid') {
+      computedPaid = finalAmount;
+    } else if (paymentStatus === 'Partial') {
+      computedPaid = Math.min(finalAmount, Math.max(0, Number(paidAmount) || 0));
+    } else {
+      computedPaid = 0;
+    }
+    
+    const balance = Math.max(0, finalAmount - computedPaid);
+
+    return {
+      taxableVal,
+      taxVal,
+      subtotalBeforeDiscount,
+      discountAmount,
+      finalAmount,
+      computedPaid,
+      balance,
+      actualRedeem
+    };
+  }, [orderItems, pointsToRedeem, customDiscount, paymentStatus, paidAmount, selectedCustomerId, customers, businessId]);
+
+  const handleCreateSalesOrder = async (postAction: 'close' | 'save_new' | 'print' | 'share' = 'close') => {
     if (isSubmitting) return;
 
-    if (!selectedCustomerId && !isNewCustomerSelected) {
+    if (!selectedCustomerId && !isNewCustomerSelected && selectedCustomerId !== 'WALK_IN') {
       triggerToast('Please choose a customer profile.', 'error');
       return;
     }
@@ -675,13 +722,27 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       return;
     }
 
-    if (!paymentStatus) {
-      triggerToast('Please select a Payment Status (Mandatory).', 'error');
+    if (paymentStatus === '') {
+      triggerToast('Please select a Payment Status (Paid, Partial, or Unpaid).', 'error');
       return;
+    }
+
+    let finalPaymentStatusToSave = paymentStatus;
+    if (paymentStatus === 'Partial' && (!paidAmount || Number(paidAmount) <= 0)) {
+      finalPaymentStatusToSave = 'Unpaid';
+      triggerToast('Amount is 0, saving as Unpaid / On Credit.', 'info');
+    }
+
+    if (paymentStatus === 'Unpaid' && selectedCustomerId === 'WALK_IN') {
+      const confirmUnpaidWalkin = window.confirm(
+        "You are creating an UNPAID order for a Walk-in Customer.\nDebt tracking is not available for walk-ins. Are you sure you want to proceed?"
+      );
+      if (!confirmUnpaidWalkin) return;
     }
 
     setIsSubmitting(true);
     try {
+      let finalCreatedOrder: SalesOrder | null = null;
       // Handle Walk-in / New Customer dynamic creation
       let finalCustomerId = selectedCustomerId;
       let finalCustomerName = '';
@@ -742,32 +803,22 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         gst_rate: Math.max(0, Number(it.gst_rate) || 0),
       }));
 
-      // Calculate payment amount and credit balance
-      const customerObj = customers.find(c => c.id === finalCustomerId);
-      const subtotal = cleanItems.reduce((acc, it) => acc + (it.qty * it.selling_price * (1 + it.gst_rate/100)), 0);
+      // Use pre-calculated values
+      const { finalAmount, computedPaid, balance: unpaidBalance, actualRedeem, discountAmount: calculatedDiscount } = calculatedTotals;
+      const actualPaid = computedPaid;
       
-      const config = dbStore.getLoyaltyConfig(businessId);
-      const pointVal = config?.point_value || 1;
-      const actualRedeem = Math.min(customerObj?.loyalty_points || 0, pointsToRedeem);
-      const calculatedDiscount = customDiscount !== '' && !isNaN(Number(customDiscount))
-        ? Math.max(0, Number(customDiscount))
-        : (actualRedeem * pointVal);
-      
-      const finalAmount = Math.max(0, Math.round(subtotal) - calculatedDiscount);
-
-      let actualPaid = 0;
-      if (paymentStatus === 'Paid') {
-        actualPaid = finalAmount;
-      } else if (paymentStatus === 'Partial') {
-        actualPaid = Math.min(finalAmount, Math.max(0, Number(paidAmount) || 0));
-      } else {
-        actualPaid = 0;
+      let customerObj = customers.find(c => c.id === finalCustomerId);
+      // Fallback for newly created customer in this same turn
+      if (!customerObj && finalCustomerId && finalCustomerId !== 'WALK_IN') {
+        const allCusts = dbStore.getCustomers(businessId);
+        customerObj = allCusts.find(c => c.id === finalCustomerId);
       }
-      const unpaidBalance = Math.max(0, finalAmount - actualPaid);
 
-      if (customerObj && (customerObj.name !== 'Walk-in Customer') && (unpaidBalance > 0) && (customerObj.outstanding_amount + unpaidBalance > customerObj.credit_limit)) {
+      const isWalkIn = customerObj?.name === 'Walk-in Customer' || finalCustomerId === 'WALK_IN';
+
+      if (customerObj && !isWalkIn && (unpaidBalance > 0) && ((customerObj.outstanding_amount || 0) + unpaidBalance > (customerObj.credit_limit || 0))) {
         const confirmed = window.confirm(
-          `CREDIT LIMIT WARNING!\nThis transaction will increase debt by ${currencySymbol}${unpaidBalance.toLocaleString()} and breach authorized limit of ${currencySymbol}${customerObj.credit_limit.toLocaleString()}.\nDo you want to override and bypass credit check?`
+          `CREDIT LIMIT WARNING!\nThis transaction will increase debt by ${currencySymbol}${unpaidBalance.toLocaleString()} and breach authorized limit of ${currencySymbol}${(customerObj.credit_limit || 0).toLocaleString()}.\nDo you want to override and bypass credit check?`
         );
         if (!confirmed) {
           setIsSubmitting(false);
@@ -778,6 +829,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       if (editingOrderId) {
         // Edit flow
         const existingOrder = orders.find(o => o.id === editingOrderId);
+        const oldUnpaidBalance = existingOrder ? (Number(existingOrder.total_amount) - Number(existingOrder.paid_amount || 0)) : 0;
         const orderNum = customInvoiceNumber.trim() || (existingOrder ? existingOrder.order_number : `${currentBiz?.invoice_prefix || 'SO-'}${Math.floor(1000 + Math.random() * 9000)}`);
         
         dbStore.updateSalesOrder(editingOrderId, {
@@ -785,15 +837,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           customer_id: finalCustomerId,
           customer_name: finalCustomerName,
           area: finalCustomerArea,
-          channel: selectedCustomerId === 'WALK_IN' ? 'Walk-in' : 'Direct Order',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          order_date: getLocalTodayDate(),
+          channel: isWalkIn ? 'Walk-in' : 'Direct Order',
+          time: orderTime ? format12HourTime(orderTime) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          order_date: orderDate || getLocalTodayDate(),
           ...(selectedCustomerId !== 'WALK_IN' && deliveryDate ? { delivery_date: deliveryDate } : {}),
-          status: existingOrder?.status === 'Packed' ? 'Pending' : (existingOrder?.status || 'Pending'),
-          payment_status: paymentStatus,
+          delivery_type: deliveryType,
+          status: isFulfilledImmediately || isWalkIn ? 'Delivered' : existingOrder?.status === 'Packed' ? 'Pending' : (existingOrder?.status || 'Pending'),
+          delivery_status: isFulfilledImmediately || isWalkIn ? 'Delivered' : existingOrder?.delivery_status || 'Pending',
+          payment_status: finalPaymentStatusToSave as any,
           payment_mode: paymentMode,
           paid_amount: actualPaid,
-          items: cleanItems,
           advance_booking: isAdvanceBooking,
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
@@ -802,6 +855,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           is_updated: true,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
         });
+
+        finalCreatedOrder = dbStore.getSalesOrders(businessId).find(o => o.id === editingOrderId) || null;
+
+        // Update customer outstanding debt for edits
+        if (customerObj && !isWalkIn) {
+          const debtChange = unpaidBalance - oldUnpaidBalance;
+          if (debtChange !== 0) {
+            dbStore.updateCustomer(finalCustomerId, {
+              outstanding_amount: Math.max(0, (customerObj.outstanding_amount || 0) + debtChange)
+            });
+          }
+        }
 
         // Send message to packaging users for any edit
         const allUsers = dbStore.getUsers(businessId);
@@ -838,15 +903,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           customer_id: finalCustomerId,
           customer_name: finalCustomerName,
           area: finalCustomerArea,
-          channel: selectedCustomerId === 'WALK_IN' ? 'Walk-in' : 'Direct Order',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          order_date: getLocalTodayDate(),
+          channel: isWalkIn ? 'Walk-in' : 'Direct Order',
+          time: orderTime ? format12HourTime(orderTime) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          order_date: orderDate || getLocalTodayDate(),
           ...(selectedCustomerId !== 'WALK_IN' && deliveryDate ? { delivery_date: deliveryDate } : {}),
-          status: 'Pending',
-          payment_status: paymentStatus,
+          delivery_type: deliveryType,
+          status: isFulfilledImmediately || isWalkIn ? 'Delivered' : 'Pending',
+          payment_status: finalPaymentStatusToSave as any,
           payment_mode: paymentMode,
           paid_amount: actualPaid,
-          delivery_status: 'Pending',
+          delivery_status: isFulfilledImmediately || isWalkIn ? 'Delivered' : 'Pending',
           items: cleanItems,
           advance_booking: isAdvanceBooking,
           festive_booking: isFestiveBooking,
@@ -857,8 +923,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           business_id: businessId
         });
 
+        finalCreatedOrder = createdOrder;
+
         // Process Loyalty Points calculation & redemption
-        if (finalCustomerId !== 'WALK_IN') {
+        if (finalCustomerId && !isWalkIn) {
           const loyaltyResult = dbStore.processOrderLoyalty(
             finalCustomerId,
             finalAmount,
@@ -872,9 +940,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         }
 
         // Update customer outstanding debt with the remaining unpaid balance!
-        if (customerObj && finalCustomerId !== 'WALK_IN') {
+        if (customerObj && !isWalkIn) {
           dbStore.updateCustomer(finalCustomerId, {
-            outstanding_amount: Math.max(0, customerObj.outstanding_amount + unpaidBalance)
+            outstanding_amount: Math.max(0, (customerObj.outstanding_amount || 0) + unpaidBalance)
           });
         }
 
@@ -906,12 +974,37 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       }
 
       setOrders(dbStore.getSalesOrders(businessId));
-      setIsCreateModalOpen(false);
-      resetForm();
+      
+      if (postAction === 'save_new') {
+        resetForm();
+        setIsCreateModalOpen(true);
+        setCustomInvoiceNumber('');
+      } else if (postAction === 'print' && finalCreatedOrder) {
+        resetForm();
+        setIsCreateModalOpen(false);
+        setViewingInvoiceOrder(finalCreatedOrder);
+        // Small delay to ensure state update and modal close
+        setTimeout(() => {
+          const btn = document.getElementById('print-invoice-btn');
+          if (btn) btn.click();
+        }, 300);
+      } else if (postAction === 'share' && finalCreatedOrder) {
+        resetForm();
+        setIsCreateModalOpen(false);
+        setViewingInvoiceOrder(finalCreatedOrder);
+        setTimeout(() => {
+          const btn = document.getElementById('email-invoice-btn');
+          if (btn) btn.click();
+        }, 300);
+      } else {
+        setIsCreateModalOpen(false);
+        resetForm();
+      }
     } catch (err: any) {
       console.error(err); triggerToast(err.message || 'Error occurred.', 'error');
     } finally {
       setIsSubmitting(false);
+      setIsSubmitDropdownOpen(false);
     }
   };
 
@@ -1307,16 +1400,17 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
       {/* Primary orders table */}
       <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs mt-3">
-        <table className="w-full text-left text-[11px] whitespace-nowrap">
+        <table className="w-full text-left text-[11px]">
           <thead className="bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 font-extrabold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700 text-[10px]">
             <tr>
               <th className="py-2.5 px-3">Order ID</th>
               <th className="py-2.5 px-3">Customer</th>
               <th className="py-2.5 px-3">Area Zone</th>
-              <th className="py-2.5 px-3">Pipeline Status</th>
+              <th className="py-2.5 px-3">Items / Qty</th>
               <th className="py-2.5 px-3">Amount</th>
+              <th className="py-2.5 px-3">Pipeline Status</th>
               <th className="py-2.5 px-3">Payment</th>
-              <th className="py-2.5 px-3">Time</th>
+              <th className="py-2.5 px-3">Ordered / Delivery</th>
               <th className="py-2.5 px-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -1360,7 +1454,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   </td>
 
                   <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
-                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span>{custName}</span>
                       {o.channel && (
                         <span className="text-[10px] text-slate-400 font-normal">
@@ -1374,6 +1468,17 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/80 dark:border-slate-700 font-medium text-[10px] text-slate-700 dark:text-slate-300">
                       📍 {o.area || 'Dahisar'}
                     </span>
+                  </td>
+
+                  <td className="py-2 px-3">
+                    <div className="flex flex-col text-[10px] font-semibold text-slate-700 dark:text-slate-300">
+                      <span>{o.items.length} Items</span>
+                      <span className="text-slate-500">Qty: {o.items.reduce((acc, it) => acc + it.qty, 0)}</span>
+                    </div>
+                  </td>
+
+                  <td className="py-2 px-3 font-black text-slate-900 dark:text-white">
+                    {currencySymbol}{o.total_amount.toLocaleString()}
                   </td>
 
                   <td className="py-2 px-3">
@@ -1394,13 +1499,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </span>
                   </td>
 
-                  <td className="py-2 px-3 font-black text-slate-900 dark:text-white">
-                    {currencySymbol}{o.total_amount.toLocaleString()}
-                  </td>
-
                   <td className="py-2 px-3">
-                    <div className="flex items-center gap-1.5 whitespace-nowrap">
-                      <span className={`text-[10px] font-bold px-3 py-1 rounded-full border shrink-0 ${
+                    <div className="flex flex-col gap-1">
+                      <span className={`inline-flex w-fit items-center text-[9px] font-bold px-2 py-0.5 rounded border ${
                         o.payment_status === 'Paid' 
                           ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
                           : o.payment_status === 'Partial'
@@ -1410,7 +1511,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         {o.payment_status || 'Unpaid'}
                       </span>
                       {o.payment_status !== 'Unpaid' && o.payment_mode && (
-                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 shrink-0">
+                        <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">
                           {(() => {
                             const m = (o.payment_mode || '').toLowerCase();
                             if (m.includes('cash')) return 'Cash';
@@ -1426,7 +1527,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   </td>
 
                   <td className="py-2 px-3 text-slate-500 font-medium text-[10px]">
-                    {formatOrderTime(o.time, o.created_at)}
+                    <div className="flex flex-col">
+                      <span className="text-slate-800 dark:text-slate-200 font-semibold">{o.order_date || new Date(o.created_at).toLocaleDateString()}</span>
+                      <span className="text-[9px]">{formatOrderTime(o.time, o.created_at)}</span>
+                      {o.delivery_date && (
+                        <span className="text-indigo-600 dark:text-indigo-400 font-bold mt-1 text-[9px]">Del: {o.delivery_date}</span>
+                      )}
+                    </div>
                   </td>
 
                   <td className="py-2 px-3 text-right">
@@ -1624,8 +1731,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 <button
                   onClick={() => {
                     if (selectedOrderForDetail.delivery_status === 'Delivered') {
-                      triggerToast('Cannot edit an order that is already delivered.', 'error');
-                      return;
+                      triggerToast('Note: This order is already delivered. Any changes will update the inventory records.', 'info');
                     }
                     setInvoiceToEdit(selectedOrderForDetail);
                     setSelectedOrderForDetail(null);
@@ -1715,6 +1821,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     <span className="truncate">3" Bill</span>
                   </button>
                   <button 
+                    id="email-invoice-btn"
                     onClick={() => handleEmailInvoice(viewingInvoiceOrder.order_number, custObj?.email || 'customer@omnipack.com')}
                     className="py-2 px-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 rounded-xl text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5 transition"
                     title="Email PDF Invoice to Customer"
@@ -1761,6 +1868,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     <span className="truncate">Close</span>
                   </button>
                   <button 
+                    id="print-invoice-btn"
                     onClick={() => handlePrintInvoice(viewingInvoiceOrder)}
                     className="py-2 px-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-[11px] font-black cursor-pointer flex items-center justify-center gap-1.5 shadow-xs transition"
                   >
@@ -2052,17 +2160,35 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </div>
                   );
                 })()}
+                
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Type</label>
+                  <CustomDropdown 
+                    value={deliveryType}
+                    onChange={(val) => setDeliveryType(val)}
+                    options={[
+                      { value: 'Self delivery', label: 'Self delivery' },
+                      { value: 'Out of india courier', label: 'Out of india courier' },
+                      { value: 'Domestic courier', label: 'Domestic courier' },
+                      { value: 'Third party app delivery', label: 'Third party app delivery' },
+                      { value: 'Self pickup', label: 'Self pickup' }
+                    ]}
+                    placeholder="Select delivery type"
+                  />
+                </div>
 
                 {selectedCustomerId !== 'WALK_IN' ? (
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Date</label>
-                    <input 
-                      type="date"
-                      value={deliveryDate}
-                      onChange={(e) => setDeliveryDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-medium cursor-pointer"
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Date</label>
+                      <input 
+                        type="date"
+                        value={deliveryDate}
+                        onChange={(e) => setDeliveryDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none font-medium cursor-pointer"
+                      />
+                    </div>
+                  </>
                 ) : (
                   <div className="space-y-1 flex flex-col justify-end pb-1.5">
                     <div className="flex items-center gap-3 flex-wrap">
@@ -2077,6 +2203,24 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         <label htmlFor="advance-chk" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
                           <Sparkles size={14} className="text-indigo-500" />
                           <span>Advance Booking</span>
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input 
+                          type="checkbox" 
+                          id="fulfilled-chk"
+                          checked={isFulfilledImmediately}
+                          onChange={(e) => {
+                            setIsFulfilledImmediately(e.target.checked);
+                            if (e.target.checked) {
+                              setPaymentStatus('Paid');
+                            }
+                          }}
+                          className="h-4 w-4 text-emerald-600 cursor-pointer rounded"
+                        />
+                        <label htmlFor="fulfilled-chk" className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase flex items-center gap-1 cursor-pointer">
+                          <CheckCircle2 size={14} className="text-emerald-500" />
+                          <span>Delivered / Handed Over</span>
                         </label>
                       </div>
 
@@ -2111,6 +2255,22 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     <label htmlFor="advance-chk-sub" className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
                       <Sparkles size={14} className="text-indigo-500" />
                       <span>Flag as Advance Booking</span>
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      id="fulfilled-chk-sub"
+                      checked={isFulfilledImmediately}
+                      onChange={(e) => {
+                        setIsFulfilledImmediately(e.target.checked);
+                        if (e.target.checked) setPaymentStatus('Paid');
+                      }}
+                      className="h-4 w-4 text-emerald-600 cursor-pointer rounded"
+                    />
+                    <label htmlFor="fulfilled-chk-sub" className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
+                      <CheckCircle2 size={14} className="text-emerald-500" />
+                      <span>Delivered / Handed Over</span>
                     </label>
                   </div>
 
@@ -2507,24 +2667,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     Payment & Settlement Options
                   </h4>
                   {(() => {
-                    const taxableVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
-                    const taxVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
-                    const totalVal = Math.round(taxableVal + taxVal);
-                    const computedPaid = paymentStatus === 'Paid' 
-                      ? totalVal 
-                      : (paymentStatus === 'Partial' ? Math.min(totalVal, Math.max(0, Number(paidAmount) || 0)) : 0);
-                    const computedBalance = Math.max(0, totalVal - computedPaid);
+                    const { finalAmount, computedPaid, balance } = calculatedTotals;
 
                     return (
                       <div className="flex items-center gap-3 text-[11px] font-bold">
                         <span className="text-slate-500 dark:text-slate-400">
-                          Total: <span className="font-mono text-slate-800 dark:text-slate-100">{currencySymbol}{totalVal.toLocaleString()}</span>
+                          Total: <span className="font-mono text-slate-800 dark:text-slate-100">{currencySymbol}{finalAmount.toLocaleString()}</span>
                         </span>
                         <span className="text-slate-500 dark:text-slate-400">
                           Paid: <span className="font-mono text-emerald-600 dark:text-emerald-400">{currencySymbol}{computedPaid.toLocaleString()}</span>
                         </span>
                         <span className="text-slate-500 dark:text-slate-400">
-                          Balance: <span className={`font-mono ${computedBalance > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400'}`}>{currencySymbol}{computedBalance.toLocaleString()}</span>
+                          Balance: <span className={`font-mono ${balance > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400'}`}>{currencySymbol}{balance.toLocaleString()}</span>
                         </span>
                       </div>
                     );
@@ -2541,10 +2695,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       onChange={(val) => {
                         const st = val as 'Paid' | 'Partial' | 'Unpaid' | '';
                         setPaymentStatus(st);
-                        if (st === 'Unpaid' || st === '') {
+                        if (st === 'Unpaid') {
                           setPaymentMode('Credit / On Account');
-                        } else if (paymentMode === 'Credit / On Account') {
+                          setPaidAmount('');
+                        } else if (st === 'Paid') {
                           setPaymentMode('Cash');
+                          setPaidAmount('');
+                        } else if (st === 'Partial') {
+                          if (paymentMode === 'Credit / On Account') {
+                            setPaymentMode('Cash');
+                          }
+                        }
+                        // Auto-fulfill if Paid and Walk-in
+                        if (st === 'Paid' && selectedCustomerId === 'WALK_IN') {
+                          setIsFulfilledImmediately(true);
                         }
                       }}
                       placeholder="-- Select Payment Status --"
@@ -2595,19 +2759,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
             {/* Bottom Actions Footer */}
             {(() => {
-              const taxableVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
-              const taxVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
-              
-              const config = dbStore.getLoyaltyConfig(businessId);
-              const pointVal = config?.point_value || 1;
-              const selCust = customers.find(c => c.id === selectedCustomerId);
-              const pts = selCust?.loyalty_points || 0;
-              const actualRedeem = Math.min(pts, Number(pointsToRedeem) || 0);
-              const discountAmount = customDiscount !== '' && !isNaN(Number(customDiscount))
-                ? Math.max(0, Number(customDiscount))
-                : (actualRedeem * pointVal);
-              
-              const totalVal = Math.max(0, Math.round(taxableVal + taxVal) - discountAmount);
+              const { taxableVal, taxVal, discountAmount, finalAmount, actualRedeem } = calculatedTotals;
+              const totalVal = finalAmount;
               const savingsInfo = calculateOrderSavings(orderItems, products);
 
               return (
@@ -2658,11 +2811,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             setCustomDiscount(isNaN(num) ? '' : Math.max(0, num));
                           }
                         }}
-                        onBlur={() => {
-                          if (customDiscount === '') {
-                            setCustomDiscount(0);
-                          }
-                        }}
                         className="w-24 px-2 py-1 bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-700 rounded-lg text-xs font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-hidden focus:ring-2 focus:ring-rose-500 shadow-xs text-right"
                       />
                     </div>
@@ -2682,15 +2830,54 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     >
                       Cancel
                     </button>
-                    <button 
-                      type="button" 
-                      disabled={isSubmitting}
-                      onClick={handleCreateSalesOrder}
-                      className={`px-4 py-2 rounded-lg text-[11px] font-bold shadow-md cursor-pointer transition flex items-center gap-1.5 ${isSubmitting ? 'bg-slate-400 cursor-not-allowed text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
-                    >
-                      {isSubmitting ? <Loader2 className="animate-spin" size={14} /> : null}
-                      {editingOrderId ? 'Update Sales Order' : 'Compile & Place Sales Order'}
-                    </button>
+                    
+                    <div className="relative flex">
+                      <button 
+                        type="button" 
+                        disabled={isSubmitting}
+                        onClick={() => handleCreateSalesOrder('save_new')}
+                        className={`px-4 py-2 rounded-l-lg text-[11px] font-bold shadow-md cursor-pointer transition flex items-center gap-1.5 ${isSubmitting ? 'bg-slate-400 cursor-not-allowed text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
+                      >
+                        {isSubmitting ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                        {editingOrderId ? 'Update Order' : 'Save & New'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsSubmitDropdownOpen(!isSubmitDropdownOpen)}
+                        className="px-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-r-lg border-l border-indigo-500 transition-colors cursor-pointer"
+                      >
+                        <ChevronDown size={14} className={`transition-transform duration-200 ${isSubmitDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      
+                      {isSubmitDropdownOpen && (
+                        <div className="absolute bottom-full right-0 mb-2 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-150">
+                           <button 
+                             type="button"
+                             onClick={() => handleCreateSalesOrder('share')}
+                             className="w-full px-4 py-3 text-left text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between transition-colors cursor-pointer group"
+                           >
+                             <span className="group-hover:text-indigo-600 transition-colors">Share</span>
+                             <Share2 size={13} className="text-slate-400 group-hover:text-indigo-500" />
+                           </button>
+                           <button 
+                             type="button"
+                             onClick={() => handleCreateSalesOrder('print')}
+                             className="w-full px-4 py-3 text-left text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between border-t border-slate-100 dark:border-slate-700 transition-colors cursor-pointer group"
+                           >
+                             <span className="group-hover:text-indigo-600 transition-colors">Print</span>
+                             <Printer size={13} className="text-slate-400 group-hover:text-indigo-500" />
+                           </button>
+                           <button 
+                             type="button"
+                             onClick={() => handleCreateSalesOrder('save_new')}
+                             className="w-full px-4 py-3 text-left text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between border-t border-slate-100 dark:border-slate-700 transition-colors cursor-pointer"
+                           >
+                             <span>Save & New</span>
+                             <Save size={13} />
+                           </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

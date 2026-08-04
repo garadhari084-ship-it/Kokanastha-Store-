@@ -1,6 +1,7 @@
 
 import { PageHeader } from './PageHeader';
 import React, { useEffect, useState, useMemo } from 'react';
+import { DeliveryReports } from './DeliveryReports';
 import { 
   Truck, 
   Search, 
@@ -31,6 +32,7 @@ import {
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { SalesOrder, Customer, UserProfile, OrderStatus } from '../types/erp';
+import { TodayDeliveryModal } from './TodayDeliveryModal';
 
 interface DeliveryModuleProps {
   businessId: string;
@@ -44,15 +46,17 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   triggerToast
 }) => {
   const [orders, setOrders] = useState<SalesOrder[]>(
-    dbStore.getSalesOrders(businessId).filter(o => ['Packed', 'Dispatched', 'Delivered', 'Returned'].includes(o.status))
+    dbStore.getSalesOrders(businessId)
   );
   const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'Pending Delivery' | 'Ready to Dispatch' | 'In Transit' | 'Delivered' | 'Returned'>('Pending Delivery');
+  const [dateFilter, setDateFilter] = useState<'All' | 'Today' | 'Tomorrow' | 'Upcoming'>('All');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [activeView, setActiveView] = useState<'Operations' | 'Reports'>('Operations');
   
   const reloadOrders = () => {
-    setOrders(dbStore.getSalesOrders(businessId).filter(o => ['Packed', 'Dispatched', 'Delivered', 'Returned'].includes(o.status)));
+    setOrders(dbStore.getSalesOrders(businessId));
   };
 
   useEffect(() => {
@@ -71,7 +75,31 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   const [deliveryPartner, setDeliveryPartner] = useState<string>('Rapido');
   const [personName, setPersonName] = useState<string>('');
   const [personPhone, setPersonPhone] = useState<string>('');
-  const [trackingNumber, setTrackingNumber] = useState<string>('');
+    const [trackingNumber, setTrackingNumber] = useState<string>('');
+  const [showTodayModal, setShowTodayModal] = useState(false);
+
+  useEffect(() => {
+    // Show modal on module load to highlight today's priorities
+    const timer = setTimeout(() => {
+      setShowTodayModal(true);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleModalAction = (order: SalesOrder) => {
+    setShowTodayModal(false);
+    if (order.status === 'Dispatched') {
+      setConfirmingOrder(order);
+      setSelectedPaymentMode(null);
+    } else {
+      setDispatchingOrder(order);
+      // Reset dispatch form defaults
+      setDeliveryPartner('Rapido');
+      setPersonName('');
+      setPersonPhone('');
+      setTrackingNumber('');
+    }
+  };
 
   const handleCompleteDispatchAssignment = (targetOrder: SalesOrder, e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -194,7 +222,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
     return orders.filter(o => {
       // Apply status filter
       if (activeFilter === 'Pending Delivery') {
-        if (o.status !== 'Dispatched') return false;
+        if (o.status !== 'Pending' && o.status !== 'Packing') return false;
       } else if (activeFilter === 'Ready to Dispatch') {
         if (o.status !== 'Packed') return false;
       } else if (activeFilter === 'In Transit') {
@@ -206,6 +234,26 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
       }
       
       // Apply search query
+          if (dateFilter !== 'All') {
+      const dateStr = (o.delivery_date || o.order_date || '').trim();
+      if (!dateStr || dateStr === 'Unknown Date') return false;
+      
+      const parseDate = (d) => {
+        const parts = d.split('-');
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
+      };
+      
+      const now = new Date();
+      const todayTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const tmrwTime = todayTime + 86400000;
+      
+      const orderTime = parseDate(dateStr);
+      
+      if (dateFilter === 'Today' && orderTime !== todayTime) return false;
+      if (dateFilter === 'Tomorrow' && orderTime !== tmrwTime) return false;
+      if (dateFilter === 'Upcoming' && orderTime <= tmrwTime) return false;
+    }
+      
       if (searchQuery) {
         const cust = customers.find(c => c.id === o.customer_id);
         const q = searchQuery.toLowerCase();
@@ -215,9 +263,40 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
       
       return true;
     }).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-  }, [orders, customers, searchQuery, activeFilter]);
+  }, [orders, customers, searchQuery, activeFilter, dateFilter]);
+
+  const groupedOrders = useMemo(() => {
+    const groups: Record<string, SalesOrder[]> = {};
+    filteredOrders.forEach(o => {
+      const date = o.delivery_date || o.order_date || 'Unknown Date';
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(o);
+    });
+    
+    return Object.entries(groups).sort(([dateA], [dateB]) => dateA.localeCompare(dateB));
+  }, [filteredOrders]);
+
+    const getRelativeDateLabel = (dateString: string) => {
+    if (!dateString || dateString === 'Unknown Date') return dateString || 'Unknown Date';
+    
+    const parseDate = (d: string) => {
+      const parts = d.split('-');
+      return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
+    };
+    
+    const now = new Date();
+    const todayTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const tmrwTime = todayTime + 86400000;
+    
+    const orderTime = parseDate(dateString.trim());
+    
+    if (orderTime === todayTime) return `Today's Delivery (${dateString})`;
+    if (orderTime === tmrwTime) return `Tomorrow's Delivery (${dateString})`;
+    return `Delivery on ${dateString}`;
+  };
 
   // Metrics
+  const pendingCount = orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length;
   const readyCount = orders.filter(o => o.status === 'Packed').length;
   const transitCount = orders.filter(o => o.status === 'Dispatched').length;
   const deliveredCount = orders.filter(o => o.status === 'Delivered').length;
@@ -329,9 +408,42 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
       />
 
       <div className="px-0.5 sm:px-1 space-y-4">
+        {/* Toggle View */}
+        <div className="flex gap-6 border-b border-slate-200 dark:border-slate-800 mb-4 px-2">
+          <button
+            onClick={() => setActiveView('Operations')}
+            className={`pb-3 font-bold text-sm transition-colors relative ${
+              activeView === 'Operations'
+                ? 'text-indigo-600 dark:text-indigo-400'
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            Dispatch Operations
+            {activeView === 'Operations' && (
+              <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveView('Reports')}
+            className={`pb-3 font-bold text-sm transition-colors relative ${
+              activeView === 'Reports'
+                ? 'text-indigo-600 dark:text-indigo-400'
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            Fulfillment Reports
+            {activeView === 'Reports' && (
+              <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />
+            )}
+          </button>
+        </div>
 
-      {/* Advanced Metrics Cards (Matched to SalesModule) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {activeView === 'Reports' ? (
+          <DeliveryReports businessId={businessId} />
+        ) : (
+          <>
+            {/* Advanced Metrics Cards (Matched to SalesModule) */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <div 
           onClick={() => setActiveFilter('Ready to Dispatch')}
           className={`bg-white dark:bg-slate-900 border p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-1 ${
@@ -390,10 +502,8 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
         </div>
 
         <div 
-          onClick={() => setActiveFilter('Pending Delivery')}
-          className={`bg-white dark:bg-slate-900 border p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-1 ${
-            activeFilter === 'Pending Delivery' ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-200/80 dark:border-slate-800 hover:border-rose-400 dark:hover:border-rose-600'
-          }`}
+          onClick={() => setActiveFilter('All')}
+          className={`bg-white dark:bg-slate-900 border p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-1 border-slate-200/80 dark:border-slate-800 hover:border-rose-400 dark:hover:border-rose-600`}
         >
           <div className="flex items-center gap-1.5">
             <div className="p-1.5 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
@@ -411,10 +521,33 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
 
       {/* Filter Tabs & Search Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-        <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
-          {[
-            { id: 'All', label: 'All Orders' },
-            { id: 'Pending Delivery', label: `Pending Delivery (${transitCount})` },
+        <div className="flex flex-col gap-2 w-full">
+          {/* Date Filter Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
+            {[
+              { id: 'All', label: 'All Dates' },
+              { id: 'Today', label: "Today's Delivery" },
+              { id: 'Tomorrow', label: "Tomorrow" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setDateFilter(tab.id as any)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-black transition-all whitespace-nowrap cursor-pointer border ${
+                  dateFilter === tab.id
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Status Filter Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
+            {[
+              { id: 'All', label: 'All Orders' },
+            { id: 'Pending Delivery', label: `Pending Delivery (${pendingCount})` },
             { id: 'Ready to Dispatch', label: `Ready to Dispatch (${readyCount})` },
             { id: 'In Transit', label: `In Transit (${transitCount})` },
             { id: 'Delivered', label: `Delivered (${deliveredCount})` },
@@ -434,6 +567,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
           ))}
         </div>
 
+        </div>
         <div className="flex-1 max-w-md flex items-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-full px-3 py-1.5 shadow-xs focus-within:ring-2 focus-within:ring-indigo-500 transition-shadow">
           <Search size={15} className="text-slate-400 mr-2 shrink-0" />
           <input 
@@ -608,10 +742,11 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
 
       {/* Compact List View */}
       <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm mt-3">
-        <table className="w-full text-left text-[11px] whitespace-nowrap">
+        <table className="w-full text-left text-[11px]">
           <thead className="bg-slate-800 dark:bg-slate-800 text-white font-bold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
             <tr>
               <th className="py-2.5 px-3">Order ID</th>
+              <th className="py-2.5 px-3">Date / Delivery</th>
               <th className="py-2.5 px-3">Customer</th>
               <th className="py-2.5 px-3">Contact</th>
               <th className="py-2.5 px-3">Area Zone</th>
@@ -622,9 +757,9 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-            {filteredOrders.length === 0 ? (
+            {groupedOrders.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-8 text-center">
+                <td colSpan={9} className="py-8 text-center">
                   <div className="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400">
                     <Package size={24} className="mb-2 opacity-50" />
                     <p className="font-bold text-xs">No active deliveries found for filter "{activeFilter}".</p>
@@ -633,7 +768,17 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                 </td>
               </tr>
             ) : (
-              filteredOrders.map((o) => {
+              groupedOrders.map(([date, dateOrders]) => (
+                <React.Fragment key={date}>
+                  <tr className="bg-slate-100 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700/50">
+                    <td colSpan={9} className="py-2.5 px-4 font-bold text-slate-700 dark:text-slate-300 text-xs">
+                      {getRelativeDateLabel(date)}
+                      <span className="ml-2 text-[10px] font-medium bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 py-0.5 px-2 rounded-full border border-slate-200 dark:border-slate-700">
+                        {dateOrders.length} order{dateOrders.length > 1 ? 's' : ''}
+                      </span>
+                    </td>
+                  </tr>
+                  {dateOrders.map((o) => {
                 const cust = customers.find(c => c.id === o.customer_id);
                 const isCOD = o.payment_status !== 'Paid';
                 const unpaidBalance = Math.max(0, o.total_amount - (o.paid_amount || 0));
@@ -648,6 +793,16 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                         <Eye size={12} className="text-indigo-400" />
                         {o.order_number}
                       </button>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex flex-col">
+                        <span className="text-slate-800 dark:text-slate-200 font-semibold text-[10px]">
+                          {o.order_date || new Date(o.created_at).toLocaleDateString()}
+                        </span>
+                        {o.delivery_date && (
+                          <span className="text-indigo-600 dark:text-indigo-400 font-bold mt-0.5 text-[9px]">Del: {o.delivery_date}</span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2.5 px-3">
                       <div className="flex flex-col">
@@ -724,6 +879,22 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                         <Printer size={12} />
                       </button>
                       
+                      {/* Quick Pipeline Status Updater (Moved from Sales Module) */}
+                      <select
+                        value={o.status}
+                        onChange={(e) => handleUpdateStatus(o, e.target.value as any)}
+                        className="text-[10px] font-bold py-1 px-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        title="Quick Update Pipeline Status"
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="Packing">Packing</option>
+                        <option value="Packed">Ready</option>
+                        <option value="Dispatched">Out for Delivery</option>
+                        <option value="Delivered">Completed</option>
+                        <option value="Returned">Returned</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
+
                       {o.status === 'Packed' && (
                         <button 
                           onClick={() => {
@@ -747,22 +918,6 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                           >
                             <CheckCircle2 size={12} /> Deliver
                           </button>
-                          
-                          {/* Quick Pipeline Status Updater (Moved from Sales Module) */}
-                          <select
-                            value={o.status}
-                            onChange={(e) => handleUpdateStatus(o, e.target.value as any)}
-                            className="text-[10px] font-bold py-1 px-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500"
-                            title="Quick Update Pipeline Status"
-                          >
-                            <option value="Pending">Pending</option>
-                            <option value="Packing">Packing</option>
-                            <option value="Packed">Ready</option>
-                            <option value="Dispatched">Out for Delivery</option>
-                            <option value="Delivered">Completed</option>
-                            <option value="Returned">Returned</option>
-                            <option value="Cancelled">Cancelled</option>
-                          </select>
                         </div>
                       )}
                       
@@ -793,8 +948,9 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                     </td>
                   </tr>
                 );
-              })
-            )}
+              })}
+              </React.Fragment>
+            )))}
           </tbody>
         </table>
       </div>
@@ -917,6 +1073,16 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
         </div>
       )}
 
+            {/* Today's Delivery Summary Modal - Auto triggered */}
+      <TodayDeliveryModal 
+        isOpen={showTodayModal}
+        onClose={() => setShowTodayModal(false)}
+        businessId={businessId}
+        orders={orders}
+        customers={customers}
+        onAction={handleModalAction}
+      />
+
       {/* Order Details Modal */}
       {detailOrder && (
         <div className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
@@ -975,6 +1141,8 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
           </div>
         </div>
       )}
+          </>
+        )}
       </div>
     </div>
   );

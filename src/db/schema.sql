@@ -69,14 +69,19 @@ CREATE TABLE IF NOT EXISTS users_profiles (
 
 -- Ensure user_id column exists if table was created previously without it
 DO $$ 
-BEGIN
-    IF NOT EXISTS (
+BEGIN    IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
         WHERE table_name='users_profiles' AND column_name='user_id'
     ) THEN
         ALTER TABLE users_profiles ADD COLUMN user_id UUID;
     END IF;
-END $$;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name='users_profiles' AND column_name='allowed_pages'
+    ) THEN
+        ALTER TABLE users_profiles ADD COLUMN allowed_pages JSONB;
+    END IF;
+END $;
 
 -- ====================================================================
 -- 2. MASTER DATA TABLES
@@ -263,8 +268,37 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
     scanned_qty INTEGER NOT NULL DEFAULT 0, -- Tracked during Packing Verification
     selling_price DECIMAL(15,2) NOT NULL CHECK (selling_price >= 0.00),
     gst_rate DECIMAL(5,2) DEFAULT 18.00,
+    normal_rate DECIMAL(15,2) DEFAULT 0.00,
+    rate_type VARCHAR(50),
+    rate_reason TEXT,
+    unit_savings DECIMAL(15,2) DEFAULT 0.00,
+    is_overridden BOOLEAN DEFAULT FALSE,
+    original_calc_price DECIMAL(15,2) DEFAULT 0.00,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Ensure missing columns exist in sales_order_items if table was created previously
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_order_items' AND column_name='normal_rate') THEN
+        ALTER TABLE sales_order_items ADD COLUMN normal_rate DECIMAL(15,2) DEFAULT 0.00;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_order_items' AND column_name='rate_type') THEN
+        ALTER TABLE sales_order_items ADD COLUMN rate_type VARCHAR(50);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_order_items' AND column_name='rate_reason') THEN
+        ALTER TABLE sales_order_items ADD COLUMN rate_reason TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_order_items' AND column_name='unit_savings') THEN
+        ALTER TABLE sales_order_items ADD COLUMN unit_savings DECIMAL(15,2) DEFAULT 0.00;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_order_items' AND column_name='is_overridden') THEN
+        ALTER TABLE sales_order_items ADD COLUMN is_overridden BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_order_items' AND column_name='original_calc_price') THEN
+        ALTER TABLE sales_order_items ADD COLUMN original_calc_price DECIMAL(15,2) DEFAULT 0.00;
+    END IF;
+END $$;
 
 -- ====================================================================
 -- 4. PACKING & LOGISTICS TABLES

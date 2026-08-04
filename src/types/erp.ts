@@ -50,6 +50,7 @@ export interface UserProfile {
   business_id: string;
   active: boolean;
   created_at: string;
+  allowed_pages?: string[]; // List of page IDs the user can access
 }
 
 export interface Category {
@@ -122,6 +123,7 @@ export interface ComboHistoryLog {
 export interface Customer {
   id: string;
   name: string;
+  image_url?: string;
   group: string; // e.g. 'Retail', 'Wholesale', 'Distributor'
   area?: string; // e.g. 'Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar'
   gstin: string;
@@ -136,6 +138,9 @@ export interface Customer {
   lifetime_spend?: number;
   loyalty_tier?: 'Silver' | 'Gold' | 'Platinum';
   is_loyal_member?: boolean; // Kokanastha Loyal Member Program enrollee
+  loyalty_start_date?: string;
+  loyalty_end_date?: string;
+  loyalty_auto_renew?: boolean;
   birthday?: string;
   anniversary?: string;
   business_id: string;
@@ -241,6 +246,7 @@ export interface SalesOrder {
   payment_date?: string;
   payment_history?: PaymentRecord[];
   delivery_status: OrderStatus;
+  delivery_type?: 'Self delivery' | 'Out of india courier' | 'Domestic courier' | 'Third party app delivery' | 'Self pickup' | string;
   items: SalesItem[];
   advance_booking: boolean;
   festive_booking?: boolean;

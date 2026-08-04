@@ -394,7 +394,7 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
 
         {/* Compact List View */}
         <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5">
-          <table className="w-full text-left text-[11px] whitespace-nowrap">
+          <table className="w-full text-left text-[11px]">
             <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[11px]">
               <tr>
                 <th className="py-2.5 px-4">Vendor Details</th>
@@ -465,13 +465,15 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
                             >
                               <Edit size={14} />
                             </button>
-                            <button
-                              onClick={() => handleDeleteSupplier(sup.id, sup.name)}
-                              className="p-1.5 text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-900/30 rounded transition-colors border border-slate-200 dark:border-slate-700"
-                              title="Delete Vendor"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            {user.role === 'Super Admin' && (
+                              <button
+                                onClick={() => handleDeleteSupplier(sup.id, sup.name)}
+                                className="p-1.5 text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-900/30 rounded transition-colors border border-slate-200 dark:border-slate-700"
+                                title="Delete Vendor"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </>
                         )}
                       </div>

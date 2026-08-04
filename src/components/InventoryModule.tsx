@@ -219,7 +219,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-[11px] whitespace-nowrap">
+          <table className="w-full text-left text-[11px]">
             <thead>
               <tr className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[11px]">
                 <th className="py-2.5 px-4">Timestamp</th>

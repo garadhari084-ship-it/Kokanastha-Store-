@@ -1,88 +1,56 @@
 const fs = require('fs');
-let content = fs.readFileSync('src/components/PurchaseModule.tsx', 'utf8');
+const file = 'src/components/PackingVerificationModule.tsx';
 
-// 1. Add uploadInputRef
-content = content.replace(
-  "const fileInputRef = React.useRef<HTMLInputElement>(null);",
-  "const fileInputRef = React.useRef<HTMLInputElement>(null);\n  const uploadInputRef = React.useRef<HTMLInputElement>(null);"
-);
+let content = fs.readFileSync(file, 'utf8');
 
-// 2. Clear uploadInputRef as well
-content = content.replace(
-  "if (fileInputRef.current) fileInputRef.current.value = '';",
-  "if (fileInputRef.current) fileInputRef.current.value = '';\n            if (uploadInputRef.current) uploadInputRef.current.value = '';"
-);
+const target = `<div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                <button
+                  onClick={() => setDateFilter('All')}
+                  className={\`px-3 py-1.5 text-xs font-bold rounded-md transition-all \${dateFilter === 'All' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400 ring-1 ring-slate-200 dark:ring-slate-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-300'}\`}
+                >
+                  All Dates
+                </button>
+                <button
+                  onClick={() => setDateFilter('Today')}
+                  className={\`px-3 py-1.5 text-xs font-bold rounded-md transition-all \${dateFilter === 'Today' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400 ring-1 ring-slate-200 dark:ring-slate-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-300'}\`}
+                >
+                  Today's Delivery
+                </button>
+                <button
+                  onClick={() => setDateFilter('Tomorrow')}
+                  className={\`px-3 py-1.5 text-xs font-bold rounded-md transition-all \${dateFilter === 'Tomorrow' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400 ring-1 ring-slate-200 dark:ring-slate-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-300'}\`}
+                >
+                  Tomorrow
+                </button>
+              </div>`;
 
-// 3. Add the upload button UI
-const uiStr = `<div className="flex items-center gap-4">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                  <PlusCircle size={16} className="text-indigo-600" />
-                  Draft New Purchase Order
-                </h2>
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    ref={fileInputRef}
-                    onChange={handleScanInvoice}
-                    className="hidden"
-                  />
+const replacement = `<div className="flex items-center gap-1.5">
+                {[
+                  { id: 'All', label: 'All Dates' },
+                  { id: 'Today', label: "Today's Delivery" },
+                  { id: 'Tomorrow', label: "Tomorrow" },
+                ].map((tab) => (
                   <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isScanning}
-                    className="px-3 py-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-200 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                    key={tab.id}
+                    onClick={() => setDateFilter(tab.id as any)}
+                    className={\`px-3 py-1.5 rounded-full text-[11px] font-black transition-all whitespace-nowrap cursor-pointer border \${
+                      dateFilter === tab.id
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }\`}
                   >
-                    {isScanning ? 'Scanning...' : 'Scan Invoice'}
+                    {tab.label}
                   </button>
-                </div>
+                ))}
               </div>`;
+              
+const escapedTarget = target.replace(/[.*+?^\${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
+const targetRegex = new RegExp(escapedTarget, 'g');
 
-const newUiStr = `<div className="flex items-center gap-4">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                  <PlusCircle size={16} className="text-indigo-600" />
-                  Draft New Purchase Order
-                </h2>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      ref={fileInputRef}
-                      onChange={handleScanInvoice}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isScanning}
-                      className="px-3 py-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-200 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
-                    >
-                      {isScanning ? 'Scanning...' : 'Camera'}
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={uploadInputRef}
-                      onChange={handleScanInvoice}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => uploadInputRef.current?.click()}
-                      disabled={isScanning}
-                      className="px-3 py-1.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-lg text-xs font-bold hover:bg-indigo-200 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
-                    >
-                      {isScanning ? 'Uploading...' : 'Upload'}
-                    </button>
-                  </div>
-                </div>
-              </div>`;
-
-content = content.replace(uiStr, newUiStr);
-
-fs.writeFileSync('src/components/PurchaseModule.tsx', content);
+if (targetRegex.test(content)) {
+  content = content.replace(targetRegex, replacement);
+  fs.writeFileSync(file, content);
+  console.log('Replaced in ' + file);
+} else {
+  console.log('Could not find target');
+}

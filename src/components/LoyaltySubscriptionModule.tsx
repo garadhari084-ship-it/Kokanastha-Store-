@@ -32,6 +32,7 @@ import {
   ShieldCheck, 
   DollarSign, 
   ChevronRight,
+  UserPlus,
   Trash2,
   Edit,
   Package,
@@ -79,6 +80,18 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
   const [bonusEventName, setBonusEventName] = useState('Diwali Special Bonus');
   const [bonusPointsAmount, setBonusPointsAmount] = useState(100);
   const [bonusTargetTier, setBonusTargetTier] = useState<string>('ALL');
+
+  // Loyalty Membership Modal
+  const [isMembershipModalOpen, setIsMembershipModalOpen] = useState(false);
+  const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
+  const [enrollSearchQuery, setEnrollSearchQuery] = useState('');
+  const [isManualEnroll, setIsManualEnroll] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
+  const [selectedCustomerForMembership, setSelectedCustomerForMembership] = useState<Customer | null>(null);
+  const [membershipStartDate, setMembershipStartDate] = useState('');
+  const [membershipEndDate, setMembershipEndDate] = useState('');
+  const [membershipAutoRenew, setMembershipAutoRenew] = useState(false);
 
   // Subscription Modal
   const [isNewSubModalOpen, setIsNewSubModalOpen] = useState(false);
@@ -186,6 +199,44 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
     );
     triggerToast('Loyalty program rules saved successfully.', 'success');
     setIsConfigModalOpen(false);
+  };
+  
+  const addOneYear = (dateStr: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    d.setFullYear(d.getFullYear() + 1);
+    return d.toISOString().split('T')[0];
+  };
+
+  const handleUpdateMembershipDates = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomerForMembership) return;
+
+    dbStore.updateCustomer(selectedCustomerForMembership.id, {
+      loyalty_start_date: membershipStartDate,
+      loyalty_end_date: membershipEndDate,
+      loyalty_auto_renew: membershipAutoRenew,
+      is_loyal_member: true 
+    });
+
+    dbStore.logActivity(
+      user.id,
+      user.name,
+      user.role,
+      'Update Loyalty Membership',
+      `Updated membership dates for ${selectedCustomerForMembership.name} (End: ${membershipEndDate}, Auto-Renew: ${membershipAutoRenew})`,
+      businessId
+    );
+
+    triggerToast(`Membership for ${selectedCustomerForMembership.name} updated successfully.`, 'success');
+    
+    // Clear states and close
+    setMembershipStartDate('');
+    setMembershipEndDate('');
+    setMembershipAutoRenew(false);
+    setSelectedCustomerForMembership(null);
+    setSyncTick(prev => prev + 1); 
+    setIsMembershipModalOpen(false);
   };
 
   // Handle Manual Loyalty Adjust
@@ -548,6 +599,14 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
 
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setIsEnrollModalOpen(true)}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <UserPlus size={15} />
+                Enroll Member
+              </button>
+
+              <button
                 onClick={() => setIsBonusDispatchModalOpen(true)}
                 className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
               >
@@ -561,6 +620,27 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
               >
                 <Settings size={15} />
                 Configure Rules
+              </button>
+
+              <button
+                onClick={() => {
+                  const toRenew = customers.filter(c => c.is_loyal_member && c.loyalty_auto_renew && c.loyalty_end_date && new Date(c.loyalty_end_date) < new Date());
+                  if (toRenew.length === 0) {
+                    triggerToast('No memberships due for auto-renewal.', 'info');
+                    return;
+                  }
+                  toRenew.forEach(c => {
+                    const nextEnd = addOneYear(c.loyalty_end_date!);
+                    dbStore.updateCustomer(c.id, { loyalty_end_date: nextEnd });
+                  });
+                  setSyncTick(prev => prev + 1);
+                  triggerToast(`Auto-renewed ${toRenew.length} loyalty memberships for 1 year.`, 'success');
+                }}
+                className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer border border-indigo-200 dark:border-indigo-800"
+                title="Automatically extend expired memberships that have auto-renew enabled"
+              >
+                <RefreshCw size={15} />
+                Renew Expired
               </button>
             </div>
 
@@ -585,6 +665,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     <th className="py-3 px-4">Loyalty Tier</th>
                     <th className="py-3 px-4">Available Balance</th>
                     <th className="py-3 px-4">Lifetime Spend</th>
+                    <th className="py-3 px-4">Membership Period</th>
                     <th className="py-3 px-4">Special Dates</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
@@ -592,7 +673,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                   {filteredCustomers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400">
+                      <td colSpan={7} className="py-8 text-center text-slate-400">
                         No customer profiles found matching search criteria.
                       </td>
                     </tr>
@@ -652,6 +733,26 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                             {currencySymbol}{lifetime.toLocaleString()}
                           </td>
 
+                          <td className="py-3.5 px-4">
+                            {cust.loyalty_start_date ? (
+                              <div className="space-y-1">
+                                <div className="text-[10px] text-slate-500 flex items-center gap-1">
+                                  <Calendar size={10} /> {cust.loyalty_start_date} to
+                                </div>
+                                <div className={`text-[11px] font-bold ${cust.loyalty_end_date && new Date(cust.loyalty_end_date) < new Date() ? 'text-rose-600' : 'text-indigo-600'}`}>
+                                  {cust.loyalty_end_date || 'Ongoing'}
+                                  {cust.loyalty_auto_renew && (
+                                    <span className="ml-1 text-[9px] text-emerald-600 bg-emerald-50 px-1 rounded" title="Auto-Renew Active">
+                                      ↻
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[10px] italic">Not set</span>
+                            )}
+                          </td>
+
                           <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
                             {cust.birthday ? (
                               <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
@@ -662,27 +763,43 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                             )}
                           </td>
 
-                          <td className="py-3.5 px-4 text-right space-x-1">
-                            <button
-                              onClick={() => {
-                                setSelectedCustomerForAdjust(cust);
-                                setIsAdjustPointsModalOpen(true);
-                              }}
-                              className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg text-xs font-bold transition cursor-pointer"
-                              title="Adjust Points Balance"
-                            >
-                              Adjust Points
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedCustomerForLedger(cust);
-                                setIsLedgerModalOpen(true);
-                              }}
-                              className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
-                              title="View Loyalty Ledger"
-                            >
-                              History
-                            </button>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex flex-wrap justify-end gap-2 py-1">
+                              <button
+                                onClick={() => {
+                                  setSelectedCustomerForMembership(cust);
+                                  setMembershipStartDate(cust.loyalty_start_date || new Date().toISOString().split('T')[0]);
+                                  setMembershipEndDate(cust.loyalty_end_date || addOneYear(cust.loyalty_start_date || new Date().toISOString().split('T')[0]));
+                                  setMembershipAutoRenew(!!cust.loyalty_auto_renew);
+                                  setIsMembershipModalOpen(true);
+                                }}
+                                className="px-3 py-1.5 bg-slate-900 dark:bg-black text-white hover:bg-slate-800 dark:hover:bg-slate-900 rounded-lg text-[11px] font-bold transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
+                                title="Manage Membership Validity"
+                              >
+                                <ShieldCheck size={12} className="text-indigo-400" />
+                                Membership
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedCustomerForAdjust(cust);
+                                  setIsAdjustPointsModalOpen(true);
+                                }}
+                                className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg text-[11px] font-bold transition cursor-pointer border border-indigo-100 dark:border-indigo-800"
+                                title="Adjust Points Balance"
+                              >
+                                Points
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedCustomerForLedger(cust);
+                                  setIsLedgerModalOpen(true);
+                                }}
+                                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-[11px] font-bold transition cursor-pointer border border-slate-200 dark:border-slate-700"
+                                title="View Loyalty Ledger"
+                              >
+                                History
+                              </button>
+                            </div>
                           </td>
 
                         </tr>
@@ -1680,7 +1797,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
               <div>
                 <h3 className="font-bold text-slate-900 dark:text-white text-base">Cancel Subscription</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Change status to Cancelled.
+                   Change status to Cancelled.
                 </p>
               </div>
             </div>
@@ -1708,6 +1825,317 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
               >
                 Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: LOYALTY MEMBERSHIP VALIDITY */}
+      {isMembershipModalOpen && selectedCustomerForMembership && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                <ShieldCheck size={18} className="text-indigo-600" />
+                Membership Validity
+              </h3>
+              <button 
+                onClick={() => {
+                  setIsMembershipModalOpen(false);
+                  setSelectedCustomerForMembership(null);
+                }} 
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateMembershipDates} className="p-6 space-y-4">
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl border border-indigo-100 dark:border-indigo-800 mb-2">
+                <p className="text-[10px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest mb-1">Customer Profile</p>
+                <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedCustomerForMembership.name}</p>
+                <p className="text-[11px] text-slate-500 font-mono">{selectedCustomerForMembership.phone}</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Subscription Start Date</label>
+                  <div className="relative">
+                    <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="date"
+                      value={membershipStartDate}
+                      onChange={(e) => {
+                        setMembershipStartDate(e.target.value);
+                        // If end date is not set or auto-calc is needed, update it
+                        if (!membershipEndDate) {
+                          setMembershipEndDate(addOneYear(e.target.value));
+                        }
+                      }}
+                      className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Subscription End Date</label>
+                  <div className="relative">
+                    <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="date"
+                      value={membershipEndDate}
+                      onChange={(e) => setMembershipEndDate(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Auto-Renew Subscription</p>
+                    <p className="text-[10px] text-slate-500">Extend by 1 year automatically on expiry</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setMembershipAutoRenew(prev => !prev);
+                    }}
+                    className={`group relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${membershipAutoRenew ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                  >
+                    <span className="sr-only">Auto-Renew Subscription</span>
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${membershipAutoRenew ? 'translate-x-5' : 'translate-x-0'}`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMembershipModalOpen(false);
+                    setSelectedCustomerForMembership(null);
+                  }}
+                  className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm shadow-indigo-500/20 active:scale-[0.98]"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ENROLL NEW LOYALTY MEMBER */}
+      {isEnrollModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                  <UserPlus size={18} className="text-indigo-600" />
+                  {isManualEnroll ? 'Add New Customer' : 'Enroll Loyalty Member'}
+                </h3>
+                <p className="text-[10px] text-slate-500 font-medium">
+                  {isManualEnroll ? 'Enter details for the new customer' : 'Select an existing customer to join the loyalty program'}
+                </p>
+              </div>
+              <button 
+                onClick={() => { 
+                  setIsEnrollModalOpen(false); 
+                  setEnrollSearchQuery(''); 
+                  setIsManualEnroll(false);
+                  setManualName('');
+                  setManualPhone('');
+                }} 
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            {!isManualEnroll ? (
+              <>
+                <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-900/30">
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={() => setIsManualEnroll(true)}
+                      className="w-full py-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 rounded-xl text-xs font-bold hover:bg-indigo-100 transition flex items-center justify-center gap-2"
+                    >
+                      <UserPlus size={14} />
+                      Add Customer Manually
+                    </button>
+                    
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input 
+                        type="text"
+                        placeholder="Search existing customers..."
+                        value={enrollSearchQuery}
+                        onChange={(e) => setEnrollSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-2 min-h-[350px]">
+                  {dbStore.getCustomers(businessId)
+                    .filter(c => {
+                      const search = enrollSearchQuery.toLowerCase();
+                      return c.name.toLowerCase().includes(search) || c.phone.includes(search);
+                    })
+                    .map(cust => (
+                      <button
+                        key={cust.id}
+                        onClick={() => {
+                          setSelectedCustomerForMembership(cust);
+                          setMembershipStartDate(new Date().toISOString().split('T')[0]);
+                          setMembershipEndDate(addOneYear(new Date().toISOString().split('T')[0]));
+                          setMembershipAutoRenew(true);
+                          setIsEnrollModalOpen(false);
+                          setIsMembershipModalOpen(true);
+                        }}
+                        className={`w-full flex items-center justify-between p-3 rounded-xl transition group text-left mb-1 ${
+                          cust.is_loyal_member 
+                            ? 'bg-slate-50 dark:bg-slate-800/40 opacity-60 cursor-not-allowed' 
+                            : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
+                        }`}
+                        disabled={cust.is_loyal_member}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
+                            cust.is_loyal_member 
+                              ? 'bg-slate-200 dark:bg-slate-700 text-slate-500' 
+                              : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                          }`}>
+                            {cust.name.charAt(0)}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 transition">{cust.name}</p>
+                              {cust.is_loyal_member && (
+                                <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-[9px] font-bold rounded uppercase tracking-wider">Member</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 font-mono">{cust.phone}</p>
+                          </div>
+                        </div>
+                        {!cust.is_loyal_member && <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-400 transition" />}
+                      </button>
+                    ))
+                  }
+                  {dbStore.getCustomers(businessId).length === 0 && (
+                    <div className="py-12 text-center">
+                      <Users size={32} className="mx-auto text-slate-200 mb-3" />
+                      <p className="text-sm text-slate-400 italic">No customers found.</p>
+                      <button 
+                        onClick={() => setIsManualEnroll(true)}
+                        className="mt-4 text-indigo-600 dark:text-indigo-400 text-xs font-bold hover:underline"
+                      >
+                        Add your first customer
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="p-6 space-y-4">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Full Name</label>
+                    <input 
+                      type="text"
+                      value={manualName}
+                      onChange={(e) => setManualName(e.target.value)}
+                      placeholder="e.g. John Doe"
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Phone Number</label>
+                    <input 
+                      type="tel"
+                      value={manualPhone}
+                      onChange={(e) => setManualPhone(e.target.value)}
+                      placeholder="e.g. 9876543210"
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    onClick={() => setIsManualEnroll(false)}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition"
+                  >
+                    Back to List
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!manualName || !manualPhone) {
+                        triggerToast('Please enter both name and phone.', 'error');
+                        return;
+                      }
+                      
+                      const newCust = dbStore.createCustomer({
+                        business_id: businessId,
+                        name: manualName,
+                        phone: manualPhone,
+                        email: '',
+                        billing_address: '',
+                        shipping_address: '',
+                        gstin: '',
+                        pan: '',
+                        group: 'Retail',
+                        is_loyal_member: false,
+                        active: true,
+                        credit_limit: 0
+                      });
+
+                      setSelectedCustomerForMembership(newCust);
+                      setMembershipStartDate(new Date().toISOString().split('T')[0]);
+                      setMembershipEndDate(addOneYear(new Date().toISOString().split('T')[0]));
+                      setMembershipAutoRenew(true);
+                      
+                      setIsManualEnroll(false);
+                      setManualName('');
+                      setManualPhone('');
+                      setIsEnrollModalOpen(false);
+                      setIsMembershipModalOpen(true);
+                    }}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm shadow-indigo-500/20 active:scale-95"
+                  >
+                    Enroll Member
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/30">
+              <button
+                onClick={() => { 
+                  setIsEnrollModalOpen(false); 
+                  setEnrollSearchQuery(''); 
+                  setIsManualEnroll(false);
+                  setManualName('');
+                  setManualPhone('');
+                }}
+                className="w-full py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-slate-50 transition"
+              >
+                Close
               </button>
             </div>
           </div>

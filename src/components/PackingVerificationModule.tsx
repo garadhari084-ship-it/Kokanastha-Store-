@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { PageHeader } from './PageHeader';
 import { 
   Bike, 
@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
 import { dbStore } from '../services/store';
-import { SalesOrder, Product, UserProfile, Customer } from '../types/erp';
+import { SalesOrder, Product, UserProfile, Customer, Category } from '../types/erp';
 
 interface PackingVerificationModuleProps {
   businessId: string;
@@ -53,6 +53,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     dbStore.getSalesOrders(businessId).filter(o => o.status === 'Pending' || o.status === 'Packing')
   );
   const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
+  const [categories, setCategories] = useState<Category[]>(dbStore.getCategories(businessId));
   const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
 
   // Active view & search states
@@ -61,6 +62,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [dateFilter, setDateFilter] = useState<'All' | 'Today' | 'Tomorrow' | 'Upcoming'>('All');
+  const [activeTab, setActiveTab] = useState<'packing' | 'stock'>('packing');
 
   // Scanning flow states
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -346,6 +349,28 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const filteredQueue = pendingOrders.filter(o => {
     const cust = customers.find(c => c.id === o.customer_id);
     const q = searchQuery.toLowerCase().trim();
+    
+    // Apply date filter
+        if (dateFilter !== 'All') {
+      const dateStr = (o.delivery_date || o.order_date || '').trim();
+      if (!dateStr || dateStr === 'Unknown Date') return false;
+      
+      const parseDate = (d) => {
+        const parts = d.split('-');
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
+      };
+      
+      const now = new Date();
+      const todayTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const tmrwTime = todayTime + 86400000;
+      
+      const orderTime = parseDate(dateStr);
+      
+      if (dateFilter === 'Today' && orderTime !== todayTime) return false;
+      if (dateFilter === 'Tomorrow' && orderTime !== tmrwTime) return false;
+      if (dateFilter === 'Upcoming' && orderTime <= tmrwTime) return false;
+    }
+    
     if (!q) return true;
     return (
       o.order_number.toLowerCase().includes(q) ||
@@ -354,6 +379,36 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       (o.area && o.area.toLowerCase().includes(q))
     );
   });
+
+  const groupedQueue = useMemo(() => {
+    const groups: Record<string, SalesOrder[]> = {};
+    filteredQueue.forEach(o => {
+      const date = o.delivery_date || o.order_date || 'Unknown Date';
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(o);
+    });
+    
+    return Object.entries(groups).sort(([dateA], [dateB]) => dateA.localeCompare(dateB));
+  }, [filteredQueue]);
+
+    const getRelativeDateLabel = (dateString: string) => {
+    if (!dateString || dateString === 'Unknown Date') return dateString || 'Unknown Date';
+    
+    const parseDate = (d: string) => {
+      const parts = d.split('-');
+      return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
+    };
+    
+    const now = new Date();
+    const todayTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const tmrwTime = todayTime + 86400000;
+    
+    const orderTime = parseDate(dateString.trim());
+    
+    if (orderTime === todayTime) return `Today's Delivery (${dateString})`;
+    if (orderTime === tmrwTime) return `Tomorrow's Delivery (${dateString})`;
+    return `Delivery on ${dateString}`;
+  };
 
   return (
     <div className="space-y-3 max-w-full pb-16 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="packing-verification-module">
@@ -366,6 +421,31 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       />
 
       <div className="px-0.5 sm:px-1 space-y-3">
+        {!selectedOrder && (
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
+            <button
+              onClick={() => setActiveTab('packing')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'packing'
+                  ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              Packing Queue
+            </button>
+            <button
+              onClick={() => setActiveTab('stock')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'stock'
+                  ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              Live Product Stock
+            </button>
+          </div>
+        )}
+
       {/* ========================================================================= */}
       {/* PAGE VIEW A: DEDICATED PACKING STATION FOR A SELECTED ORDER               */}
       {/* ========================================================================= */}
@@ -747,7 +827,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
           </div>
 
         </div>
-      ) : (
+      ) : activeTab === 'packing' ? (
 
         /* ========================================================================= */
         /* PAGE VIEW B: ORDERS QUEUE LIST (PENDING FULFILLMENT LIST)                 */
@@ -768,6 +848,26 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
             </div>
             
             <div className="flex items-center gap-2.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+              <div className="flex items-center gap-1.5">
+                {[
+                  { id: 'All', label: 'All Dates' },
+                  { id: 'Today', label: "Today's Delivery" },
+                  { id: 'Tomorrow', label: "Tomorrow" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setDateFilter(tab.id as any)}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-black transition-all whitespace-nowrap cursor-pointer border ${
+                      dateFilter === tab.id
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
                 <button
                   onClick={() => setViewMode('grid')}
@@ -794,133 +894,141 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
           </div>
 
           {/* Orders Display */}
-          {viewMode === 'grid' ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
-              {filteredQueue.map((o) => {
-                const customer = customers.find(c => c.id === o.customer_id);
-                const items = o.items || [];
-                const itemsCount = items.reduce((acc, it) => acc + (it.qty || 0), 0);
-                const packedCount = items.reduce((acc, it) => acc + (it.scanned_qty || 0), 0);
-                const pct = itemsCount > 0 ? Math.round((packedCount / itemsCount) * 100) : 0;
-                const isDone = itemsCount > 0 && pct === 100;
-                
-                return (
-                  <div 
-                    key={o.id}
-                    onClick={() => handleOpenPackingStation(o)}
-                    className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-2.5 sm:p-3 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group hover:border-indigo-500/50 cursor-pointer relative overflow-hidden"
-                  >
-                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-indigo-500/10 via-indigo-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
+          {groupedQueue.map(([date, dateOrders]) => (
+            <div key={date} className="mb-6">
+              <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 px-1 border-b border-slate-200 dark:border-slate-800 pb-2">
+                {getRelativeDateLabel(date)}
+                <span className="ml-2 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 py-0.5 px-2 rounded-full">
+                  {dateOrders.length} order{dateOrders.length > 1 ? 's' : ''}
+                </span>
+              </h3>
+              {viewMode === 'grid' ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
+                  {dateOrders.map((o) => {
+                    const customer = customers.find(c => c.id === o.customer_id);
+                    const items = o.items || [];
+                    const itemsCount = items.reduce((acc, it) => acc + (it.qty || 0), 0);
+                    const packedCount = items.reduce((acc, it) => acc + (it.scanned_qty || 0), 0);
+                    const pct = itemsCount > 0 ? Math.round((packedCount / itemsCount) * 100) : 0;
+                    const isDone = itemsCount > 0 && pct === 100;
                     
-                    <div className="space-y-2 relative z-10">
-                      {/* Header: Order Ref & Status Pill */}
-                      <div className="flex justify-between items-start gap-1">
-                        <div className="min-w-0">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block leading-none mb-0.5">Order Ref</span>
-                          <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate block">
-                            #{o.order_number}
-                          </strong>
-                        </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 border ${
-                          isDone 
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
-                            : o.status === 'Packing' 
-                            ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 animate-pulse' 
-                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                        }`}>
-                          {isDone ? 'Verified' : o.status}
-                        </span>
-                      </div>
-                      
-                      {/* Customer Info Container */}
-                      <div className="space-y-1 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
-                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
-                          <div className="w-5 h-5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                            <User size={11} />
+                    return (
+                      <div 
+                        key={o.id}
+                        onClick={() => handleOpenPackingStation(o)}
+                        className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-2.5 sm:p-3 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group hover:border-indigo-500/50 cursor-pointer relative overflow-hidden"
+                      >
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-indigo-500/10 via-indigo-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
+                        
+                        <div className="space-y-2 relative z-10">
+                          {/* Header: Order Ref & Status Pill */}
+                          <div className="flex justify-between items-start gap-1">
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block leading-none mb-0.5">Order Ref</span>
+                              <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate block">
+                                #{o.order_number}
+                              </strong>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 border ${
+                              isDone 
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
+                                : o.status === 'Packing' 
+                                ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 animate-pulse' 
+                                : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                            }`}>
+                              {isDone ? 'Verified' : o.status}
+                            </span>
                           </div>
-                          <span className="truncate">{customer ? customer.name : 'Walk-in Customer'}</span>
-                        </div>
-                        {customer?.phone && (
-                          <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pl-6.5 truncate">
-                            <Phone size={10} className="shrink-0 text-slate-400" /> 
-                            <span className="truncate">{customer.phone}</span>
+                          
+                          {/* Customer Info Container */}
+                          <div className="space-y-1 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                              <div className="w-5 h-5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                <User size={11} />
+                              </div>
+                              <span className="truncate">{customer ? customer.name : 'Walk-in Customer'}</span>
+                            </div>
+                            {customer?.phone && (
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pl-6.5 truncate">
+                                <Phone size={10} className="shrink-0 text-slate-400" /> 
+                                <span className="truncate">{customer.phone}</span>
+                              </div>
+                            )}
+                            {o.area && (
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pl-6.5 truncate">
+                                <MapPin size={10} className="shrink-0 text-slate-400" /> 
+                                <span className="truncate">{o.area}</span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                        {o.area && (
-                          <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pl-6.5 truncate">
-                            <MapPin size={10} className="shrink-0 text-slate-400" /> 
-                            <span className="truncate">{o.area}</span>
+                          
+                          {/* Scan Progress Bar */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-[10px] font-bold">
+                              <span className="text-slate-500">Progress</span>
+                              <span className={isDone ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}>{pct}%</span>
+                            </div>
+                            <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full transition-all duration-500 ease-out ${isDone ? 'bg-emerald-500' : 'bg-gradient-to-r from-indigo-500 to-violet-500'}`} 
+                                style={{ width: `${pct}%` }} 
+                              />
+                            </div>
+                            <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                              <span>{packedCount} Scanned</span>
+                              <span>{itemsCount} Total</span>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                      
-                      {/* Scan Progress Bar */}
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-center text-[10px] font-bold">
-                          <span className="text-slate-500">Progress</span>
-                          <span className={isDone ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}>{pct}%</span>
                         </div>
-                        <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-500 ease-out ${isDone ? 'bg-emerald-500' : 'bg-gradient-to-r from-indigo-500 to-violet-500'}`} 
-                            style={{ width: `${pct}%` }} 
-                          />
-                        </div>
-                        <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                          <span>{packedCount} Scanned</span>
-                          <span>{itemsCount} Total</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Vibrant Action Button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenPackingStation(o);
-                      }}
-                      className={`mt-2.5 w-full py-2 px-3 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95 ${
-                        isDone
-                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/20'
-                          : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-600/20'
-                      }`}
-                    >
-                      <Scan size={13} />
-                      <span>Open Station</span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
-              <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold">
-                      <th className="p-3">Order Details</th>
-                      <th className="p-3">Customer Info</th>
-                      <th className="p-3">Progress</th>
-                      <th className="p-3 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {filteredQueue.map((o) => {
-                      const customer = customers.find(c => c.id === o.customer_id);
-                      const items = o.items || [];
-                      const itemsCount = items.reduce((acc, it) => acc + (it.qty || 0), 0);
-                      const packedCount = items.reduce((acc, it) => acc + (it.scanned_qty || 0), 0);
-                      const pct = itemsCount > 0 ? Math.round((packedCount / itemsCount) * 100) : 0;
-                      const isDone = itemsCount > 0 && pct === 100;
-
-                      return (
-                        <tr 
-                          key={o.id} 
-                          onClick={() => handleOpenPackingStation(o)}
-                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer"
+                        
+                        {/* Vibrant Action Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenPackingStation(o);
+                          }}
+                          className={`mt-2.5 w-full py-2 px-3 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95 ${
+                            isDone
+                              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/20'
+                              : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-600/20'
+                          }`}
                         >
-                          <td className="p-3">
-                            <div className="flex flex-col gap-1">
+                          <Scan size={13} />
+                          <span>Open Station</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold">
+                          <th className="p-3">Order Details</th>
+                          <th className="p-3">Customer Info</th>
+                          <th className="p-3">Progress</th>
+                          <th className="p-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {dateOrders.map((o) => {
+                          const customer = customers.find(c => c.id === o.customer_id);
+                          const items = o.items || [];
+                          const itemsCount = items.reduce((acc, it) => acc + (it.qty || 0), 0);
+                          const packedCount = items.reduce((acc, it) => acc + (it.scanned_qty || 0), 0);
+                          const pct = itemsCount > 0 ? Math.round((packedCount / itemsCount) * 100) : 0;
+                          const isDone = itemsCount > 0 && pct === 100;
+
+                          return (
+                            <tr 
+                              key={o.id} 
+                              onClick={() => handleOpenPackingStation(o)}
+                              className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer"
+                            >
+                              <td className="p-3">
+                                <div className="flex flex-col gap-1">
                               <span className="text-sm font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                                 #{o.order_number}
                               </span>
@@ -991,18 +1099,73 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               </div>
             </div>
           )}
-
-          {filteredQueue.length === 0 && (
-            <div className="col-span-full bg-slate-50 dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center text-slate-500 space-y-3">
-              <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center mx-auto">
-                <QrCode size={28} className="text-slate-400" />
-              </div>
-              <div>
-                <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">No Pending Orders</h4>
-                <p className="text-[11px] max-w-sm mx-auto text-slate-500">All sales orders are packed and verified! New pending sales orders will automatically appear in this queue.</p>
-              </div>
-            </div>
-          )}
+        </div>
+      ))}
+      
+      {filteredQueue.length === 0 && (
+        <div className="col-span-full bg-slate-50 dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center text-slate-500 space-y-3">
+          <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center mx-auto">
+            <QrCode size={28} className="text-slate-400" />
+          </div>
+          <div>
+            <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">No Pending Orders</h4>
+            <p className="text-[11px] max-w-sm mx-auto text-slate-500">All sales orders are packed and verified! New pending sales orders will automatically appear in this queue.</p>
+          </div>
+        </div>
+      )}
+      </div>
+      ) : (
+        /* ========================================================================= */
+        /* PAGE VIEW C: LIVE PRODUCT STOCK                                           */
+        /* ========================================================================= */
+        <div className="space-y-3">
+          <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <table className="w-full text-left text-[11px]">
+              <thead className="bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 font-extrabold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700 text-[10px]">
+                <tr>
+                  <th className="py-2.5 px-3">Product Name</th>
+                  <th className="py-2.5 px-3">SKU / Barcode</th>
+                  <th className="py-2.5 px-3">Category</th>
+                  <th className="py-2.5 px-3 text-right">Live Stock</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-700 dark:text-slate-300">
+                {products.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-slate-500">
+                      No products found.
+                    </td>
+                  </tr>
+                ) : (
+                  products.map(p => (
+                    <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                      <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                        {p.name}
+                      </td>
+                      <td className="py-2 px-3 text-slate-500">
+                        <div className="flex flex-col gap-0.5">
+                          {p.sku && <span>SKU: {p.sku}</span>}
+                          {p.barcode && <span>Code: {p.barcode}</span>}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-slate-500">
+                        {categories.find(c => c.id === p.category_id)?.name || 'N/A'}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold">
+                        <span className={`px-2 py-1 rounded-full ${
+                          p.current_stock > 10 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' :
+                          p.current_stock > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400' :
+                          'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400'
+                        }`}>
+                          {p.current_stock}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
       </div>{/* CAMERA SCANNER MODAL */}

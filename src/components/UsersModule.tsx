@@ -74,7 +74,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
           email: newUserEmail,
           password: newUserPassword,
           options: {
-            data: { name: newUserName, role: newUserRole, business_id: businessId, allowed_pages: selectedAllowedPages }
+            data: { name: newUserName, role: newUserRole, business_id: businessId }
           }
         }).catch(err => console.warn('Supabase Auth signUp notice:', err));
       }
@@ -118,8 +118,8 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
         (updates as any).password_hash = newUserPassword;
       }
       dbStore.updateUser(selectedUser.id, updates);
-      triggerToast(`Identity ${newUserName} updated successfully. Permissions are now live.`, 'success');
-      dbStore.logActivity(currentUser.id, currentUser.name, currentUser.role, 'Update Identity', `Updated identity ${newUserName} permissions`, businessId);
+      triggerToast(`Identity ${newUserName} updated successfully.`, 'success');
+      dbStore.logActivity(currentUser.id, currentUser.name, currentUser.role, 'Update Identity', `Updated identity ${newUserName}`, businessId);
       setIsEditModalOpen(false);
       setSelectedUser(null);
     } catch (e: any) {
@@ -230,10 +230,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
             </div>
             {currentUser.role === 'Super Admin' && (
               <button 
-                onClick={() => {
-                  setSelectedAllowedPages([]);
-                  setIsAddModalOpen(true);
-                }}
+                onClick={() => setIsAddModalOpen(true)}
                 className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap border border-indigo-400/30"
               >
                 <UserPlus size={14} />
@@ -627,15 +624,12 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
               </div>
 
               {/* Page Level Access for Super Admin */}
-              {(isEditModalOpen || isAddModalOpen) && currentUser.role === 'Super Admin' && (
+              {isEditModalOpen && currentUser.role === 'Super Admin' && (
                 <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                      <LayoutGrid size={14} />
-                      Granular Page Access
-                    </label>
-                    <span className="text-[9px] text-slate-400 italic">Supabase SQL required for persistence</span>
-                  </div>
+                  <label className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                    <LayoutGrid size={14} />
+                    Granular Page Access
+                  </label>
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       { id: 'dashboard', label: 'Dashboard' },

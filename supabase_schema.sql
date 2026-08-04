@@ -35,7 +35,7 @@ CREATE TABLE businesses (
 );
 
 -- Users
-CREATE TABLE user_profiles (
+CREATE TABLE users_profiles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
@@ -43,6 +43,7 @@ CREATE TABLE user_profiles (
     business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
     active BOOLEAN DEFAULT TRUE,
     password_hash TEXT,
+    allowed_pages TEXT[],
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

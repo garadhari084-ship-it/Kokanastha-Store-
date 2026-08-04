@@ -354,24 +354,31 @@ export default function App() {
     return dbStore.subscribe(() => {
       setSyncTick(prev => prev + 1);
       
-      // Live update for permissions/profile changes (User Management live sync)
-      if (currentUser && currentBusiness) {
-        const allUsers = dbStore.getUsers(currentBusiness.id);
-        const updatedUser = allUsers.find(u => u.id === currentUser.id);
-        if (updatedUser) {
-           // Stringify comparison to check if nested properties like allowed_pages changed
-           if (JSON.stringify(updatedUser) !== JSON.stringify(currentUser)) {
-             setCurrentUser(updatedUser);
-           }
+      // Refresh current user and business from store to reflect real-time changes (like permissions)
+      setCurrentUser(prevUser => {
+        if (!prevUser) return null;
+        const freshUser = dbStore.getUserById(prevUser.id);
+        if (freshUser && JSON.stringify(freshUser) !== JSON.stringify(prevUser)) {
+          return freshUser;
         }
-      }
+        return prevUser;
+      });
+      
+      setCurrentBusiness(prevBiz => {
+        if (!prevBiz) return null;
+        const freshBiz = dbStore.getBusiness(prevBiz.id);
+        if (freshBiz && JSON.stringify(freshBiz) !== JSON.stringify(prevBiz)) {
+          return freshBiz;
+        }
+        return prevBiz;
+      });
 
       if (currentBusiness && currentUser) {
         const messages = dbStore.getMessages(currentBusiness.id);
         setUnreadMessagesCount(messages.filter(m => m.receiver_id === currentUser.id && !m.is_read).length);
       }
     });
-  }, [currentBusiness?.id, currentUser?.id, currentUser]);
+  }, [currentBusiness?.id, currentUser?.id]);
 
   // Restore session on mount
   useEffect(() => {
@@ -444,18 +451,9 @@ export default function App() {
             const sessionData = localStorage.getItem('omnipack_session');
             if (sessionData) {
               try {
-                const { businessId, userId } = JSON.parse(sessionData);
+                const { businessId } = JSON.parse(sessionData);
                 if (businessId) {
                   await dbStore.syncFromSupabase(businessId);
-                  
-                  // If it's a profile update for the CURRENT user, force update state immediately
-                  if (payload.table === 'users_profiles' && payload.new && payload.new.id === userId) {
-                    const updatedProfile = dbStore.getUsers(businessId).find(u => u.id === userId);
-                    if (updatedProfile) {
-                      setCurrentUser({ ...updatedProfile });
-                    }
-                  }
-
                   // Force re-render of App to trickle down changes
                   setSyncTick(prev => prev + 1);
                 }
@@ -753,9 +751,9 @@ export default function App() {
     // Super Admin has total access to everything
     if (role === 'Super Admin') return true;
 
-    // If explicit allowed_pages are set, they add to the default role behavior
+    // If explicit allowed_pages are set, they OVERRIDE the default role behavior
     if (currentUser.allowed_pages && currentUser.allowed_pages.length > 0) {
-      if (currentUser.allowed_pages.includes(view)) return true;
+      return currentUser.allowed_pages.includes(view);
     }
 
     // Default Role-Based Access (Fallback)
@@ -763,7 +761,7 @@ export default function App() {
     
     switch (view) {
       case 'dashboard':
-        return true; // Now accessible to everyone by default
+        return role === 'Manager' || role === 'Admin' || role === 'Viewer';
       case 'inbox':
         return true;
       case 'sales':
@@ -917,10 +915,10 @@ export default function App() {
         setActiveView(firstAvailable.id);
       }
     }
-  }, [currentUser, activeView]);
+  }, [currentUser?.id, activeView]);
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Executive Desk', icon: LayoutDashboard },
     { id: 'sales', label: 'Sales & Bookings', icon: FileText },
     { id: 'packing', label: 'Packing Verification', icon: ClipboardCheck, highlight: true },
     { id: 'item_stock_live_report', label: 'Item Stock Live Report', icon: Package },

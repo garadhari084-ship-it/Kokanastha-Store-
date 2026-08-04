@@ -1064,6 +1064,10 @@ class ERPStorage {
     return { success: true, user: profile, business };
   }
 
+  public getUserById(id: string): UserProfile | undefined {
+    return this.cache.profiles.find(u => u.id === id);
+  }
+
   // Tenant / Business Management
   public getBusinesses(): Business[] {
     return this.cache.businesses;

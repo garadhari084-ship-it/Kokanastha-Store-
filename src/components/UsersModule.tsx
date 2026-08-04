@@ -47,14 +47,15 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
   const [newUserPassword, setNewUserPassword] = useState('');
   const [selectedAllowedPages, setSelectedAllowedPages] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (newUserRole === 'Super Admin' || newUserRole === 'Admin') {
+  const handleRoleChange = (role: string) => {
+    setNewUserRole(role as UserRole);
+    if (role === 'Super Admin' || role === 'Admin') {
       setSelectedAllowedPages(ALL_PAGES);
-    } else if (isAddModalOpen) {
-      // For new users who are not admins, start with empty selection
+    } else {
+      // For non-admin users, clear selection to allow manual configuration as requested
       setSelectedAllowedPages([]);
     }
-  }, [newUserRole, isAddModalOpen]);
+  };
 
   const loadData = () => {
     setUsers(dbStore.getUsers(businessId));
@@ -67,6 +68,15 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
       loadData();
     });
   }, [businessId]);
+
+  const openAddModal = () => {
+    setNewUserName('');
+    setNewUserEmail('');
+    setNewUserRole('Viewer');
+    setNewUserPassword('');
+    setSelectedAllowedPages([]);
+    setIsAddModalOpen(true);
+  };
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,6 +110,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
       setNewUserEmail('');
       setNewUserRole('Viewer');
       setNewUserPassword('');
+      setSelectedAllowedPages([]);
     } catch (e: any) {
       triggerToast(e.message || 'Failed to provision identity', 'error');
     }
@@ -115,7 +126,14 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
     setNewUserEmail(u.email);
     setNewUserRole(u.role);
     setNewUserPassword('');
-    setSelectedAllowedPages(u.allowed_pages || []);
+    
+    // If user is Admin/Super Admin, ensure all pages are selected by default as requested
+    if (u.role === 'Super Admin' || u.role === 'Admin') {
+      setSelectedAllowedPages(ALL_PAGES);
+    } else {
+      setSelectedAllowedPages(u.allowed_pages || []);
+    }
+    
     setIsEditModalOpen(true);
   };
 
@@ -245,7 +263,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
             </div>
             {currentUser.role === 'Super Admin' && (
               <button 
-                onClick={() => setIsAddModalOpen(true)}
+                onClick={openAddModal}
                 className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap border border-indigo-400/30"
               >
                 <UserPlus size={14} />
@@ -623,7 +641,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
                 <div className="relative group">
                   <ShieldCheck size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-amber-500 transition-colors z-10" />
                   <select
-                    value={newUserRole} onChange={e => setNewUserRole(e.target.value as UserRole)}
+                    value={newUserRole} onChange={e => handleRoleChange(e.target.value)}
                     className="w-full pl-10 pr-10 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-700/60 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all dark:text-white cursor-pointer appearance-none relative"
                     disabled={isEditModalOpen && currentUser.role !== 'Super Admin'}
                   >

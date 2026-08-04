@@ -749,7 +749,7 @@ export default function App() {
     const role = currentUser.role;
 
     // Super Admin has total access to everything
-    if (role === 'Super Admin') return true;
+    if (role === 'Super Admin' || role === 'Admin') return true;
 
     // If explicit allowed_pages are set, they OVERRIDE the default role behavior
     if (currentUser.allowed_pages && currentUser.allowed_pages.length > 0) {

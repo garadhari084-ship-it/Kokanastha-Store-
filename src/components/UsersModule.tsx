@@ -66,14 +66,15 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
         role: newUserRole,
         business_id: businessId,
         active: true,
-        password_hash: newUserPassword
+        password_hash: newUserPassword,
+        allowed_pages: selectedAllowedPages
       });
       if (isSupabaseConfigured && supabase && newUserPassword) {
         supabase.auth.signUp({
           email: newUserEmail,
           password: newUserPassword,
           options: {
-            data: { name: newUserName, role: newUserRole, business_id: businessId }
+            data: { name: newUserName, role: newUserRole, business_id: businessId, allowed_pages: selectedAllowedPages }
           }
         }).catch(err => console.warn('Supabase Auth signUp notice:', err));
       }
@@ -229,7 +230,10 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
             </div>
             {currentUser.role === 'Super Admin' && (
               <button 
-                onClick={() => setIsAddModalOpen(true)}
+                onClick={() => {
+                  setSelectedAllowedPages([]);
+                  setIsAddModalOpen(true);
+                }}
                 className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap border border-indigo-400/30"
               >
                 <UserPlus size={14} />
@@ -623,7 +627,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
               </div>
 
               {/* Page Level Access for Super Admin */}
-              {isEditModalOpen && currentUser.role === 'Super Admin' && (
+              {(isEditModalOpen || isAddModalOpen) && currentUser.role === 'Super Admin' && (
                 <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
                   <label className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
                     <LayoutGrid size={14} />

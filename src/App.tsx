@@ -353,12 +353,25 @@ export default function App() {
   useEffect(() => {
     return dbStore.subscribe(() => {
       setSyncTick(prev => prev + 1);
+      
+      // Live update for permissions/profile changes (User Management live sync)
+      if (currentUser && currentBusiness) {
+        const allUsers = dbStore.getUsers(currentBusiness.id);
+        const updatedUser = allUsers.find(u => u.id === currentUser.id);
+        if (updatedUser) {
+           // Stringify comparison to check if nested properties like allowed_pages changed
+           if (JSON.stringify(updatedUser) !== JSON.stringify(currentUser)) {
+             setCurrentUser(updatedUser);
+           }
+        }
+      }
+
       if (currentBusiness && currentUser) {
         const messages = dbStore.getMessages(currentBusiness.id);
         setUnreadMessagesCount(messages.filter(m => m.receiver_id === currentUser.id && !m.is_read).length);
       }
     });
-  }, [currentBusiness?.id, currentUser?.id]);
+  }, [currentBusiness?.id, currentUser?.id, currentUser]);
 
   // Restore session on mount
   useEffect(() => {
@@ -741,6 +754,7 @@ export default function App() {
     
     switch (view) {
       case 'dashboard':
+        return role === 'Manager' || role === 'Admin' || role === 'Viewer';
       case 'inbox':
         return true;
       case 'sales':
@@ -887,8 +901,17 @@ export default function App() {
   };
 
   // Define sidebar menu items
+  useEffect(() => {
+    if (currentUser && !hasAccessToView(activeView)) {
+      const firstAvailable = menuItems.find(item => hasAccessToView(item.id));
+      if (firstAvailable) {
+        setActiveView(firstAvailable.id);
+      }
+    }
+  }, [currentUser, activeView]);
+
   const menuItems = [
-    { id: 'dashboard', label: 'Executive Desk', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'sales', label: 'Sales & Bookings', icon: FileText },
     { id: 'packing', label: 'Packing Verification', icon: ClipboardCheck, highlight: true },
     { id: 'item_stock_live_report', label: 'Item Stock Live Report', icon: Package },

@@ -216,13 +216,35 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
     e.preventDefault();
     if (!selectedCustomerForMembership) return;
 
+    const oldTier = selectedCustomerForMembership.loyalty_tier;
+    const newTier = membershipIsActive ? (membershipTier || undefined) : undefined;
+    const tierChanged = oldTier !== newTier;
+
     dbStore.updateCustomer(selectedCustomerForMembership.id, {
       loyalty_start_date: membershipIsActive ? membershipStartDate : null,
       loyalty_end_date: membershipIsActive ? membershipEndDate : null,
       loyalty_auto_renew: membershipIsActive ? membershipAutoRenew : false,
       is_loyal_member: membershipIsActive,
-      loyalty_tier: membershipIsActive ? (membershipTier || undefined) : undefined
+      loyalty_tier: newTier
     });
+
+    if (tierChanged && newTier) {
+      let bonusPts = 0;
+      if (newTier === 'Silver') bonusPts = loyaltyConfig.silver_bonus_points || 0;
+      if (newTier === 'Gold') bonusPts = loyaltyConfig.gold_bonus_points || 0;
+      if (newTier === 'Platinum') bonusPts = loyaltyConfig.platinum_bonus_points || 0;
+
+      if (bonusPts > 0) {
+        dbStore.addLoyaltyPoints(
+          selectedCustomerForMembership.id,
+          bonusPts,
+          'Earned',
+          `${newTier} Tier Activation Bonus`,
+          businessId,
+          'SYSTEM_TIER_UPGRADE'
+        );
+      }
+    }
 
     dbStore.logActivity(
       user.id,
@@ -1295,6 +1317,48 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
               </div>
 
               <div className="border-t border-slate-100 dark:border-slate-700 pt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Silver Bonus Points
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={configForm.silver_bonus_points}
+                    onFocus={e => e.target.select()}
+                    onChange={e => setConfigForm({ ...configForm, silver_bonus_points: e.target.value === '' ? '' : Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Gold Bonus Points
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={configForm.gold_bonus_points}
+                    onFocus={e => e.target.select()}
+                    onChange={e => setConfigForm({ ...configForm, gold_bonus_points: e.target.value === '' ? '' : Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Platinum Bonus Points
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={configForm.platinum_bonus_points}
+                    onFocus={e => e.target.select()}
+                    onChange={e => setConfigForm({ ...configForm, platinum_bonus_points: e.target.value === '' ? '' : Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  />
+                </div>
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
                     Welcome Bonus Points

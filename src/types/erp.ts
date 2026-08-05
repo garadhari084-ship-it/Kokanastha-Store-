@@ -350,6 +350,9 @@ export interface LoyaltyConfig {
   platinum_min_spend: number; // 20000
   gold_multiplier: number; // 1.25
   platinum_multiplier: number; // 1.5
+  silver_bonus_points: number;
+  gold_bonus_points: number;
+  platinum_bonus_points: number;
   welcome_bonus_points: number; // 50
   birthday_bonus_points: number; // 100
   point_expiry_days: number; // 365
@@ -413,6 +416,9 @@ export const DEFAULT_LOYALTY_CONFIG: LoyaltyConfig = {
   platinum_min_spend: 20000,
   gold_multiplier: 1.25,
   platinum_multiplier: 1.5,
+  silver_bonus_points: 0,
+  gold_bonus_points: 500,
+  platinum_bonus_points: 1000,
   welcome_bonus_points: 50,
   birthday_bonus_points: 100,
   point_expiry_days: 365

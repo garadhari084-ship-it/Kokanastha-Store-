@@ -367,11 +367,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [selectedArea, setSelectedArea] = useState('Dahisar');
   const [orderDate, setOrderDate] = useState<string>(getLocalTodayDate);
   const [orderTime, setOrderTime] = useState<string>(getLocalCurrentTimeInput);
-  const [deliveryDate, setDeliveryDate] = useState<string>(getLocalTodayDate);
+  const [deliveryDate, setDeliveryDate] = useState<string>('');
   const [isAdvanceBooking, setIsAdvanceBooking] = useState(false);
   const [isFulfilledImmediately, setIsFulfilledImmediately] = useState(false);
   const [isFestiveBooking, setIsFestiveBooking] = useState(false);
-  const [deliveryType, setDeliveryType] = useState<string>('Self pickup');
+  const [deliveryType, setDeliveryType] = useState<string>('Self delivery');
   const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partial' | 'Unpaid' | ''>('');
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [paidAmount, setPaidAmount] = useState<number | string>('');
@@ -470,8 +470,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setSelectedArea(biz?.default_dispatch_zone || 'Dahisar');
     setOrderDate(getLocalTodayDate());
     setOrderTime(getLocalCurrentTimeInput());
-    setDeliveryDate(getLocalTodayDate());
-    setDeliveryType('Self pickup');
+    setDeliveryDate('');
+    setDeliveryType('Self delivery');
     setIsAdvanceBooking(false);
     setIsFulfilledImmediately(false);
     setIsFestiveBooking(false);
@@ -541,7 +541,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setSelectedArea(order.area || 'Dahisar');
     setOrderDate(order.order_date || getLocalTodayDate());
     setOrderTime(order.time || getLocalCurrentTimeInput());
-    setDeliveryDate(order.delivery_date || getLocalTodayDate());
+    setDeliveryDate(order.delivery_date || '');
     setDeliveryType(order.delivery_type || 'Self pickup');
     setIsAdvanceBooking(order.advance_booking || false);
     setIsFulfilledImmediately(order.status === 'Delivered');
@@ -840,7 +840,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           channel: isWalkIn ? 'Walk-in' : 'Direct Order',
           time: orderTime ? format12HourTime(orderTime) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           order_date: orderDate || getLocalTodayDate(),
-          ...(selectedCustomerId !== 'WALK_IN' && deliveryDate ? { delivery_date: deliveryDate } : {}),
+          delivery_date: deliveryDate || null,
           delivery_type: deliveryType,
           status: isFulfilledImmediately || isWalkIn ? 'Delivered' : existingOrder?.status === 'Packed' ? 'Pending' : (existingOrder?.status || 'Pending'),
           delivery_status: isFulfilledImmediately || isWalkIn ? 'Delivered' : existingOrder?.delivery_status || 'Pending',
@@ -906,7 +906,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           channel: isWalkIn ? 'Walk-in' : 'Direct Order',
           time: orderTime ? format12HourTime(orderTime) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           order_date: orderDate || getLocalTodayDate(),
-          ...(selectedCustomerId !== 'WALK_IN' && deliveryDate ? { delivery_date: deliveryDate } : {}),
+          delivery_date: deliveryDate || null,
           delivery_type: deliveryType,
           status: isFulfilledImmediately || isWalkIn ? 'Delivered' : 'Pending',
           payment_status: finalPaymentStatusToSave as any,
@@ -2161,134 +2161,129 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   );
                 })()}
                 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Type</label>
-                  <CustomDropdown 
-                    value={deliveryType}
-                    onChange={(val) => setDeliveryType(val)}
-                    options={[
-                      { value: 'Self delivery', label: 'Self delivery' },
-                      { value: 'Out of india courier', label: 'Out of india courier' },
-                      { value: 'Domestic courier', label: 'Domestic courier' },
-                      { value: 'Third party app delivery', label: 'Third party app delivery' },
-                      { value: 'Self pickup', label: 'Self pickup' }
-                    ]}
-                    placeholder="Select delivery type"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Date</label>
+                    <input 
+                      type="date"
+                      value={deliveryDate}
+                      onChange={(e) => setDeliveryDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none font-medium cursor-pointer"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Type</label>
+                    <CustomDropdown 
+                      value={deliveryType}
+                      onChange={(val) => setDeliveryType(val)}
+                      options={[
+                        { value: 'Self delivery', label: 'Self delivery' },
+                        { value: 'Out of india courier', label: 'Out of india courier' },
+                        { value: 'Domestic courier', label: 'Domestic courier' },
+                        { value: 'Third party app delivery', label: 'Third party app delivery' },
+                        { value: 'Self pickup', label: 'Self pickup' }
+                      ]}
+                      placeholder="Select delivery type"
+                    />
+                  </div>
                 </div>
 
-                {selectedCustomerId !== 'WALK_IN' ? (
-                  <>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Date</label>
+                <div className="space-y-1 flex flex-col justify-end pb-1.5">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5">
                       <input 
-                        type="date"
-                        value={deliveryDate}
-                        onChange={(e) => setDeliveryDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none font-medium cursor-pointer"
+                        type="checkbox" 
+                        id="advance-chk"
+                        checked={isAdvanceBooking}
+                        onChange={(e) => handleToggleAdvanceBooking(e.target.checked)}
+                        className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
                       />
+                      <label htmlFor="advance-chk" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
+                        <Sparkles size={14} className="text-indigo-500" />
+                        <span>Advance Booking</span>
+                      </label>
                     </div>
-                  </>
-                ) : (
-                  <div className="space-y-1 flex flex-col justify-end pb-1.5">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <div className="flex items-center gap-1.5">
-                        <input 
-                          type="checkbox" 
-                          id="advance-chk"
-                          checked={isAdvanceBooking}
-                          onChange={(e) => handleToggleAdvanceBooking(e.target.checked)}
-                          className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
-                        />
-                        <label htmlFor="advance-chk" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
-                          <Sparkles size={14} className="text-indigo-500" />
-                          <span>Advance Booking</span>
-                        </label>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <input 
-                          type="checkbox" 
-                          id="fulfilled-chk"
-                          checked={isFulfilledImmediately}
-                          onChange={(e) => {
-                            setIsFulfilledImmediately(e.target.checked);
-                            if (e.target.checked) {
-                              setPaymentStatus('Paid');
-                            }
-                          }}
-                          className="h-4 w-4 text-emerald-600 cursor-pointer rounded"
-                        />
-                        <label htmlFor="fulfilled-chk" className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase flex items-center gap-1 cursor-pointer">
-                          <CheckCircle2 size={14} className="text-emerald-500" />
-                          <span>Delivered / Handed Over</span>
-                        </label>
-                      </div>
+                    <div className="flex items-center gap-1.5">
+                      <input 
+                        type="checkbox" 
+                        id="fulfilled-chk"
+                        checked={isFulfilledImmediately}
+                        onChange={(e) => {
+                          setIsFulfilledImmediately(e.target.checked);
+                          if (e.target.checked) {
+                            setPaymentStatus('Paid');
+                          }
+                        }}
+                        className="h-4 w-4 text-emerald-600 cursor-pointer rounded"
+                      />
+                      <label htmlFor="fulfilled-chk" className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase flex items-center gap-1 cursor-pointer">
+                        <CheckCircle2 size={14} className="text-emerald-500" />
+                        <span>Delivered / Handed Over</span>
+                      </label>
+                    </div>
 
-                      <div className="flex items-center gap-1.5">
-                        <input 
-                          type="checkbox" 
-                          id="festive-chk"
-                          checked={isFestiveBooking}
-                          onChange={(e) => handleToggleFestiveBooking(e.target.checked)}
-                          className="h-4 w-4 text-amber-600 cursor-pointer rounded"
-                        />
-                        <label htmlFor="festive-chk" className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase flex items-center gap-1 cursor-pointer">
-                          <Sparkles size={14} className="text-amber-500" />
-                          <span>Festive Booking</span>
-                        </label>
-                      </div>
+                    <div className="flex items-center gap-1.5">
+                      <input 
+                        type="checkbox" 
+                        id="festive-chk"
+                        checked={isFestiveBooking}
+                        onChange={(e) => handleToggleFestiveBooking(e.target.checked)}
+                        className="h-4 w-4 text-amber-600 cursor-pointer rounded"
+                      />
+                      <label htmlFor="festive-chk" className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase flex items-center gap-1 cursor-pointer">
+                        <Sparkles size={14} className="text-amber-500" />
+                        <span>Festive Booking</span>
+                      </label>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
 
-              {selectedCustomerId !== 'WALK_IN' && (
-                <div className="pt-1 flex items-center gap-4 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="checkbox" 
-                      id="advance-chk-sub"
-                      checked={isAdvanceBooking}
-                      onChange={(e) => handleToggleAdvanceBooking(e.target.checked)}
-                      className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
-                    />
-                    <label htmlFor="advance-chk-sub" className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
-                      <Sparkles size={14} className="text-indigo-500" />
-                      <span>Flag as Advance Booking</span>
-                    </label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="checkbox" 
-                      id="fulfilled-chk-sub"
-                      checked={isFulfilledImmediately}
-                      onChange={(e) => {
-                        setIsFulfilledImmediately(e.target.checked);
-                        if (e.target.checked) setPaymentStatus('Paid');
-                      }}
-                      className="h-4 w-4 text-emerald-600 cursor-pointer rounded"
-                    />
-                    <label htmlFor="fulfilled-chk-sub" className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
-                      <CheckCircle2 size={14} className="text-emerald-500" />
-                      <span>Delivered / Handed Over</span>
-                    </label>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="checkbox" 
-                      id="festive-chk-sub"
-                      checked={isFestiveBooking}
-                      onChange={(e) => handleToggleFestiveBooking(e.target.checked)}
-                      className="h-4 w-4 text-amber-600 cursor-pointer rounded"
-                    />
-                    <label htmlFor="festive-chk-sub" className="text-[11px] font-black text-amber-800 dark:text-amber-300 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
-                      <Sparkles size={14} className="text-amber-500" />
-                      <span>Festive Booking</span>
-                    </label>
-                  </div>
+              <div className="pt-1 flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="advance-chk-sub"
+                    checked={isAdvanceBooking}
+                    onChange={(e) => handleToggleAdvanceBooking(e.target.checked)}
+                    className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
+                  />
+                  <label htmlFor="advance-chk-sub" className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
+                    <Sparkles size={14} className="text-indigo-500" />
+                    <span>Flag as Advance Booking</span>
+                  </label>
                 </div>
-              )}
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="fulfilled-chk-sub"
+                    checked={isFulfilledImmediately}
+                    onChange={(e) => {
+                      setIsFulfilledImmediately(e.target.checked);
+                      if (e.target.checked) setPaymentStatus('Paid');
+                    }}
+                    className="h-4 w-4 text-emerald-600 cursor-pointer rounded"
+                  />
+                  <label htmlFor="fulfilled-chk-sub" className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
+                    <CheckCircle2 size={14} className="text-emerald-500" />
+                    <span>Delivered / Handed Over</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="festive-chk-sub"
+                    checked={isFestiveBooking}
+                    onChange={(e) => handleToggleFestiveBooking(e.target.checked)}
+                    className="h-4 w-4 text-amber-600 cursor-pointer rounded"
+                  />
+                  <label htmlFor="festive-chk-sub" className="text-[11px] font-black text-amber-800 dark:text-amber-300 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
+                    <Sparkles size={14} className="text-amber-500" />
+                    <span>Festive Booking</span>
+                  </label>
+                </div>
+              </div>
 
               {/* Add item rows */}
               <div className="bg-slate-50 dark:bg-slate-850 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">

@@ -89,6 +89,15 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     selectedOrderRef.current = selectedOrder;
   }, [selectedOrder]);
 
+  const formatDisplayDate = (dateStr: string | undefined | null) => {
+    if (!dateStr || dateStr === 'N/A') return '';
+    if (dateStr.includes('-')) {
+      const [y, m, d] = dateStr.split('-');
+      return `${d}/${m}/${y}`;
+    }
+    return dateStr;
+  };
+
   // Auto-refresh when orders change in store
   const reloadOrders = () => {
     const allSales = dbStore.getSalesOrders(businessId);
@@ -382,13 +391,26 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
   const groupedQueue = useMemo(() => {
     const groups: Record<string, SalesOrder[]> = {};
-    filteredQueue.forEach(o => {
+    
+    // Sort the entire filteredQueue first to show nearest delivery first
+    const sorted = [...filteredQueue].sort((a, b) => {
+      const dateA = a.delivery_date || a.order_date || '9999-99-99';
+      const dateB = b.delivery_date || b.order_date || '9999-99-99';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return b.order_number.localeCompare(a.order_number);
+    });
+
+    sorted.forEach(o => {
       const date = o.delivery_date || o.order_date || 'Unknown Date';
       if (!groups[date]) groups[date] = [];
       groups[date].push(o);
     });
     
-    return Object.entries(groups).sort(([dateA], [dateB]) => dateA.localeCompare(dateB));
+    return Object.entries(groups).sort(([dateA], [dateB]) => {
+      if (dateA === 'Unknown Date') return 1;
+      if (dateB === 'Unknown Date') return -1;
+      return dateA.localeCompare(dateB);
+    });
   }, [filteredQueue]);
 
     const getRelativeDateLabel = (dateString: string) => {
@@ -410,6 +432,86 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     return `Delivery on ${dateString}`;
   };
 
+  const getDeliveryStatus = (deliveryDate: string | undefined) => {
+    if (!deliveryDate) return { 
+      badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800', 
+      border: 'border-emerald-500/30 dark:border-emerald-500/30',
+      icon: 'text-emerald-500',
+      text: 'text-emerald-600 dark:text-emerald-400',
+      dot: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+    };
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let dDate: Date;
+    // Handle DD/MM/YYYY format if present
+    if (deliveryDate.includes('/') && deliveryDate.split('/').length === 3) {
+      const [d, m, y] = deliveryDate.split('/').map(Number);
+      dDate = new Date(y, m - 1, d);
+    } else {
+      dDate = new Date(deliveryDate);
+    }
+    dDate.setHours(0, 0, 0, 0);
+    
+    if (isNaN(dDate.getTime())) {
+      return { 
+        badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800', 
+        border: 'border-emerald-500/30 dark:border-emerald-500/30',
+        icon: 'text-emerald-500',
+        text: 'text-emerald-600 dark:text-emerald-400',
+        dot: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+      };
+    }
+    
+    const diffTime = dDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays <= 5) {
+      return { 
+        badge: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400 border-rose-200 dark:border-rose-800', 
+        border: 'border-rose-500/30 dark:border-rose-500/30',
+        icon: 'text-rose-500',
+        text: 'text-rose-600 dark:text-rose-400',
+        ping: diffDays <= 1,
+        dot: 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]'
+      };
+    } else if (diffDays <= 10) {
+      return { 
+        badge: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-amber-200 dark:border-amber-800', 
+        border: 'border-amber-500/30 dark:border-amber-500/30',
+        icon: 'text-amber-500',
+        text: 'text-amber-600 dark:text-amber-400',
+        dot: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]'
+      };
+    } else {
+      return { 
+        badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800', 
+        border: 'border-emerald-500/30 dark:border-emerald-500/30',
+        icon: 'text-emerald-500',
+        text: 'text-emerald-600 dark:text-emerald-400',
+        dot: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+      };
+    }
+  };
+
+  const stats = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayOrders = pendingOrders.filter(o => (o.delivery_date || o.order_date) === todayStr);
+    const packingOrders = pendingOrders.filter(o => o.status === 'Packing');
+    const fullyScanned = pendingOrders.filter(o => {
+      const items = o.items || [];
+      return items.length > 0 && items.every(it => (it.scanned_qty || 0) >= it.qty);
+    });
+    
+    return {
+      total: pendingOrders.length,
+      today: todayOrders.length,
+      active: packingOrders.length,
+      ready: fullyScanned.length
+    };
+  }, [pendingOrders]);
+
   return (
     <div className="space-y-3 max-w-full pb-16 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="packing-verification-module">
       
@@ -422,7 +524,48 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
       <div className="px-0.5 sm:px-1 space-y-3">
         {!selectedOrder && (
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
+          <>
+            {/* ADVANCED STATS BAR */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center sm:items-start">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Queue Total</span>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-indigo-50 dark:bg-indigo-950/50 rounded-lg text-indigo-600 dark:text-indigo-400">
+                    <List size={14} />
+                  </div>
+                  <span className="text-xl font-black text-slate-900 dark:text-white leading-none">{stats.total}</span>
+                </div>
+              </div>
+              <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center sm:items-start">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Deliver Today</span>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-rose-50 dark:bg-rose-950/50 rounded-lg text-rose-600 dark:text-rose-400">
+                    <Clock size={14} />
+                  </div>
+                  <span className="text-xl font-black text-rose-600 leading-none">{stats.today}</span>
+                </div>
+              </div>
+              <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center sm:items-start">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Currently Packing</span>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-amber-50 dark:bg-amber-950/50 rounded-lg text-amber-600 dark:text-amber-400">
+                    <PackageCheck size={14} />
+                  </div>
+                  <span className="text-xl font-black text-amber-600 leading-none">{stats.active}</span>
+                </div>
+              </div>
+              <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center sm:items-start">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Ready to Dispatch</span>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-emerald-50 dark:bg-emerald-950/50 rounded-lg text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 size={14} />
+                  </div>
+                  <span className="text-xl font-black text-emerald-600 leading-none">{stats.ready}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
             <button
               onClick={() => setActiveTab('packing')}
               className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
@@ -444,6 +587,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               Live Product Stock
             </button>
           </div>
+          </>
         )}
 
       {/* ========================================================================= */}
@@ -488,6 +632,9 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                 </span>
                 <h2 className="text-sm font-extrabold tracking-tight flex items-center gap-2 text-white ml-1">
                   Order #{selectedOrder.order_number}
+                  <span className="text-[9px] font-medium text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded-md ml-1 tracking-normal">
+                    {formatDisplayDate(selectedOrder.order_date)} {selectedOrder.delivery_date ? `• Delivery: ${formatDisplayDate(selectedOrder.delivery_date)}` : ''}
+                  </span>
                 </h2>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-slate-300">
@@ -840,7 +987,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
                 type="text" 
-                placeholder="Search orders, customers, area..."
+                placeholder="Search orders, customers, or scan barcode..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 text-[11px] font-medium rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder:text-slate-400"
@@ -911,35 +1058,75 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                     const packedCount = items.reduce((acc, it) => acc + (it.scanned_qty || 0), 0);
                     const pct = itemsCount > 0 ? Math.round((packedCount / itemsCount) * 100) : 0;
                     const isDone = itemsCount > 0 && pct === 100;
+                    const dStatus = getDeliveryStatus(o.delivery_date);
                     
                     return (
                       <div 
                         key={o.id}
                         onClick={() => handleOpenPackingStation(o)}
-                        className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-2.5 sm:p-3 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group hover:border-indigo-500/50 cursor-pointer relative overflow-hidden"
+                        className={`bg-white dark:bg-slate-900 rounded-xl border p-2.5 sm:p-3 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer relative overflow-hidden ${dStatus.border} hover:border-indigo-500/50`}
                       >
                         <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-indigo-500/10 via-indigo-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
+                        
+                        {/* Top Right Delivery Status Indicator */}
+                        <div className="absolute top-2 right-2 flex flex-col items-end gap-1 z-20">
+                          <div className={`w-3 h-3 rounded-full ${dStatus.dot} border-2 border-white dark:border-slate-900 shadow-sm animate-pulse`}></div>
+                        </div>
                         
                         <div className="space-y-2 relative z-10">
                           {/* Header: Order Ref & Status Pill */}
                           <div className="flex justify-between items-start gap-1">
                             <div className="min-w-0">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block leading-none mb-0.5">Order Ref</span>
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className={`w-1.5 h-1.5 rounded-full ${dStatus.dot} animate-pulse shrink-0`}></span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block leading-none">Order Ref</span>
+                              </div>
                               <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate block">
                                 #{o.order_number}
                               </strong>
+                              <div className="flex flex-col gap-0.5 mt-0.5">
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter block">
+                                  Ordered: {formatDisplayDate(o.order_date) || 'N/A'}
+                                </span>
+                                {o.delivery_date && (
+                                  <span className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-tighter block">
+                                    Delivery: {formatDisplayDate(o.delivery_date)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 border ${
-                              isDone 
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
-                                : o.status === 'Packing' 
-                                ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 animate-pulse' 
-                                : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                            }`}>
-                              {isDone ? 'Verified' : o.status}
-                            </span>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 border ${
+                                isDone 
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
+                                  : o.status === 'Packing' 
+                                  ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 animate-pulse' 
+                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                              }`}>
+                                {isDone ? 'Verified' : o.status}
+                              </span>
+                              {o.total_amount && (
+                                <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400">
+                                  ₹{o.total_amount.toLocaleString()}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           
+                          {/* Delivery Date Badge - High priority feature */}
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border shadow-sm ${dStatus.badge}`}>
+                              <Clock size={12} className={dStatus.icon} />
+                              <div className="flex flex-col">
+                                <span className="text-[8px] uppercase font-black leading-none opacity-70">Delivery Target</span>
+                                <span className="text-[10px] font-black">{formatDisplayDate(o.delivery_date) || formatDisplayDate(o.order_date) || 'No Date Set'}</span>
+                              </div>
+                            </div>
+                            {dStatus.ping && (
+                              <span className="flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                            )}
+                          </div>
+
                           {/* Customer Info Container */}
                           <div className="space-y-1 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
                             <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
@@ -1006,7 +1193,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold">
-                          <th className="p-3">Order Details</th>
+                          <th className="p-3">Delivery Status</th>
+                          <th className="p-3">Order Info</th>
                           <th className="p-3">Customer Info</th>
                           <th className="p-3">Progress</th>
                           <th className="p-3 text-right">Action</th>
@@ -1020,6 +1208,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                           const packedCount = items.reduce((acc, it) => acc + (it.scanned_qty || 0), 0);
                           const pct = itemsCount > 0 ? Math.round((packedCount / itemsCount) * 100) : 0;
                           const isDone = itemsCount > 0 && pct === 100;
+                          const dStatus = getDeliveryStatus(o.delivery_date);
 
                           return (
                             <tr 
@@ -1028,21 +1217,47 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                               className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer"
                             >
                               <td className="p-3">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-2.5 h-2.5 rounded-full ${dStatus.dot} flex-shrink-0 shadow-sm animate-pulse`}></div>
+                                  <div className="flex items-center gap-2">
+                                    <Clock size={14} className={dStatus.icon} />
+                                    <div className="flex flex-col">
+                                      <span className={`text-[11px] font-bold ${dStatus.text}`}>
+                                        {formatDisplayDate(o.delivery_date) || formatDisplayDate(o.order_date) || 'N/A'}
+                                      </span>
+                                      {dStatus.ping && (
+                                        <span className="text-[9px] font-black text-rose-500 uppercase tracking-tighter">Deliver Today</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-3">
                                 <div className="flex flex-col gap-1">
-                              <span className="text-sm font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                #{o.order_number}
-                              </span>
-                              <span className={`w-fit px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider border ${
-                                isDone 
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
-                                  : o.status === 'Packing' 
-                                  ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700' 
-                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                              }`}>
-                                {isDone ? 'Verified' : o.status}
-                              </span>
-                            </div>
-                          </td>
+                                  <span className="text-sm font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                    #{o.order_number}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-slate-500 font-bold">
+                                      {formatDisplayDate(o.order_date)}
+                                    </span>
+                                    {o.total_amount && (
+                                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-black">
+                                        ₹{o.total_amount.toLocaleString()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className={`w-fit mt-1 px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider border ${
+                                    isDone 
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
+                                      : o.status === 'Packing' 
+                                      ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700' 
+                                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                                  }`}>
+                                    {isDone ? 'Verified' : o.status}
+                                  </span>
+                                </div>
+                              </td>
                           <td className="p-3">
                             <div className="flex flex-col gap-0.5 text-[11px]">
                               <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">

@@ -1907,8 +1907,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-1">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div className="space-y-1 flex flex-col justify-end">
                   <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
                     <span>Invoice Number *</span>
                   </label>
@@ -1920,8 +1920,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     className="w-full px-3 py-2 bg-amber-50/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-[11px] rounded-lg border border-amber-300 dark:border-amber-800/80 focus:outline-hidden font-black cursor-not-allowed select-none"
                   />
                 </div>
-
-                <div className="md:col-span-2 space-y-1">
+                <div className="md:col-span-2 space-y-1 flex flex-col justify-end">
                   <div className="flex items-center justify-between">
                     <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Select Customer Party</label>
                     <button
@@ -2056,7 +2055,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   </div>
                 )}
 
-                <div className="space-y-1">
+                <div className="space-y-1 flex flex-col justify-end">
                   <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Area Zone Location</label>
                   {(() => {
                     const areaZoneList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
@@ -2194,56 +2193,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       ]}
                       placeholder="Select delivery type"
                     />
-                  </div>
-                </div>
-
-                <div className="space-y-1 flex flex-col justify-end pb-1.5">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="flex items-center gap-1.5">
-                      <input 
-                        type="checkbox" 
-                        id="advance-chk"
-                        checked={isAdvanceBooking}
-                        onChange={(e) => handleToggleAdvanceBooking(e.target.checked)}
-                        className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
-                      />
-                      <label htmlFor="advance-chk" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-1 cursor-pointer">
-                        <Sparkles size={14} className="text-indigo-500" />
-                        <span>Advance Booking</span>
-                      </label>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <input 
-                        type="checkbox" 
-                        id="fulfilled-chk"
-                        checked={isFulfilledImmediately}
-                        onChange={(e) => {
-                          setIsFulfilledImmediately(e.target.checked);
-                          if (e.target.checked) {
-                            setPaymentStatus('Paid');
-                          }
-                        }}
-                        className="h-4 w-4 text-emerald-600 cursor-pointer rounded"
-                      />
-                      <label htmlFor="fulfilled-chk" className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase flex items-center gap-1 cursor-pointer">
-                        <CheckCircle2 size={14} className="text-emerald-500" />
-                        <span>Delivered / Handed Over</span>
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <input 
-                        type="checkbox" 
-                        id="festive-chk"
-                        checked={isFestiveBooking}
-                        onChange={(e) => handleToggleFestiveBooking(e.target.checked)}
-                        className="h-4 w-4 text-amber-600 cursor-pointer rounded"
-                      />
-                      <label htmlFor="festive-chk" className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase flex items-center gap-1 cursor-pointer">
-                        <Sparkles size={14} className="text-amber-500" />
-                        <span>Festive Booking</span>
-                      </label>
-                    </div>
                   </div>
                 </div>
               </div>

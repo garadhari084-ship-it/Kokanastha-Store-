@@ -345,6 +345,7 @@ export interface LoyaltyConfig {
   spend_per_point: number; // e.g., 100 => 1 point per ₹100 spent
   point_value: number; // e.g., 1 => 1 point = ₹1 discount
   silver_min_spend: number; // 0
+  silver_multiplier?: number;
   gold_min_spend: number; // 5000
   platinum_min_spend: number; // 20000
   gold_multiplier: number; // 1.25

@@ -43,6 +43,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   const [formCreditLimit, setFormCreditLimit] = useState<number>(0);
   const [formImageUrl, setFormImageUrl] = useState('');
   const [formIsLoyalMember, setFormIsLoyalMember] = useState<boolean>(false);
+  const [formLoyaltyTier, setFormLoyaltyTier] = useState<string>('');
   
   // Custom Area additions
   const [isAddingArea, setIsAddingArea] = useState(false);
@@ -67,6 +68,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormCreditLimit(0);
     setFormImageUrl('');
     setFormIsLoyalMember(false);
+    setFormLoyaltyTier('');
     
     setEditingCustomer(null);
     setIsModalOpen(true);
@@ -86,6 +88,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormCreditLimit(cust.credit_limit);
     setFormImageUrl(cust.image_url || '');
     setFormIsLoyalMember(cust.is_loyal_member || false);
+    setFormLoyaltyTier(cust.loyalty_tier || '');
     setIsModalOpen(true);
   };
 
@@ -113,6 +116,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           phone: cleanPhone,
           credit_limit: formCreditLimit,
           is_loyal_member: formIsLoyalMember,
+          loyalty_tier: formLoyaltyTier || undefined,
           image_url: formImageUrl
         });
         dbStore.logActivity(user.id, user.name, user.role, 'Update Customer', `Updated customer profile: ${formName}`, businessId);
@@ -130,6 +134,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           phone: cleanPhone,
           credit_limit: formCreditLimit,
           is_loyal_member: formIsLoyalMember,
+          loyalty_tier: formLoyaltyTier || undefined,
           business_id: businessId,
           active: true,
           
@@ -504,6 +509,11 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                             }`}>
                               {cust.group}
                             </span>
+                            {cust.loyalty_tier && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300">
+                                {cust.loyalty_tier}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 text-[9px] mt-0.5">
                             <span className="flex items-center gap-0.5 text-slate-500 font-mono"><Phone size={10} /> {cust.phone}</span>
@@ -634,6 +644,20 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                       <p className="text-[9px] text-slate-400 mt-1">Upload a shop or profile picture (max 1MB recommended).</p>
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Loyalty Tier (Override)</label>
+                  <select 
+                    value={formLoyaltyTier}
+                    onChange={(e) => setFormLoyaltyTier(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  >
+                    <option value="">Auto (Spend-based)</option>
+                    <option value="Silver">Silver</option>
+                    <option value="Gold">Gold</option>
+                    <option value="Platinum">Platinum</option>
+                  </select>
                 </div>
 
                 

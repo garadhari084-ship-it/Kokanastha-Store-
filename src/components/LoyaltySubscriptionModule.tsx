@@ -89,9 +89,12 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
   const [manualName, setManualName] = useState('');
   const [manualPhone, setManualPhone] = useState('');
   const [selectedCustomerForMembership, setSelectedCustomerForMembership] = useState<Customer | null>(null);
+  const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
+  const [customerToRemove, setCustomerToRemove] = useState<Customer | null>(null);
   const [membershipStartDate, setMembershipStartDate] = useState('');
   const [membershipEndDate, setMembershipEndDate] = useState('');
   const [membershipAutoRenew, setMembershipAutoRenew] = useState(false);
+  const [membershipTier, setMembershipTier] = useState<string>('');
   const [membershipIsActive, setMembershipIsActive] = useState(false);
 
   // Subscription Modal
@@ -217,7 +220,8 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
       loyalty_start_date: membershipIsActive ? membershipStartDate : null,
       loyalty_end_date: membershipIsActive ? membershipEndDate : null,
       loyalty_auto_renew: membershipIsActive ? membershipAutoRenew : false,
-      is_loyal_member: membershipIsActive 
+      is_loyal_member: membershipIsActive,
+      loyalty_tier: membershipIsActive ? (membershipTier || undefined) : undefined
     });
 
     dbStore.logActivity(
@@ -237,9 +241,40 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
     setMembershipStartDate('');
     setMembershipEndDate('');
     setMembershipAutoRenew(false);
+    setMembershipTier('');
     setSelectedCustomerForMembership(null);
     setSyncTick(prev => prev + 1); 
     setIsMembershipModalOpen(false);
+  };
+
+  const handleRemoveLoyaltyMember = (customer: Customer) => {
+    setCustomerToRemove(customer);
+    setIsRemoveModalOpen(true);
+  };
+
+  const confirmRemoveLoyaltyMember = () => {
+    if (!customerToRemove) return;
+    
+    dbStore.updateCustomer(customerToRemove.id, {
+      is_loyal_member: false,
+      loyalty_start_date: undefined,
+      loyalty_end_date: undefined,
+      loyalty_auto_renew: false,
+      loyalty_tier: undefined,
+      loyalty_points: 0
+    });
+    dbStore.logActivity(
+      user.id,
+      user.name,
+      user.role,
+      'Remove Loyalty Membership',
+      `Removed loyalty membership and points for ${customerToRemove.name}`,
+      businessId
+    );
+    setSyncTick(prev => prev + 1);
+    triggerToast(`Removed ${customerToRemove.name} from loyalty program.`, 'info');
+    setIsRemoveModalOpen(false);
+    setCustomerToRemove(null);
   };
 
   // Handle Manual Loyalty Adjust
@@ -427,10 +462,11 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
 
   // Filtered Lists
   const filteredCustomers = customers.filter(c => {
+    if (!c.is_loyal_member) return false;
     const matchesSearch = c.name.toLowerCase().includes(loyaltySearch.toLowerCase()) ||
                           c.phone.includes(loyaltySearch) ||
                           (c.email && c.email.toLowerCase().includes(loyaltySearch.toLowerCase()));
-    const tier = c.loyalty_tier || 'Silver';
+    const tier = dbStore.calculateCustomerTier(c.lifetime_spend || 0, loyaltyConfig, c.loyalty_tier);
     const matchesTier = tierFilter === 'ALL' || tier === tierFilter;
     return matchesSearch && matchesTier;
   });
@@ -669,7 +705,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     </tr>
                   ) : (
                     filteredCustomers.map(cust => {
-                      const tier = cust.loyalty_tier || 'Silver';
+                      const tier = dbStore.calculateCustomerTier(cust.lifetime_spend || 0, loyaltyConfig, cust.loyalty_tier);
                       const points = cust.loyalty_points || 0;
                       const lifetime = cust.lifetime_spend || 0;
 
@@ -695,17 +731,17 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                           <td className="py-3.5 px-4">
                             {tier === 'Platinum' && (
                               <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800 inline-flex items-center gap-1">
-                                💎 Platinum (1.5x)
+                                💎 Platinum ({loyaltyConfig.platinum_multiplier || 1.5}x)
                               </span>
                             )}
                             {tier === 'Gold' && (
                               <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800 inline-flex items-center gap-1">
-                                🥇 Gold (1.25x)
+                                🥇 Gold ({loyaltyConfig.gold_multiplier || 1.25}x)
                               </span>
                             )}
                             {tier === 'Silver' && (
                               <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 inline-flex items-center gap-1">
-                                🥈 Silver (1.0x)
+                                🥈 Silver ({loyaltyConfig.silver_multiplier || 1.0}x)
                               </span>
                             )}
                           </td>
@@ -761,6 +797,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                                   setMembershipStartDate(cust.loyalty_start_date || new Date().toISOString().split('T')[0]);
                                   setMembershipEndDate(cust.loyalty_end_date || addOneYear(cust.loyalty_start_date || new Date().toISOString().split('T')[0]));
                                   setMembershipAutoRenew(!!cust.loyalty_auto_renew);
+                                  setMembershipTier(cust.loyalty_tier || '');
                                   setIsMembershipModalOpen(true);
                                 }}
                                 className="px-3 py-1.5 bg-slate-900 dark:bg-black text-white hover:bg-slate-800 dark:hover:bg-slate-900 rounded-lg text-[11px] font-bold transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
@@ -788,6 +825,13 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                                 title="View Loyalty Ledger"
                               >
                                 History
+                              </button>
+                              <button
+                                onClick={() => handleRemoveLoyaltyMember(cust)}
+                                className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 rounded-lg text-[11px] font-bold transition cursor-pointer border border-rose-100 dark:border-rose-800"
+                                title="Remove Customer from Loyalty"
+                              >
+                                Remove
                               </button>
                             </div>
                           </td>
@@ -1156,6 +1200,36 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
 
               <div className="border-t border-slate-100 dark:border-slate-700 pt-3 space-y-3">
                 <h4 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Tier Thresholds & Multipliers</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      Silver Tier Min Spend ({currencySymbol})
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={configForm.silver_min_spend !== undefined ? configForm.silver_min_spend : 0}
+                      onFocus={e => e.target.select()}
+                      onChange={e => setConfigForm({ ...configForm, silver_min_spend: e.target.value === '' ? '' : Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      Silver Points Multiplier
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={configForm.silver_multiplier !== undefined ? configForm.silver_multiplier : 1}
+                      onFocus={e => e.target.select()}
+                      onChange={e => setConfigForm({ ...configForm, silver_multiplier: e.target.value === '' ? '' : Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -1299,9 +1373,23 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                   <span className="text-slate-500">Current Balance:</span>
                   <strong className="font-bold text-slate-900 dark:text-white">{selectedCustomerForAdjust.loyalty_points || 0} pts</strong>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Loyalty Tier:</span>
-                  <strong className="font-bold text-indigo-600 dark:text-indigo-400">{selectedCustomerForAdjust.loyalty_tier || 'Silver'}</strong>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Loyalty Tier Override:</span>
+                  <select
+                    value={selectedCustomerForAdjust.loyalty_tier || ''}
+                    onChange={(e) => {
+                      const newTier = e.target.value;
+                      const updatedCustomer = { ...selectedCustomerForAdjust, loyalty_tier: newTier || undefined };
+                      setSelectedCustomerForAdjust(updatedCustomer);
+                      dbStore.updateCustomer(updatedCustomer.id, updatedCustomer);
+                    }}
+                    className="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-indigo-600 dark:text-indigo-400 focus:outline-none"
+                  >
+                    <option value="">Auto (Spend-based)</option>
+                    <option value="Silver">Silver</option>
+                    <option value="Gold">Gold</option>
+                    <option value="Platinum">Platinum</option>
+                  </select>
                 </div>
               </div>
 
@@ -1824,11 +1912,61 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
         </div>
       )}
 
+      {/* MODAL: REMOVE LOYALTY MEMBER */}
+      {isRemoveModalOpen && customerToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-rose-50/50 dark:bg-rose-900/20 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                <Trash2 size={18} className="text-rose-600" />
+                Remove Loyalty Member
+              </h3>
+              <button 
+                onClick={() => {
+                  setIsRemoveModalOpen(false);
+                  setCustomerToRemove(null);
+                }} 
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-700 dark:text-slate-300">
+                Are you sure you want to remove <strong className="text-slate-900 dark:text-white">{customerToRemove.name}</strong> from the loyalty program?
+              </p>
+              <p className="text-xs text-rose-600 dark:text-rose-400 mt-2 font-medium bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg border border-rose-100 dark:border-rose-900/50">
+                Warning: This will also reset their accumulated points to zero. This action cannot be undone.
+              </p>
+            </div>
+            <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRemoveModalOpen(false);
+                  setCustomerToRemove(null);
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                No, Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemoveLoyaltyMember}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-sm shadow-rose-500/20 active:scale-[0.98] cursor-pointer"
+              >
+                Yes, Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: LOYALTY MEMBERSHIP VALIDITY */}
       {isMembershipModalOpen && selectedCustomerForMembership && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-sm overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-sm max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between shrink-0">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                 <ShieldCheck size={18} className="text-indigo-600" />
                 Membership Validity
@@ -1843,70 +1981,85 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                 <XCircle size={20} />
               </button>
             </div>
-
-            <form onSubmit={handleUpdateMembershipDates} className="p-6 space-y-4">
-              <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl border border-indigo-100 dark:border-indigo-800 mb-2">
+            <form onSubmit={handleUpdateMembershipDates} className="flex flex-col flex-1 min-h-0">
+              <div className="p-4 space-y-3 overflow-y-auto flex-1">
+                <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl border border-indigo-100 dark:border-indigo-800 mb-1">
                 <p className="text-[10px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest mb-1">Customer Profile</p>
                 <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedCustomerForMembership.name}</p>
                 <p className="text-[11px] text-slate-500 font-mono">{selectedCustomerForMembership.phone}</p>
               </div>
 
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/40 rounded-xl border border-indigo-100 dark:border-indigo-800">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-2.5 bg-indigo-50 dark:bg-indigo-900/40 rounded-xl border border-indigo-100 dark:border-indigo-800">
                   <div>
-                    <p className="text-xs font-bold text-indigo-900 dark:text-indigo-200">Loyalty Membership Status</p>
-                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400">{membershipIsActive ? 'Member benefits are active' : 'Member benefits are disabled'}</p>
+                    <p className="text-[11px] font-bold text-indigo-900 dark:text-indigo-200">Loyalty Membership Status</p>
+                    <p className="text-[9px] text-indigo-600 dark:text-indigo-400">{membershipIsActive ? 'Member benefits are active' : 'Member benefits are disabled'}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setMembershipIsActive(prev => !prev)}
-                    className={`group relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${membershipIsActive ? 'bg-emerald-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                    className={`group relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:ring-offset-1 ${membershipIsActive ? 'bg-emerald-600' : 'bg-slate-200 dark:bg-slate-700'}`}
                   >
                     <span className="sr-only">Loyalty Status</span>
                     <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${membershipIsActive ? 'translate-x-5' : 'translate-x-0'}`}
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${membershipIsActive ? 'translate-x-4' : 'translate-x-0'}`}
                     />
                   </button>
                 </div>
 
-                <div className={`space-y-4 transition-all duration-200 ${membershipIsActive ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5 ml-1">Subscription Start Date</label>
-                    <div className="relative">
-                      <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input 
-                        type="date"
-                        value={membershipStartDate}
-                        onChange={(e) => {
-                          setMembershipStartDate(e.target.value);
-                          if (!membershipEndDate) {
-                            setMembershipEndDate(addOneYear(e.target.value));
-                          }
-                        }}
-                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                        required={membershipIsActive}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5 ml-1">Subscription End Date</label>
-                    <div className="relative">
-                      <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input 
-                        type="date"
-                        value={membershipEndDate}
-                        onChange={(e) => setMembershipEndDate(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                        required={membershipIsActive}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div className={`space-y-3 transition-all duration-200 ${membershipIsActive ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">Auto-Renew Subscription</p>
-                      <p className="text-[10px] text-slate-500">Extend by 1 year automatically on expiry</p>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1 ml-1">Start Date</label>
+                      <div className="relative">
+                        <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input 
+                          type="date"
+                          value={membershipStartDate}
+                          onChange={(e) => {
+                            setMembershipStartDate(e.target.value);
+                            if (!membershipEndDate) {
+                              setMembershipEndDate(addOneYear(e.target.value));
+                            }
+                          }}
+                          className="w-full pl-8 pr-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm"
+                          required={membershipIsActive}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1 ml-1">End Date</label>
+                      <div className="relative">
+                        <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input 
+                          type="date"
+                          value={membershipEndDate}
+                          onChange={(e) => setMembershipEndDate(e.target.value)}
+                          className="w-full pl-8 pr-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm"
+                          required={membershipIsActive}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <label className="text-xs font-bold text-slate-900 dark:text-white block mb-1.5">Loyalty Tier (Override)</label>
+                    <select 
+                      value={membershipTier}
+                      onChange={(e) => setMembershipTier(e.target.value)}
+                      className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden text-slate-700 dark:text-slate-300"
+                    >
+                      <option value="">Auto (Spend-based)</option>
+                      <option value="Silver">Silver</option>
+                      <option value="Gold">Gold</option>
+                      <option value="Platinum">Platinum</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-900 dark:text-white">Auto-Renew</p>
                     </div>
                     <button
                       type="button"
@@ -1915,21 +2068,21 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                         e.stopPropagation();
                         setMembershipAutoRenew(prev => !prev);
                       }}
-                      className={`group relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${membershipAutoRenew ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                      className={`group relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:ring-offset-1 ${membershipAutoRenew ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
                     >
                       <span className="sr-only">Auto-Renew Subscription</span>
                       <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${membershipAutoRenew ? 'translate-x-5' : 'translate-x-0'}`}
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${membershipAutoRenew ? 'translate-x-4' : 'translate-x-0'}`}
                       />
                     </button>
                   </div>
                 </div>
               </div>
-
-              <div className="pt-4 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
+            </div>
+            <div className="p-4 pt-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 shrink-0 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
                     setIsMembershipModalOpen(false);
                     setSelectedCustomerForMembership(null);
                   }}
@@ -1953,7 +2106,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
       {isEnrollModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                   <UserPlus size={18} className="text-indigo-600" />
@@ -1978,8 +2131,8 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
             </div>
 
             {!isManualEnroll ? (
-              <>
-                <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-900/30">
+              <div className="flex flex-col flex-1 min-h-0">
+                <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-900/30 shrink-0">
                   <div className="flex flex-col gap-3">
                     <button
                       onClick={() => setIsManualEnroll(true)}
@@ -2017,6 +2170,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                           setMembershipEndDate(cust.loyalty_end_date || addOneYear(new Date().toISOString().split('T')[0]));
                           setMembershipAutoRenew(!!cust.loyalty_auto_renew);
                           setMembershipIsActive(!!cust.is_loyal_member);
+                          setMembershipTier(cust.loyalty_tier || '');
                           setIsEnrollModalOpen(false);
                           setIsMembershipModalOpen(true);
                         }}
@@ -2066,7 +2220,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     </div>
                   )}
                 </div>
-              </>
+              </div>
             ) : (
               <div className="p-6 space-y-4">
                 <div className="space-y-4">
@@ -2125,6 +2279,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                       setMembershipStartDate(new Date().toISOString().split('T')[0]);
                       setMembershipEndDate(addOneYear(new Date().toISOString().split('T')[0]));
                       setMembershipAutoRenew(true);
+                      setMembershipTier('');
                       
                       setIsManualEnroll(false);
                       setManualName('');

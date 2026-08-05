@@ -1970,10 +1970,12 @@ class ERPStorage {
     this.save('loyaltyLogs', newLog);
   }
 
-  public calculateCustomerTier(lifetimeSpend: number, config: LoyaltyConfig): 'Silver' | 'Gold' | 'Platinum' {
+  public calculateCustomerTier(lifetimeSpend: number, config: LoyaltyConfig, overrideTier?: string): 'Silver' | 'Gold' | 'Platinum' {
+    if (overrideTier === 'Platinum' || overrideTier === 'Gold' || overrideTier === 'Silver') return overrideTier;
     if (lifetimeSpend >= (config.platinum_min_spend || 20000)) return 'Platinum';
     if (lifetimeSpend >= (config.gold_min_spend || 10000)) return 'Gold';
-    return 'Silver';
+    if (config.silver_min_spend !== undefined && lifetimeSpend >= config.silver_min_spend) return 'Silver';
+    return 'Silver'; // Default
   }
 
   public processOrderLoyalty(

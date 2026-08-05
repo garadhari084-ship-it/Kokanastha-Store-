@@ -2092,7 +2092,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   
                   const basePoints = Math.floor(netSpend / (config.spend_per_point || 100));
                   const newLifetimeSpend = (selCust.lifetime_spend || 0) + totalOrderAmount;
-                  const newTier = dbStore.calculateCustomerTier(newLifetimeSpend, config);
+                  const newTier = dbStore.calculateCustomerTier(newLifetimeSpend, config, selectedCustomer.loyalty_tier);
                   
                   let multiplier = 1.0;
                   if (newTier === 'Gold') multiplier = config.gold_multiplier || 1.25;

@@ -392,12 +392,12 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const groupedQueue = useMemo(() => {
     const groups: Record<string, SalesOrder[]> = {};
     
-    // Sort the entire filteredQueue first to show nearest delivery first
+    // Sort the entire filteredQueue first to show newest delivery first
     const sorted = [...filteredQueue].sort((a, b) => {
-      const dateA = a.delivery_date || a.order_date || '9999-99-99';
-      const dateB = b.delivery_date || b.order_date || '9999-99-99';
-      if (dateA !== dateB) return dateA.localeCompare(dateB);
-      return b.order_number.localeCompare(a.order_number);
+      const dateA = a.delivery_date || a.order_date || '0000-00-00';
+      const dateB = b.delivery_date || b.order_date || '0000-00-00';
+      if (dateA !== dateB) return dateB.localeCompare(dateA); // Descending date
+      return b.order_number.localeCompare(a.order_number); // Descending order number
     });
 
     sorted.forEach(o => {
@@ -409,7 +409,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     return Object.entries(groups).sort(([dateA], [dateB]) => {
       if (dateA === 'Unknown Date') return 1;
       if (dateB === 'Unknown Date') return -1;
-      return dateA.localeCompare(dateB);
+      return dateB.localeCompare(dateA); // Descending group date
     });
   }, [filteredQueue]);
 
@@ -1085,12 +1085,13 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                 #{o.order_number}
                               </strong>
                               <div className="flex flex-col gap-0.5 mt-0.5">
-                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter block">
-                                  Ordered: {formatDisplayDate(o.order_date) || 'N/A'}
-                                </span>
-                                {o.delivery_date && (
+                                {o.delivery_date ? (
                                   <span className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-tighter block">
                                     Delivery: {formatDisplayDate(o.delivery_date)}
+                                  </span>
+                                ) : (
+                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter block">
+                                    Ordered: {formatDisplayDate(o.order_date) || 'N/A'}
                                   </span>
                                 )}
                               </div>
@@ -1222,6 +1223,9 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                   <div className="flex items-center gap-2">
                                     <Clock size={14} className={dStatus.icon} />
                                     <div className="flex flex-col">
+                                      <span className={`text-[9px] uppercase font-black leading-none opacity-60 mb-0.5 ${dStatus.text}`}>
+                                        Delivery Target
+                                      </span>
                                       <span className={`text-[11px] font-bold ${dStatus.text}`}>
                                         {formatDisplayDate(o.delivery_date) || formatDisplayDate(o.order_date) || 'N/A'}
                                       </span>

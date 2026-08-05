@@ -2161,7 +2161,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   );
                 })()}
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Invoice / Order Date *</label>
+                    <input 
+                      type="date"
+                      value={orderDate}
+                      onChange={(e) => setOrderDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none font-medium cursor-pointer"
+                    />
+                  </div>
                   <div className="space-y-1">
                     <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Date</label>
                     <input 

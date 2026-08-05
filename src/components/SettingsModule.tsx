@@ -28,7 +28,8 @@ import {
   Server,
   Trash2,
   Plus,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { Business, UserProfile } from '../types/erp';
@@ -49,6 +50,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [business, setBusiness] = useState<Business | null>(dbStore.getBusiness(businessId) || null);
 
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetProgress, setResetProgress] = useState(0);
+  const [resetStep, setResetStep] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(
     business?.last_supabase_sync || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -278,13 +283,30 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   };
 
   const handleFactoryReset = () => {
+    setResetPassword('');
+    setIsResetting(false);
+    setResetProgress(0);
+    setResetStep('');
     setShowResetConfirm(true);
   };
 
   const confirmFactoryReset = async () => {
-    setIsSyncing(true);
+    if (resetPassword !== 'AH@2026') {
+      triggerToast('Incorrect password for factory reset', 'error');
+      return;
+    }
+    setIsResetting(true);
+    setResetProgress(15);
+    setResetStep('Validating admin security credentials...');
+
+    await new Promise(r => setTimeout(r, 400));
+    setResetProgress(40);
+    setResetStep('Purging database tables, sales orders, inventory & audit logs...');
     await dbStore.clearAllAndReset(businessId);
-    triggerToast('System factory reset complete. Reloading...', 'success');
+
+    await new Promise(r => setTimeout(r, 400));
+    setResetProgress(75);
+    setResetStep('Broadcasting cloud synchronization reset signal...');
     if (isSupabaseConfigured && supabase) {
       await supabase.channel('schema-db-changes').send({
         type: 'broadcast',
@@ -292,9 +314,15 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         payload: { businessId }
       });
     }
-    setShowResetConfirm(false);
-    setIsSyncing(false);
-    setTimeout(() => window.location.reload(), 1500);
+
+    await new Promise(r => setTimeout(r, 400));
+    setResetProgress(100);
+    setResetStep('Factory reset completed successfully! Reloading workspace...');
+    triggerToast('System factory reset complete. Reloading...', 'success');
+
+    setTimeout(() => {
+      window.location.reload();
+    }, 1200);
   };
 
   const handleSaveSettings = (e: React.FormEvent) => {
@@ -949,7 +977,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       </form>
 
       {/* Danger Zone for Super Admin */}
-      {/* {user.role === 'Super Admin' && (
+      {user.role === 'Super Admin' && (
         <div className="mt-8 pt-8 border-t border-rose-100 dark:border-rose-900/30">
           <div className="bg-rose-50 dark:bg-rose-950/20 p-6 rounded-2xl border border-rose-200 dark:border-rose-900/40 space-y-3">
             <h3 className="text-xs font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider flex items-center gap-2">
@@ -968,7 +996,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
             </button>
           </div>
         </div>
-      )} */}
+      )}
 
       </div>
 
@@ -976,26 +1004,67 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       {showResetConfirm && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 border border-slate-100 dark:border-slate-800">
-            <h3 className="text-base font-extrabold text-rose-600 dark:text-rose-400 mb-2">Factory Reset Confirmation</h3>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
-              WARNING: This will permanently delete <strong>ALL</strong> products, orders, customers, and verification logs. This action cannot be undone. Are you sure?
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowResetConfirm(false)}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmFactoryReset}
-                className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 cursor-pointer shadow-md"
-              >
-                Yes, Reset System
-              </button>
-            </div>
+            <h3 className="text-base font-extrabold text-rose-600 dark:text-rose-400 mb-2 flex items-center gap-2">
+              {isResetting && <Loader2 size={18} className="animate-spin text-rose-600 dark:text-rose-400" />}
+              <span>{isResetting ? 'Resetting System Data...' : 'Factory Reset Confirmation'}</span>
+            </h3>
+            
+            {isResetting ? (
+              <div className="py-4 space-y-4">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <span className="flex items-center gap-1.5 text-[11px] truncate pr-2">
+                    <Loader2 size={14} className="animate-spin text-rose-500 shrink-0" />
+                    <span>{resetStep}</span>
+                  </span>
+                  <span className="font-mono text-rose-600 dark:text-rose-400 font-extrabold text-xs shrink-0">{resetProgress}%</span>
+                </div>
+                
+                {/* Progress Bar Container */}
+                <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200 dark:border-slate-700">
+                  <div
+                    className="bg-gradient-to-r from-rose-500 via-amber-500 to-rose-600 h-full rounded-full transition-all duration-300 ease-out shadow-sm"
+                    style={{ width: `${resetProgress}%` }}
+                  />
+                </div>
+
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center italic">
+                  Please do not navigate away or close the browser window.
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+                  WARNING: This will permanently delete <strong>ALL</strong> products, orders, customers, and verification logs. This action cannot be undone. Are you sure?
+                </p>
+                <div className="mb-6 space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Enter Password to Confirm</label>
+                  <input
+                    type="password"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    placeholder="Enter password"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                  />
+                </div>
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirm(false)}
+                    className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmFactoryReset}
+                    disabled={resetPassword !== 'AH@2026'}
+                    className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Yes, Reset System
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

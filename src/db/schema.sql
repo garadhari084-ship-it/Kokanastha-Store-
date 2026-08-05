@@ -250,6 +250,9 @@ CREATE TABLE IF NOT EXISTS sales_orders (
     festive_booking BOOLEAN DEFAULT FALSE,
     total_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
     discount_amount DECIMAL(15,2) DEFAULT 0.00,
+    discount_percentage DECIMAL(5,2) DEFAULT 0.00,
+    additional_charges DECIMAL(15,2) DEFAULT 0.00,
+    additional_charges_type VARCHAR(50) DEFAULT 'Delivery',
     qr_code_data TEXT NOT NULL, -- QR Code containing: Order ID, customer, total items, etc.
     delivery_partner VARCHAR(100),
     delivery_person_name VARCHAR(255),

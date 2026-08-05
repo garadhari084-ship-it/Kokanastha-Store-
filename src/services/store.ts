@@ -2013,13 +2013,36 @@ class ERPStorage {
     }
 
     // 2. Calculate tier & spend
+    const oldTier = cust.loyalty_tier || 'Silver';
     const newLifetimeSpend = (cust.lifetime_spend || 0) + orderAmount;
-    const newTier = this.calculateCustomerTier(newLifetimeSpend, config);
+    const newTier = this.calculateCustomerTier(newLifetimeSpend, config, cust.loyalty_tier_override);
+
+    // Tier Bonus Points (if moved to a higher tier)
+    if (newTier !== oldTier) {
+      let bonusPoints = 0;
+      if (newTier === 'Gold' && oldTier === 'Silver') {
+        bonusPoints = Number(config.gold_bonus_points) || 0;
+      } else if (newTier === 'Platinum') {
+        bonusPoints = Number(config.platinum_bonus_points) || 0;
+      }
+
+      if (bonusPoints > 0) {
+        this.addLoyaltyPoints(
+          customerId,
+          bonusPoints,
+          'Bonus',
+          `Tier Upgrade Bonus: Welcome to ${newTier} Tier!`,
+          businessId,
+          orderId
+        );
+      }
+    }
 
     // Tier Multiplier
     let multiplier = 1.0;
-    if (newTier === 'Gold') multiplier = config.gold_multiplier || 1.25;
-    if (newTier === 'Platinum') multiplier = config.platinum_multiplier || 1.5;
+    if (newTier === 'Gold') multiplier = Number(config.gold_multiplier) || 1.25;
+    if (newTier === 'Platinum') multiplier = Number(config.platinum_multiplier) || 1.5;
+    if (newTier === 'Silver') multiplier = Number(config.silver_multiplier) || 1.0;
 
     // 3. Earn points on net spend (per ₹100 spend)
     const netSpend = Math.max(0, orderAmount - discountAmount);

@@ -96,6 +96,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
   const [membershipAutoRenew, setMembershipAutoRenew] = useState(false);
   const [membershipTier, setMembershipTier] = useState<string>('');
   const [membershipIsActive, setMembershipIsActive] = useState(false);
+  const [membershipPlan, setMembershipPlan] = useState<string>('');
 
   // Subscription Modal
   const [isNewSubModalOpen, setIsNewSubModalOpen] = useState(false);
@@ -124,6 +125,10 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
     platinum_min_spend: number | string;
     gold_multiplier: number | string;
     platinum_multiplier: number | string;
+    silver_multiplier: number | string;
+    silver_bonus_points: number | string;
+    gold_bonus_points: number | string;
+    platinum_bonus_points: number | string;
     welcome_bonus_points: number | string;
     birthday_bonus_points: number | string;
     point_expiry_days: number | string;
@@ -136,6 +141,10 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
     platinum_min_spend: 20000,
     gold_multiplier: 1.25,
     platinum_multiplier: 1.5,
+    silver_multiplier: 1,
+    silver_bonus_points: 0,
+    gold_bonus_points: 100,
+    platinum_bonus_points: 250,
     welcome_bonus_points: 50,
     birthday_bonus_points: 100,
     point_expiry_days: 365
@@ -187,6 +196,10 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
       platinum_min_spend: parseNum(configForm.platinum_min_spend, 20000, 0),
       gold_multiplier: parseNum(configForm.gold_multiplier, 1, 1),
       platinum_multiplier: parseNum(configForm.platinum_multiplier, 1.5, 1),
+      silver_multiplier: parseNum(configForm.silver_multiplier, 1, 1),
+      silver_bonus_points: parseNum(configForm.silver_bonus_points, 0, 0),
+      gold_bonus_points: parseNum(configForm.gold_bonus_points, 100, 0),
+      platinum_bonus_points: parseNum(configForm.platinum_bonus_points, 250, 0),
       welcome_bonus_points: parseNum(configForm.welcome_bonus_points, 50, 0),
       birthday_bonus_points: parseNum(configForm.birthday_bonus_points, 100, 0),
       point_expiry_days: parseNum(configForm.point_expiry_days, 365, 1)
@@ -225,6 +238,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
       loyalty_end_date: membershipIsActive ? membershipEndDate : null,
       loyalty_auto_renew: membershipIsActive ? membershipAutoRenew : false,
       is_loyal_member: membershipIsActive,
+      loyalty_plan: membershipIsActive ? membershipPlan : undefined,
       loyalty_tier: newTier
     });
 
@@ -820,6 +834,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                                   setMembershipEndDate(cust.loyalty_end_date || addOneYear(cust.loyalty_start_date || new Date().toISOString().split('T')[0]));
                                   setMembershipAutoRenew(!!cust.loyalty_auto_renew);
                                   setMembershipTier(cust.loyalty_tier || '');
+                                  setMembershipPlan(cust.loyalty_plan || '');
                                   setIsMembershipModalOpen(true);
                                 }}
                                 className="px-3 py-1.5 bg-slate-900 dark:bg-black text-white hover:bg-slate-800 dark:hover:bg-slate-900 rounded-lg text-[11px] font-bold transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
@@ -1231,7 +1246,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                       type="number"
                       min={0}
                       step="any"
-                      value={configForm.silver_min_spend !== undefined ? configForm.silver_min_spend : 0}
+                      value={configForm.silver_min_spend}
                       onFocus={e => e.target.select()}
                       onChange={e => setConfigForm({ ...configForm, silver_min_spend: e.target.value === '' ? '' : Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
@@ -1245,7 +1260,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                       type="number"
                       min={0}
                       step="any"
-                      value={configForm.silver_multiplier !== undefined ? configForm.silver_multiplier : 1}
+                      value={configForm.silver_multiplier}
                       onFocus={e => e.target.select()}
                       onChange={e => setConfigForm({ ...configForm, silver_multiplier: e.target.value === '' ? '' : Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
@@ -2107,6 +2122,17 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     </div>
                   </div>
 
+                  <div className="flex flex-col p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700 mb-3">
+                    <label className="text-xs font-bold text-slate-900 dark:text-white block mb-1.5">Membership Plan</label>
+                    <input 
+                      type="text"
+                      value={membershipPlan}
+                      onChange={(e) => setMembershipPlan(e.target.value)}
+                      readOnly={user?.role !== 'Super Admin'}
+                      placeholder="e.g. Premium Annual"
+                      className={`w-full px-2 py-1.5 bg-white dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden text-slate-700 dark:text-slate-300 ${user?.role !== 'Super Admin' ? 'opacity-70 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
                   <div className="flex flex-col p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
                     <label className="text-xs font-bold text-slate-900 dark:text-white block mb-1.5">Loyalty Tier (Override)</label>
                     <select 

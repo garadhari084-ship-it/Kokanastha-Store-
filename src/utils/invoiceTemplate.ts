@@ -2,6 +2,7 @@ import { SalesOrder, Customer, Business, Product } from '../types/erp';
 import { buildUpiPayString, buildBillVerificationString, generateQRCodeDataUrl } from './qrCode';
 import { formatOrderTime } from './formatters';
 import { urlToBase64 } from './imageToBase64';
+import { calculateOrderSavings, isLoyalMember } from './pricing';
 
 export function numberToWordsIndian(amount: number): string {
   if (!amount || amount <= 0) return 'Zero Rupees only';
@@ -35,10 +36,38 @@ export async function generateBillOfSupplyHTML(
   const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const discount = order.discount_amount || 0;
   // If there's a discount, the logic for delivery/tax needs to be careful.
-  const delivery = order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0;
+  const delivery = order.additional_charges || (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
+  const deliveryLabel = (order.additional_charges_type || '').toLowerCase() === 'additional' ? 'Additional Charges' : 'DELIVERY';
   const totalAmount = order.total_amount || (subTotal + delivery - discount);
   const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
+
+  const savingsData = calculateOrderSavings(order.items || [], products);
+  const isLoyal = isLoyalMember(cust);
+  
+  let loyaltyMessage = "";
+  const loyalTier = cust?.loyalty_tier || 'Silver';
+  if (isLoyal) {
+    loyaltyMessage = `<div class="savings-banner" style="background: #f8fafc; border: 1px solid #e2e8f0; color: #1e293b; padding: 12px; border-radius: 6px; margin-bottom: 15px;">
+      <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <span style="font-size: 14pt;">⭐</span>
+        <div style="text-align: center;">
+          <strong style="text-transform: uppercase; letter-spacing: 1px;">Valued ${loyalTier} Member</strong><br/>
+          <span style="font-size: 8.5pt; color: #475569;">As a loyal member, you enjoy exclusive benefits, prioritized support, and special pricing. Thank you for your continued trust!</span>
+        </div>
+        <span style="font-size: 14pt;">⭐</span>
+      </div>
+    </div>`;
+  }
+  
+  let savingsMessage = "";
+  const totalActualSavings = savingsData.totalSavings + discount;
+  if (totalActualSavings > 0) {
+    savingsMessage = `<div class="savings-banner" style="background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 10px; border-radius: 6px; margin-bottom: 15px; text-align: center;">
+      <strong style="font-size: 11pt;">🎊 SMART SAVINGS! YOU SAVED ₹${totalActualSavings.toLocaleString()} 🎊</strong><br/>
+      <span style="font-size: 8.5pt; color: #15803d;">You made a great choice today! Your loyalty and smart shopping earned you a total saving of ₹${totalActualSavings.toLocaleString()} on this invoice.</span>
+    </div>`;
+  }
 
   const received = order.payment_status === 'Paid' ? totalAmount : 0;
   const balance = totalAmount - received;
@@ -283,6 +312,29 @@ export async function generateBillOfSupplyHTML(
       vertical-align: top;
       width: 33.33%;
     }
+    .savings-banner {
+      background: #fdf2f8;
+      border: 1px solid #fbcfe8;
+      color: #9d174d;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      text-align: center;
+      font-weight: bold;
+      font-size: 10pt;
+    }
+    .loyal-member-badge {
+      display: inline-block;
+      background: #f59e0b;
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 7.5pt;
+      font-weight: 800;
+      margin-left: 5px;
+      vertical-align: middle;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body>
@@ -302,12 +354,15 @@ export async function generateBillOfSupplyHTML(
   <div class="divider-double"></div>
   <div class="bill-title">Bill of Supply</div>
 
+  ${loyaltyMessage}
+  ${savingsMessage}
+
   <table class="meta-table">
     <tr>
       <td>
         <div class="meta-heading">Bill To</div>
         <div class="meta-value">
-          <strong>${custName}</strong><br/>
+          <strong>${custName}</strong>${isLoyal ? '<span class="loyal-member-badge">LOYAL MEMBER</span>' : ''}<br/>
           ${custAddr}<br/>
           Contact No. : ${custPhone}
         </div>
@@ -315,10 +370,10 @@ export async function generateBillOfSupplyHTML(
       <td>
         <div class="meta-heading">Transportation Details</div>
         <div class="meta-value">
-          Transport Name: Direct Express<br/>
-          Delivery Date: ${order.order_date}<br/>
+          Transport Name: ${order.delivery_type && order.delivery_type.toLowerCase().includes('courier') ? 'Global Courier' : 'Direct Express'}<br/>
+          Delivery Date: ${order.delivery_date || order.order_date}<br/>
           Delivery Location: ${order.area || 'Dahisar'}<br/>
-          Delivery Type: Local Dispatch
+          Delivery Type: ${order.delivery_type || 'Local Dispatch'}
         </div>
       </td>
       <td>
@@ -412,10 +467,10 @@ export async function generateBillOfSupplyHTML(
           <td style="text-align: right; color: #e11d48;">-₹ ${discount.toFixed(2)}</td>
         </tr>
         ` : ''}
-        <tr>
-          <td>DELIVERY:</td>
+        ${delivery > 0 ? `<tr>
+          <td>${deliveryLabel}:</td>
           <td style="text-align: right;">₹ ${delivery.toFixed(2)}</td>
-        </tr>
+        </tr>` : ''}
         <tr class="grand-row">
           <td>Total</td>
           <td style="text-align: right;">₹ ${totalAmount.toFixed(2)}</td>
@@ -533,8 +588,13 @@ export async function generate3InchBillHTML(
 
   const subTotal = (order.items || []).reduce((sum: number, it: any) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const discount = order.discount_amount || 0;
-  const delivery = order.shipping_charges || 0;
+  const delivery = order.additional_charges || (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
+  const deliveryLabel = (order.additional_charges_type || '').toLowerCase() === 'additional' ? 'Additional Charges' : 'DELIVERY';
   const total = order.total_amount || (subTotal + delivery - discount);
+
+  const savingsData = calculateOrderSavings(order.items || [], products);
+  const isLoyal = isLoyalMember(customerObj);
+  const totalActualSavings = savingsData.totalSavings + discount;
 
   const bankName = businessObj?.bank_name || "NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN";
   const accountNo = businessObj?.account_number || "092110100000085";
@@ -659,16 +719,16 @@ export async function generate3InchBillHTML(
       <td style="text-align: right; font-weight: normal; color: #e11d48;">Discount</td>
       <td style="text-align: right; color: #e11d48;">-${discount.toFixed(2)}</td>
     </tr>
-    <tr>
+    ${delivery > 0 ? `<tr>
       <td></td>
-      <td style="text-align: right; font-weight: normal;">DELIVERY</td>
+      <td style="text-align: right; font-weight: normal;">${deliveryLabel}</td>
       <td style="text-align: right; width: 60px;">${delivery.toFixed(2)}</td>
-    </tr>
+    </tr>` : ''}
     ` : `
     <tr>
       <td>Qty: ${totalQty}</td>
-      <td style="text-align: right; font-weight: normal;">DELIVERY</td>
-      <td style="text-align: right; width: 60px;">${delivery.toFixed(2)}</td>
+      ${delivery > 0 ? `<td style="text-align: right; font-weight: normal;">${deliveryLabel}</td>
+      <td style="text-align: right; width: 60px;">${delivery.toFixed(2)}</td>` : '<td></td><td></td>'}
     </tr>
     `}
     <tr>
@@ -688,8 +748,20 @@ export async function generate3InchBillHTML(
     </tr>
   </table>
   <div class="dashed-line"></div>
+  ${totalActualSavings > 0 ? `
+  <div class="text-center bold" style="margin: 5px 0; background: #f0fdf4; padding: 5px; border: 1px solid #bbf7d0; color: #166534;">
+    💰 TOTAL SAVINGS: ₹${totalActualSavings.toFixed(2)} 💰
+  </div>
+  <div class="dashed-line"></div>
+  ` : ''}
+  ${isLoyal ? `
+  <div class="text-center bold" style="margin: 5px 0; font-size: 11px; color: #92400e;">
+    ⭐ VALUED LOYAL MEMBER ⭐
+  </div>
+  <div class="dashed-line"></div>
+  ` : ''}
   <div class="text-center bold" style="margin-top: 5px;">
-    Available Points &nbsp;&nbsp;&nbsp;&nbsp; 0.00
+    Available Points &nbsp;&nbsp;&nbsp;&nbsp; ${customerObj?.loyalty_points || 0}
   </div>
 
   <div class="qr-container">

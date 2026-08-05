@@ -24,6 +24,8 @@ import {
   PackageCheck,
   Search,
   Clock,
+  Calendar,
+  CalendarDays,
   MapPin,
   Building2,
   Navigation,
@@ -62,8 +64,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [dateFilter, setDateFilter] = useState<'All' | 'Today' | 'Tomorrow' | 'Upcoming'>('All');
-  const [activeTab, setActiveTab] = useState<'packing' | 'stock'>('packing');
+  const [dateFilter, setDateFilter] = useState<'All' | 'Today' | 'Tomorrow' | 'Upcoming' | 'Next7' | 'Custom'>('Today');
+  const [customDateValue, setCustomDateValue] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // Scanning flow states
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -81,6 +83,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const [dispatchNotes, setDispatchNotes] = useState<string>('');
   const [rackLocation, setRackLocation] = useState<string>('');
   const [rackSection, setRackSection] = useState<string>('');
+  const [totalBags, setTotalBags] = useState<number>(1);
+  const [showResumePopup, setShowResumePopup] = useState(false);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const selectedOrderRef = useRef<SalesOrder | null>(selectedOrder);
@@ -139,6 +143,14 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     setTrackingNumber(order.tracking_number || '');
     setDispatchNotes(order.dispatch_notes || '');
     if (order.delivery_partner) setDeliveryPartner(order.delivery_partner);
+    setRackLocation(order.rack_location || '');
+    setRackSection(order.rack_section || '');
+    setTotalBags(order.total_bags || 1);
+
+    // Show resume popup if it was partially packed
+    if (order.is_partially_packed) {
+      setShowResumePopup(true);
+    }
 
     // Update status to 'Packing' if it was 'Pending'
     if (order.status === 'Pending') {
@@ -346,6 +358,28 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     }
   };
 
+  // Handle saving as partial package
+  const handleSavePartialPackage = () => {
+    if (!selectedOrder) return;
+
+    try {
+      dbStore.updateSalesOrder(selectedOrder.id, {
+        rack_location: rackLocation,
+        rack_section: rackSection,
+        total_bags: totalBags,
+        is_partially_packed: true,
+        status: 'Packing'
+      });
+
+      triggerToast(`Order #${selectedOrder.order_number} saved as Partial Package at ${rackLocation} - ${rackSection}.`, 'info');
+      setSelectedOrder(null);
+      setRecentScanLog(null);
+      reloadOrders();
+    } catch (err: any) {
+      triggerToast(err.message || 'Failed to save partial package.', 'error');
+    }
+  };
+
   // Calculations for current selected order
   const selectedItems = selectedOrder?.items || [];
   const totalItemsCount = selectedItems.reduce((acc, it) => acc + (it.qty || 0), 0);
@@ -360,24 +394,31 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     const q = searchQuery.toLowerCase().trim();
     
     // Apply date filter
-        if (dateFilter !== 'All') {
+    if (dateFilter !== 'All') {
       const dateStr = (o.delivery_date || o.order_date || '').trim();
       if (!dateStr || dateStr === 'Unknown Date') return false;
       
-      const parseDate = (d) => {
+      const parseDate = (d: any) => {
         const parts = d.split('-');
+        if (parts.length !== 3) return 0;
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
       };
       
       const now = new Date();
       const todayTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
       const tmrwTime = todayTime + 86400000;
+      const next7Time = todayTime + (7 * 86400000);
       
       const orderTime = parseDate(dateStr);
       
       if (dateFilter === 'Today' && orderTime !== todayTime) return false;
       if (dateFilter === 'Tomorrow' && orderTime !== tmrwTime) return false;
       if (dateFilter === 'Upcoming' && orderTime <= tmrwTime) return false;
+      if (dateFilter === 'Next7' && (orderTime < todayTime || orderTime > next7Time)) return false;
+      if (dateFilter === 'Custom') {
+        const customTime = parseDate(customDateValue);
+        if (orderTime !== customTime) return false;
+      }
     }
     
     if (!q) return true;
@@ -522,6 +563,68 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         icon={ClipboardCheck}
       />
 
+      {/* RESUME PARTIAL PACKING POPUP */}
+      {showResumePopup && selectedOrder && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <AlertCircle size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white">Resume Partial Packing</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">This order was previously saved as an incomplete package.</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/50 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Stored At</span>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">
+                      {selectedOrder.rack_location || 'N/A'} - {selectedOrder.rack_section || 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Total Bags</span>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">
+                      {selectedOrder.total_bags || 1} Bag(s)
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Pending Items</span>
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                    {selectedOrder.items.filter(it => (it.scanned_qty || 0) < it.qty).map((it, idx) => {
+                      const p = products.find(prod => prod.id === it.product_id);
+                      return (
+                        <div key={idx} className="flex justify-between items-center text-xs bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700">
+                          <span className="font-medium text-slate-700 dark:text-slate-300 truncate mr-2">
+                            {p?.name || 'Unknown Product'}
+                          </span>
+                          <span className="font-mono font-bold text-amber-600 dark:text-amber-400 shrink-0">
+                            {it.qty - (it.scanned_qty || 0)} Pending
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowResumePopup(false)}
+                className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-sm shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.98]"
+              >
+                Continue Packing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="px-0.5 sm:px-1 space-y-3">
         {!selectedOrder && (
           <>
@@ -565,28 +668,72 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               </div>
             </div>
 
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
-            <button
-              onClick={() => setActiveTab('packing')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'packing'
-                  ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400'
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              Packing Queue
-            </button>
-            <button
-              onClick={() => setActiveTab('stock')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'stock'
-                  ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400'
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              Live Product Stock
-            </button>
-          </div>
+            {/* ADVANCED FILTER & SEARCH BAR */}
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
+                <div className="relative flex-1">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                    type="text"
+                    placeholder="Search by Order #, Customer Name, Area or Channel..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-12 pr-4 h-12 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/50"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    {[
+                      { id: 'Today', label: 'Today', icon: Calendar },
+                      { id: 'Tomorrow', label: 'Tomorrow', icon: Clock },
+                      { id: 'Next7', label: 'Next 7 Days', icon: Sparkles },
+                      { id: 'All', label: 'All Time', icon: LayoutGrid },
+                      { id: 'Custom', label: 'Select Date', icon: CalendarDays }
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setDateFilter(tab.id as any)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                          dateFilter === tab.id 
+                            ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                            : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        <tab.icon size={14} />
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {dateFilter === 'Custom' && (
+                    <div className="animate-in fade-in slide-in-from-left-2 duration-300">
+                      <input
+                        type="date"
+                        value={customDateValue}
+                        onChange={(e) => setCustomDateValue(e.target.value)}
+                        className="h-10 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <button 
+                      onClick={() => setViewMode('grid')}
+                      className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
+                    >
+                      <LayoutGrid size={18} />
+                    </button>
+                    <button 
+                      onClick={() => setViewMode('list')}
+                      className={`p-2 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
+                    >
+                      <List size={18} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </>
         )}
 
@@ -888,43 +1035,63 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
             </div>
           </div>
 
-          {/* RACK LOCATION (Godown / Storage) */}
-          {isFullyVerified && (
-            <div className="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl p-4 mb-4">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                    <LayoutGrid size={18} />
+          {/* STORAGE & BAGS (Godown / Storage) */}
+          <div className="bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <LayoutGrid size={16} className="text-indigo-500" />
+                  <h4 className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">Storage Location</h4>
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-[10px] text-slate-500 mb-1 block ml-1">Rack</label>
+                    <input
+                      type="text"
+                      value={rackLocation}
+                      onChange={(e) => setRackLocation(e.target.value)}
+                      placeholder="e.g. Rack A"
+                      className="w-full bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-medium px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    />
                   </div>
-                  <div>
-                    <h4 className="text-xs font-black text-slate-800 dark:text-slate-200">Storage Rack / Location</h4>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Where is this packed order stored?</p>
+                  <div className="flex-1">
+                    <label className="text-[10px] text-slate-500 mb-1 block ml-1">Section</label>
+                    <input
+                      type="text"
+                      value={rackSection}
+                      onChange={(e) => setRackSection(e.target.value)}
+                      placeholder="e.g. Shelf 3"
+                      className="w-full bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-medium px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    />
                   </div>
                 </div>
-                
-                <div className="flex-1 flex gap-2">
-                  <input
-                    type="text"
-                    value={rackLocation}
-                    onChange={(e) => setRackLocation(e.target.value)}
-                    placeholder="Rack (e.g. Rack A1)"
-                    className="w-1/2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm font-medium px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  />
-                  <input
-                    type="text"
-                    value={rackSection}
-                    onChange={(e) => setRackSection(e.target.value)}
-                    placeholder="Section/Shelf (e.g. 3)"
-                    className="w-1/2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm font-medium px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-500" />
+                  <h4 className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">Packaging Details</h4>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 mb-1 block ml-1">Total Number of Bags</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="1"
+                      value={totalBags}
+                      onChange={(e) => setTotalBags(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-24 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-bold px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    />
+                    <span className="text-[10px] text-slate-400 font-medium italic">Specify bag count for multi-bag orders</span>
+                  </div>
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
           {/* PACKING VERIFICATION ACTION FOOTER */}
           <div className={`bg-white dark:bg-slate-900 rounded-3xl border p-4 shadow-sm transition-all duration-300 ${isFullyVerified ? 'border-emerald-500/50 shadow-emerald-500/10' : 'border-slate-200 dark:border-slate-800'}`}>
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-3 text-left w-full sm:w-auto">
                 <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${isFullyVerified ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400'}`}>
                   {isFullyVerified ? <CheckCircle2 size={22} /> : <AlertCircle size={22} />}
@@ -933,113 +1100,48 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                   <h4 className="text-sm font-black text-slate-900 dark:text-white">
                     {isFullyVerified ? 'Packing Verification 100% Complete!' : `Verification In Progress (${packingProgressPercent}%)`}
                   </h4>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                     {isFullyVerified 
-                      ? `All ${totalItemsCount} units scanned and verified. Ready to move to Delivery & Dispatch.`
-                      : `${pendingItemsCount} unit${pendingItemsCount > 1 ? 's' : ''} remaining to scan & verify.`}
+                      ? 'All items scanned. You can now mark this order as Packed.' 
+                      : `${pendingItemsCount} items still pending scan verification.`}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-                <button
-                  type="button"
-                  onClick={handleBackToQueue}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
-                >
-                  Save & Back to Queue
-                </button>
-
-                {isFullyVerified ? (
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                {!isFullyVerified && (
                   <button
-                    type="button"
-                    onClick={handleCompleteDispatch}
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                    onClick={handleSavePartialPackage}
+                    className="flex-1 sm:flex-none px-6 h-12 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl text-[11px] font-black transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2"
                   >
-                    <Sparkles size={16} />
-                    <span>Complete Packing & Move to Ready to Dispatch</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleQuickVerifyAll}
-                    className="px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 text-xs font-bold rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
-                  >
-                    <CheckCircle2 size={15} />
-                    <span>Quick Verify All ({pendingItemsCount} Pending)</span>
+                    <Clock size={16} />
+                    <span>Save Partial & Pause</span>
                   </button>
                 )}
+                
+                <button
+                  onClick={handleCompleteDispatch}
+                  disabled={!isFullyVerified}
+                  className={`flex-1 sm:flex-none px-8 h-12 rounded-2xl text-[11px] font-black transition-all flex items-center justify-center gap-2 ${
+                    isFullyVerified 
+                      ? 'bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 shadow-xl cursor-pointer active:scale-95' 
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                  }`}
+                >
+                  <PackageCheck size={18} />
+                  <span>Mark as Packed & Ready</span>
+                </button>
               </div>
             </div>
           </div>
 
         </div>
-      ) : activeTab === 'packing' ? (
-
+      ) : (
         /* ========================================================================= */
         /* PAGE VIEW B: ORDERS QUEUE LIST (PENDING FULFILLMENT LIST)                 */
         /* ========================================================================= */
-        <div className="space-y-3">
+        <div className="space-y-6">
           
-          {/* Header Controls & Search Bar */}
-          <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-row flex-wrap items-center justify-between gap-3.5">
-            <div className="relative w-full md:w-96">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Search orders, customers, or scan barcode..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 text-[11px] font-medium rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder:text-slate-400"
-              />
-            </div>
-            
-            <div className="flex items-center gap-2.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-              <div className="flex items-center gap-1.5">
-                {[
-                  { id: 'All', label: 'All Dates' },
-                  { id: 'Today', label: "Today's Delivery" },
-                  { id: 'Tomorrow', label: "Tomorrow" },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setDateFilter(tab.id as any)}
-                    className={`px-3 py-1.5 rounded-full text-[11px] font-black transition-all whitespace-nowrap cursor-pointer border ${
-                      dateFilter === tab.id
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
-                  title="Grid View"
-                >
-                  <LayoutGrid size={16} />
-                </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
-                  title="List View"
-                >
-                  <List size={16} />
-                </button>
-              </div>
-              <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 bg-slate-100 dark:bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700">
-                <PackageCheck size={14} className="text-indigo-500" />
-                <span className="text-slate-700 dark:text-slate-300">
-                  {pendingOrders.length} Pending
-                </span>
-              </div>
-            </div>
-          </div>
-
           {/* Orders Display */}
           {groupedQueue.map(([date, dateOrders]) => (
             <div key={date} className="mb-6">
@@ -1333,61 +1435,9 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         </div>
       )}
       </div>
-      ) : (
-        /* ========================================================================= */
-        /* PAGE VIEW C: LIVE PRODUCT STOCK                                           */
-        /* ========================================================================= */
-        <div className="space-y-3">
-          <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <table className="w-full text-left text-[11px]">
-              <thead className="bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 font-extrabold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700 text-[10px]">
-                <tr>
-                  <th className="py-2.5 px-3">Product Name</th>
-                  <th className="py-2.5 px-3">SKU / Barcode</th>
-                  <th className="py-2.5 px-3">Category</th>
-                  <th className="py-2.5 px-3 text-right">Live Stock</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-700 dark:text-slate-300">
-                {products.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="py-8 text-center text-slate-500">
-                      No products found.
-                    </td>
-                  </tr>
-                ) : (
-                  products.map(p => (
-                    <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
-                        {p.name}
-                      </td>
-                      <td className="py-2 px-3 text-slate-500">
-                        <div className="flex flex-col gap-0.5">
-                          {p.sku && <span>SKU: {p.sku}</span>}
-                          {p.barcode && <span>Code: {p.barcode}</span>}
-                        </div>
-                      </td>
-                      <td className="py-2 px-3 text-slate-500">
-                        {categories.find(c => c.id === p.category_id)?.name || 'N/A'}
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-bold">
-                        <span className={`px-2 py-1 rounded-full ${
-                          p.current_stock > 10 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' :
-                          p.current_stock > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400' :
-                          'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400'
-                        }`}>
-                          {p.current_stock}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-      </div>{/* CAMERA SCANNER MODAL */}
+    )}
+    </div>
+    {/* CAMERA SCANNER MODAL */}
       {isScannerOpen && (
         <BarcodeScanner 
           onClose={() => setIsScannerOpen(false)}

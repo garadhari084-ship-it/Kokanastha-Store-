@@ -137,6 +137,8 @@ export interface Customer {
   loyalty_points?: number;
   lifetime_spend?: number;
   loyalty_tier?: 'Silver' | 'Gold' | 'Platinum';
+  loyalty_tier_override?: 'Silver' | 'Gold' | 'Platinum';
+  loyalty_plan?: string; // e.g. 'Premium Annual'
   is_loyal_member?: boolean; // Kokanastha Loyal Member Program enrollee
   loyalty_start_date?: string;
   loyalty_end_date?: string;
@@ -253,6 +255,9 @@ export interface SalesOrder {
   total_amount: number;
   is_updated?: boolean;
   discount_amount?: number;
+  discount_percentage?: number;
+  additional_charges?: number;
+  additional_charges_type?: 'Delivery' | 'Additional';
   business_id: string;
   created_at: string;
   qr_code_data: string; // Custom string packing verification scan
@@ -266,6 +271,8 @@ export interface SalesOrder {
   packing_completed_at?: string;
   rack_location?: string;
   rack_section?: string;
+  total_bags?: number;
+  is_partially_packed?: boolean;
   points_earned?: number;
   points_redeemed?: number;
   loyalty_discount?: number;

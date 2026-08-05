@@ -377,6 +377,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [paidAmount, setPaidAmount] = useState<number | string>('');
   const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
   const [customDiscount, setCustomDiscount] = useState<number | string>('');
+  const [discountType, setDiscountType] = useState<'Value' | 'Percentage'>('Percentage');
+  const [additionalCharges, setAdditionalCharges] = useState<number | string>('');
+  const [additionalChargeType, setAdditionalChargeType] = useState<'Delivery' | 'Additional'>('Delivery');
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
   const [isNewCustomerSelected, setIsNewCustomerSelected] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
@@ -480,6 +483,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setPaidAmount('');
     setPointsToRedeem(0);
     setCustomDiscount('');
+    setDiscountType('Percentage');
+    setAdditionalCharges('');
+    setAdditionalChargeType('Delivery');
     setOrderItems([]);
     setIsNewCustomerSelected(false);
     setNewCustomerName('');
@@ -489,6 +495,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setRowQty(1);
     setRowPrice(0);
     setRowTaxRate(typeof biz?.tax_rate_default === 'number' && !isNaN(biz.tax_rate_default) ? biz.tax_rate_default : 0);
+    setIsSubmitDropdownOpen(false);
   };
   useEffect(() => {
     if (isCreateModalOpen && !editingOrderId && !customInvoiceNumber) {
@@ -549,7 +556,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setPaymentStatus(order.payment_status);
     setPaymentMode(order.payment_mode || 'Cash');
     setPaidAmount(order.paid_amount || 0);
-    setCustomDiscount(order.discount_amount || 0);
+    setCustomDiscount(order.discount_percentage ? order.discount_percentage : (order.discount_amount || 0));
+    setDiscountType('Percentage');
+    setAdditionalCharges(order.additional_charges || 0);
+    setAdditionalChargeType(order.additional_charges_type || 'Delivery');
     setOrderItems([...order.items]);
     setIsCreateModalOpen(true);
     
@@ -665,11 +675,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     const pts = selCust?.loyalty_points || 0;
     const actualRedeem = Math.min(pts, Number(pointsToRedeem) || 0);
     
-    const discountAmount = customDiscount !== '' && !isNaN(Number(customDiscount))
-      ? Math.max(0, Number(customDiscount))
-      : (actualRedeem * pointVal);
+    let customDiscVal = customDiscount !== '' && !isNaN(Number(customDiscount)) ? Math.max(0, Number(customDiscount)) : 0;
+    let discAmt = actualRedeem * pointVal;
+    if (customDiscVal > 0) {
+      if (discountType === 'Percentage') {
+        discAmt += (subtotalBeforeDiscount * customDiscVal) / 100;
+      } else {
+        discAmt += customDiscVal;
+      }
+    }
+    const discountAmount = Math.round(discAmt);
     
-    const finalAmount = Math.max(0, subtotalBeforeDiscount - discountAmount);
+    const addCharges = additionalCharges !== '' && !isNaN(Number(additionalCharges)) ? Math.max(0, Number(additionalCharges)) : 0;
+    
+    const finalAmount = Math.max(0, subtotalBeforeDiscount - discountAmount + addCharges);
     
     let computedPaid = 0;
     if (paymentStatus === 'Paid') {
@@ -690,9 +709,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       finalAmount,
       computedPaid,
       balance,
-      actualRedeem
+      actualRedeem,
+      addCharges
     };
-  }, [orderItems, pointsToRedeem, customDiscount, paymentStatus, paidAmount, selectedCustomerId, customers, businessId]);
+  }, [orderItems, pointsToRedeem, customDiscount, discountType, additionalCharges, paymentStatus, paidAmount, selectedCustomerId, customers, businessId]);
 
   const handleCreateSalesOrder = async (postAction: 'close' | 'save_new' | 'print' | 'share' = 'close') => {
     if (isSubmitting) return;
@@ -728,12 +748,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     }
 
     let finalPaymentStatusToSave = paymentStatus;
+    // Defensive check: if it is partial but paid amount is 0, it is effectively unpaid
     if (paymentStatus === 'Partial' && (!paidAmount || Number(paidAmount) <= 0)) {
       finalPaymentStatusToSave = 'Unpaid';
       triggerToast('Amount is 0, saving as Unpaid / On Credit.', 'info');
     }
 
-    if (paymentStatus === 'Unpaid' && selectedCustomerId === 'WALK_IN') {
+    // Safety return if Walk-in Unpaid without confirmation
+    // Only warn for actual walk-ins, not for new customers being registered
+    if (finalPaymentStatusToSave === 'Unpaid' && selectedCustomerId === 'WALK_IN' && !isNewCustomerSelected) {
       const confirmUnpaidWalkin = window.confirm(
         "You are creating an UNPAID order for a Walk-in Customer.\nDebt tracking is not available for walk-ins. Are you sure you want to proceed?"
       );
@@ -767,7 +790,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         finalCustomerName = newCust.name;
         finalCustomerArea = selectedArea || 'Dahisar';
         triggerToast(`New customer "${newCust.name}" registered successfully.`, 'success');
-      } else if (selectedCustomerId === 'WALK_IN') {
+      } else if (selectedCustomerId === 'WALK_IN' || selectedCustomerId === '') {
          let walkIn = customers.find(c => c.name === 'Walk-in Customer');
          if (!walkIn) {
             walkIn = dbStore.createCustomer({
@@ -791,8 +814,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       } else {
          const cObj = customers.find(c => c.id === selectedCustomerId);
          if (cObj) {
-           finalCustomerName = cObj.name;
-           finalCustomerArea = selectedArea || (cObj.area && cObj.area !== 'Other' ? cObj.area : 'Dahisar');
+            finalCustomerName = cObj.name;
+            finalCustomerArea = selectedArea || (cObj.area && cObj.area !== 'Other' ? cObj.area : 'Dahisar');
          }
       }
 
@@ -805,24 +828,35 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
       // Use pre-calculated values
       const { finalAmount, computedPaid, balance: unpaidBalance, actualRedeem, discountAmount: calculatedDiscount } = calculatedTotals;
-      const actualPaid = computedPaid;
+      const actualPaid = Number(computedPaid) || 0;
+      const actualBalance = Number(unpaidBalance) || 0;
       
       let customerObj = customers.find(c => c.id === finalCustomerId);
       // Fallback for newly created customer in this same turn
-      if (!customerObj && finalCustomerId && finalCustomerId !== 'WALK_IN') {
+      if (!customerObj && finalCustomerId) {
         const allCusts = dbStore.getCustomers(businessId);
         customerObj = allCusts.find(c => c.id === finalCustomerId);
       }
 
-      const isWalkIn = customerObj?.name === 'Walk-in Customer' || finalCustomerId === 'WALK_IN';
+      const isWalkIn = customerObj?.name === 'Walk-in Customer' || finalCustomerId === 'WALK_IN' || !finalCustomerId;
 
-      if (customerObj && !isWalkIn && (unpaidBalance > 0) && ((customerObj.outstanding_amount || 0) + unpaidBalance > (customerObj.credit_limit || 0))) {
-        const confirmed = window.confirm(
-          `CREDIT LIMIT WARNING!\nThis transaction will increase debt by ${currencySymbol}${unpaidBalance.toLocaleString()} and breach authorized limit of ${currencySymbol}${(customerObj.credit_limit || 0).toLocaleString()}.\nDo you want to override and bypass credit check?`
-        );
-        if (!confirmed) {
-          setIsSubmitting(false);
-          return;
+      // Credit limit bypass check for registered customers with actual debt
+      // Only warn if a positive credit limit is set for the customer
+      if (customerObj && !isWalkIn && (actualBalance > 0)) {
+        const currentDebt = Number(customerObj.outstanding_amount) || 0;
+        const limit = Number(customerObj.credit_limit) || 0;
+        if (limit > 0 && currentDebt + actualBalance > limit) {
+           const confirmed = window.confirm(
+             `CREDIT LIMIT WARNING!\n\n` +
+             `This transaction will increase debt by ${currencySymbol}${actualBalance.toLocaleString()} and breach authorized limit of ${currencySymbol}${limit.toLocaleString()}.\n\n` +
+             `Current Outstanding: ${currencySymbol}${currentDebt.toLocaleString()}\n` +
+             `New Total: ${currencySymbol}${(currentDebt + actualBalance).toLocaleString()}\n\n` +
+             `Do you want to override and bypass credit check?`
+           );
+           if (!confirmed) {
+             setIsSubmitting(false);
+             return;
+           }
         }
       }
 
@@ -851,7 +885,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
           discount_amount: calculatedDiscount,
+          discount_percentage: discountType === 'Percentage' ? Number(customDiscount) : 0,
+          additional_charges: Number(additionalCharges) || 0,
+          additional_charges_type: additionalChargeType,
           points_redeemed: actualRedeem,
+          items: cleanItems,
           is_updated: true,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
         });
@@ -860,10 +898,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
         // Update customer outstanding debt for edits
         if (customerObj && !isWalkIn) {
-          const debtChange = unpaidBalance - oldUnpaidBalance;
+          const debtChange = actualBalance - oldUnpaidBalance;
           if (debtChange !== 0) {
             dbStore.updateCustomer(finalCustomerId, {
-              outstanding_amount: Math.max(0, (customerObj.outstanding_amount || 0) + debtChange)
+              outstanding_amount: Math.max(0, (Number(customerObj.outstanding_amount) || 0) + debtChange)
             });
           }
         }
@@ -918,6 +956,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
           discount_amount: calculatedDiscount,
+          discount_percentage: discountType === 'Percentage' ? Number(customDiscount) : 0,
+          additional_charges: Number(additionalCharges) || 0,
+          additional_charges_type: additionalChargeType,
           points_redeemed: actualRedeem,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
           business_id: businessId
@@ -975,15 +1016,14 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
       setOrders(dbStore.getSalesOrders(businessId));
       
+      // Post-save actions
       if (postAction === 'save_new') {
         resetForm();
-        setIsCreateModalOpen(true);
         setCustomInvoiceNumber('');
       } else if (postAction === 'print' && finalCreatedOrder) {
         resetForm();
         setIsCreateModalOpen(false);
         setViewingInvoiceOrder(finalCreatedOrder);
-        // Small delay to ensure state update and modal close
         setTimeout(() => {
           const btn = document.getElementById('print-invoice-btn');
           if (btn) btn.click();
@@ -1000,6 +1040,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         setIsCreateModalOpen(false);
         resetForm();
       }
+
     } catch (err: any) {
       console.error(err); triggerToast(err.message || 'Error occurred.', 'error');
     } finally {
@@ -2080,6 +2121,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   const tier = selCust.loyalty_tier || 'Silver';
                   const config = dbStore.getLoyaltyConfig(businessId);
                   const pointVal = config?.point_value || 1;
+                  const isLoyal = selCust.is_loyal_member || tier === 'Gold' || tier === 'Platinum';
 
                   // Calculate estimated points earned for current order
                   const taxableVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price), 0);
@@ -2092,7 +2134,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   
                   const basePoints = Math.floor(netSpend / (config.spend_per_point || 100));
                   const newLifetimeSpend = (selCust.lifetime_spend || 0) + totalOrderAmount;
-                  const newTier = dbStore.calculateCustomerTier(newLifetimeSpend, config, selectedCustomer.loyalty_tier);
+                  const newTier = dbStore.calculateCustomerTier(newLifetimeSpend, config, selCust.loyalty_tier);
                   
                   let multiplier = 1.0;
                   if (newTier === 'Gold') multiplier = config.gold_multiplier || 1.25;
@@ -2100,67 +2142,97 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   const pointsEarned = Math.floor(basePoints * multiplier);
 
                   return (
-                    <div className="md:col-span-4 p-2.5 bg-gradient-to-r from-amber-50 to-indigo-50 dark:from-amber-950/40 dark:to-indigo-950/40 rounded-xl border border-amber-200/80 dark:border-amber-800/60 flex flex-wrap items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="p-1.5 bg-amber-500 text-white rounded-lg font-black text-[10px]">
-                          {tier === 'Platinum' ? '💎 PLATINUM' : tier === 'Gold' ? '🥇 GOLD' : '🥈 SILVER'}
-                        </span>
-                        <div>
-                          <span className="font-bold text-slate-900 dark:text-white block text-[11px]">
-                            {selCust.name} Loyalty Account: <strong className="text-amber-600 dark:text-amber-400 font-extrabold">{pts} Points</strong>
-                          </span>
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                            Available Discount Value: {currencySymbol}{(pts * pointVal).toLocaleString()}
-                          </span>
+                    <div className={`md:col-span-4 p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm transition-all duration-300 ${isLoyal ? 'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-amber-300 dark:border-amber-700 ring-2 ring-amber-500/20' : 'bg-gradient-to-r from-slate-50 to-indigo-50 dark:from-slate-900/40 dark:to-indigo-900/40 border-slate-200 dark:border-slate-700'}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-xl flex flex-col items-center justify-center min-w-[80px] ${tier === 'Platinum' ? 'bg-indigo-600 text-white' : tier === 'Gold' ? 'bg-amber-500 text-white' : 'bg-slate-500 text-white'}`}>
+                          <span className="font-black text-[10px] tracking-tighter">{tier.toUpperCase()}</span>
+                          <span className="text-[9px] opacity-90 font-bold">{isLoyal ? 'MEMBER' : 'TIER'}</span>
+                        </div>
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-slate-900 dark:text-white text-[12px]">
+                              {selCust.name}
+                            </span>
+                            {isLoyal && (
+                              <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded text-[9px] font-black uppercase tracking-widest">LOYAL</span>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-bold text-amber-600 dark:text-amber-400 text-[11px]">
+                              {pts.toLocaleString()} Loyalty Points Available
+                            </span>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                              <span>Value: {currencySymbol}{(pts * pointVal).toLocaleString()}</span>
+                              {selCust.loyalty_end_date && (
+                                <span className="flex items-center gap-1 before:content-['•'] before:mr-1">
+                                  Expiry: <strong className={new Date(selCust.loyalty_end_date) < new Date() ? 'text-rose-500' : 'text-emerald-500'}>{new Date(selCust.loyalty_end_date).toLocaleDateString()}</strong>
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-4 ml-auto">
                         {pointsEarned > 0 && (
-                          <div className="flex flex-col items-end">
+                          <div className="flex flex-col items-end px-4 border-r border-slate-200 dark:border-slate-700">
                             <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                              Expected Bonus
+                              Earnings
                             </span>
-                            <span className="font-black text-indigo-700 dark:text-indigo-300">
+                            <span className="font-black text-indigo-700 dark:text-indigo-300 text-sm">
                               +{pointsEarned} Pts
                             </span>
                           </div>
                         )}
 
-                        <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-700 pl-4">
+                        <div className="flex flex-col gap-1">
                           <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                            Redeem Points:
+                            Redeem Points
                           </label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={pts > 0 ? pts : undefined}
-                            value={pointsToRedeem}
-                            onFocus={e => e.target.select()}
-                            onChange={e => {
-                              const valStr = e.target.value;
-                              if (valStr === '') {
-                                setPointsToRedeem(0);
-                                setCustomDiscount(0);
-                              } else {
-                                const num = parseInt(valStr, 10);
-                                if (!isNaN(num)) {
-                                  const clamped = Math.max(0, pts > 0 ? Math.min(pts, num) : num);
-                                  setPointsToRedeem(clamped);
-                                  setCustomDiscount(clamped * pointVal);
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              max={pts > 0 ? pts : undefined}
+                              value={pointsToRedeem}
+                              onFocus={e => e.target.select()}
+                              onChange={e => {
+                                const valStr = e.target.value;
+                                if (valStr === '') {
+                                  setPointsToRedeem(0);
+                                  setCustomDiscount(0);
+                                } else {
+                                  const num = parseInt(valStr, 10);
+                                  if (!isNaN(num)) {
+                                    const clamped = Math.max(0, pts > 0 ? Math.min(pts, num) : num);
+                                    setPointsToRedeem(clamped);
+                                    setCustomDiscount(clamped * pointVal);
+                                  }
                                 }
-                              }
-                            }}
-                            className="w-20 px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-center text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
-                            placeholder="0"
-                          />
+                              }}
+                              className="w-24 px-2 py-1.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-center text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm transition-all"
+                              placeholder="0"
+                            />
+                            {pointsToRedeem > 0 && (
+                              <button 
+                                onClick={() => {
+                                  setPointsToRedeem(0);
+                                  setCustomDiscount(0);
+                                }}
+                                className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-500 rounded-lg transition-colors"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
                   );
                 })()}
+              </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Invoice / Order Date *</label>
                     <input 
@@ -2195,7 +2267,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     />
                   </div>
                 </div>
-              </div>
 
               <div className="pt-1 flex items-center gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -2746,25 +2817,58 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </div>
                     <div>
                       <span className="text-[10px] text-rose-600 dark:text-rose-400 uppercase block font-black tracking-wider mb-0.5">
-                        Discount ({currencySymbol})
+                        Discount (%)
                       </span>
+                      <div className="flex items-stretch w-24 border border-rose-300 dark:border-rose-700 rounded-lg overflow-hidden shadow-xs focus-within:ring-2 focus-within:ring-rose-500">
+                        <div className="px-2 bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-400 text-sm font-bold font-mono flex items-center justify-center border-r border-rose-300 dark:border-rose-700">
+                          %
+                        </div>
+                        <input 
+                          type="number"
+                          min={0}
+                          step="any"
+                          placeholder="0"
+                          value={customDiscount}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setCustomDiscount('');
+                            } else {
+                              const num = parseFloat(val);
+                              setCustomDiscount(isNaN(num) ? '' : Math.max(0, num));
+                            }
+                          }}
+                          className="w-full px-2 py-1 bg-white dark:bg-slate-800 text-xs font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-none text-right min-w-0"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <select
+                        value={additionalChargeType}
+                        onChange={(e) => setAdditionalChargeType(e.target.value as 'Delivery' | 'Additional')}
+                        className="text-[10px] text-amber-600 dark:text-amber-400 uppercase block font-black tracking-wider mb-0.5 bg-transparent border-none p-0 cursor-pointer focus:outline-none focus:ring-0"
+                      >
+                        <option value="Delivery">Del. Chg. ({currencySymbol})</option>
+                        <option value="Additional">Additional Charges ({currencySymbol})</option>
+                      </select>
                       <input 
                         type="number"
                         min={0}
                         step="any"
                         placeholder="0"
-                        value={customDiscount}
+                        value={additionalCharges}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => {
                           const val = e.target.value;
                           if (val === '') {
-                            setCustomDiscount('');
+                            setAdditionalCharges('');
                           } else {
                             const num = parseFloat(val);
-                            setCustomDiscount(isNaN(num) ? '' : Math.max(0, num));
+                            setAdditionalCharges(isNaN(num) ? '' : Math.max(0, num));
                           }
                         }}
-                        className="w-24 px-2 py-1 bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-700 rounded-lg text-xs font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-hidden focus:ring-2 focus:ring-rose-500 shadow-xs text-right"
+                        className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500 shadow-xs text-right"
                       />
                     </div>
                     <div className="border-l border-slate-200 dark:border-slate-700 pl-4">

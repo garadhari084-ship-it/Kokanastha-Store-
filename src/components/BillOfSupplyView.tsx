@@ -25,7 +25,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const items = order.items || [];
   const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const discount = order.discount_amount || 0;
-  const delivery = order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0;
+  const delivery = order.additional_charges || (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
   const totalAmount = order.total_amount || (subTotal + delivery - discount);
   const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
@@ -295,13 +295,15 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
             {discount > 0 && (
               <div className="flex justify-between font-mono text-rose-600">
                 <span className="font-sans">Discount</span>
-                <span>-{currencySymbol} {discount.toFixed(2)}</span>
+                <span>{order.discount_percentage ? `-${order.discount_percentage}%` : `-${currencySymbol} ${discount.toFixed(2)}`}</span>
               </div>
             )}
-            <div className="flex justify-between font-mono text-slate-600">
-              <span className="font-sans">DELIVERY:</span>
-              <span>{currencySymbol} {delivery.toFixed(2)}</span>
-            </div>
+            {delivery > 0 && (
+              <div className="flex justify-between font-mono text-slate-600">
+                <span className="font-sans uppercase">{(order.additional_charges_type || '').toLowerCase() === 'additional' ? 'Additional Charges:' : 'DELIVERY:'}</span>
+                <span>{currencySymbol} {delivery.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-mono font-black border-y border-slate-950 py-1 text-slate-950 text-xs">
               <span className="font-sans">Total</span>
               <span>{currencySymbol} {totalAmount.toFixed(2)}</span>

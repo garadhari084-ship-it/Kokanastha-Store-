@@ -2076,13 +2076,18 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               }
 
               /* SVG Barcode crisp rendering */
-              .barcode-label-sticker svg,
-              .barcode-label-sticker svg * {
-                fill: #000000 !important;
-                stroke: #000000 !important;
-                color: #000000 !important;
+              .barcode-label-sticker svg {
                 visibility: visible !important;
-                display: inline-block !important;
+                display: block !important;
+                margin: 0 auto !important;
+                max-width: 100% !important;
+                background-color: #ffffff !important;
+              }
+
+              .barcode-label-sticker svg rect,
+              .barcode-label-sticker svg path,
+              .barcode-label-sticker svg text {
+                visibility: visible !important;
               }
 
               ${printLabelSize === '50x25' ? `

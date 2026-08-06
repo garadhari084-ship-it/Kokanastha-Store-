@@ -759,7 +759,6 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     dbStore.logActivity(user.id, user.name, user.role, 'Print Barcode', `Printed ${printLabelCount} barcodes for SKU: ${printingBarcodeProduct?.sku}`, businessId);
     setTimeout(() => {
       window.print();
-      setPrintingBarcodeProduct(null);
     }, 100);
   };
 
@@ -2000,25 +1999,55 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <style>{`
             @media print {
               @page { 
-                size: ${printLabelsPerRow === 2 ? '105mm' : '55mm'} auto; 
+                size: ${printLabelsPerRow === 2 ? (printLabelSize === '38x25' ? '80mm' : '105mm') : (printLabelSize === '38x25' ? '40mm' : '55mm')} auto; 
                 margin: 0mm !important; 
               }
-              body { 
+              html, body { 
                 margin: 0 !important; 
                 padding: 0 !important; 
-                background: white !important;
+                background: #ffffff !important;
+                color: #000000 !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
+                width: 100% !important;
               }
-              .no-print { display: none !important; }
-              .print-area { display: block !important; width: 100% !important; }
+              
+              /* Hide all normal UI elements in print */
+              body * {
+                visibility: hidden !important;
+              }
+              .no-print, .no-print * {
+                display: none !important;
+                visibility: hidden !important;
+              }
+
+              /* Force printable barcode area to be visible and cover full page */
+              .print-area, .print-area * {
+                visibility: visible !important;
+              }
+
+              .print-area { 
+                display: block !important; 
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: ${printLabelsPerRow === 2 ? (printLabelSize === '38x25' ? '80mm' : '105mm') : (printLabelSize === '38x25' ? '40mm' : '55mm')} !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                z-index: 999999 !important;
+              }
               
               .barcode-print-grid { 
                 display: flex !important; 
                 flex-wrap: wrap !important; 
+                flex-direction: row !important;
                 justify-content: flex-start !important;
-                width: ${printLabelsPerRow === 2 ? '105mm' : '55mm'} !important;
-                margin: 0 auto !important;
+                align-items: flex-start !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
               }
 
               .barcode-label-sticker {
@@ -2031,8 +2060,19 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 align-items: center !important;
                 text-align: center !important;
                 overflow: hidden !important;
-                background: white !important;
-                color: black !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+              }
+
+              /* SVG Barcode crisp rendering */
+              .barcode-label-sticker svg,
+              .barcode-label-sticker svg * {
+                fill: #000000 !important;
+                stroke: #000000 !important;
+                color: #000000 !important;
+                visibility: visible !important;
               }
 
               ${printLabelSize === '50x25' ? `
@@ -2045,13 +2085,13 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 .barcode-label-sticker {
                   width: 50mm !important;
                   height: 38mm !important;
-                  padding: 2mm !important;
+                  padding: 1.5mm 2mm !important;
                 }
               ` : printLabelSize === '38x25' ? `
                 .barcode-label-sticker {
                   width: 38mm !important;
                   height: 25mm !important;
-                  padding: 1.5mm !important;
+                  padding: 1mm 1.5mm !important;
                 }
               ` : `
                 .barcode-label-sticker {
@@ -2386,9 +2426,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         </div>
                       ) : printLabelSize === '38x25' ? (
                         <div className="w-full h-full flex flex-col justify-between items-center text-center p-0.5">
-                          <span className="text-[7.5px] font-black uppercase tracking-tight leading-none truncate w-full border-b border-slate-200 pb-0.5">
-                            {printingBarcodeProduct.name}
-                          </span>
+                          <div className="w-full">
+                            <div className="text-[6.5px] font-black uppercase text-slate-900 leading-none truncate">{printCompanyName}</div>
+                            <div className="text-[7.5px] font-black uppercase tracking-tight leading-none truncate w-full border-b border-slate-200 pb-0.5">
+                              {printingBarcodeProduct.name}
+                            </div>
+                          </div>
                           <div className="my-0.5">
                             <ReactBarcode 
                               value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
@@ -2404,13 +2447,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                               <span>MRP: ₹{printMrp}</span>
                               <span>SALE: ₹{printSalePrice}</span>
                             </div>
-                            <div className="text-[5.5px] text-slate-500 text-center mt-0.5">
-                              PKD: {printPackedOn} | EXP: {printExpiryOn}
+                            <div className="flex justify-between text-[5.5px] text-slate-600 font-bold mt-0.5">
+                              <span>PKD: {printPackedOn}</span>
+                              <span>EXP: {printExpiryOn}</span>
                             </div>
                           </div>
                         </div>
                       ) : (
                         <div className="p-4 bg-white border border-slate-200 flex flex-col items-center text-center w-[220px]">
+                          <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{printCompanyName}</div>
                           <span className="text-[11px] font-black text-slate-900 uppercase mb-1 leading-tight">{printingBarcodeProduct.name}</span>
                           <div className="py-1">
                             <ReactBarcode 
@@ -2435,14 +2480,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                               <span>PACKED ON:</span>
                               <span className="font-black">{printPackedOn}</span>
                             </div>
-                            {printExpiryOn && (
-                              <div className="flex items-center gap-1">
-                                <span>EXPIRY ON:</span>
-                                <span className="font-black">{printExpiryOn}</span>
-                              </div>
-                            )}
-                            <div className="mt-1 font-black tracking-widest border-t border-slate-200 pt-0.5 w-full">
-                              {printCompanyName}
+                            <div className="flex items-center gap-1">
+                              <span>EXPIRY ON:</span>
+                              <span className="font-black">{printExpiryOn}</span>
                             </div>
                           </div>
                         </div>

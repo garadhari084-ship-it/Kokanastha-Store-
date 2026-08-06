@@ -25,13 +25,166 @@ import {
   ArrowDownUp,
   RefreshCw,
   Eye,
-  Info
+  Info,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import { dbStore, isComboProduct } from '../services/store';
 import { Product, Category, UserProfile, ComboItem, ComboHistoryLog } from '../types/erp';
 import { Camera } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
 import ReactBarcode from 'react-barcode';
+
+interface SearchableCategorySelectProps {
+  categories: Category[];
+  value: string;
+  onChange: (catId: string) => void;
+  onCategoryCreated?: (newCat: Category) => void;
+  businessId: string;
+  placeholder?: string;
+}
+
+const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
+  categories,
+  value,
+  onChange,
+  onCategoryCreated,
+  businessId,
+  placeholder = "Search or select category..."
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const selectedCategory = categories.find(c => c.id === value);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredCategories = categories.filter(c => {
+    const parent = categories.find(p => p.id === c.parent_id);
+    const fullName = parent ? `${parent.name} > ${c.name}` : c.name;
+    return fullName.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
+  const exactMatch = categories.some(c => c.name.toLowerCase() === searchQuery.trim().toLowerCase());
+
+  const handleSelect = (catId: string) => {
+    onChange(catId);
+    setSearchQuery('');
+    setIsOpen(false);
+  };
+
+  const handleCreateNew = () => {
+    if (!searchQuery.trim()) return;
+    const newCat = dbStore.createCategory({
+      name: searchQuery.trim(),
+      parent_id: null,
+      business_id: businessId,
+      active: true,
+    });
+    if (onCategoryCreated) {
+      onCategoryCreated(newCat);
+    }
+    onChange(newCat.id);
+    setSearchQuery('');
+    setIsOpen(false);
+  };
+
+  const getCategoryLabel = (c: Category) => {
+    const parent = categories.find(p => p.id === c.parent_id);
+    return parent ? `${parent.name} > ${c.name}` : c.name;
+  };
+
+  return (
+    <div className="relative w-full" ref={wrapperRef}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors shadow-2xs"
+      >
+        <span className="truncate text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+          <Filter size={12} className="text-indigo-500 shrink-0" />
+          {selectedCategory ? (
+            getCategoryLabel(selectedCategory)
+          ) : (
+            <span className="text-slate-400 font-normal">{placeholder}</span>
+          )}
+        </span>
+        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-2 space-y-1.5 animate-in fade-in zoom-in-95 duration-100">
+          <div className="relative flex items-center">
+            <Search size={12} className="absolute left-2.5 text-slate-400" />
+            <input 
+              type="text"
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search or type category..."
+              className="w-full pl-8 pr-7 py-1 bg-slate-100 dark:bg-slate-800 text-[11px] font-bold rounded-md border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:border-indigo-500 dark:text-white"
+            />
+            {searchQuery && (
+              <button 
+                type="button" 
+                onClick={() => setSearchQuery('')} 
+                className="absolute right-2 text-slate-400 hover:text-slate-600"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-48 overflow-y-auto space-y-0.5 text-[11px] custom-scrollbar">
+            {filteredCategories.length > 0 ? (
+              filteredCategories.map(c => {
+                const isSelected = c.id === value;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => handleSelect(c.id)}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg font-bold flex items-center justify-between transition-colors cursor-pointer ${
+                      isSelected 
+                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50' 
+                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>{getCategoryLabel(c)}</span>
+                    {isSelected && <Check size={12} className="text-indigo-600 dark:text-indigo-400" />}
+                  </button>
+                );
+              })
+            ) : (
+              <div className="px-2 py-2 text-center text-slate-400 text-[10px]">
+                No matching category found
+              </div>
+            )}
+
+            {searchQuery.trim() && !exactMatch && (
+              <button
+                type="button"
+                onClick={handleCreateNew}
+                className="w-full text-left px-2.5 py-1.5 rounded-lg font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 flex items-center gap-1.5 border border-indigo-200 dark:border-indigo-800 mt-1 cursor-pointer"
+              >
+                <Plus size={12} />
+                <span>Create category "{searchQuery.trim()}"</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface ProductModuleProps {
   businessId: string;
@@ -58,11 +211,19 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [printingBarcodeProduct, setPrintingBarcodeProduct] = useState<Product | null>(null);
   const [printLabelCount, setPrintLabelCount] = useState(10);
+  const [printLabelSize, setPrintLabelSize] = useState<'50x25' | '50x38' | '38x25' | 'standard'>('50x25');
   const [printSalePrice, setPrintSalePrice] = useState<number | string>('');
   const [printMrp, setPrintMrp] = useState<number | string>('');
   const [printPackedOn, setPrintPackedOn] = useState(new Date().toISOString().split('T')[0]);
   const [printExpiryOn, setPrintExpiryOn] = useState('');
   const [printCompanyName, setPrintCompanyName] = useState('KOKANASTHA');
+
+  useEffect(() => {
+    if (printingBarcodeProduct) {
+      setPrintSalePrice(printingBarcodeProduct.selling_price || 0);
+      setPrintMrp(printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price || 0);
+    }
+  }, [printingBarcodeProduct]);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
   // Combo Box Modal Controls
@@ -157,12 +318,41 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [formDescription, setFormDescription] = useState('');
   const [formActive, setFormActive] = useState(true);
 
+  // Quick Category Inline Creation State
+  const [isQuickCategoryOpen, setIsQuickCategoryOpen] = useState(false);
+  const [quickCategoryName, setQuickCategoryName] = useState('');
+
+  const handleCreateQuickCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickCategoryName.trim()) {
+      triggerToast('Please enter a category name.', 'error');
+      return;
+    }
+    const newCat = dbStore.createCategory({
+      name: quickCategoryName.trim(),
+      parent_id: null,
+      business_id: businessId,
+      active: true,
+    });
+    const updatedCats = dbStore.getCategories(businessId);
+    setCategories(updatedCats);
+    setFormCategory(newCat.id);
+    setQuickCategoryName('');
+    setIsQuickCategoryOpen(false);
+    triggerToast(`Created category "${newCat.name}" successfully!`, 'success');
+  };
+
+  const generateRandomBarcode = () => '89012345' + Math.floor(10000 + Math.random() * 90000);
+  const generateRandomSku = () => 'SKU-PRD-' + Math.floor(100 + Math.random() * 900);
+
   const resetForm = () => {
     const currentBiz = dbStore.getBusiness(businessId);
+    const currentCats = dbStore.getCategories(businessId);
+    setCategories(currentCats);
     setFormName('');
-    setFormSku('');
-    setFormBarcode('');
-    setFormCategory(categories[0]?.id || '');
+    setFormSku(generateRandomSku());
+    setFormBarcode(generateRandomBarcode());
+    setFormCategory(currentCats[0]?.id || '');
     setFormBrand('');
     setFormUnit('Pcs');
     setFormHsn('');
@@ -218,9 +408,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     }
     setEditingProduct(prod);
     setFormName(prod.name);
-    setFormSku(prod.sku);
-    setFormBarcode(prod.barcode);
-    setFormCategory(prod.category_id);
+    setFormSku(prod.sku || generateRandomSku());
+    setFormBarcode(prod.barcode || generateRandomBarcode());
+    setFormCategory(prod.category_id || categories[0]?.id || '');
     setFormBrand(prod.brand || '');
     setFormUnit(prod.unit);
     setFormHsn(prod.hsn_code || '');
@@ -453,8 +643,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formName.trim() || !formSku.trim() || !formBarcode.trim()) {
-      triggerToast('Product Name, SKU, and Barcode are required parameters.', 'error');
+    const barcodeVal = formBarcode.trim() || generateRandomBarcode();
+    const skuVal = formSku.trim() || generateRandomSku();
+    const categoryVal = formCategory || categories[0]?.id || '';
+
+    if (!formName.trim()) {
+      triggerToast('Product Name is required parameter.', 'error');
       return;
     }
 
@@ -467,9 +661,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       if (editingProduct) {
         dbStore.updateProduct(editingProduct.id, {
           name: formName.trim(),
-          sku: formSku.trim(),
-          barcode: formBarcode.trim(),
-          category_id: formCategory,
+          sku: skuVal,
+          barcode: barcodeVal,
+          category_id: categoryVal,
           brand: formBrand.trim(),
           unit: formUnit,
           hsn_code: formHsn.trim(),
@@ -497,10 +691,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       } else {
         dbStore.createProduct({
           name: formName.trim(),
-          sku: formSku.trim(),
-          barcode: formBarcode.trim(),
-          qr_code: `${formSku.trim()}-QR`,
-          category_id: formCategory,
+          sku: skuVal,
+          barcode: barcodeVal,
+          qr_code: `${skuVal}-QR`,
+          category_id: categoryVal,
           brand: formBrand.trim(),
           unit: formUnit,
           hsn_code: formHsn.trim(),
@@ -575,7 +769,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.barcode.includes(searchQuery);
 
-    const matchesCategory = selectedCategory === 'All' || p.category_id === selectedCategory;
+    const matchesCategory = selectedCategory === 'All' || 
+      p.category_id === selectedCategory ||
+      categories.find(c => c.id === p.category_id)?.parent_id === selectedCategory;
 
     const lowLimit = dbStore.getSettings(businessId).low_stock_limit;
     const matchesStock = 
@@ -733,12 +929,18 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <select 
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="flex-1 md:w-36 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-[11px] rounded-full px-3 py-1.5 font-bold cursor-pointer outline-hidden"
+            className="flex-1 md:w-44 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-[11px] rounded-full px-3 py-1.5 font-bold cursor-pointer outline-hidden"
           >
-            <option value="All">All Categories</option>
-            {categories.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
+            <option value="All">All Categories ({products.length})</option>
+            {categories.map(c => {
+              const parent = categories.find(p => p.id === c.parent_id);
+              const count = products.filter(p => p.category_id === c.id || categories.find(sub => sub.id === p.category_id)?.parent_id === c.id).length;
+              return (
+                <option key={c.id} value={c.id}>
+                  {parent ? `  ↳ ${c.name}` : c.name} ({count})
+                </option>
+              );
+            })}
           </select>
 
           <select 
@@ -753,6 +955,59 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           </select>
         </div>
       </div>
+
+      {/* Quick Category Filter Pills */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 hide-scrollbar">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 mr-1 flex items-center gap-1">
+          <Filter size={12} /> Categories:
+        </span>
+        <button
+          type="button"
+          onClick={() => setSelectedCategory('All')}
+          className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 border ${
+            selectedCategory === 'All'
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-200 dark:ring-indigo-900'
+              : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          All ({products.length})
+        </button>
+        {categories.map(cat => {
+          const count = products.filter(p => p.category_id === cat.id || categories.find(sub => sub.id === p.category_id)?.parent_id === cat.id).length;
+          const isSelected = selectedCategory === cat.id;
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setSelectedCategory(cat.id)}
+              className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 border ${
+                isSelected
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-200 dark:ring-indigo-900'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600'
+              }`}
+            >
+              {cat.name} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Active Category Filter Status Banner */}
+      {selectedCategory !== 'All' && (
+        <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 px-3.5 py-1.5 rounded-xl text-xs shadow-2xs">
+          <span className="font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
+            <Filter size={13} />
+            Showing items in Category: <u className="underline underline-offset-2">{categories.find(c => c.id === selectedCategory)?.name || 'Category'}</u>
+          </span>
+          <button 
+            type="button"
+            onClick={() => setSelectedCategory('All')} 
+            className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-1"
+          >
+            <X size={12} /> Clear Category Filter
+          </button>
+        </div>
+      )}
 
       {/* Catalog Table View */}
       <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs mt-3">
@@ -817,9 +1072,21 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                           <span className="text-[9px] text-slate-400">Packed Goods</span>
                         </div>
                       ) : (
-                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedCategory(prod.category_id);
+                          }}
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border transition-all cursor-pointer ${
+                            selectedCategory === prod.category_id
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-300'
+                              : 'text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 hover:text-indigo-600 border-slate-200 dark:border-slate-700'
+                          }`}
+                          title={`Click to filter catalog by category: ${category?.name || 'Standard'}`}
+                        >
                           {category?.name || 'Standard'}
-                        </span>
+                        </button>
                       )}
                     </td>
                     <td className="py-2 px-3">
@@ -991,16 +1258,19 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
                   {/* Category */}
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Category</label>
-                    <select 
-                      value={formCategory} 
-                      onChange={(e) => setFormCategory(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-bold rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden"
-                    >
-                      {categories.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Category *</label>
+                    <SearchableCategorySelect
+                      categories={categories}
+                      value={formCategory || categories[0]?.id || ''}
+                      onChange={(catId) => setFormCategory(catId)}
+                      onCategoryCreated={(newCat) => {
+                        const updatedCats = dbStore.getCategories(businessId);
+                        setCategories(updatedCats);
+                        triggerToast(`Category "${newCat.name}" created and selected!`, 'success');
+                      }}
+                      businessId={businessId}
+                      placeholder="Search category..."
+                    />
                   </div>
 
                   {/* SKU */}
@@ -1725,59 +1995,260 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       {/* Barcode Print Setup Modal */}
       {printingBarcodeProduct && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          {/* Dynamic Print Styles for thermal sticker sizes */}
+          <style>{`
+            @media print {
+              ${printLabelSize === '50x25' ? `
+                @page { size: 50mm 25mm !important; margin: 0 !important; }
+                body { margin: 0 !important; padding: 0 !important; background: white !important; }
+                .barcode-print-grid { display: block !important; padding: 0 !important; margin: 0 !important; }
+                .barcode-label-sticker {
+                  width: 50mm !important;
+                  height: 25mm !important;
+                  box-sizing: border-box !important;
+                  padding: 1.5mm 2mm !important;
+                  page-break-after: always !important;
+                  break-after: page !important;
+                  margin: 0 !important;
+                  border: none !important;
+                  display: flex !important;
+                  flex-direction: column !important;
+                  justify-content: space-between !important;
+                  align-items: center !important;
+                  text-align: center !important;
+                  overflow: hidden !important;
+                }
+              ` : printLabelSize === '50x38' ? `
+                @page { size: 50mm 38mm !important; margin: 0 !important; }
+                body { margin: 0 !important; padding: 0 !important; }
+                .barcode-print-grid { display: block !important; }
+                .barcode-label-sticker {
+                  width: 50mm !important;
+                  height: 38mm !important;
+                  box-sizing: border-box !important;
+                  padding: 2mm !important;
+                  page-break-after: always !important;
+                  break-after: page !important;
+                  border: none !important;
+                }
+              ` : printLabelSize === '38x25' ? `
+                @page { size: 38mm 25mm !important; margin: 0 !important; }
+                body { margin: 0 !important; padding: 0 !important; }
+                .barcode-print-grid { display: block !important; }
+                .barcode-label-sticker {
+                  width: 38mm !important;
+                  height: 25mm !important;
+                  box-sizing: border-box !important;
+                  padding: 1.5mm !important;
+                  page-break-after: always !important;
+                  break-after: page !important;
+                  border: none !important;
+                }
+              ` : `
+                @page { size: auto; margin: 5mm; }
+                .barcode-print-grid { display: flex !important; flex-wrap: wrap !important; gap: 10px !important; }
+              `}
+            }
+          `}</style>
+
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg overflow-hidden shadow-xl animate-in zoom-in duration-150 my-auto border border-slate-200 dark:border-slate-800">
             <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
                 <Printer size={16} />
-                <span>Barcode Generator & Print Station</span>
+                <span>Barcode Generator & Thermal Print Station</span>
               </h2>
               <button onClick={() => setPrintingBarcodeProduct(null)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* LIVE PREVIEW - Matching the provided image style */}
-              <div className="flex flex-col items-center justify-center no-print">
-                <span className="text-[10px] font-bold text-slate-500 uppercase mb-2">Live Print Preview</span>
-                <div className="p-6 bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col items-center text-center w-[220px]">
-                  <span className="text-[11px] font-black text-slate-900 uppercase mb-1 leading-tight">{printingBarcodeProduct.name}</span>
-                  <div className="py-1">
-                    <ReactBarcode 
-                      value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
-                      height={40} 
-                      width={1.2}
-                      fontSize={11}
-                      margin={0}
-                      displayValue={true}
-                    />
-                  </div>
-                  <div className="flex flex-col items-center gap-0.5 mt-1 text-slate-900 font-bold uppercase" style={{ fontSize: '10px' }}>
-                    <div className="flex items-center gap-1">
-                      <span>MRP:</span>
-                      <span className="font-black">₹{printMrp}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span>Sale Price:</span>
-                      <span className="font-black">₹{printSalePrice}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span>PACKED ON:</span>
-                      <span className="font-black">{printPackedOn}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span>EXPIRY ON:</span>
-                      <span className="font-black">{printExpiryOn}</span>
-                    </div>
-                    <div className="mt-1 font-black tracking-widest border-t border-slate-200 pt-0.5 w-full">
-                      {printCompanyName}
-                    </div>
-                  </div>
+            <div className="p-6 space-y-5">
+              {/* Size Selector Control */}
+              <div className="no-print space-y-1 bg-slate-50 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                    Label Size (Print Preset)
+                  </label>
+                  <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full border border-indigo-200/50">
+                    {printLabelSize === '50x25' ? '50mm x 25mm (Standard Sticker)' : printLabelSize === '50x38' ? '50mm x 38mm (Large Sticker)' : printLabelSize === '38x25' ? '38mm x 25mm (Compact Sticker)' : '220px Standard Card'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPrintLabelSize('50x25')}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                      printLabelSize === '50x25'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    50 x 25 mm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintLabelSize('50x38')}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                      printLabelSize === '50x38'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    50 x 38 mm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintLabelSize('38x25')}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                      printLabelSize === '38x25'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    38 x 25 mm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintLabelSize('standard')}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                      printLabelSize === 'standard'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    220px Card
+                  </button>
                 </div>
               </div>
 
+              {/* LIVE PREVIEW */}
+              <div className="flex flex-col items-center justify-center no-print">
+                <span className="text-[10px] font-bold text-slate-500 uppercase mb-2">Live Print Preview</span>
+                
+                {/* 50x25 mm Sticker Preview */}
+                {printLabelSize === '50x25' && (
+                  <div className="w-[189px] h-[95px] p-1.5 bg-white rounded-md border-2 border-indigo-400 shadow-md flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none relative">
+                    <span className="text-[8.5px] font-black text-slate-900 uppercase tracking-tight leading-none truncate w-full px-0.5">
+                      {printingBarcodeProduct.name}
+                    </span>
+                    
+                    <div className="my-0.5 flex items-center justify-center">
+                      <ReactBarcode 
+                        value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                        height={22} 
+                        width={1.05}
+                        fontSize={8}
+                        margin={0}
+                        displayValue={true}
+                      />
+                    </div>
+
+                    <div className="w-full flex items-center justify-between text-[7.5px] font-black text-slate-900 leading-none border-t border-slate-300 pt-0.5 px-0.5 uppercase">
+                      <span>MRP: ₹{printMrp}</span>
+                      <span className="text-indigo-700 font-extrabold">SALE: ₹{printSalePrice}</span>
+                      {printPackedOn && <span>PKD: {printPackedOn.slice(-5)}</span>}
+                    </div>
+                  </div>
+                )}
+
+                {/* 50x38 mm Sticker Preview */}
+                {printLabelSize === '50x38' && (
+                  <div className="w-[189px] h-[143px] p-2 bg-white rounded-md border-2 border-indigo-400 shadow-md flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none">
+                    <span className="text-[9.5px] font-black text-slate-900 uppercase tracking-tight leading-tight truncate w-full">
+                      {printingBarcodeProduct.name}
+                    </span>
+                    <div className="my-1">
+                      <ReactBarcode 
+                        value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                        height={32} 
+                        width={1.1}
+                        fontSize={9}
+                        margin={0}
+                        displayValue={true}
+                      />
+                    </div>
+                    <div className="w-full space-y-0.5 text-[8.5px] font-bold text-slate-900 uppercase border-t border-slate-200 pt-1">
+                      <div className="flex justify-between">
+                        <span>MRP: ₹{printMrp}</span>
+                        <span>SALE: ₹{printSalePrice}</span>
+                      </div>
+                      <div className="flex justify-between text-[7.5px] text-slate-600">
+                        <span>PKD: {printPackedOn}</span>
+                        {printExpiryOn && <span>EXP: {printExpiryOn}</span>}
+                      </div>
+                      <div className="font-black tracking-widest text-[8px] text-indigo-900 truncate">
+                        {printCompanyName}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 38x25 mm Sticker Preview */}
+                {printLabelSize === '38x25' && (
+                  <div className="w-[143px] h-[95px] p-1 bg-white rounded-md border-2 border-indigo-400 shadow-md flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none">
+                    <span className="text-[8px] font-black text-slate-900 uppercase tracking-tight leading-none truncate w-full">
+                      {printingBarcodeProduct.name}
+                    </span>
+                    <div className="my-0.5">
+                      <ReactBarcode 
+                        value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                        height={18} 
+                        width={0.9}
+                        fontSize={7.5}
+                        margin={0}
+                        displayValue={true}
+                      />
+                    </div>
+                    <div className="w-full flex items-center justify-between text-[7px] font-extrabold text-slate-900 border-t border-slate-200 pt-0.5">
+                      <span>MRP: ₹{printMrp}</span>
+                      <span>SALE: ₹{printSalePrice}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 220px Standard Card Preview */}
+                {printLabelSize === 'standard' && (
+                  <div className="p-4 bg-white rounded-lg border-2 border-indigo-400 shadow-md flex flex-col items-center text-center w-[220px]">
+                    <span className="text-[11px] font-black text-slate-900 uppercase mb-1 leading-tight">{printingBarcodeProduct.name}</span>
+                    <div className="py-1">
+                      <ReactBarcode 
+                        value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                        height={40} 
+                        width={1.2}
+                        fontSize={11}
+                        margin={0}
+                        displayValue={true}
+                      />
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5 mt-1 text-slate-900 font-bold uppercase" style={{ fontSize: '10px' }}>
+                      <div className="flex items-center gap-1">
+                        <span>MRP:</span>
+                        <span className="font-black">₹{printMrp}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span>Sale Price:</span>
+                        <span className="font-black">₹{printSalePrice}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span>PACKED ON:</span>
+                        <span className="font-black">{printPackedOn}</span>
+                      </div>
+                      {printExpiryOn && (
+                        <div className="flex items-center gap-1">
+                          <span>EXPIRY ON:</span>
+                          <span className="font-black">{printExpiryOn}</span>
+                        </div>
+                      )}
+                      <div className="mt-1 font-black tracking-widest border-t border-slate-200 pt-0.5 w-full">
+                        {printCompanyName}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Editable Controls */}
-              <div className="grid grid-cols-2 gap-4 no-print">
+              <div className="grid grid-cols-2 gap-3 no-print">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-500 uppercase">MRP (₹)</label>
                   <input 
@@ -1836,48 +2307,121 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 </div>
               </div>
 
-
+              {/* Printable Area */}
               <div className="print-area hidden print:block">
-                <div className="flex flex-wrap gap-4 items-center justify-center p-4">
+                <div className="barcode-print-grid">
                   {Array.from({ length: printLabelCount }).map((_, idx) => (
-                    <div key={idx} className="p-4 bg-white border border-slate-200 flex flex-col items-center text-center w-[220px]">
-                      <span className="text-[11px] font-black text-slate-900 uppercase mb-1 leading-tight">{printingBarcodeProduct.name}</span>
-                      <div className="py-1">
-                        <ReactBarcode 
-                          value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
-                          height={40} 
-                          width={1.2}
-                          fontSize={11}
-                          margin={0}
-                          displayValue={true}
-                        />
-                      </div>
-                      <div className="flex flex-col items-center gap-0.5 mt-1 text-slate-900 font-bold uppercase" style={{ fontSize: '10px' }}>
-                        <div className="flex items-center gap-1">
-                          <span>MRP:</span>
-                          <span className="font-black">₹{printMrp}</span>
+                    <div key={idx} className="barcode-label-sticker bg-white font-sans text-slate-900">
+                      {printLabelSize === '50x25' ? (
+                        <div className="w-full h-full flex flex-col justify-between items-center text-center p-0.5">
+                          <span className="text-[8.5px] font-black uppercase tracking-tight leading-none truncate w-full">
+                            {printingBarcodeProduct.name}
+                          </span>
+                          <div className="my-0.5 flex items-center justify-center">
+                            <ReactBarcode 
+                              value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                              height={22} 
+                              width={1.05}
+                              fontSize={8}
+                              margin={0}
+                              displayValue={true}
+                            />
+                          </div>
+                          <div className="w-full flex items-center justify-between text-[7.5px] font-black leading-none border-t border-slate-300 pt-0.5 uppercase">
+                            <span>MRP: ₹{printMrp}</span>
+                            <span>SALE: ₹{printSalePrice}</span>
+                            {printPackedOn && <span>PKD: {printPackedOn.slice(-5)}</span>}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <span>Sale Price:</span>
-                          <span className="font-black">₹{printSalePrice}</span>
+                      ) : printLabelSize === '50x38' ? (
+                        <div className="w-full h-full flex flex-col justify-between items-center text-center p-1">
+                          <span className="text-[9.5px] font-black uppercase leading-tight truncate w-full">
+                            {printingBarcodeProduct.name}
+                          </span>
+                          <div className="my-1">
+                            <ReactBarcode 
+                              value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                              height={32} 
+                              width={1.1}
+                              fontSize={9}
+                              margin={0}
+                              displayValue={true}
+                            />
+                          </div>
+                          <div className="w-full text-[8.5px] font-bold uppercase border-t border-slate-200 pt-0.5">
+                            <div className="flex justify-between">
+                              <span>MRP: ₹{printMrp}</span>
+                              <span>SALE: ₹{printSalePrice}</span>
+                            </div>
+                            <div className="font-black text-[8px] truncate mt-0.5">
+                              {printCompanyName}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <span>PACKED ON:</span>
-                          <span className="font-black">{printPackedOn}</span>
+                      ) : printLabelSize === '38x25' ? (
+                        <div className="w-full h-full flex flex-col justify-between items-center text-center p-0.5">
+                          <span className="text-[8px] font-black uppercase tracking-tight leading-none truncate w-full">
+                            {printingBarcodeProduct.name}
+                          </span>
+                          <div className="my-0.5">
+                            <ReactBarcode 
+                              value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                              height={18} 
+                              width={0.9}
+                              fontSize={7.5}
+                              margin={0}
+                              displayValue={true}
+                            />
+                          </div>
+                          <div className="w-full flex items-center justify-between text-[7px] font-black border-t border-slate-200 pt-0.5">
+                            <span>MRP: ₹{printMrp}</span>
+                            <span>SALE: ₹{printSalePrice}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <span>EXPIRY ON:</span>
-                          <span className="font-black">{printExpiryOn}</span>
+                      ) : (
+                        <div className="p-4 bg-white border border-slate-200 flex flex-col items-center text-center w-[220px]">
+                          <span className="text-[11px] font-black text-slate-900 uppercase mb-1 leading-tight">{printingBarcodeProduct.name}</span>
+                          <div className="py-1">
+                            <ReactBarcode 
+                              value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                              height={40} 
+                              width={1.2}
+                              fontSize={11}
+                              margin={0}
+                              displayValue={true}
+                            />
+                          </div>
+                          <div className="flex flex-col items-center gap-0.5 mt-1 text-slate-900 font-bold uppercase" style={{ fontSize: '10px' }}>
+                            <div className="flex items-center gap-1">
+                              <span>MRP:</span>
+                              <span className="font-black">₹{printMrp}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span>Sale Price:</span>
+                              <span className="font-black">₹{printSalePrice}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span>PACKED ON:</span>
+                              <span className="font-black">{printPackedOn}</span>
+                            </div>
+                            {printExpiryOn && (
+                              <div className="flex items-center gap-1">
+                                <span>EXPIRY ON:</span>
+                                <span className="font-black">{printExpiryOn}</span>
+                              </div>
+                            )}
+                            <div className="mt-1 font-black tracking-widest border-t border-slate-200 pt-0.5 w-full">
+                              {printCompanyName}
+                            </div>
+                          </div>
                         </div>
-                        <div className="mt-1 font-black tracking-widest border-t border-slate-200 pt-0.5 w-full">
-                          {printCompanyName}
-                        </div>
-                      </div>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800 no-print">
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 no-print">
                 <button 
                   onClick={() => setPrintingBarcodeProduct(null)}
                   className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold hover:bg-slate-200 cursor-pointer"
@@ -1887,10 +2431,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 <button 
                   type="button"
                   onClick={handlePrintBarcodeSubmit}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold hover:bg-indigo-700 cursor-pointer flex items-center gap-2"
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold hover:bg-indigo-700 cursor-pointer flex items-center gap-2 shadow-sm"
                 >
                   <Printer size={14} />
-                  <span>Send to Barcode Printer</span>
+                  <span>Send to Barcode Printer ({printLabelSize === '50x25' ? '50x25 mm' : printLabelSize})</span>
                 </button>
               </div>
             </div>
@@ -1927,32 +2471,86 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Category</label>
-                  <select 
-                    value={formCategory} 
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
-                  >
-                    {categories.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Category *</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickCategoryOpen(!isQuickCategoryOpen)}
+                      className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-0.5"
+                      title="Add a new category"
+                    >
+                      <Plus size={10} /> {isQuickCategoryOpen ? 'Select Existing' : 'New Category'}
+                    </button>
+                  </div>
+
+                  {isQuickCategoryOpen ? (
+                    <div className="flex gap-1">
+                      <input 
+                        type="text"
+                        autoFocus
+                        value={quickCategoryName}
+                        onChange={(e) => setQuickCategoryName(e.target.value)}
+                        placeholder="Type new category name..."
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-indigo-400 focus:outline-hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCreateQuickCategory}
+                        className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold hover:bg-indigo-700 cursor-pointer shrink-0 flex items-center gap-1 shadow-xs"
+                      >
+                        <Plus size={10} /> Add
+                      </button>
+                    </div>
+                  ) : (
+                    <SearchableCategorySelect
+                      categories={categories}
+                      value={formCategory || categories[0]?.id || ''}
+                      onChange={(catId) => setFormCategory(catId)}
+                      onCategoryCreated={(newCat) => {
+                        const updatedCats = dbStore.getCategories(businessId);
+                        setCategories(updatedCats);
+                        triggerToast(`Category "${newCat.name}" created and selected!`, 'success');
+                      }}
+                      businessId={businessId}
+                      placeholder="Search or select category..."
+                    />
+                  )}
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">SKU Identifier *</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">SKU Identifier *</label>
+                    <button
+                      type="button"
+                      onClick={() => setFormSku(generateRandomSku())}
+                      className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-0.5"
+                      title="Generate new SKU"
+                    >
+                      <RefreshCw size={10} /> Auto
+                    </button>
+                  </div>
                   <input 
                     type="text" 
                     required
                     value={formSku}
                     onChange={(e) => setFormSku(e.target.value)}
                     placeholder="e.g. SKU-CHK-101"
-                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono font-bold"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Barcode Number *</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Barcode Number *</label>
+                    <button
+                      type="button"
+                      onClick={() => setFormBarcode(generateRandomBarcode())}
+                      className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-0.5"
+                      title="Generate new EAN Barcode"
+                    >
+                      <RefreshCw size={10} /> Generate
+                    </button>
+                  </div>
                   <div className="flex gap-1">
                     <input 
                       type="text" 
@@ -1960,12 +2558,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       value={formBarcode}
                       onChange={(e) => setFormBarcode(e.target.value)}
                       placeholder="8901234500001"
-                      className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono"
+                      className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-indigo-300 dark:border-indigo-700 focus:outline-hidden font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/20"
                     />
                     <button
                       type="button"
                       onClick={() => setIsScannerOpen(true)}
-                      className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg border border-indigo-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                      className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 rounded-lg border border-indigo-200 dark:border-indigo-700 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-colors shrink-0"
                       title="Scan Barcode / QR Code via Camera"
                     >
                       <Camera size={14} />

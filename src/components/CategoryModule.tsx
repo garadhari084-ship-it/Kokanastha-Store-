@@ -1,6 +1,6 @@
 import { PageHeader } from './PageHeader';
 import React, { useEffect, useState } from 'react';
-import { Layers, FolderPlus, Edit, Trash2, Search, X, Network, Database, Hexagon, FolderTree, Package, Filter, SearchX } from 'lucide-react';
+import { Layers, FolderPlus, Edit, Trash2, Search, X, Network, Database, Hexagon, FolderTree, Package, Filter, SearchX, Eye } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { Category, UserProfile, Product } from '../types/erp';
 
@@ -20,6 +20,7 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [viewingCategoryProducts, setViewingCategoryProducts] = useState<Category | null>(null);
   
   // Form states
   const [formName, setFormName] = useState('');
@@ -246,10 +247,10 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
                   const subCount = categories.filter(c => c.parent_id === cat.id).length;
 
                   return (
-                    <tr key={`${cat.id}-${idx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="py-2 px-4">
+                    <tr key={`${cat.id}-${idx}`} className="hover:bg-indigo-50/50 dark:hover:bg-slate-800/60 transition-colors group">
+                      <td className="py-2 px-4 cursor-pointer" onClick={() => setViewingCategoryProducts(cat)}>
                         <div className="flex flex-col">
-                          <span className="font-bold text-slate-800 dark:text-slate-200 line-clamp-1 text-[12px] flex items-center gap-1.5">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 line-clamp-1 text-[12px] flex items-center gap-1.5 group-hover:text-indigo-600 transition-colors">
                             {!isPrimary && <FolderTree size={12} className="text-slate-400" />}
                             {cat.name}
                           </span>
@@ -260,7 +261,7 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
                           )}
                         </div>
                       </td>
-                      <td className="py-2 px-4">
+                      <td className="py-2 px-4 cursor-pointer" onClick={() => setViewingCategoryProducts(cat)}>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                           isPrimary 
                             ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300' 
@@ -269,12 +270,16 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
                           {isPrimary ? 'Primary Level' : 'Subcategory'}
                         </span>
                       </td>
-                      <td className="py-2 px-4">
+                      <td className="py-2 px-4 cursor-pointer" onClick={() => setViewingCategoryProducts(cat)}>
                         <div className="flex gap-2 items-center">
-                          <div className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-400">
+                          <button 
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setViewingCategoryProducts(cat); }}
+                            className="flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800"
+                          >
                             <Package size={12} />
-                            <span className="font-bold">{usageCount} items</span>
-                          </div>
+                            <span>{usageCount} items</span>
+                          </button>
                           {isPrimary && subCount > 0 && (
                             <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 rounded">
                               <Network size={10} />
@@ -285,6 +290,15 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
                       </td>
                       <td className="py-2 px-4 text-right">
                         <div className="flex justify-end gap-1.5 items-center">
+                          <button
+                            type="button"
+                            onClick={() => setViewingCategoryProducts(cat)}
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-900/30 rounded transition-colors border border-slate-200 dark:border-slate-700 flex items-center gap-1 text-[10px] font-bold"
+                            title="View items in this category"
+                          >
+                            <Eye size={14} />
+                            <span className="hidden sm:inline">View ({usageCount})</span>
+                          </button>
                           {user.role !== 'Viewer' && (
                             <>
                               <button
@@ -380,6 +394,73 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Category Products Items Modal */}
+      {viewingCategoryProducts && (
+        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl animate-in zoom-in duration-150 max-h-[85vh]">
+            <div className="bg-slate-800 text-white px-5 py-3.5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Package className="text-indigo-400" size={18} />
+                <span className="font-bold text-xs uppercase tracking-wider">
+                  Products in Category: {viewingCategoryProducts.name}
+                </span>
+              </div>
+              <button onClick={() => setViewingCategoryProducts(null)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto space-y-3">
+              {products.filter(p => p.category_id === viewingCategoryProducts.id || categories.find(sub => sub.id === p.category_id)?.parent_id === viewingCategoryProducts.id).length === 0 ? (
+                <div className="py-12 text-center text-slate-500">
+                  <Package size={32} className="mx-auto mb-2 opacity-40" />
+                  <p className="font-bold text-xs">No products currently assigned to this category.</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Assign this category when creating or editing items in Product Master.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                  {products
+                    .filter(p => p.category_id === viewingCategoryProducts.id || categories.find(sub => sub.id === p.category_id)?.parent_id === viewingCategoryProducts.id)
+                    .map((prod) => (
+                      <div key={prod.id} className="p-3 bg-white dark:bg-slate-900 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={prod.image_url || 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=100&q=80'} 
+                            alt={prod.name} 
+                            className="w-10 h-10 object-cover rounded-lg border border-slate-200 dark:border-slate-700 shrink-0" 
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-bold text-xs text-slate-900 dark:text-white">{prod.name}</span>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+                              <span className="font-bold text-indigo-600">SKU: {prod.sku}</span>
+                              <span>•</span>
+                              <span>Barcode: {prod.barcode || 'N/A'}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-extrabold text-xs text-indigo-600 dark:text-indigo-400">₹{prod.selling_price.toLocaleString()}</div>
+                          <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Stock: {prod.current_stock} {prod.unit}</div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setViewingCategoryProducts(null)}
+                className="px-4 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold hover:bg-slate-300 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

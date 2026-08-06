@@ -1166,7 +1166,34 @@ class ERPStorage {
 
   // Category Operations
   public getCategories(businessId: string): Category[] {
-    return this.cache.categories.filter(c => c.business_id === businessId);
+    let cats = this.cache.categories.filter(c => !c.business_id || c.business_id === businessId || c.business_id === BIZ_ID);
+    if (cats.length === 0) {
+      const defaultCatNames = [
+        'Faral & Festive Sweets',
+        'Snacks & Namkeen',
+        'Bakery & Confectionery',
+        'Spices & Masalas',
+        'Dry Fruits & Nuts',
+        'Beverages & Syrups',
+        'General & Grocery'
+      ];
+      defaultCatNames.forEach(name => {
+        const newCat: Category = {
+          id: crypto.randomUUID(),
+          name,
+          parent_id: null,
+          business_id: businessId || BIZ_ID,
+          active: true,
+          created_at: new Date().toISOString()
+        };
+        this.cache.categories.push(newCat);
+      });
+      try {
+        localStorage.setItem('omnipack_erp_categories', JSON.stringify(this.cache.categories));
+      } catch (e) {}
+      cats = this.cache.categories.filter(c => !c.business_id || c.business_id === businessId || c.business_id === BIZ_ID);
+    }
+    return cats;
   }
 
   public createCategory(cat: Omit<Category, 'id' | 'created_at'>): Category {
@@ -2705,7 +2732,9 @@ class ERPStorage {
         theme: 'light'
       };
       this.cache.settings.push(setting);
-      this.save('settings', this.cache.settings.find(s => s.business_id === businessId));
+      try {
+        localStorage.setItem('omnipack_erp_settings', JSON.stringify(this.cache.settings));
+      } catch (e) {}
     }
     return setting;
   }

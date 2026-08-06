@@ -378,7 +378,7 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
       } as SalesOrder;
 
       const businessName = business?.name || 'कोकणस्थ';
-      const googleReviewUrl = (business as any)?.google_review_url || 'https://g.page/r/kokanastha/review';
+      const googleReviewUrl = (business as any)?.google_review_url || 'https://share.google/92HZuDJaVzQA5Sd5x';
 
       msg = generateWhatsAppInvoiceMessage(updatedOrder, partyName, businessName, googleReviewUrl);
     } else {

@@ -33,7 +33,7 @@ export function generateWhatsAppInvoiceMessage(
   const formattedBalance = formatAmount(balance);
   
   const invoiceLink = `https://kokanastha-store.vercel.app/?inv=${encodeURIComponent(order.order_number)}`;
-  const googleReviewLink = customGoogleReviewUrl || 'https://g.page/r/kokanastha/review';
+  const googleReviewLink = customGoogleReviewUrl || 'https://share.google/92HZuDJaVzQA5Sd5x';
 
   if (balance <= 0) {
     return `Hello ${customerName || 'Customer'}, 👋\n\n` +
@@ -79,7 +79,7 @@ export const WhatsAppNotifyModal: React.FC<WhatsAppNotifyModalProps> = ({
   const customerPhone = matchedCust?.phone || '';
 
   const businessName = business?.name || 'कोकणस्थ';
-  const googleReviewUrl = (business as any)?.google_review_url || 'https://g.page/r/kokanastha/review';
+  const googleReviewUrl = (business as any)?.google_review_url || 'https://share.google/92HZuDJaVzQA5Sd5x';
 
   useEffect(() => {
     if (order) {

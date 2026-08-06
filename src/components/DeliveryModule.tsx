@@ -1,6 +1,7 @@
 
 import { PageHeader } from './PageHeader';
 import React, { useEffect, useState, useMemo } from 'react';
+import { formatWhatsAppPhone } from '../utils/formatters';
 import { DeliveryReports } from './DeliveryReports';
 import { 
   Truck, 
@@ -816,7 +817,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                           <a href={`tel:${cust.phone}`} className="p-1 bg-sky-50 dark:bg-sky-900/20 text-sky-600 rounded hover:bg-sky-100 transition-colors" title="Call">
                             <Phone size={12} />
                           </a>
-                          <a href={`https://wa.me/${cust.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="p-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded hover:bg-emerald-100 transition-colors" title="WhatsApp">
+                          <a href={`https://wa.me/${formatWhatsAppPhone(cust.phone)}`} target="_blank" rel="noreferrer" className="p-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded hover:bg-emerald-100 transition-colors" title="WhatsApp">
                             <MessageCircle size={12} />
                           </a>
                           <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((cust?.shipping_address || '') + ' ' + (cust?.area || ''))}`} target="_blank" rel="noreferrer" className="p-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-200 transition-colors" title="Maps">

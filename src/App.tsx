@@ -68,6 +68,7 @@ import { InboxModule } from './components/InboxModule';
 import { LoyaltySubscriptionModule } from './components/LoyaltySubscriptionModule';
 
 import { ItemStockLiveReportModule } from './components/ItemStockLiveReportModule';
+import { PublicInvoiceView } from './components/PublicInvoiceView';
 
 interface Toast {
   id: string;
@@ -286,6 +287,24 @@ export default function App() {
 
   // DB Connection Mode
   const [dbMode, setDbMode] = useState<'local' | 'supabase'>(isSupabaseConfigured ? 'supabase' : 'local');
+
+  // Public Invoice Deep Link
+  const [publicInvoiceNum, setPublicInvoiceNum] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const inv = searchParams.get('inv') || searchParams.get('invoice');
+      if (inv) return inv.trim();
+
+      const pathMatches = window.location.pathname.match(/\/inv\/(.+)/);
+      if (pathMatches && pathMatches[1]) {
+        return decodeURIComponent(pathMatches[1]).trim();
+      }
+    } catch (e) {
+      console.error('Error parsing URL for invoice:', e);
+    }
+    return null;
+  });
 
   // App Layout States
   const [activeView, setActiveView] = useState<string>('dashboard');
@@ -1186,6 +1205,16 @@ export default function App() {
         return <div>Module view not resolved.</div>;
     }
   };
+
+  // Render Public Invoice view if requested via link
+  if (publicInvoiceNum) {
+    return (
+      <PublicInvoiceView
+        orderNumber={publicInvoiceNum}
+        onGoToLogin={() => setPublicInvoiceNum(null)}
+      />
+    );
+  }
 
   // Render Loading state
   if (isInitializing) {

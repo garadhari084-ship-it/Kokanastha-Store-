@@ -5,6 +5,8 @@ import {
   ArrowRight, ShieldCheck, Check, Sparkles, User, AlertCircle
 } from 'lucide-react';
 import { SalesOrder, PurchaseOrder, PaymentRecord, UserProfile } from '../types/erp';
+import { generateWhatsAppInvoiceMessage } from './WhatsAppNotifyModal';
+import { formatWhatsAppPhone } from '../utils/formatters';
 import { dbStore } from '../services/store';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -367,20 +369,38 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
   const handleShareWhatsApp = () => {
     if (!createdReceipt) return;
 
-    const msg = `*Payment Receipt Confirmation* 🧾\n` +
-      `Business: *${business?.name || 'OmniPack ERP'}*\n` +
-      `Voucher #: *${createdReceipt.receipt_number}*\n` +
-      `Order #: *${order.order_number}*\n` +
-      `Party: *${partyName}*\n\n` +
-      `-----------------------------\n` +
-      `*Amount ${type === 'Sales' ? 'Received' : 'Paid'}: ${currencySymbol}${createdReceipt.amount.toLocaleString()}*\n` +
-      `Payment Mode: ${createdReceipt.payment_mode}\n` +
-      (createdReceipt.reference_no ? `Ref / UTR #: ${createdReceipt.reference_no}\n` : '') +
-      `*Remaining Outstanding Balance: ${currencySymbol}${calculatedRemaining.toLocaleString()}*\n` +
-      `-----------------------------\n` +
-      `Thank you for your business!`;
+    let msg = '';
+    if (type === 'Sales') {
+      const updatedPaidAmount = (order.paid_amount || 0) + createdReceipt.amount;
+      const updatedOrder = {
+        ...order,
+        paid_amount: updatedPaidAmount
+      } as SalesOrder;
 
-    const cleanPhone = partyPhone.replace(/[^0-9]/g, '');
+      const businessName = business?.name || 'कोकणस्थ';
+      const googleReviewUrl = (business as any)?.google_review_url || 'https://g.page/r/kokanastha/review';
+
+      msg = generateWhatsAppInvoiceMessage(updatedOrder, partyName, businessName, googleReviewUrl);
+    } else {
+      msg = `*Payment Receipt Confirmation* 🧾\n` +
+        `Business: *${business?.name || 'OmniPack ERP'}*\n` +
+        `Voucher #: *${createdReceipt.receipt_number}*\n` +
+        `Order #: *${order.order_number}*\n` +
+        `Party: *${partyName}*\n\n` +
+        `-----------------------------\n` +
+        `*Amount Paid: ${currencySymbol}${createdReceipt.amount.toLocaleString()}*\n` +
+        `Payment Mode: ${createdReceipt.payment_mode}\n` +
+        (createdReceipt.reference_no ? `Ref / UTR #: ${createdReceipt.reference_no}\n` : '') +
+        `*Remaining Outstanding Balance: ${currencySymbol}${calculatedRemaining.toLocaleString()}*\n` +
+        `-----------------------------\n` +
+        `Thank you for your business!`;
+    }
+
+    const cleanPhone = formatWhatsAppPhone(partyPhone);
+    if (!cleanPhone) {
+      triggerToast('Party phone number not available.', 'error');
+      return;
+    }
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank');
   };

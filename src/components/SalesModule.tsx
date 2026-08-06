@@ -1,4 +1,5 @@
 import { PaymentCollectionModal } from './PaymentCollectionModal';
+import { WhatsAppNotifyModal } from './WhatsAppNotifyModal';
 import { PageHeader } from './PageHeader';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { formatOrderTime } from '../utils/formatters';
@@ -3004,53 +3005,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         </div>
       )}
 
-      {/* WhatsApp / SMS Tracking Modal */}
+      {/* WhatsApp Invoice Dispatch Modal */}
       {selectedOrderForNotify && (
-        <div 
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedOrderForNotify(null);
-          }}
-          className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
-        >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div>
-                <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider block">CUSTOMER ALERT</span>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">Send WhatsApp Tracking</h3>
-              </div>
-              <button onClick={() => setSelectedOrderForNotify(null)} className="p-2 text-slate-400 hover:text-slate-600 rounded-full bg-slate-100 dark:bg-slate-800 cursor-pointer">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-[11px]">
-              <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 font-mono text-[11px] text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
-                {`Hello ${selectedOrderForNotify.customer_name || 'Customer'},\nYour Kokanastha Faral order ${selectedOrderForNotify.order_number}.\nThank you for visiting!`}
-              </div>
-
-              <div className="flex gap-1.5">
-                <button 
-                  onClick={() => {
-                    const cust = customers.find(c => c.id === selectedOrderForNotify.customer_id);
-                    const phone = cust?.phone ? cust.phone.replace(/\D/g, '') : '';
-                    const message = `Hello ${selectedOrderForNotify.customer_name || 'Customer'},\nYour Kokanastha Faral order ${selectedOrderForNotify.order_number}.\nThank you for visiting!`;
-                    if (phone) {
-                      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
-                    } else {
-                      triggerToast('Customer phone number not available.', 'error');
-                    }
-                    setSelectedOrderForNotify(null);
-                  }}
-                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-extrabold transition cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Send size={15} /> Send via WhatsApp
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
+        <WhatsAppNotifyModal
+          order={selectedOrderForNotify}
+          onClose={() => setSelectedOrderForNotify(null)}
+          customers={customers}
+          business={dbStore.getBusiness(businessId)}
+          triggerToast={triggerToast}
+        />
       )}
     </div>
   );

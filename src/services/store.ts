@@ -2331,6 +2331,39 @@ class ERPStorage {
       .sort((a, b) => new Date(b.created_at || b.order_date).getTime() - new Date(a.created_at || a.order_date).getTime());
   }
 
+  public async findSalesOrderByNumber(orderNumber: string): Promise<SalesOrder | null> {
+    const clean = orderNumber.trim().toLowerCase();
+    if (!clean) return null;
+
+    const foundLocal = (this.cache.sales || []).find(s => s.order_number?.toLowerCase() === clean);
+    if (foundLocal) {
+      const custs = this.getCustomers(foundLocal.business_id);
+      const cust = custs.find(c => c.id === foundLocal.customer_id);
+      return {
+        ...foundLocal,
+        customer_name: foundLocal.customer_name || cust?.name || 'Customer'
+      };
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data } = await supabase
+          .from('sales_orders')
+          .select('*')
+          .ilike('order_number', clean)
+          .maybeSingle();
+
+        if (data) {
+          return data as SalesOrder;
+        }
+      } catch (err) {
+        console.error("Error finding sales order from Supabase:", err);
+      }
+    }
+
+    return null;
+  }
+
   public createSalesOrder(so: Omit<SalesOrder, 'id' | 'created_at'>): SalesOrder {
     let createdAtStr = new Date().toISOString();
     if (so.order_date) {

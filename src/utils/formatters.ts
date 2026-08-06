@@ -1,3 +1,29 @@
+export function formatWhatsAppPhone(phone: string): string {
+  if (!phone) return '';
+  let clean = phone.replace(/\D/g, '');
+  
+  // Remove leading zero if present
+  if (clean.startsWith('0')) {
+    clean = clean.slice(1);
+  }
+
+  // Default to Indian country code (+91) if 10 digits
+  if (clean.length === 10) {
+    clean = `91${clean}`;
+  }
+
+  return clean;
+}
+
+export function formatDisplayPhone(phone: string): string {
+  const clean = formatWhatsAppPhone(phone);
+  if (!clean) return '';
+  if (clean.startsWith('91') && clean.length === 12) {
+    return `+91 ${clean.slice(2, 7)} ${clean.slice(7)}`;
+  }
+  return `+${clean}`;
+}
+
 export function formatOrderTime(timeStr?: string, createdAtStr?: string): string {
   if (timeStr && timeStr.trim()) {
     const trimmed = timeStr.trim();

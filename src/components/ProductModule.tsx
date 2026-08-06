@@ -2010,12 +2010,20 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
                 width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+              }
+
+              /* Prevent overflow hidden on parent containers from clipping print areas */
+              *, div, section, main, article, body, #root {
+                overflow: visible !important;
               }
               
               /* Hide all normal UI elements in print */
               body * {
                 visibility: hidden !important;
               }
+
               .no-print, .no-print * {
                 display: none !important;
                 visibility: hidden !important;
@@ -2036,7 +2044,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 margin: 0 !important;
                 padding: 0 !important;
                 background: #ffffff !important;
-                z-index: 999999 !important;
+                z-index: 99999999 !important;
+                overflow: visible !important;
               }
               
               .barcode-print-grid { 
@@ -2073,6 +2082,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 stroke: #000000 !important;
                 color: #000000 !important;
                 visibility: visible !important;
+                display: inline-block !important;
               }
 
               ${printLabelSize === '50x25' ? `

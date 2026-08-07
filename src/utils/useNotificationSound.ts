@@ -1,17 +1,50 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export function useNotificationSound(shouldPlay: boolean) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [interacted, setInteracted] = useState(false);
 
   useEffect(() => {
-    if (shouldPlay) {
+    const initAudio = () => {
+      if (!interacted) {
+        setInteracted(true);
+        try {
+          if (!audioCtxRef.current) {
+            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+          }
+          if (audioCtxRef.current.state === 'suspended') {
+            audioCtxRef.current.resume().catch(() => {});
+          }
+        } catch (e) {
+          console.error("Audio init error:", e);
+        }
+      }
+      window.removeEventListener('click', initAudio);
+      window.removeEventListener('keydown', initAudio);
+    };
+
+    window.addEventListener('click', initAudio);
+    window.addEventListener('keydown', initAudio);
+
+    return () => {
+      window.removeEventListener('click', initAudio);
+      window.removeEventListener('keydown', initAudio);
+    };
+  }, [interacted]);
+
+  useEffect(() => {
+    if (shouldPlay && interacted) {
       if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        try {
+          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        } catch (e) {}
       }
 
       const playBeep = () => {
         if (!audioCtxRef.current) return;
+        
+        // Try to resume if it's suspended
         if (audioCtxRef.current.state === 'suspended') {
             audioCtxRef.current.resume().catch(() => {});
         }
@@ -41,7 +74,7 @@ export function useNotificationSound(shouldPlay: boolean) {
       // Play initially
       playBeep();
       
-      // Then play every 3 seconds to be annoying enough so they read it
+      // Then play every 3 seconds
       intervalRef.current = setInterval(playBeep, 3000);
       
     } else {
@@ -56,5 +89,5 @@ export function useNotificationSound(shouldPlay: boolean) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [shouldPlay]);
+  }, [shouldPlay, interacted]);
 }

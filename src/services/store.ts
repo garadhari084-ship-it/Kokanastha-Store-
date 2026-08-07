@@ -2780,6 +2780,7 @@ class ERPStorage {
 
     // Ensure stock is reduced if order is created in a dispatched/delivered state
     this.syncOrderStock(newSO);
+    this.notify();
 
     return newSO;
   }
@@ -2793,6 +2794,7 @@ class ERPStorage {
 
       this.cache.sales.splice(index, 1);
       this.save('sales', null, true, id);
+      this.notify();
       return true;
     }
     return false;
@@ -2808,6 +2810,7 @@ class ERPStorage {
 
       // Handle stock synchronization
       this.syncOrderStock(newSO, oldSO.status);
+      this.notify();
 
       return newSO;
     }
@@ -3398,6 +3401,19 @@ class ERPStorage {
     let changed = false;
     this.cache.messages.forEach(m => {
       if (m.sender_id === senderId && m.receiver_id === receiverId && !m.is_read) {
+        m.is_read = true;
+        changed = true;
+      }
+    });
+    if (changed) {
+      this.save('messages', this.cache.messages);
+    }
+  }
+
+  public markAllMessagesRead(receiverId: string) {
+    let changed = false;
+    this.cache.messages.forEach(m => {
+      if (m.receiver_id === receiverId && !m.is_read) {
         m.is_read = true;
         changed = true;
       }

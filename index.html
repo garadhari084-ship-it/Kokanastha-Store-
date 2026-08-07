@@ -7,6 +7,15 @@
   </head>
   <body>
     <div id="root"></div>
+    <div id="error-log" style="color: red; padding: 20px; font-family: monospace; white-space: pre-wrap; z-index: 999999; position: relative;"></div>
+    <script>
+      window.addEventListener("error", function(e) {
+        document.getElementById("error-log").innerText += e.error ? e.error.stack : e.message + "\n";
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        document.getElementById("error-log").innerText += "Unhandled Promise Rejection: " + (e.reason ? e.reason.stack || e.reason : e) + "\n";
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

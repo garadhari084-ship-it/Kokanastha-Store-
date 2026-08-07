@@ -3,26 +3,6 @@ import { useEffect, useRef } from 'react';
 export function useNotificationSound(shouldPlay: boolean) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const hasInteracted = useRef(false);
-
-  useEffect(() => {
-    const handleInteraction = () => {
-      hasInteracted.current = true;
-      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume().catch(() => {});
-      }
-      window.removeEventListener('click', handleInteraction);
-      window.removeEventListener('keydown', handleInteraction);
-    };
-
-    window.addEventListener('click', handleInteraction);
-    window.addEventListener('keydown', handleInteraction);
-
-    return () => {
-      window.removeEventListener('click', handleInteraction);
-      window.removeEventListener('keydown', handleInteraction);
-    };
-  }, []);
 
   useEffect(() => {
     if (shouldPlay) {
@@ -32,13 +12,10 @@ export function useNotificationSound(shouldPlay: boolean) {
 
       const playBeep = () => {
         if (!audioCtxRef.current) return;
-        
-        // Try to resume if it's suspended
         if (audioCtxRef.current.state === 'suspended') {
             audioCtxRef.current.resume().catch(() => {});
         }
         
-
         try {
           const oscillator = audioCtxRef.current.createOscillator();
           const gainNode = audioCtxRef.current.createGain();

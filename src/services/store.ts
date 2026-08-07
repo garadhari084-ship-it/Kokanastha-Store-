@@ -3406,19 +3406,6 @@ class ERPStorage {
       this.save('messages', this.cache.messages);
     }
   }
-
-  public markAllMessagesRead(receiverId: string) {
-    let changed = false;
-    this.cache.messages.forEach(m => {
-      if (m.receiver_id === receiverId && !m.is_read) {
-        m.is_read = true;
-        changed = true;
-      }
-    });
-    if (changed) {
-      this.save('messages', this.cache.messages);
-    }
-  }
 }
 
 export const dbStore = new ERPStorage();

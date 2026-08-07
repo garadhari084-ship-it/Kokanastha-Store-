@@ -340,7 +340,6 @@ export default function App() {
   });
   const [isAllNotificationsModalOpen, setIsAllNotificationsModalOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState<any[]>([]);
-  const [pendingPackingCount, setPendingPackingCount] = useState(0);
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'order' | 'stock' | 'system'>('all');
   const [toasts, setToasts] = useState<Toast[]>([]);
   
@@ -401,17 +400,9 @@ export default function App() {
       if (currentBusiness && currentUser) {
         const messages = dbStore.getMessages(currentBusiness.id);
         setUnreadMessages(messages.filter(m => m.receiver_id === currentUser.id && !m.is_read));
-        const orders = dbStore.getSalesOrders(currentBusiness.id);
-        setPendingPackingCount(orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length);
       }
     });
   }, [currentBusiness?.id, currentUser?.id]);
-
-  useEffect(() => {
-    if (activeView === 'packing' && currentUser) {
-      dbStore.markAllMessagesRead(currentUser.id);
-    }
-  }, [activeView, currentUser]);
 
   // Restore session on mount
   useEffect(() => {
@@ -1700,22 +1691,12 @@ export default function App() {
                         {unreadMessages.length > 9 ? '9+' : unreadMessages.length}
                       </span>
                     )}
-                    {item.id === 'packing' && pendingPackingCount > 0 && isSidebarMinimized && (
-                      <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full font-black shadow-sm ring-1 ring-slate-900 animate-in zoom-in duration-150">
-                        {pendingPackingCount > 9 ? '9+' : pendingPackingCount}
-                      </span>
-                    )}
                   </div>
                   <span className={isSidebarMinimized ? 'lg:hidden' : ''}>{item.label}</span>
                 </div>
                 {item.id === 'inbox' && unreadMessages.length > 0 && !isSidebarMinimized && (
                   <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black min-w-[18px] text-center shadow-sm animate-in zoom-in duration-150">
                     {unreadMessages.length}
-                  </span>
-                )}
-                {item.id === 'packing' && pendingPackingCount > 0 && !isSidebarMinimized && (
-                  <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black min-w-[18px] text-center shadow-sm animate-in zoom-in duration-150">
-                    {pendingPackingCount}
                   </span>
                 )}
               </button>
@@ -1989,7 +1970,7 @@ export default function App() {
       {isPackingStaff && (
         <PackingAlertBanner 
           unreadMessages={unreadMessages} 
-          onViewMessages={() => setActiveView('packing')} 
+          onViewMessages={() => setActiveView('inbox')} 
         />
       )}
 

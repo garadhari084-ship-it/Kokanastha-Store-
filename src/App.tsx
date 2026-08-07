@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -50,6 +50,7 @@ import { supabase, isSupabaseConfigured } from './services/supabase';
 
 // Import Views
 import { PackingAlertBanner } from "./components/PackingAlertBanner";
+import { OverdueAlertBanner } from "./components/OverdueAlertBanner";
 const DashboardView = lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
 const SalesModule = lazy(() => import('./components/SalesModule').then(m => ({ default: m.SalesModule })));
 const PackingVerificationModule = lazy(() => import('./components/PackingVerificationModule').then(m => ({ default: m.PackingVerificationModule })));
@@ -343,11 +344,51 @@ export default function App() {
   const [pendingPackingCount, setPendingPackingCount] = useState(0);
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'order' | 'stock' | 'system'>('all');
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [isOverdueAlertDismissed, setIsOverdueAlertDismissed] = useState(false);
   
   const isPackingStaff = Boolean(currentUser?.role && (currentUser.role === 'Packing Staff' || currentUser.role.toLowerCase().includes('pack')));
 
-  // Play notification sound when there are unread messages for packing staff
-  useNotificationSound(unreadMessages.length > 0 && isPackingStaff);
+  // Calculate overdue sales orders count
+  const isOrderOverdue = (deliveryDateStr: string | undefined, orderStatus?: string): boolean => {
+    if (!deliveryDateStr) return false;
+    if (orderStatus === 'Delivered' || orderStatus === 'Cancelled' || orderStatus === 'Returned') return false;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let dDate: Date;
+    if (deliveryDateStr.includes('/') && deliveryDateStr.split('/').length === 3) {
+      const [d, m, y] = deliveryDateStr.split('/').map(Number);
+      dDate = new Date(y, m - 1, d);
+    } else {
+      dDate = new Date(deliveryDateStr);
+    }
+    dDate.setHours(0, 0, 0, 0);
+
+    if (isNaN(dDate.getTime())) return false;
+    return dDate.getTime() < today.getTime();
+  };
+
+  const overdueOrdersCount = useMemo(() => {
+    if (!currentBusiness) return 0;
+    const sales = dbStore.getSalesOrders(currentBusiness.id);
+    return sales.filter(o => 
+      o.status !== 'Delivered' && 
+      o.status !== 'Cancelled' && 
+      o.status !== 'Returned' && 
+      isOrderOverdue(o.delivery_date, o.status)
+    ).length;
+  }, [currentBusiness?.id, syncTick]);
+
+  // Re-enable overdue popup when navigating to packing page or opening app
+  useEffect(() => {
+    if (activeView === 'packing') {
+      setIsOverdueAlertDismissed(false);
+    }
+  }, [activeView]);
+
+  // Play notification sound when there are unread messages or overdue orders for packing staff
+  useNotificationSound((unreadMessages.length > 0 || overdueOrdersCount > 0) && isPackingStaff);
 
   const triggerToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random()}`;
@@ -2080,6 +2121,17 @@ export default function App() {
           unreadMessages={unreadMessages} 
           onViewMessages={handlePackingAlertClick}
           onDismiss={handlePackingAlertDismiss}
+        />
+      )}
+
+      {overdueOrdersCount > 0 && !isOverdueAlertDismissed && (
+        <OverdueAlertBanner 
+          overdueCount={overdueOrdersCount} 
+          onViewOverdue={() => {
+            setActiveView('packing');
+            setIsOverdueAlertDismissed(true);
+          }}
+          onDismiss={() => setIsOverdueAlertDismissed(true)}
         />
       )}
 

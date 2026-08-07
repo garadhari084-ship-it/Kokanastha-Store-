@@ -516,11 +516,13 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
   const getDeliveryStatus = (deliveryDate: string | undefined) => {
     if (!deliveryDate) return { 
-      badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800', 
-      border: 'border-emerald-500/30 dark:border-emerald-500/30',
-      icon: 'text-emerald-500',
-      text: 'text-emerald-600 dark:text-emerald-400',
-      dot: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+      badge: 'bg-emerald-950 text-emerald-200 border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800', 
+      border: 'border-emerald-800/80 dark:border-emerald-800/80 bg-emerald-950/10 dark:bg-emerald-950/30',
+      icon: 'text-emerald-400',
+      text: 'text-emerald-500 dark:text-emerald-400 font-extrabold',
+      dot: 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]',
+      statusText: '>10 DAYS',
+      isOverdue: false
     };
     
     const today = new Date();
@@ -538,41 +540,64 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     
     if (isNaN(dDate.getTime())) {
       return { 
-        badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800', 
-        border: 'border-emerald-500/30 dark:border-emerald-500/30',
-        icon: 'text-emerald-500',
-        text: 'text-emerald-600 dark:text-emerald-400',
-        dot: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+        badge: 'bg-emerald-950 text-emerald-200 border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800', 
+        border: 'border-emerald-800/80 dark:border-emerald-800/80 bg-emerald-950/10 dark:bg-emerald-950/30',
+        icon: 'text-emerald-400',
+        text: 'text-emerald-500 dark:text-emerald-400 font-extrabold',
+        dot: 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]',
+        statusText: '>10 DAYS',
+        isOverdue: false
       };
     }
     
     const diffTime = dDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    if (diffDays <= 5) {
+    if (diffDays < 0) {
+      // Overdue / Missed delivery date -> Dark Red
       return { 
-        badge: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400 border-rose-200 dark:border-rose-800', 
-        border: 'border-rose-500/30 dark:border-rose-500/30',
-        icon: 'text-rose-500',
-        text: 'text-rose-600 dark:text-rose-400',
+        badge: 'bg-rose-950 text-rose-200 border-rose-800 dark:bg-rose-950 dark:text-rose-200 dark:border-rose-800 shadow-md', 
+        border: 'border-rose-800/90 dark:border-rose-700/90 bg-rose-950/20 dark:bg-rose-950/40',
+        icon: 'text-rose-400',
+        text: 'text-rose-500 dark:text-rose-400 font-extrabold',
+        ping: true,
+        dot: 'bg-rose-600 shadow-[0_0_10px_rgba(225,29,72,0.9)]',
+        statusText: 'OVERDUE / MISSED',
+        isOverdue: true
+      };
+    } else if (diffDays <= 5) {
+      // Within 5 days due -> Dark Yellow
+      return { 
+        badge: 'bg-yellow-950 text-yellow-200 border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200 dark:border-yellow-800 shadow-md', 
+        border: 'border-yellow-800/90 dark:border-yellow-700/90 bg-yellow-950/20 dark:bg-yellow-950/40',
+        icon: 'text-yellow-400',
+        text: 'text-yellow-500 dark:text-yellow-400 font-extrabold',
         ping: diffDays <= 1,
-        dot: 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]'
+        dot: 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.9)]',
+        statusText: `DUE IN ${diffDays}D (≤5 DAYS)`,
+        isOverdue: false
       };
     } else if (diffDays <= 10) {
+      // Within 10 days due -> Dark Orange
       return { 
-        badge: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-amber-200 dark:border-amber-800', 
-        border: 'border-amber-500/30 dark:border-amber-500/30',
-        icon: 'text-amber-500',
-        text: 'text-amber-600 dark:text-amber-400',
-        dot: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]'
+        badge: 'bg-orange-950 text-orange-200 border-orange-800 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800 shadow-md', 
+        border: 'border-orange-800/90 dark:border-orange-700/90 bg-orange-950/20 dark:bg-orange-950/40',
+        icon: 'text-orange-400',
+        text: 'text-orange-500 dark:text-orange-400 font-extrabold',
+        dot: 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.9)]',
+        statusText: `DUE IN ${diffDays}D (≤10 DAYS)`,
+        isOverdue: false
       };
     } else {
+      // More than 10 days -> Dark Green
       return { 
-        badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800', 
-        border: 'border-emerald-500/30 dark:border-emerald-500/30',
-        icon: 'text-emerald-500',
-        text: 'text-emerald-600 dark:text-emerald-400',
-        dot: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+        badge: 'bg-emerald-950 text-emerald-200 border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800 shadow-md', 
+        border: 'border-emerald-800/90 dark:border-emerald-700/90 bg-emerald-950/20 dark:bg-emerald-950/40',
+        icon: 'text-emerald-400',
+        text: 'text-emerald-500 dark:text-emerald-400 font-extrabold',
+        dot: 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]',
+        statusText: '>10 DAYS',
+        isOverdue: false
       };
     }
   };
@@ -1258,16 +1283,16 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                           </div>
                           
                           {/* Delivery Date Badge - High priority feature */}
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border shadow-sm ${dStatus.badge}`}>
+                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-sm ${dStatus.badge}`}>
                               <Clock size={12} className={dStatus.icon} />
                               <div className="flex flex-col">
-                                <span className="text-[8px] uppercase font-black leading-none opacity-70">Delivery Target</span>
+                                <span className="text-[8px] uppercase font-black leading-none opacity-90 tracking-wider">{dStatus.statusText}</span>
                                 <span className="text-[10px] font-black">{formatDisplayDate(o.delivery_date) || formatDisplayDate(o.order_date) || 'No Date Set'}</span>
                               </div>
                             </div>
                             {dStatus.ping && (
-                              <span className="flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                              <span className="flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-ping" title="Critical Overdue"></span>
                             )}
                           </div>
 

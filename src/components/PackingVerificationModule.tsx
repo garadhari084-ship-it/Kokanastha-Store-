@@ -41,6 +41,7 @@ interface PackingVerificationModuleProps {
   user: UserProfile;
   triggerToast: (msg: string, type: 'success' | 'error' | 'info') => void;
   openOrderIdInitially?: string | null;
+  deepLinkData?: any;
   onNavigate?: (view: string, data?: any) => void;
 }
 
@@ -49,6 +50,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   user,
   triggerToast,
   openOrderIdInitially = null,
+  deepLinkData = null,
   onNavigate
 }) => {
   const [pendingOrders, setPendingOrders] = useState<SalesOrder[]>(
@@ -59,9 +61,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
 
   // Active view & search states
-  const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(
-    openOrderIdInitially ? dbStore.getSalesOrders(businessId).find(o => o.id === openOrderIdInitially) || null : null
-  );
+  const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [dateFilter, setDateFilter] = useState<'All' | 'Today' | 'Tomorrow' | 'Upcoming' | 'Next7' | 'Custom'>('Today');
@@ -91,7 +91,48 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
   useEffect(() => {
     selectedOrderRef.current = selectedOrder;
-  }, [selectedOrder]);
+    if (selectedOrder && user?.id) {
+      dbStore.markMessagesForOrderRead(selectedOrder.order_number, user.id);
+      dbStore.markMessagesForOrderRead(selectedOrder.id, user.id);
+    }
+  }, [selectedOrder, user?.id]);
+
+  useEffect(() => {
+    const targetId = deepLinkData?.orderId || openOrderIdInitially;
+    const targetNum = deepLinkData?.orderNumber;
+
+    if ((targetId || targetNum) && user?.id) {
+      const allSales = dbStore.getSalesOrders(businessId);
+
+      const orderToOpen = allSales.find(o => {
+        if (targetId && o.id === targetId) return true;
+        
+        const cleanOrderNum = (o.order_number || '').toLowerCase().replace(/^#/, '').trim();
+        
+        if (targetNum) {
+          const cleanTargetNum = targetNum.toLowerCase().replace(/^#/, '').trim();
+          if (cleanTargetNum && (cleanOrderNum === cleanTargetNum || cleanOrderNum.includes(cleanTargetNum) || cleanTargetNum.includes(cleanOrderNum))) {
+            return true;
+          }
+        }
+        
+        if (targetId) {
+          const cleanTargetId = targetId.toLowerCase().replace(/^#/, '').trim();
+          if (cleanTargetId && (cleanOrderNum === cleanTargetId || cleanOrderNum.includes(cleanTargetId) || cleanTargetId.includes(cleanOrderNum))) {
+            return true;
+          }
+        }
+        
+        return false;
+      });
+
+      if (orderToOpen) {
+        handleOpenPackingStation(orderToOpen);
+        dbStore.markMessagesForOrderRead(orderToOpen.order_number, user.id);
+        dbStore.markMessagesForOrderRead(orderToOpen.id, user.id);
+      }
+    }
+  }, [openOrderIdInitially, deepLinkData, businessId, user?.id]);
 
   const formatDisplayDate = (dateStr: string | undefined | null) => {
     if (!dateStr || dateStr === 'N/A') return '';
@@ -113,7 +154,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     setSelectedOrder(prev => {
       if (!prev) return null;
       const refreshed = allSales.find(o => o.id === prev.id);
-      if (refreshed && (refreshed.status === 'Pending' || refreshed.status === 'Packing')) {
+      if (refreshed) {
         return {
           ...refreshed,
           items: refreshed.items ? refreshed.items.map(it => ({ ...it })) : []

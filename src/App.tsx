@@ -344,9 +344,8 @@ export default function App() {
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'order' | 'stock' | 'system'>('all');
   const [toasts, setToasts] = useState<Toast[]>([]);
   
-  // Only play sound for Packing Staff
-  const isPackingStaff = currentUser?.role && (currentUser.role === 'Packing Staff' || currentUser.role.toLowerCase().includes('pack'));
-  useNotificationSound(!!(isPackingStaff && unreadMessages.length > 0));
+  // Play notification sound when there are unread messages
+  useNotificationSound(unreadMessages.length > 0);
 
   const triggerToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random()}`;
@@ -769,6 +768,79 @@ export default function App() {
     setIsMobileMenuOpen(false);
   };
 
+  const handlePackingAlertDismiss = (messageId?: string) => {
+    if (messageId) {
+      dbStore.markMessageAsRead(messageId);
+    }
+    if (currentUser) {
+      dbStore.markAllMessagesRead(currentUser.id);
+    }
+    dbStore.markAllMessagesRead();
+    setUnreadMessages([]);
+    triggerToast('Notification dismissed & sound muted', 'info');
+  };
+
+  const handlePackingAlertClick = (message?: any) => {
+    if (!currentUser || !currentBusiness) return;
+
+    // Mark specific message as read in store
+    if (message?.id) {
+      dbStore.markMessageAsRead(message.id);
+    }
+
+    // Mark all unread messages for currentUser as read to guarantee immediate sound off and dismissal
+    dbStore.markAllMessagesRead(currentUser.id);
+    dbStore.markAllMessagesRead();
+
+    let targetOrderId: string | null = null;
+    let targetOrderNumber: string | null = null;
+
+    if (message?.content) {
+      // Extract order numbers e.g. INV-2026-9, ORD-1002, SO-2026-1, Sales Order INV-2026-9
+      const match = message.content.match(/(?:INV|ORD|SO)-[\d\w-]+/i)
+                 || message.content.match(/(?:Sales\s+Order|Order|Invoice)[\s#:]*([A-Za-z0-9-]+)/i)
+                 || message.content.match(/#([A-Za-z0-9-]+)/i);
+      
+      if (match) {
+        targetOrderNumber = (match[1] || match[0]).replace(/^#/, '').trim();
+      }
+    }
+
+    const allSales = dbStore.getSalesOrders(currentBusiness.id);
+    if (targetOrderNumber) {
+      const cleanNum = targetOrderNumber.toLowerCase();
+      const matched = allSales.find(o => {
+        const oNum = o.order_number.toLowerCase().replace(/^#/, '');
+        return oNum === cleanNum || oNum.includes(cleanNum) || cleanNum.includes(oNum) || o.id === targetOrderNumber;
+      });
+      if (matched) {
+        targetOrderId = matched.id;
+        targetOrderNumber = matched.order_number;
+        dbStore.markMessagesForOrderRead(matched.order_number, currentUser.id);
+        dbStore.markMessagesForOrderRead(matched.id, currentUser.id);
+      }
+    }
+
+    // Fallback if message didn't specify order: open first pending/packing order if available
+    if (!targetOrderId) {
+      const pendingOrPacking = allSales.filter(o => o.status === 'Pending' || o.status === 'Packing');
+      if (pendingOrPacking.length > 0) {
+        targetOrderId = pendingOrPacking[0].id;
+        targetOrderNumber = pendingOrPacking[0].order_number;
+        dbStore.markMessagesForOrderRead(pendingOrPacking[0].order_number, currentUser.id);
+      }
+    }
+
+    // Immediately clear unread messages so sound turns off and banner dismisses
+    setUnreadMessages([]);
+
+    if (targetOrderId) {
+      handleDeepLinkNavigate('packing', { orderId: targetOrderId, orderNumber: targetOrderNumber });
+    } else {
+      handleDeepLinkNavigate('packing');
+    }
+  };
+
   useEffect(() => {
     const handleOpenCreateOrder = () => {
       handleDeepLinkNavigate('sales', { openAddModal: true });
@@ -904,7 +976,12 @@ export default function App() {
       });
     }
 
-    return list;
+    const seen = new Set<string>();
+    return list.filter(item => {
+      if (!item.id || seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
   }, [currentBusiness, readNotificationIds, syncTick]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -926,7 +1003,12 @@ export default function App() {
     setIsNotificationMenuOpen(false);
     setIsAllNotificationsModalOpen(false);
 
-    if (notification.targetView && hasAccessToView(notification.targetView)) {
+    if (notification.id && notification.id.startsWith('order-')) {
+      const orderId = notification.id.replace('order-', '');
+      const allSales = currentBusiness ? dbStore.getSalesOrders(currentBusiness.id) : [];
+      const matched = allSales.find(o => o.id === orderId);
+      handleDeepLinkNavigate('packing', { orderId, orderNumber: matched?.order_number });
+    } else if (notification.targetView && hasAccessToView(notification.targetView)) {
       setActiveView(notification.targetView);
     }
   };
@@ -1074,10 +1156,12 @@ export default function App() {
       case 'packing':
         return (
           <PackingVerificationModule 
+            key={deepLinkData?._ts ? `packing-${deepLinkData._ts}` : 'packing'}
             businessId={currentBusiness.id} 
             user={currentUser} 
             triggerToast={triggerToast}
             openOrderIdInitially={deepLinkData?.orderId || null}
+            deepLinkData={deepLinkData}
             onNavigate={handleDeepLinkNavigate}
           />
         );
@@ -1192,6 +1276,7 @@ export default function App() {
             currentUser={currentUser} 
             businessId={currentBusiness.id} 
             onClose={() => setActiveView('dashboard')}
+            onNavigate={handleDeepLinkNavigate}
           />
         );
       case 'settings':
@@ -1988,10 +2073,11 @@ export default function App() {
 
       </div>
 
-      {isPackingStaff && (
+      {unreadMessages.length > 0 && (
         <PackingAlertBanner 
           unreadMessages={unreadMessages} 
-          onViewMessages={() => setActiveView('packing')} 
+          onViewMessages={handlePackingAlertClick}
+          onDismiss={handlePackingAlertDismiss}
         />
       )}
 

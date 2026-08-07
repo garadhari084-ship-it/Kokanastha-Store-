@@ -552,6 +552,7 @@ export async function generate3InchBillHTML(
   businessObj: any,
   products: any[]
 ): Promise<string> {
+  const logoBase64 = businessObj?.logo_url ? await urlToBase64(businessObj.logo_url) : "";
   const bName = businessObj?.name || "KOKANASTHA";
   const bAddress = businessObj?.billing_address || "SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLA\nBH ROAD ASHOKVAN DAHISAR E MUMBAI 68";
   const phone = businessObj?.phone || "9820769697";
@@ -688,6 +689,9 @@ export async function generate3InchBillHTML(
 </head>
 <body>
   <div class="header text-center">
+    ${logoBase64 ? `<div style="text-align: center; margin-bottom: 6px;">
+      <img src="${logoBase64}" alt="${bName}" style="max-width: 48mm; max-height: 24mm; width: auto; height: auto; object-fit: contain; display: block; margin: 0 auto 4px auto;" />
+    </div>` : ''}
     <h2>${bName}</h2>
     <p>${bAddress.replace(/\n/g, "<br>")}</p>
     <p>State: ${bState}</p>

@@ -575,6 +575,7 @@ ALTER TABLE business_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loyalty_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loyalty_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customer_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 
 -- Helper function to extract current user's business_id from user metadata
 -- In production, Supabase sets business_id via auth.jwt() claims or user_profile query
@@ -631,6 +632,9 @@ CREATE POLICY tenant_isolation_business_settings ON business_settings
 
 CREATE POLICY tenant_isolation_loyalty_configs ON loyalty_configs
     FOR ALL USING (business_id = get_user_business_id());
+
+DROP POLICY IF EXISTS dev_public_chat_messages ON chat_messages;
+CREATE POLICY dev_public_chat_messages ON chat_messages FOR ALL USING (true);
 
 DROP POLICY IF EXISTS dev_public_loyalty_logs ON loyalty_logs;
 CREATE POLICY dev_public_loyalty_logs ON loyalty_logs FOR ALL USING (true);

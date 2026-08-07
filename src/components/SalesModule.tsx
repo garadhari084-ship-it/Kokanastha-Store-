@@ -316,7 +316,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     // Add notification
     const orderNum = orders.find(o => o.id === orderId)?.order_number || orderId;
     const allUsers = dbStore.getUsers(businessId);
-    const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
+    let packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
+    if (packingStaff.length === 0) {
+      packingStaff = allUsers;
+    }
     
     if (packingStaff.length > 0) {
       packingStaff.forEach(staff => {
@@ -1005,7 +1008,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
         // Send message to packaging users for new order
         const allUsers = dbStore.getUsers(businessId);
-        const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
+        let packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
+        if (packingStaff.length === 0) {
+          packingStaff = allUsers;
+        }
         
         if (packingStaff.length > 0) {
           packingStaff.forEach(staff => {

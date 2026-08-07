@@ -11,7 +11,8 @@ import {
   Check,
   CheckCheck,
   ArrowLeft,
-  X
+  X,
+  Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { dbStore } from '../services/store';
@@ -21,9 +22,10 @@ interface InboxModuleProps {
   currentUser: UserProfile;
   businessId: string;
   onClose?: () => void;
+  onNavigate?: (view: string, data?: any) => void;
 }
 
-export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessId, onClose }) => {
+export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessId, onClose, onNavigate }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -250,6 +252,32 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                             : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-tl-none'
                         }`}>
                           {msg.content}
+                          {(() => {
+                            const match = msg.content.match(/(?:INV|ORD|SO)-[\d\w-]+/i)
+                                       || msg.content.match(/(?:Sales\s+Order|Order|Invoice)[\s#:]*([A-Za-z0-9-]+)/i)
+                                       || msg.content.match(/#([A-Za-z0-9-]+)/i);
+                            const orderNum = match ? (match[1] || match[0]).replace(/^#/, '').trim() : null;
+                            if (orderNum && onNavigate) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const allSales = dbStore.getSalesOrders(businessId);
+                                    const clean = orderNum.toLowerCase();
+                                    const matched = allSales.find(o => {
+                                      const oNum = (o.order_number || '').toLowerCase().replace(/^#/, '');
+                                      return oNum === clean || oNum.includes(clean) || clean.includes(oNum) || o.id === orderNum;
+                                    });
+                                    onNavigate('packing', { orderId: matched?.id, orderNumber: matched?.order_number || orderNum });
+                                  }}
+                                  className="mt-2.5 w-full bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold px-3 py-1.5 rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-md transition-transform active:scale-95 cursor-pointer"
+                                >
+                                  <Package size={14} /> Open Order Station ({orderNum})
+                                </button>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                         <div className="flex items-center gap-1.5 mt-1 px-1">
                           <span className="text-[9px] text-slate-400 font-medium">

@@ -139,6 +139,21 @@ export const isSameBusiness = (b1?: string | null, b2?: string | null): boolean 
   return norm1 === norm2;
 };
 
+export function dedupeById<T extends { id?: string }>(items: T[]): T[] {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    if (!item) continue;
+    const key = item.id || Math.random().toString();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    }
+  }
+  return result;
+}
+
 const PRE_SEEDED_CATEGORIES: Category[] = [
   {
     id: CAT_1_ID,
@@ -1288,7 +1303,7 @@ class ERPStorage {
 
   // Tenant / Business Management
   public getBusinesses(): Business[] {
-    return this.cache.businesses;
+    return dedupeById(this.cache.businesses);
   }
 
   public getBusiness(id: string): Business | undefined {
@@ -1307,7 +1322,7 @@ class ERPStorage {
 
   // Profiles (Super Admin can create)
   public getUsers(businessId: string): UserProfile[] {
-    return this.cache.profiles.filter(u => u.business_id === businessId);
+    return dedupeById(this.cache.profiles.filter(u => u.business_id === businessId));
   }
 
   public createUser(user: Omit<UserProfile, 'id' | 'created_at'> & { id?: string; password_hash?: string }): UserProfile {
@@ -1411,7 +1426,7 @@ class ERPStorage {
       } catch (e) {}
       cats = this.cache.categories.filter(c => !c.business_id || isSameBusiness(c.business_id, businessId));
     }
-    return cats;
+    return dedupeById(cats);
   }
 
   public createCategory(cat: Omit<Category, 'id' | 'created_at'>): Category {
@@ -1463,12 +1478,14 @@ class ERPStorage {
 
   // Product Operations
   public getProducts(businessId: string): Product[] {
-    return this.cache.products
-      .filter(p => isSameBusiness(p.business_id, businessId))
-      .map(p => ({
-        ...p,
-        is_combo: isComboProduct(p)
-      }));
+    return dedupeById(
+      this.cache.products
+        .filter(p => isSameBusiness(p.business_id, businessId))
+        .map(p => ({
+          ...p,
+          is_combo: isComboProduct(p)
+        }))
+    );
   }
 
   public createProduct(prod: Omit<Product, 'id' | 'created_at' | 'current_stock'>): Product {
@@ -1645,7 +1662,7 @@ class ERPStorage {
     let logs = this.cache.comboLogs || [];
     if (businessId) logs = logs.filter(l => l.business_id === businessId);
     if (comboId) logs = logs.filter(l => l.combo_id === comboId);
-    return [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return dedupeById([...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
   }
 
   public addComboLog(
@@ -2482,7 +2499,7 @@ class ERPStorage {
   // Subscription Operations
   public getSubscriptions(businessId: string): CustomerSubscription[] {
     const subs = this.cache.subscriptions || [];
-    return subs.filter(s => s.business_id === businessId);
+    return dedupeById(subs.filter(s => s.business_id === businessId));
   }
 
   public createSubscription(
@@ -2587,7 +2604,7 @@ class ERPStorage {
 
   // Supplier Operations
   public getSuppliers(businessId: string): Supplier[] {
-    return this.cache.suppliers.filter(s => isSameBusiness(s.business_id, businessId));
+    return dedupeById(this.cache.suppliers.filter(s => isSameBusiness(s.business_id, businessId)));
   }
 
   public createSupplier(sup: Omit<Supplier, 'id' | 'created_at' | 'outstanding_amount'>): Supplier {
@@ -2625,9 +2642,11 @@ class ERPStorage {
 
   // Purchase Order Operations
   public getPurchaseOrders(businessId: string): PurchaseOrder[] {
-    return (this.cache.purchases || [])
-      .filter(p => isSameBusiness(p.business_id, businessId))
-      .map(p => ({ ...p, items: p.items || [] }));
+    return dedupeById(
+      (this.cache.purchases || [])
+        .filter(p => isSameBusiness(p.business_id, businessId))
+        .map(p => ({ ...p, items: p.items || [] }))
+    );
   }
 
   public createPurchaseOrder(po: Omit<PurchaseOrder, 'id' | 'created_at'>): PurchaseOrder {
@@ -2693,26 +2712,28 @@ class ERPStorage {
     const customers = this.getCustomers(businessId);
     const customerMap = new Map(customers.map(c => [c.id, c]));
 
-    return (this.cache.sales || [])
-      .filter(s => isSameBusiness(s.business_id, businessId))
-      .map(s => {
-        const cust = customerMap.get(s.customer_id);
-        const resolvedArea = (s.area && s.area !== 'Other') 
-          ? s.area 
-          : (cust?.area && cust.area !== 'Other') 
-          ? cust.area 
-          : (cust?.shipping_address && !/Other/i.test(cust.shipping_address) ? cust.shipping_address.replace(/ Resident$/i, '').trim() : undefined) || 'Dahisar';
-        return {
-          ...s,
-          area: resolvedArea,
-          customer_name: s.customer_name || cust?.name || 'Walk-in Customer',
-          items: (s.items || []).map(it => ({
-            ...it,
-            scanned_qty: typeof it.scanned_qty === 'number' && !isNaN(it.scanned_qty) ? it.scanned_qty : 0
-          }))
-        };
-      })
-      .sort((a, b) => new Date(b.created_at || b.order_date).getTime() - new Date(a.created_at || a.order_date).getTime());
+    return dedupeById(
+      (this.cache.sales || [])
+        .filter(s => isSameBusiness(s.business_id, businessId))
+        .map(s => {
+          const cust = customerMap.get(s.customer_id);
+          const resolvedArea = (s.area && s.area !== 'Other') 
+            ? s.area 
+            : (cust?.area && cust.area !== 'Other') 
+            ? cust.area 
+            : (cust?.shipping_address && !/Other/i.test(cust.shipping_address) ? cust.shipping_address.replace(/ Resident$/i, '').trim() : undefined) || 'Dahisar';
+          return {
+            ...s,
+            area: resolvedArea,
+            customer_name: s.customer_name || cust?.name || 'Walk-in Customer',
+            items: (s.items || []).map(it => ({
+              ...it,
+              scanned_qty: typeof it.scanned_qty === 'number' && !isNaN(it.scanned_qty) ? it.scanned_qty : 0
+            }))
+          };
+        })
+        .sort((a, b) => new Date(b.created_at || b.order_date).getTime() - new Date(a.created_at || a.order_date).getTime())
+    );
   }
 
   public async findSalesOrderByNumber(orderNumber: string): Promise<SalesOrder | null> {
@@ -3130,7 +3151,7 @@ class ERPStorage {
   }
 
   public getSystemAuditLogs(businessId: string): SystemAuditLog[] {
-    return this.cache.auditLogs.filter(a => isSameBusiness(a.business_id, businessId));
+    return dedupeById(this.cache.auditLogs.filter(a => isSameBusiness(a.business_id, businessId)));
   }
 
   // Business Settings
@@ -3373,7 +3394,7 @@ class ERPStorage {
 
   // Chat Operations
   public getMessages(businessId: string): ChatMessage[] {
-    return (this.cache.messages || []).filter(m => isSameBusiness(m.business_id, businessId));
+    return dedupeById((this.cache.messages || []).filter(m => isSameBusiness(m.business_id, businessId)));
   }
 
   public sendMessage(msg: Omit<ChatMessage, 'id' | 'created_at' | 'is_read'>): ChatMessage {
@@ -3390,36 +3411,69 @@ class ERPStorage {
   }
 
   public markMessageAsRead(id: string) {
+    if (!this.cache.messages) return;
     const index = this.cache.messages.findIndex(m => m.id === id);
-    if (index !== -1) {
+    if (index !== -1 && !this.cache.messages[index].is_read) {
       this.cache.messages[index].is_read = true;
       this.save('messages', this.cache.messages[index]);
     }
   }
 
   public markConversationRead(senderId: string, receiverId: string) {
-    let changed = false;
+    if (!this.cache.messages) return;
+    const updated: ChatMessage[] = [];
     this.cache.messages.forEach(m => {
       if (m.sender_id === senderId && m.receiver_id === receiverId && !m.is_read) {
         m.is_read = true;
-        changed = true;
+        updated.push(m);
       }
     });
-    if (changed) {
-      this.save('messages', this.cache.messages);
+    if (updated.length > 0) {
+      this.save('messages', updated);
     }
   }
 
-  public markAllMessagesRead(receiverId: string) {
-    let changed = false;
+  public markAllMessagesRead(receiverId?: string) {
+    if (!this.cache.messages) return;
+    const updated: ChatMessage[] = [];
     this.cache.messages.forEach(m => {
-      if (m.receiver_id === receiverId && !m.is_read) {
+      if ((!receiverId || m.receiver_id === receiverId) && !m.is_read) {
         m.is_read = true;
-        changed = true;
+        updated.push(m);
       }
     });
-    if (changed) {
-      this.save('messages', this.cache.messages);
+    if (updated.length > 0) {
+      this.save('messages', updated);
+    }
+  }
+
+  public markMessagesForOrderRead(orderNumberOrId: string, receiverId?: string) {
+    if (!this.cache.messages || !orderNumberOrId) return;
+    const cleanSearch = orderNumberOrId.trim().toLowerCase().replace(/^#/, '');
+    
+    // Resolve order_number if orderNumberOrId was an ID
+    const foundOrder = (this.cache.sales || []).find(o => 
+      o.id === orderNumberOrId || 
+      o.order_number.toLowerCase() === cleanSearch ||
+      o.order_number.toLowerCase().replace(/^#/, '') === cleanSearch
+    );
+    const orderNumToMatch = foundOrder ? foundOrder.order_number.toLowerCase().replace(/^#/, '') : cleanSearch;
+
+    const updated: ChatMessage[] = [];
+    this.cache.messages.forEach(m => {
+      if ((!receiverId || m.receiver_id === receiverId) && !m.is_read) {
+        const contentLower = m.content.toLowerCase();
+        if (
+          (cleanSearch && contentLower.includes(cleanSearch)) ||
+          (orderNumToMatch && contentLower.includes(orderNumToMatch))
+        ) {
+          m.is_read = true;
+          updated.push(m);
+        }
+      }
+    });
+    if (updated.length > 0) {
+      this.save('messages', updated);
     }
   }
 }

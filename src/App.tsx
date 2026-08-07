@@ -415,12 +415,6 @@ export default function App() {
     });
   }, [currentBusiness?.id, currentUser?.id]);
 
-  useEffect(() => {
-    if (activeView === 'packing' && currentUser && unreadMessages.length > 0) {
-      dbStore.markAllMessagesRead(currentUser.id);
-    }
-  }, [activeView, currentUser, unreadMessages.length]);
-
   // Restore session on mount
   useEffect(() => {
     const restoreSession = async () => {

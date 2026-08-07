@@ -376,14 +376,6 @@ export default function App() {
 
   // Subscribe to store updates to keep UI in sync across devices
   useEffect(() => {
-    // Initial fetch
-    if (currentBusiness && currentUser) {
-      const messages = dbStore.getMessages(currentBusiness.id);
-      setUnreadMessages(messages.filter(m => m.receiver_id === currentUser.id && !m.is_read));
-      const orders = dbStore.getSalesOrders(currentBusiness.id);
-      setPendingPackingCount(orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length);
-    }
-
     return dbStore.subscribe(() => {
       setSyncTick(prev => prev + 1);
       
@@ -416,10 +408,10 @@ export default function App() {
   }, [currentBusiness?.id, currentUser?.id]);
 
   useEffect(() => {
-    if (activeView === 'packing' && currentUser && unreadMessages.length > 0) {
+    if (activeView === 'packing' && currentUser) {
       dbStore.markAllMessagesRead(currentUser.id);
     }
-  }, [activeView, currentUser, unreadMessages.length]);
+  }, [activeView, currentUser]);
 
   // Restore session on mount
   useEffect(() => {

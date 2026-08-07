@@ -6,39 +6,28 @@ export function useNotificationSound(shouldPlay: boolean) {
   const hasInteracted = useRef(false);
 
   useEffect(() => {
-    const initAudio = () => {
-      if (!hasInteracted.current) {
-        hasInteracted.current = true;
-        try {
-          if (!audioCtxRef.current) {
-            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-          }
-          if (audioCtxRef.current.state === 'suspended') {
-            audioCtxRef.current.resume().catch(() => {});
-          }
-        } catch (e) {
-          console.error("Audio init error:", e);
-        }
+    const handleInteraction = () => {
+      hasInteracted.current = true;
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
       }
-      window.removeEventListener('click', initAudio);
-      window.removeEventListener('keydown', initAudio);
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
     };
 
-    window.addEventListener('click', initAudio);
-    window.addEventListener('keydown', initAudio);
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('keydown', handleInteraction);
 
     return () => {
-      window.removeEventListener('click', initAudio);
-      window.removeEventListener('keydown', initAudio);
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
     };
   }, []);
 
   useEffect(() => {
     if (shouldPlay) {
-      if (!audioCtxRef.current && hasInteracted.current) {
-        try {
-          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        } catch (e) {}
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
 
       const playBeep = () => {
@@ -49,6 +38,7 @@ export function useNotificationSound(shouldPlay: boolean) {
             audioCtxRef.current.resume().catch(() => {});
         }
         
+
         try {
           const oscillator = audioCtxRef.current.createOscillator();
           const gainNode = audioCtxRef.current.createGain();
@@ -91,4 +81,3 @@ export function useNotificationSound(shouldPlay: boolean) {
     };
   }, [shouldPlay]);
 }
-

@@ -766,55 +766,79 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
   const handleDownloadSampleExcel = () => {
     try {
-      const sampleRows = [
-        {
-          'Product Name': 'Basmati Rice 5kg',
-          'SKU': 'RICE-BAS-5K',
-          'Barcode': '8901234567890',
-          'Category': 'Grocery',
-          'Purchase Price': 350,
-          'Selling Price': 420,
-          'MRP': 450,
-          'GST Rate (%)': 5,
-          'Opening Stock': 50,
-          'Minimum Stock': 10,
-          'Purchase Unit': 'BAG',
-          'Selling Unit': 'BAG',
-          'Description': 'Premium long grain basmati rice'
-        },
-        {
-          'Product Name': 'Refined Sunflower Oil 1L',
-          'SKU': 'OIL-SUN-1L',
-          'Barcode': '8901234567891',
-          'Category': 'Edible Oils',
-          'Purchase Price': 120,
-          'Selling Price': 145,
-          'MRP': 160,
-          'GST Rate (%)': 5,
-          'Opening Stock': 100,
-          'Minimum Stock': 20,
-          'Purchase Unit': 'BOTTLE',
-          'Selling Unit': 'BOTTLE',
-          'Description': '100% Pure refined sunflower oil'
-        },
-        {
-          'Product Name': 'Chakki Fresh Atta 10kg',
-          'SKU': 'ATTA-CHK-10K',
-          'Barcode': '8901234567892',
-          'Category': 'Flour & Atta',
-          'Purchase Price': 310,
-          'Selling Price': 360,
-          'MRP': 390,
-          'GST Rate (%)': 0,
-          'Opening Stock': 40,
-          'Minimum Stock': 10,
-          'Purchase Unit': 'BAG',
-          'Selling Unit': 'BAG',
-          'Description': 'Whole wheat fresh chakki atta'
-        }
-      ];
+      let exportRows: any[] = [];
+      const currentProducts = dbStore.getProducts(businessId);
+      
+      if (currentProducts.length > 0) {
+        exportRows = currentProducts.map(p => {
+          const category = dbStore.getCategoryById(p.category_id)?.name || 'General';
+          return {
+            'Product Name': p.name,
+            'SKU': p.sku,
+            'Barcode': p.barcode,
+            'Category': category,
+            'Purchase Price': p.purchase_price,
+            'Selling Price': p.selling_price,
+            'MRP': p.mrp,
+            'GST Rate (%)': p.gst_rate,
+            'Opening Stock': p.opening_stock,
+            'Minimum Stock': p.minimum_stock,
+            'Purchase Unit': p.purchase_unit || 'Pcs',
+            'Selling Unit': p.selling_unit || 'Pcs',
+            'Description': p.description || ''
+          };
+        });
+      } else {
+        exportRows = [
+          {
+            'Product Name': 'Basmati Rice 5kg',
+            'SKU': 'RICE-BAS-5K',
+            'Barcode': '8901234567890',
+            'Category': 'Grocery',
+            'Purchase Price': 350,
+            'Selling Price': 420,
+            'MRP': 450,
+            'GST Rate (%)': 5,
+            'Opening Stock': 50,
+            'Minimum Stock': 10,
+            'Purchase Unit': 'BAG',
+            'Selling Unit': 'BAG',
+            'Description': 'Premium long grain basmati rice'
+          },
+          {
+            'Product Name': 'Refined Sunflower Oil 1L',
+            'SKU': 'OIL-SUN-1L',
+            'Barcode': '8901234567891',
+            'Category': 'Edible Oils',
+            'Purchase Price': 120,
+            'Selling Price': 145,
+            'MRP': 160,
+            'GST Rate (%)': 5,
+            'Opening Stock': 100,
+            'Minimum Stock': 20,
+            'Purchase Unit': 'BOTTLE',
+            'Selling Unit': 'BOTTLE',
+            'Description': '100% Pure refined sunflower oil'
+          },
+          {
+            'Product Name': 'Chakki Fresh Atta 10kg',
+            'SKU': 'ATTA-CHK-10K',
+            'Barcode': '8901234567892',
+            'Category': 'Flour & Atta',
+            'Purchase Price': 310,
+            'Selling Price': 360,
+            'MRP': 390,
+            'GST Rate (%)': 0,
+            'Opening Stock': 40,
+            'Minimum Stock': 10,
+            'Purchase Unit': 'BAG',
+            'Selling Unit': 'BAG',
+            'Description': 'Whole wheat fresh chakki atta'
+          }
+        ];
+      }
 
-      const ws = XLSX.utils.json_to_sheet(sampleRows, {
+      const ws = XLSX.utils.json_to_sheet(exportRows, {
         header: [
           'Product Name', 'SKU', 'Barcode', 'Category', 
           'Purchase Price', 'Selling Price', 'MRP', 'GST Rate (%)', 
@@ -839,14 +863,14 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       ];
 
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Sample_Products');
-      XLSX.writeFile(wb, 'Product_Import_Sample.xlsx');
+      XLSX.utils.book_append_sheet(wb, ws, 'Products');
+      XLSX.writeFile(wb, `Product_List_${new Date().toISOString().slice(0, 10)}.xlsx`);
 
-      triggerToast('Sample product Excel template downloaded successfully.', 'success');
-      dbStore.logActivity(user.id, user.name, user.role, 'Download Template', 'Downloaded Product Import Excel sample template', businessId);
+      triggerToast('Product list exported as Excel successfully.', 'success');
+      dbStore.logActivity(user.id, user.name, user.role, 'Export Catalog', 'Exported product list to Excel', businessId);
     } catch (err: any) {
-      console.error('Failed to download sample excel:', err);
-      triggerToast('Failed to download sample excel template.', 'error');
+      console.error('Failed to export excel:', err);
+      triggerToast('Failed to export excel.', 'error');
     }
   };
 
@@ -1246,10 +1270,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <button 
             onClick={handleDownloadSampleExcel} 
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap shrink-0 border border-amber-400/30"
-            title="Download Sample Product Excel Template"
+            title="Download Product List as Excel"
           >
             <FileDown size={14} className="text-amber-400" />
-            <span>Sample Excel</span>
+            <span>Export Excel</span>
           </button>
 
           {user.role !== 'Viewer' && (

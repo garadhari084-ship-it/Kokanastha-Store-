@@ -613,7 +613,7 @@ class ERPStorage {
       const CHUNK_SIZE = 200;
       const normBId = bId ? normalizeBusinessId(bId) : undefined;
       while (true) {
-        let q = supabase.from(tableName).select('*');
+        let q = supabase.from(tableName).select('*').order(tableName === 'business_settings' || tableName === 'loyalty_configs' ? 'business_id' : 'id');
         if (normBId && tableName !== 'businesses' && tableName !== 'users_profiles') {
           q = q.eq('business_id', normBId);
         } else if (normBId && tableName === 'businesses') {

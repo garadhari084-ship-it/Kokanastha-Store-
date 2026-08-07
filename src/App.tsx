@@ -344,8 +344,10 @@ export default function App() {
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'order' | 'stock' | 'system'>('all');
   const [toasts, setToasts] = useState<Toast[]>([]);
   
-  // Play notification sound when there are unread messages
-  useNotificationSound(unreadMessages.length > 0);
+  const isPackingStaff = Boolean(currentUser?.role && (currentUser.role === 'Packing Staff' || currentUser.role.toLowerCase().includes('pack')));
+
+  // Play notification sound when there are unread messages for packing staff
+  useNotificationSound(unreadMessages.length > 0 && isPackingStaff);
 
   const triggerToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random()}`;
@@ -2073,7 +2075,7 @@ export default function App() {
 
       </div>
 
-      {unreadMessages.length > 0 && (
+      {unreadMessages.length > 0 && isPackingStaff && (
         <PackingAlertBanner 
           unreadMessages={unreadMessages} 
           onViewMessages={handlePackingAlertClick}

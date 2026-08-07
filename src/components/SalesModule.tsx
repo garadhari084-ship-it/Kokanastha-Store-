@@ -1008,20 +1008,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
         // Send message to packaging users for new order
         const allUsers = dbStore.getUsers(businessId);
-        let packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
+        const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
         
-        const notifyTargetMap = new Map();
-        packingStaff.forEach(u => notifyTargetMap.set(u.id, u));
-        allUsers.forEach(u => notifyTargetMap.set(u.id, u));
-
-        notifyTargetMap.forEach(staff => {
-          dbStore.sendMessage({
-            sender_id: user.id,
-            receiver_id: staff.id,
-            content: `New Sales Order ${orderNum} has been placed. Please prepare for packing.`,
-            business_id: businessId
+        if (packingStaff.length > 0) {
+          packingStaff.forEach(staff => {
+            dbStore.sendMessage({
+              sender_id: user.id,
+              receiver_id: staff.id,
+              content: `New Sales Order ${orderNum} has been placed. Please prepare for packing.`,
+              business_id: businessId
+            });
           });
-        });
+        }
 
         triggerToast(`Order ${orderNum} compiled. Added to pending packing list.`, 'success');
       }

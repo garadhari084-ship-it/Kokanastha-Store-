@@ -1,10 +1,11 @@
 import { PageHeader } from './PageHeader';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
-  Users, Search, Filter, UserPlus, Edit, Trash2, FileSpreadsheet, FileText, DollarSign, History, X, Plus, MapPin, Phone, Mail, CheckCircle, ExternalLink, ShieldAlert, Building, SearchX
+  Users, Search, Filter, UserPlus, Edit, Trash2, FileSpreadsheet, FileText, DollarSign, History, X, Plus, MapPin, Phone, Mail, CheckCircle, ExternalLink, ShieldAlert, Building, SearchX, Upload, FileDown, AlertCircle, Check
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { dbStore } from '../services/store';
 import { Customer, SalesOrder, UserProfile } from '../types/erp';
 
@@ -24,6 +25,14 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string>('All');
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedGroup]);
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(openAddModalInitially);
@@ -48,6 +57,323 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   // Custom Area additions
   const [isAddingArea, setIsAddingArea] = useState(false);
   const [newArea, setNewArea] = useState('');
+
+  // Excel Import / Sample Download States & Handlers
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadProgress, setUploadProgress] = useState<{
+    fileName: string;
+    progressPercent: number;
+    statusText: string;
+    processedRows: number;
+    totalRows: number;
+  } | null>(null);
+
+  const [importSummary, setImportSummary] = useState<{
+    total: number;
+    added: number;
+    skipped: number;
+    skippedDetails: { row: number; name: string; phone: string; email: string; reason: string }[];
+  } | null>(null);
+
+  const handleDownloadSampleExcel = () => {
+    try {
+      const sampleRows = [
+        {
+          'Customer Name': 'Rahul Sharma',
+          'Mobile Number': '9876543210',
+          'Email': 'rahul.sharma@example.com',
+          'Customer Address': '123 Station Road, Andheri West, Mumbai, Maharashtra 400058'
+        },
+        {
+          'Customer Name': 'Priya Patel',
+          'Mobile Number': '9123456789',
+          'Email': 'priya.patel@example.com',
+          'Customer Address': '456 FC Road, Shivaji Nagar, Pune, Maharashtra 411005'
+        },
+        {
+          'Customer Name': 'Amit Verma',
+          'Mobile Number': '9988776655',
+          'Email': 'amit.verma@example.com',
+          'Customer Address': '789 Commercial Street, Bangalore, Karnataka 560001'
+        }
+      ];
+
+      const ws = XLSX.utils.json_to_sheet(sampleRows, {
+        header: ['Customer Name', 'Mobile Number', 'Email', 'Customer Address']
+      });
+
+      // Format column widths for Excel
+      ws['!cols'] = [
+        { wch: 22 }, // Col A: Customer Name
+        { wch: 18 }, // Col B: Mobile Number
+        { wch: 28 }, // Col C: Email
+        { wch: 45 }  // Col D: Customer Address
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Sample_Customers');
+      XLSX.writeFile(wb, 'Customer_Import_Sample.xlsx');
+
+      triggerToast('Sample Excel template downloaded successfully.', 'success');
+      dbStore.logActivity(user.id, user.name, user.role, 'Download Template', 'Downloaded Customer Import Excel sample template', businessId);
+    } catch (err: any) {
+      console.error('Failed to download sample excel:', err);
+      triggerToast('Failed to download sample excel template.', 'error');
+    }
+  };
+
+  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadProgress({
+      fileName: file.name,
+      progressPercent: 5,
+      statusText: 'Reading Excel file...',
+      processedRows: 0,
+      totalRows: 0
+    });
+
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      triggerToast('Failed to read file. Please try again.', 'error');
+      setUploadProgress(null);
+    };
+
+    reader.onload = async (evt) => {
+      try {
+        const arrayBuffer = evt.target?.result;
+        if (!arrayBuffer) {
+          triggerToast('Could not read file buffer.', 'error');
+          setUploadProgress(null);
+          return;
+        }
+
+        setUploadProgress({
+          fileName: file.name,
+          progressPercent: 20,
+          statusText: 'Parsing Excel workbook...',
+          processedRows: 0,
+          totalRows: 0
+        });
+
+        const wb = XLSX.read(arrayBuffer, { type: 'array', cellFormula: false, raw: false, cellDates: true });
+        const wsName = wb.SheetNames[0];
+        if (!wsName) {
+          triggerToast('Invalid or empty Excel file.', 'error');
+          setUploadProgress(null);
+          return;
+        }
+        const ws = wb.Sheets[wsName];
+
+        // Read raw sheet rows as array of arrays
+        const rawMatrix = XLSX.utils.sheet_to_json<any>(ws, { header: 1, raw: false, defval: '' });
+
+        if (!rawMatrix || rawMatrix.length === 0) {
+          triggerToast('The uploaded Excel file contains no data.', 'error');
+          setUploadProgress(null);
+          return;
+        }
+
+        let startIdx = 0;
+        let nameIdx = 0;
+        let mobileIdx = 1;
+        let emailIdx = 2;
+        let addressIdx = 3;
+
+        const firstRow = rawMatrix[0];
+        if (Array.isArray(firstRow) && firstRow.some(cell => {
+          const str = String(cell || '').toLowerCase();
+          return str.includes('name') || str.includes('mobile') || str.includes('phone') || str.includes('email') || str.includes('address') || str.includes('customer');
+        })) {
+          startIdx = 1;
+          firstRow.forEach((cell, colIdx) => {
+            const str = String(cell || '').toLowerCase().trim();
+            if (/name|customer|party/i.test(str) && nameIdx === 0) nameIdx = colIdx;
+            else if (/mobile|phone|contact|number|cell/i.test(str)) mobileIdx = colIdx;
+            else if (/email|mail/i.test(str)) emailIdx = colIdx;
+            else if (/address|location|billing|shipping/i.test(str)) addressIdx = colIdx;
+          });
+        }
+
+        const dataRows = rawMatrix.slice(startIdx).filter((row: any) => 
+          Array.isArray(row) && row.some((cell: any) => cell !== null && cell !== undefined && String(cell).trim() !== '')
+        );
+
+        if (dataRows.length === 0) {
+          triggerToast('No valid customer data rows found in Excel sheet.', 'error');
+          setUploadProgress(null);
+          return;
+        }
+
+        const totalRows = dataRows.length;
+        setUploadProgress({
+          fileName: file.name,
+          progressPercent: 50,
+          statusText: `Processing ${totalRows} customer record(s)...`,
+          processedRows: 0,
+          totalRows
+        });
+
+        const currentCustomers = dbStore.getCustomers(businessId);
+        const existingNames = new Set(
+          currentCustomers.map(c => c.name ? c.name.trim().toLowerCase() : '').filter(Boolean)
+        );
+        const existingPhones = new Set(
+          currentCustomers.map(c => c.phone ? c.phone.replace(/\D/g, '') : '').filter(Boolean)
+        );
+        const existingEmails = new Set(
+          currentCustomers.map(c => c.email ? c.email.trim().toLowerCase() : '').filter(Boolean)
+        );
+
+        const batchNames = new Set<string>();
+        const batchPhones = new Set<string>();
+        const batchEmails = new Set<string>();
+
+        let skippedCount = 0;
+        const skippedDetails: { row: number; name: string; phone: string; email: string; reason: string }[] = [];
+        const newCustomersToCreate: any[] = [];
+
+        // Fast chunked in-memory processing
+        const CHUNK_SIZE = 500;
+        for (let i = 0; i < totalRows; i += CHUNK_SIZE) {
+          const end = Math.min(i + CHUNK_SIZE, totalRows);
+          for (let rowIndex = i; rowIndex < end; rowIndex++) {
+            const row = dataRows[rowIndex];
+
+            const rawName = row[nameIdx] ?? row[0] ?? '';
+            const rawMobile = row[mobileIdx] ?? row[1] ?? '';
+            const rawEmail = row[emailIdx] ?? row[2] ?? '';
+            const rawAddress = row[addressIdx] ?? row[3] ?? '';
+
+            const name = String(rawName).trim();
+            const cleanName = name.toLowerCase();
+
+            let mobileStr = String(rawMobile).trim();
+            if (mobileStr.includes('e+') || mobileStr.includes('E+')) {
+              const num = Number(mobileStr);
+              if (!isNaN(num)) mobileStr = num.toFixed(0);
+            }
+
+            let cleanPhone = mobileStr.replace(/\D/g, '');
+            if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+              cleanPhone = cleanPhone.slice(2);
+            }
+            const cleanEmail = String(rawEmail).trim().toLowerCase();
+            const address = String(rawAddress).trim();
+
+            if (!name && !cleanPhone && !cleanEmail) {
+              continue;
+            }
+
+            // Dedup check: Find via name, mobile or email in database or current import batch
+            const nameExists = cleanName.length > 0 && (existingNames.has(cleanName) || batchNames.has(cleanName));
+            const phoneExists = cleanPhone.length > 0 && (existingPhones.has(cleanPhone) || batchPhones.has(cleanPhone));
+            const emailExists = cleanEmail.length > 0 && (existingEmails.has(cleanEmail) || batchEmails.has(cleanEmail));
+
+            if (nameExists || phoneExists || emailExists) {
+              skippedCount++;
+              let reason = '';
+              if (nameExists) {
+                reason = `Customer name "${name}" already exists`;
+              } else if (phoneExists && emailExists) {
+                reason = 'Mobile number & Email already exist';
+              } else if (phoneExists) {
+                reason = `Mobile number (${cleanPhone}) already exists`;
+              } else {
+                reason = `Email (${cleanEmail}) already exists`;
+              }
+
+              skippedDetails.push({
+                row: startIdx + rowIndex + 1,
+                name: name || 'N/A',
+                phone: cleanPhone || mobileStr || 'N/A',
+                email: cleanEmail || 'N/A',
+                reason
+              });
+            } else {
+              newCustomersToCreate.push({
+                name: name || `Customer ${cleanPhone}`,
+                group: 'Retail',
+                billing_address: address || 'N/A',
+                shipping_address: address || 'N/A',
+                email: cleanEmail,
+                phone: cleanPhone,
+                credit_limit: 0,
+                business_id: businessId,
+                active: true,
+                gstin: '',
+                pan: '',
+                area: ''
+              });
+
+              if (cleanName) {
+                existingNames.add(cleanName);
+                batchNames.add(cleanName);
+              }
+              if (cleanPhone) {
+                existingPhones.add(cleanPhone);
+                batchPhones.add(cleanPhone);
+              }
+              if (cleanEmail) {
+                existingEmails.add(cleanEmail);
+                batchEmails.add(cleanEmail);
+              }
+            }
+          }
+
+          if (totalRows > 500) {
+            setUploadProgress({
+              fileName: file.name,
+              progressPercent: Math.min(95, Math.floor((end / totalRows) * 90) + 5),
+              statusText: `Validating & importing ${end} of ${totalRows}...`,
+              processedRows: end,
+              totalRows
+            });
+            await new Promise(r => setTimeout(r, 0));
+          }
+        }
+
+        // Bulk batch insert all new customers in a single database operation!
+        if (newCustomersToCreate.length > 0) {
+          dbStore.createCustomersBatch(newCustomersToCreate);
+        }
+
+        const addedCount = newCustomersToCreate.length;
+
+        setUploadProgress(null);
+        setCustomers(dbStore.getCustomers(businessId));
+        dbStore.logActivity(user.id, user.name, user.role, 'Import Customers', `Imported ${addedCount} customers from Excel file (${skippedCount} duplicates skipped)`, businessId);
+
+        setImportSummary({
+          total: totalRows,
+          added: addedCount,
+          skipped: skippedCount,
+          skippedDetails
+        });
+
+        if (addedCount > 0) {
+          triggerToast(`Successfully imported ${addedCount} new customer(s).`, 'success');
+        } else if (totalRows > 0) {
+          triggerToast(`0 customers added. All ${skippedCount} customer(s) already exist in database.`, 'info');
+        } else {
+          triggerToast('No valid customer entries found in Excel file.', 'error');
+        }
+
+      } catch (err: any) {
+        console.error('Import processing error:', err);
+        triggerToast('Failed to parse Excel file. Please ensure valid file format.', 'error');
+        setUploadProgress(null);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+
+    if (e.target) {
+      e.target.value = '';
+    }
+  };
 
   useEffect(() => {
     return dbStore.subscribe(() => {
@@ -309,17 +635,27 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     }
   };
 
-  const filteredCustomers = customers.filter(cust => {
-    const matchesSearch = 
-      cust.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cust.phone.includes(searchQuery) ||
-      (cust.email && cust.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (cust.gstin && cust.gstin.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredCustomers = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return customers.filter(cust => {
+      const matchesSearch = !q ||
+        cust.name.toLowerCase().includes(q) ||
+        cust.phone.includes(q) ||
+        (cust.email && cust.email.toLowerCase().includes(q)) ||
+        (cust.gstin && cust.gstin.toLowerCase().includes(q));
 
-    const matchesGroup = selectedGroup === 'All' || cust.group === selectedGroup;
+      const matchesGroup = selectedGroup === 'All' || cust.group === selectedGroup;
 
-    return matchesSearch && matchesGroup;
-  });
+      return matchesSearch && matchesGroup;
+    });
+  }, [customers, searchQuery, selectedGroup]);
+
+  const totalPages = Math.ceil(filteredCustomers.length / pageSize) || 1;
+
+  const paginatedCustomers = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredCustomers.slice(start, start + pageSize);
+  }, [filteredCustomers, currentPage, pageSize]);
 
   const getCustomerHistory = (customerId: string): SalesOrder[] => {
     return dbStore.getSalesOrders(businessId).filter(o => o.customer_id === customerId);
@@ -339,6 +675,34 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
         icon={Users}
       >
         <div className="flex flex-nowrap overflow-x-auto md:flex-wrap gap-2 hide-scrollbar w-full justify-end">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleImportExcel} 
+            accept=".xlsx, .xls, .csv" 
+            className="hidden" 
+          />
+          
+          <button 
+            onClick={handleDownloadSampleExcel} 
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap shrink-0 border border-amber-400/30"
+            title="Download Sample Excel Format Template"
+          >
+            <FileDown size={14} className="text-amber-400" />
+            <span>Sample Excel</span>
+          </button>
+
+          {user.role !== 'Viewer' && (
+            <button 
+              onClick={() => fileInputRef.current?.click()} 
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/30 hover:bg-emerald-600/40 text-emerald-300 rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap shrink-0 border border-emerald-400/30"
+              title="Import Customers from Excel File"
+            >
+              <Upload size={14} className="text-emerald-400" />
+              <span>Import Excel</span>
+            </button>
+          )}
+
           <button 
             onClick={handleExportCSV} 
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap shrink-0 border border-white/10"
@@ -462,18 +826,18 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
 
         {/* Compact List View */}
         <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5">
-          <table className="w-full text-left text-[11px]">
-            <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[11px]">
+          <table className="w-full text-left text-[11px] border-collapse">
+            <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[10px] sm:text-[11px]">
               <tr>
-                <th className="py-2.5 px-4">Customer Details</th>
-                <th className="py-2.5 px-4">Compliance Codes</th>
-                <th className="py-2.5 px-4">Location/Area</th>
-                <th className="py-2.5 px-4">Outstanding / Limit</th>
-                <th className="py-2.5 px-4 text-right">Actions</th>
+                <th className="py-2.5 px-2.5 max-w-[200px] sm:max-w-[240px]">Customer Details</th>
+                <th className="py-2.5 px-2">Compliance</th>
+                <th className="py-2.5 px-2 max-w-[140px]">Location/Area</th>
+                <th className="py-2.5 px-2">Outstanding / Limit</th>
+                <th className="py-2.5 px-2.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black dark:divide-white bg-white dark:bg-slate-900 text-[11px]">
-              {filteredCustomers.length === 0 ? (
+              {paginatedCustomers.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400">
@@ -484,62 +848,62 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredCustomers.map((cust, idx) => {
+                paginatedCustomers.map((cust, idx) => {
                   const isOverLimit = cust.outstanding_amount > cust.credit_limit;
                   const headroom = cust.credit_limit - cust.outstanding_amount;
                   
                   return (
                     <tr key={`${cust.id}-${idx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="py-2 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleOpenEditModal(cust)}>
-                        <div className="flex items-center gap-3">
+                      <td className="py-2 px-2.5 max-w-[200px] sm:max-w-[240px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleOpenEditModal(cust)}>
+                        <div className="flex items-center gap-2 overflow-hidden">
                           {cust.image_url ? (
-                            <img src={cust.image_url} alt={cust.name} className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200" />
+                            <img src={cust.image_url} alt={cust.name} className="w-7 h-7 rounded-full object-cover shrink-0 border border-slate-200" />
                           ) : (
-                            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700 text-slate-500">
-                              <Users size={14} />
+                            <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700 text-slate-500">
+                              <Users size={12} />
                             </div>
                           )}
-                          <div className="flex flex-col">
-                            <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-800 dark:text-slate-200 line-clamp-1 text-[12px]">{cust.name}</span>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                              cust.group === 'Wholesale' ? 'bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-900/30 dark:border-violet-800 dark:text-violet-300' :
-                              cust.group === 'Distributor' ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-300' :
-                              'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-300'
-                            }`}>
-                              {cust.group}
-                            </span>
-                            {cust.loyalty_tier && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300">
-                                {cust.loyalty_tier}
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="font-bold text-slate-800 dark:text-slate-200 truncate text-[11px]" title={cust.name}>{cust.name}</span>
+                              <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                                cust.group === 'Wholesale' ? 'bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-900/30 dark:border-violet-800 dark:text-violet-300' :
+                                cust.group === 'Distributor' ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-300' :
+                                'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-300'
+                              }`}>
+                                {cust.group}
                               </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 text-[9px] mt-0.5">
-                            <span className="flex items-center gap-0.5 text-slate-500 font-mono"><Phone size={10} /> {cust.phone}</span>
-                            {cust.email && <span className="flex items-center gap-0.5 text-slate-500"><Mail size={10} /> {cust.email}</span>}
+                              {cust.loyalty_tier && (
+                                <span className="text-[8px] font-bold px-1.5 py-0.2 rounded-full shrink-0 bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300">
+                                  {cust.loyalty_tier}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-[9px] mt-0.5 min-w-0 truncate">
+                              <span className="flex items-center gap-0.5 text-slate-500 font-mono shrink-0"><Phone size={9} /> {cust.phone}</span>
+                              {cust.email && <span className="flex items-center gap-0.5 text-slate-500 truncate"><Mail size={9} /> {cust.email}</span>}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                      <td className="py-2 px-4">
+                      </td>
+                      <td className="py-2 px-2">
                         <div className="flex flex-col font-mono text-[10px] space-y-0.5">
                           <p><span className="text-slate-400 uppercase mr-1">GST:</span><span className="font-bold">{cust.gstin || 'Unregistered'}</span></p>
                           <p><span className="text-slate-400 uppercase mr-1">PAN:</span><span className="font-bold">{cust.pan || 'N/A'}</span></p>
                         </div>
                       </td>
-                      <td className="py-2 px-4">
-                        <div className="flex flex-col max-w-[200px]">
-                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                            <MapPin size={10} className="text-slate-400" />
-                            {cust.area || 'No Area Assigned'}
+                      <td className="py-2 px-2 max-w-[140px]">
+                        <div className="flex flex-col max-w-[140px]">
+                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 truncate">
+                            <MapPin size={9} className="text-slate-400 shrink-0" />
+                            <span className="truncate">{cust.area || 'No Area Assigned'}</span>
                           </span>
                           <span className="text-[9px] text-slate-500 truncate mt-0.5" title={cust.billing_address}>
                             {cust.billing_address}
                           </span>
                         </div>
                       </td>
-                      <td className="py-2 px-4">
+                      <td className="py-2 px-2">
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
                             <span className={`font-black text-[12px] ${isOverLimit ? 'text-rose-600' : 'text-slate-900 dark:text-white'}`}>
@@ -560,7 +924,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                           </div>
                         </div>
                       </td>
-                      <td className="py-2 px-4 text-right">
+                      <td className="py-2 px-2.5 text-right">
                         <div className="flex justify-end gap-1.5 items-center">
                           <button
                             onClick={() => setViewingHistoryCustomer(cust)}
@@ -598,6 +962,73 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {filteredCustomers.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-[11px] rounded-b-3xl">
+            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium">
+              <span>
+                Showing <strong className="text-slate-900 dark:text-white font-black">{Math.min((currentPage - 1) * pageSize + 1, filteredCustomers.length)}</strong> to <strong className="text-slate-900 dark:text-white font-black">{Math.min(currentPage * pageSize, filteredCustomers.length)}</strong> of <strong className="text-slate-900 dark:text-white font-black">{filteredCustomers.length}</strong> customers
+              </span>
+              <span className="hidden sm:inline text-slate-300 dark:text-slate-700">|</span>
+              <div className="flex items-center gap-1">
+                <span className="hidden sm:inline">Rows per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="px-2 py-0.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[11px] font-bold focus:outline-none"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                  <option value={500}>500</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-bold text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                title="First Page"
+              >
+                « First
+              </button>
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-bold text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                ‹ Prev
+              </button>
+
+              <span className="px-2 font-bold text-slate-800 dark:text-slate-200">
+                Page {currentPage} of {totalPages}
+              </span>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage >= totalPages}
+                className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-bold text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                Next ›
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage >= totalPages}
+                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-bold text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                title="Last Page"
+              >
+                Last »
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Add/Edit Form Modal */}
@@ -975,6 +1406,120 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                 className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-[11px] font-semibold rounded-lg cursor-pointer hover:bg-slate-300 transition-colors"
               >
                 Close Ledger
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Excel Upload Progress Modal */}
+      {uploadProgress && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-2xl animate-pulse">
+                <Upload size={22} />
+              </div>
+              <div className="overflow-hidden">
+                <h3 className="font-bold text-sm text-slate-900 dark:text-white">Uploading & Parsing Excel File</h3>
+                <p className="text-xs text-slate-500 font-mono truncate max-w-[240px]">{uploadProgress.fileName}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-xs font-bold">
+                <span className="text-slate-700 dark:text-slate-300">{uploadProgress.statusText}</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-mono">{uploadProgress.progressPercent}%</span>
+              </div>
+              
+              <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200 dark:border-slate-700">
+                <div 
+                  className="bg-emerald-500 h-full rounded-full transition-all duration-300 ease-out shadow-sm"
+                  style={{ width: `${uploadProgress.progressPercent}%` }}
+                />
+              </div>
+
+              {uploadProgress.totalRows > 0 && (
+                <p className="text-[11px] text-right text-slate-400 font-medium">
+                  Processed {uploadProgress.processedRows} of {uploadProgress.totalRows} rows
+                </p>
+              )}
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-[11px] text-slate-500 flex items-center gap-2 border border-slate-100 dark:border-slate-800">
+              <AlertCircle size={14} className="text-amber-500 shrink-0" />
+              <span>Validating mobile numbers & emails against database...</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Excel Import Results Modal */}
+      {importSummary && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">Excel Customer Import Results</h3>
+                  <p className="text-[11px] text-slate-500">Deduplication & Validation Report</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setImportSummary(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Rows</p>
+                <p className="text-xl font-black text-slate-900 dark:text-white mt-0.5">{importSummary.total}</p>
+              </div>
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200/50 dark:border-emerald-800/30 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Imported</p>
+                <p className="text-xl font-black text-emerald-700 dark:text-emerald-400 mt-0.5">+{importSummary.added}</p>
+              </div>
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200/50 dark:border-amber-800/30 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">Skipped (Dupes)</p>
+                <p className="text-xl font-black text-amber-700 dark:text-amber-400 mt-0.5">{importSummary.skipped}</p>
+              </div>
+            </div>
+
+            {importSummary.skippedDetails.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <AlertCircle size={14} className="text-amber-500" />
+                  Skipped Existing Customers (Found via Mobile / Email in DB):
+                </p>
+                <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 text-[10px]">
+                  {importSummary.skippedDetails.map((item, idx) => (
+                    <div key={idx} className="p-2 bg-amber-50/50 dark:bg-amber-950/10 flex flex-col gap-0.5">
+                      <div className="flex justify-between items-center font-bold text-slate-800 dark:text-slate-200">
+                        <span>Row {item.row}: {item.name}</span>
+                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 font-mono">Already Exists</span>
+                      </div>
+                      <div className="text-slate-500 flex gap-3 text-[10px]">
+                        <span>Mobile: {item.phone || 'N/A'}</span>
+                        <span>Email: {item.email || 'N/A'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setImportSummary(null)}
+                className="px-5 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold rounded-xl hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Done
               </button>
             </div>
           </div>

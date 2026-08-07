@@ -258,6 +258,7 @@ export interface SalesOrder {
   discount_percentage?: number;
   additional_charges?: number;
   additional_charges_type?: 'Delivery' | 'Additional';
+  delivery_charges?: number;
   business_id: string;
   created_at: string;
   qr_code_data: string; // Custom string packing verification scan

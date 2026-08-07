@@ -97,6 +97,48 @@ const SO_1008_ID = 'd1111111-1111-4111-8111-111111111008';
 
 const PROD_4_COMBO_ID = 'b4444444-4444-4444-8444-444444444444';
 
+export const legacyIdMap: Record<string, string> = {
+    'biz-1': BIZ_ID,
+    'c1': CUST_1_ID,
+    'c2': CUST_2_ID,
+    'c3': CUST_3_ID,
+    'p1': PROD_1_ID,
+    'p2': PROD_2_ID,
+    'p3': PROD_3_ID,
+    'p4': PROD_4_COMBO_ID,
+    'cat1': CAT_1_ID,
+    'cat1_1': CAT_1_ID,
+    'cat1_2': CAT_1_ID,
+    'so-1001': SO_1001_ID,
+    'so-1002': SO_1002_ID,
+    'so-1003': SO_1003_ID,
+    'so-1004': SO_1004_ID,
+    'so-1005': SO_1005_ID,
+    'so-1006': SO_1006_ID,
+    'so-1007': SO_1007_ID,
+    'so-1008': SO_1008_ID,
+    'l1': 'e1111111-1111-4111-8111-111111111001',
+    'l2': 'e1111111-1111-4111-8111-111111111002',
+    'l3': 'e1111111-1111-4111-8111-111111111003',
+    'sub-1': 'f1111111-1111-4111-8111-111111111001',
+    'sub-2': 'f1111111-1111-4111-8111-111111111002'
+};
+
+export const normalizeBusinessId = (id?: string | null): string => {
+  if (!id) return BIZ_ID;
+  if (legacyIdMap[id]) return legacyIdMap[id];
+  if (id === 'biz-1') return BIZ_ID;
+  return id;
+};
+
+export const isSameBusiness = (b1?: string | null, b2?: string | null): boolean => {
+  if (!b1 && !b2) return true;
+  if (!b1 || !b2) return true;
+  const norm1 = normalizeBusinessId(b1);
+  const norm2 = normalizeBusinessId(b2);
+  return norm1 === norm2;
+};
+
 const PRE_SEEDED_CATEGORIES: Category[] = [
   {
     id: CAT_1_ID,
@@ -488,7 +530,7 @@ class ERPStorage {
       const data = localStorage.getItem(`omnipack_erp_${key}`);
       return data ? JSON.parse(data) : defaultValue;
     } catch (e) {
-      console.error(`Error loading state for key ${key}`, e);
+      console.warn(`Error loading state for key ${key}`, e);
       return defaultValue;
     }
   }
@@ -564,21 +606,43 @@ class ERPStorage {
        subscriptions: 'customer_subscriptions',
        comboLogs: 'combo_history_logs'
     };
+
+    const fetchAllFromTable = async (tableName: string, bId?: string) => {
+      let allRows: any[] = [];
+      let start = 0;
+      const CHUNK_SIZE = 200;
+      const normBId = bId ? normalizeBusinessId(bId) : undefined;
+      while (true) {
+        let q = supabase.from(tableName).select('*');
+        if (normBId && tableName !== 'businesses' && tableName !== 'users_profiles') {
+          q = q.eq('business_id', normBId);
+        } else if (normBId && tableName === 'businesses') {
+          q = q.eq('id', normBId);
+        }
+        q = q.range(start, start + CHUNK_SIZE - 1);
+        const { data: pageData, error: pageErr } = await q;
+        if (pageErr) {
+          console.warn(`Supabase fetchAllFromTable error on ${tableName}:`, pageErr);
+          break;
+        }
+        if (!pageData || pageData.length === 0) break;
+        allRows.push(...pageData);
+        start += pageData.length;
+      }
+      return allRows;
+    };
+
        const syncPromises = Object.entries(tables).map(async ([key, table]) => {
        try {
-       let query = supabase.from(table).select('*');
-       if (businessId && table !== 'businesses') {
-          query = query.eq('business_id', businessId);
-       } else if (businessId && table === 'businesses') {
-          query = query.eq('id', businessId);
-       }
-          
-       const { data, error } = await query;
-       if (!error && data) {
+       const data = await fetchAllFromTable(table, businessId);
+       if (data) {
           if (data.length === 0) {
              if (key !== 'businesses' && key !== 'profiles' && key !== 'settings' && key !== 'loyaltyConfigs') {
-                (this.cache as any)[key] = [];
-                localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify([]));
+                // Only clear if local cache is also empty or missing
+                if (!this.cache[key as keyof typeof this.cache] || (this.cache[key as keyof typeof this.cache] as any[]).length === 0) {
+                  (this.cache as any)[key] = [];
+                  localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify([]));
+                }
              }
              return;
           }
@@ -592,7 +656,8 @@ class ERPStorage {
              try {
                const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
                Object.assign(existingPasswords, saved);
-             } catch(e) {}             const mergedProfiles = data.map((p: any) => {
+             } catch(e) {}
+             const mergedProfiles = data.map((p: any) => {
                const localUser = this.cache.profiles.find(localP => localP.id === p.id);
                return {
                  ...p,
@@ -603,7 +668,7 @@ class ERPStorage {
              this.cache.profiles = mergedProfiles;
              localStorage.setItem(`omnipack_erp_profiles`, JSON.stringify(mergedProfiles));
           } else if (key === 'sales') {
-             const { data: itemsData } = await supabase.from('sales_order_items').select('*');
+             const itemsData = await fetchAllFromTable('sales_order_items');
              const itemsByOrder: Record<string, any[]> = {};
              (itemsData || []).forEach((item: any) => {
                if (!itemsByOrder[item.sales_order_id]) itemsByOrder[item.sales_order_id] = [];
@@ -638,21 +703,36 @@ class ERPStorage {
              this.cache.sales = mergedSales;
              localStorage.setItem('omnipack_erp_sales', JSON.stringify(mergedSales));
           } else if (key === 'customers') {
-             const mergedCustomers = (data || []).map((cust: any) => {
-               const existingCust = (this.cache.customers || []).find(c => c.id === cust.id);
-               return {
-                 ...existingCust,
-                 ...cust,
-                 area: cust.area || existingCust?.area || undefined,
-                 loyalty_points: typeof cust.loyalty_points === 'number' ? cust.loyalty_points : (existingCust?.loyalty_points || 0),
-                 loyalty_tier: cust.loyalty_tier || existingCust?.loyalty_tier || 'Silver',
-                 lifetime_spend: typeof cust.lifetime_spend === 'number' ? cust.lifetime_spend : (existingCust?.lifetime_spend || 0)
-               };
+             const remoteMap = new Map((data || []).map((cust: any) => [cust.id, cust]));
+             const mergedMap = new Map<string, any>();
+
+             (this.cache.customers || []).forEach((localCust: any) => {
+               const remoteCust = remoteMap.get(localCust.id);
+               if (remoteCust) {
+                 mergedMap.set(localCust.id, {
+                   ...localCust,
+                   ...remoteCust,
+                   area: remoteCust.area || localCust?.area || undefined,
+                   loyalty_points: typeof remoteCust.loyalty_points === 'number' ? remoteCust.loyalty_points : (localCust?.loyalty_points || 0),
+                   loyalty_tier: remoteCust.loyalty_tier || localCust?.loyalty_tier || 'Silver',
+                   lifetime_spend: typeof remoteCust.lifetime_spend === 'number' ? remoteCust.lifetime_spend : (localCust?.lifetime_spend || 0)
+                 });
+               } else {
+                 mergedMap.set(localCust.id, localCust);
+               }
              });
+
+             (data || []).forEach((remoteCust: any) => {
+               if (!mergedMap.has(remoteCust.id)) {
+                 mergedMap.set(remoteCust.id, remoteCust);
+               }
+             });
+
+             const mergedCustomers = Array.from(mergedMap.values());
              this.cache.customers = mergedCustomers;
              localStorage.setItem('omnipack_erp_customers', JSON.stringify(mergedCustomers));
           } else if (key === 'purchases') {
-             const { data: itemsData } = await supabase.from('purchase_order_items').select('*');
+             const itemsData = await fetchAllFromTable('purchase_order_items');
              const itemsByPO: Record<string, any[]> = {};
              (itemsData || []).forEach((item: any) => {
                if (!itemsByPO[item.purchase_order_id]) itemsByPO[item.purchase_order_id] = [];
@@ -664,6 +744,92 @@ class ERPStorage {
              }));
              this.cache.purchases = mergedPurchases;
              localStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
+          } else if (key === 'products') {
+             const remoteMap = new Map((data || []).map((prod: any) => [prod.id, prod]));
+             const mergedMap = new Map<string, any>();
+
+             (this.cache.products || []).forEach((localProd: any) => {
+               const remoteProd = remoteMap.get(localProd.id);
+               if (remoteProd) {
+                 mergedMap.set(localProd.id, {
+                   ...localProd,
+                   ...remoteProd,
+                   business_id: normalizeBusinessId(remoteProd.business_id || localProd.business_id),
+                   purchase_unit: remoteProd.purchase_unit || localProd?.purchase_unit || undefined,
+                   selling_unit: remoteProd.selling_unit || localProd?.selling_unit || undefined,
+                   auto_conversion: remoteProd.auto_conversion ?? localProd?.auto_conversion,
+                   rate_nr: typeof remoteProd.rate_nr === 'number' ? remoteProd.rate_nr : localProd?.rate_nr,
+                   rate_lmr: typeof remoteProd.rate_lmr === 'number' ? remoteProd.rate_lmr : localProd?.rate_lmr,
+                   rate_abr: typeof remoteProd.rate_abr === 'number' ? remoteProd.rate_abr : localProd?.rate_abr,
+                   rate_ddr: typeof remoteProd.rate_ddr === 'number' ? remoteProd.rate_ddr : localProd?.rate_ddr,
+                   is_combo: remoteProd.is_combo ?? localProd?.is_combo,
+                   combo_items: remoteProd.combo_items || localProd?.combo_items,
+                   current_stock: typeof remoteProd.current_stock === 'number' ? remoteProd.current_stock : (localProd?.current_stock || 0)
+                 });
+               } else {
+                 mergedMap.set(localProd.id, {
+                   ...localProd,
+                   business_id: normalizeBusinessId(localProd.business_id)
+                 });
+               }
+             });
+
+             (data || []).forEach((remoteProd: any) => {
+               if (!mergedMap.has(remoteProd.id)) {
+                 mergedMap.set(remoteProd.id, {
+                   ...remoteProd,
+                   business_id: normalizeBusinessId(remoteProd.business_id)
+                 });
+               }
+             });
+
+             const mergedProducts = Array.from(mergedMap.values());
+             this.cache.products = mergedProducts;
+             localStorage.setItem('omnipack_erp_products', JSON.stringify(mergedProducts));
+          } else if (key === 'categories') {
+             const remoteMap = new Map((data || []).map((cat: any) => [cat.id, cat]));
+             const mergedMap = new Map<string, any>();
+
+             (this.cache.categories || []).forEach((localCat: any) => {
+               const remoteCat = remoteMap.get(localCat.id);
+               if (remoteCat) {
+                 mergedMap.set(localCat.id, { ...localCat, ...remoteCat });
+               } else {
+                 mergedMap.set(localCat.id, localCat);
+               }
+             });
+
+             (data || []).forEach((remoteCat: any) => {
+               if (!mergedMap.has(remoteCat.id)) {
+                 mergedMap.set(remoteCat.id, remoteCat);
+               }
+             });
+
+             const mergedCategories = Array.from(mergedMap.values());
+             this.cache.categories = mergedCategories;
+             localStorage.setItem('omnipack_erp_categories', JSON.stringify(mergedCategories));
+          } else if (key === 'suppliers') {
+             const remoteMap = new Map((data || []).map((sup: any) => [sup.id, sup]));
+             const mergedMap = new Map<string, any>();
+
+             (this.cache.suppliers || []).forEach((localSup: any) => {
+               const remoteSup = remoteMap.get(localSup.id);
+               if (remoteSup) {
+                 mergedMap.set(localSup.id, { ...localSup, ...remoteSup });
+               } else {
+                 mergedMap.set(localSup.id, localSup);
+               }
+             });
+
+             (data || []).forEach((remoteSup: any) => {
+               if (!mergedMap.has(remoteSup.id)) {
+                 mergedMap.set(remoteSup.id, remoteSup);
+               }
+             });
+
+             const mergedSuppliers = Array.from(mergedMap.values());
+             this.cache.suppliers = mergedSuppliers;
+             localStorage.setItem('omnipack_erp_suppliers', JSON.stringify(mergedSuppliers));
           } else if (key === 'businesses') {
              const mergedBusinesses = (data || []).map((b: any) => {
                 const existing = (this.cache.businesses || []).find(eb => eb.id === b.id);
@@ -773,7 +939,7 @@ class ERPStorage {
        const { error } = await supabase.from(tableName).delete().eq(tableName === 'business_settings' ? 'business_id' : 'id', finalDeleteId);
        if (error) {
          if (error.code === 'PGRST205') return; // Ignore missing table
-         console.error(`Supabase delete error on ${tableName}:`, JSON.stringify(error));
+         console.warn(`Supabase delete error on ${tableName}:`, JSON.stringify(error));
          return error;
        }
     } else if (dataItem) {
@@ -929,8 +1095,60 @@ class ERPStorage {
            return clean;
        };
        
+       const doUpsert = async (items: any) => {
+         let upsertRes = await supabase.from(tableName).upsert(items);
+         let error = upsertRes.error;
+         let attempts = 0;
+         while (error && error.code === 'PGRST204' && attempts < 30) {
+           attempts++;
+           const match = error.message.match(/Could not find the '([^']+)' column/i);
+           if (match && match[1]) {
+             const missingCol = match[1];
+             const stripCol = (item: any) => {
+               if (item && typeof item === 'object') {
+                 const copy = { ...item };
+                 delete copy[missingCol];
+                 return copy;
+               }
+               return item;
+             };
+             items = Array.isArray(items) ? items.map(stripCol) : stripCol(items);
+             upsertRes = await supabase.from(tableName).upsert(items);
+             error = upsertRes.error;
+           } else {
+             break;
+           }
+         }
+         if (error && error.code === '23503') {
+           const stripFks = (item: any) => {
+             if (item && typeof item === 'object') {
+               const copy = { ...item };
+               if ('order_id' in copy) copy.order_id = null;
+               if ('customer_id' in copy) copy.customer_id = null;
+               if ('last_order_id' in copy) copy.last_order_id = null;
+               if ('product_id' in copy) copy.product_id = null;
+               return copy;
+             }
+             return item;
+           };
+           items = Array.isArray(items) ? items.map(stripFks) : stripFks(items);
+           upsertRes = await supabase.from(tableName).upsert(items);
+           error = upsertRes.error;
+         }
+         return error;
+       };
+
        if (Array.isArray(payload)) {
            payload = payload.map(cleanItem);
+           const CHUNK_SIZE = 200;
+           for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
+             const chunk = payload.slice(i, i + CHUNK_SIZE);
+             const err = await doUpsert(chunk);
+             if (err && err.code !== 'PGRST205') {
+               console.warn(`Supabase sync error on chunk of ${tableName}:`, JSON.stringify(err));
+             }
+           }
+           return;
        } else {
            payload = cleanItem(payload);
        }
@@ -981,18 +1199,18 @@ class ERPStorage {
            // Table doesn't exist in Supabase schema (likely a local-only feature for this user)
            return;
          }
-         console.error(`Supabase sync error on ${tableName}:`, JSON.stringify(error));
+         console.warn(`Supabase sync error on ${tableName}:`, JSON.stringify(error));
          return error;
        }
        
        if (tableName === 'sales_orders' && salesItems.length > 0) {
            const { error: err2 } = await supabase.from('sales_order_items').upsert(salesItems);
-           if (err2 && err2.code !== 'PGRST205') console.error('Supabase sync error on sales_order_items:', JSON.stringify(err2));
+           if (err2 && err2.code !== 'PGRST205') console.warn('Supabase sync error on sales_order_items:', JSON.stringify(err2));
        }
        
        if (tableName === 'purchase_orders' && purchaseItems.length > 0) {
            const { error: err3 } = await supabase.from('purchase_order_items').upsert(purchaseItems);
-           if (err3 && err3.code !== 'PGRST205') console.error('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
+           if (err3 && err3.code !== 'PGRST205') console.warn('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
        }
        
        if (dataItem) {
@@ -1022,7 +1240,7 @@ class ERPStorage {
     try {
       localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(this.cache[key]));
     } catch (e) {
-      console.error(`Error saving state for key ${key}`, e);
+      console.warn(`Error saving state for key ${key}`, e);
     }
     if (this.bc) {
       try {
@@ -1166,7 +1384,7 @@ class ERPStorage {
 
   // Category Operations
   public getCategories(businessId: string): Category[] {
-    let cats = this.cache.categories.filter(c => !c.business_id || c.business_id === businessId || c.business_id === BIZ_ID);
+    let cats = this.cache.categories.filter(c => !c.business_id || isSameBusiness(c.business_id, businessId));
     if (cats.length === 0) {
       const defaultCatNames = [
         'Faral & Festive Sweets',
@@ -1182,7 +1400,7 @@ class ERPStorage {
           id: crypto.randomUUID(),
           name,
           parent_id: null,
-          business_id: businessId || BIZ_ID,
+          business_id: normalizeBusinessId(businessId),
           active: true,
           created_at: new Date().toISOString()
         };
@@ -1191,14 +1409,16 @@ class ERPStorage {
       try {
         localStorage.setItem('omnipack_erp_categories', JSON.stringify(this.cache.categories));
       } catch (e) {}
-      cats = this.cache.categories.filter(c => !c.business_id || c.business_id === businessId || c.business_id === BIZ_ID);
+      cats = this.cache.categories.filter(c => !c.business_id || isSameBusiness(c.business_id, businessId));
     }
     return cats;
   }
 
   public createCategory(cat: Omit<Category, 'id' | 'created_at'>): Category {
+    const normBizId = normalizeBusinessId(cat.business_id);
     const newCat: Category = {
       ...cat,
+      business_id: normBizId,
       id: crypto.randomUUID(),
       created_at: new Date().toISOString()
     };
@@ -1244,7 +1464,7 @@ class ERPStorage {
   // Product Operations
   public getProducts(businessId: string): Product[] {
     return this.cache.products
-      .filter(p => p.business_id === businessId)
+      .filter(p => isSameBusiness(p.business_id, businessId))
       .map(p => ({
         ...p,
         is_combo: isComboProduct(p)
@@ -1255,8 +1475,10 @@ class ERPStorage {
     if (!prod.sku || prod.sku.trim() === '') {
       prod.sku = 'SKU-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
     }
+    const normBizId = normalizeBusinessId(prod.business_id);
     const newProd: Product = {
       ...prod,
+      business_id: normBizId,
       id: crypto.randomUUID(),
       current_stock: 0, // Initialized to 0, will be updated by addStockLog below
       is_combo: false,
@@ -1267,10 +1489,56 @@ class ERPStorage {
 
     // Add stock log for opening stock - this will trigger the DB to update current_stock
     if (prod.opening_stock > 0) {
-      this.addStockLog(newProd.id, prod.opening_stock, 'In', 'Opening Stock Entry', 'System', prod.business_id);
+      this.addStockLog(newProd.id, prod.opening_stock, 'In', 'Opening Stock Entry', 'System', normBizId);
     }
 
     return newProd;
+  }
+
+  public createProductsBatch(prods: Omit<Product, 'id' | 'created_at' | 'current_stock'>[]): Product[] {
+    if (!prods || prods.length === 0) return [];
+    const newProducts: Product[] = [];
+    const newStockLogs: StockLog[] = [];
+
+    for (const prod of prods) {
+      if (!prod.sku || prod.sku.trim() === '') {
+        prod.sku = 'SKU-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+      }
+      const initialStock = prod.opening_stock > 0 ? prod.opening_stock : 0;
+      const normBizId = normalizeBusinessId(prod.business_id);
+      const newProd: Product = {
+        ...prod,
+        business_id: normBizId,
+        id: crypto.randomUUID(),
+        current_stock: initialStock,
+        is_combo: false,
+        created_at: new Date().toISOString()
+      };
+      this.cache.products.push(newProd);
+      newProducts.push(newProd);
+
+      if (prod.opening_stock > 0) {
+        newStockLogs.push({
+          id: crypto.randomUUID(),
+          product_id: newProd.id,
+          change_qty: prod.opening_stock,
+          type: 'In',
+          notes: 'Opening Stock Entry',
+          created_by: 'System',
+          created_at: new Date().toISOString(),
+          business_id: normBizId
+        });
+      }
+    }
+
+    this.save('products', newProducts);
+
+    if (newStockLogs.length > 0) {
+      this.cache.stockLogs.push(...newStockLogs);
+      this.save('stockLogs', newStockLogs);
+    }
+
+    return newProducts;
   }
 
   public updateProduct(id: string, updates: Partial<Product>): Product {
@@ -1877,10 +2145,57 @@ class ERPStorage {
 
   // Customer Operations
   public getCustomers(businessId: string): Customer[] {
-    return this.cache.customers.filter(c => c.business_id === businessId);
+    const raw = this.cache.customers.filter(c => isSameBusiness(c.business_id, businessId));
+    
+    // Deduplicate by normalized customer name and 10-digit mobile number
+    const seenNames = new Set<string>();
+    const seenPhones = new Set<string>();
+    const uniqueCustomers: Customer[] = [];
+
+    // Prioritize customer records with outstanding amounts, contact details, or GSTIN
+    const sorted = [...raw].sort((a, b) => {
+      const aScore = (a.outstanding_amount ? 100 : 0) + (a.phone ? 20 : 0) + (a.email ? 10 : 0) + (a.gstin ? 5 : 0);
+      const bScore = (b.outstanding_amount ? 100 : 0) + (b.phone ? 20 : 0) + (b.email ? 10 : 0) + (b.gstin ? 5 : 0);
+      return bScore - aScore;
+    });
+
+    for (const cust of sorted) {
+      const normName = cust.name ? cust.name.trim().toLowerCase() : '';
+      const normPhone = cust.phone ? cust.phone.replace(/\D/g, '') : '';
+
+      if (normName && seenNames.has(normName)) {
+        continue;
+      }
+      if (normPhone && normPhone.length === 10 && seenPhones.has(normPhone)) {
+        continue;
+      }
+
+      if (normName) seenNames.add(normName);
+      if (normPhone && normPhone.length === 10) seenPhones.add(normPhone);
+
+      uniqueCustomers.push(cust);
+    }
+
+    return uniqueCustomers;
   }
 
   public createCustomer(cust: Omit<Customer, 'id' | 'created_at' | 'outstanding_amount'>): Customer {
+    const normName = cust.name ? cust.name.trim().toLowerCase() : '';
+    const normPhone = cust.phone ? cust.phone.replace(/\D/g, '') : '';
+    const normBizId = normalizeBusinessId(cust.business_id);
+
+    // Reuse existing customer if name or phone already exists
+    const existing = this.cache.customers.find(c => 
+      isSameBusiness(c.business_id, normBizId) && (
+        (normName && c.name && c.name.trim().toLowerCase() === normName) ||
+        (normPhone && normPhone.length === 10 && c.phone && c.phone.replace(/\D/g, '') === normPhone)
+      )
+    );
+
+    if (existing) {
+      return existing;
+    }
+
     const config = this.getLoyaltyConfig(cust.business_id);
     const welcomeBonus = config?.welcome_bonus_points || 50;
 
@@ -1907,6 +2222,73 @@ class ERPStorage {
     }
 
     return newCust;
+  }
+
+  public createCustomersBatch(custs: Omit<Customer, 'id' | 'created_at' | 'outstanding_amount'>[]): Customer[] {
+    if (!custs || custs.length === 0) return [];
+
+    const bizId = custs[0].business_id;
+    const existing = this.cache.customers.filter(c => c.business_id === bizId);
+    const existingNames = new Set(existing.map(c => c.name ? c.name.trim().toLowerCase() : '').filter(Boolean));
+    const existingPhones = new Set(existing.map(c => c.phone ? c.phone.replace(/\D/g, '') : '').filter(Boolean));
+    const existingEmails = new Set(existing.map(c => c.email ? c.email.trim().toLowerCase() : '').filter(Boolean));
+
+    const uniqueToCreate: Omit<Customer, 'id' | 'created_at' | 'outstanding_amount'>[] = [];
+
+    for (const cust of custs) {
+      const cleanName = cust.name ? cust.name.trim().toLowerCase() : '';
+      const cleanPhone = cust.phone ? cust.phone.replace(/\D/g, '') : '';
+      const cleanEmail = cust.email ? cust.email.trim().toLowerCase() : '';
+
+      const nameExists = cleanName.length > 0 && existingNames.has(cleanName);
+      const phoneExists = cleanPhone.length > 0 && existingPhones.has(cleanPhone);
+      const emailExists = cleanEmail.length > 0 && existingEmails.has(cleanEmail);
+
+      if (nameExists || phoneExists || emailExists) {
+        continue;
+      }
+
+      if (cleanName) existingNames.add(cleanName);
+      if (cleanPhone) existingPhones.add(cleanPhone);
+      if (cleanEmail) existingEmails.add(cleanEmail);
+
+      uniqueToCreate.push(cust);
+    }
+
+    if (uniqueToCreate.length === 0) return [];
+
+    const config = this.getLoyaltyConfig(bizId);
+    const welcomeBonus = config?.welcome_bonus_points || 50;
+    const now = new Date().toISOString();
+
+    const newCustomers: Customer[] = uniqueToCreate.map(cust => ({
+      ...cust,
+      id: crypto.randomUUID(),
+      outstanding_amount: 0,
+      loyalty_points: welcomeBonus,
+      lifetime_spend: 0,
+      loyalty_tier: 'Silver',
+      created_at: now
+    }));
+
+    this.cache.customers.push(...newCustomers);
+    this.save('customers', newCustomers);
+
+    if (welcomeBonus > 0) {
+      const logs = newCustomers.map(c => ({
+        id: crypto.randomUUID(),
+        customer_id: c.id,
+        points: welcomeBonus,
+        type: 'Bonus' as const,
+        notes: 'Welcome registration loyalty bonus points',
+        created_at: now,
+        business_id: c.business_id
+      }));
+      this.cache.loyaltyLogs.push(...logs);
+      this.save('loyaltyLogs', logs);
+    }
+
+    return newCustomers;
   }
 
   public updateCustomer(id: string, updates: Partial<Customer>): Customer {
@@ -2205,12 +2587,13 @@ class ERPStorage {
 
   // Supplier Operations
   public getSuppliers(businessId: string): Supplier[] {
-    return this.cache.suppliers.filter(s => s.business_id === businessId);
+    return this.cache.suppliers.filter(s => isSameBusiness(s.business_id, businessId));
   }
 
   public createSupplier(sup: Omit<Supplier, 'id' | 'created_at' | 'outstanding_amount'>): Supplier {
     const newSup: Supplier = {
       ...sup,
+      business_id: normalizeBusinessId(sup.business_id),
       id: crypto.randomUUID(),
       outstanding_amount: 0,
       created_at: new Date().toISOString()
@@ -2243,13 +2626,14 @@ class ERPStorage {
   // Purchase Order Operations
   public getPurchaseOrders(businessId: string): PurchaseOrder[] {
     return (this.cache.purchases || [])
-      .filter(p => p.business_id === businessId)
+      .filter(p => isSameBusiness(p.business_id, businessId))
       .map(p => ({ ...p, items: p.items || [] }));
   }
 
   public createPurchaseOrder(po: Omit<PurchaseOrder, 'id' | 'created_at'>): PurchaseOrder {
     const newPO: PurchaseOrder = {
       ...po,
+      business_id: normalizeBusinessId(po.business_id),
       id: crypto.randomUUID(),
       created_at: new Date().toISOString()
     };
@@ -2310,7 +2694,7 @@ class ERPStorage {
     const customerMap = new Map(customers.map(c => [c.id, c]));
 
     return (this.cache.sales || [])
-      .filter(s => s.business_id === businessId)
+      .filter(s => isSameBusiness(s.business_id, businessId))
       .map(s => {
         const cust = customerMap.get(s.customer_id);
         const resolvedArea = (s.area && s.area !== 'Other') 
@@ -2357,7 +2741,7 @@ class ERPStorage {
           return data as SalesOrder;
         }
       } catch (err) {
-        console.error("Error finding sales order from Supabase:", err);
+        console.warn("Error finding sales order from Supabase:", err);
       }
     }
 
@@ -2465,7 +2849,7 @@ class ERPStorage {
 
   // Stock log and Inventory operations
   public getStockLogs(businessId: string): StockLog[] {
-    return this.cache.stockLogs.filter(s => s.business_id === businessId);
+    return this.cache.stockLogs.filter(s => isSameBusiness(s.business_id, businessId));
   }
 
   public addStockLog(
@@ -2723,7 +3107,7 @@ class ERPStorage {
   }
 
   public getPackingSessions(businessId: string): PackingSession[] {
-    return this.cache.packingSessions.filter(p => p.business_id === businessId);
+    return this.cache.packingSessions.filter(p => isSameBusiness(p.business_id, businessId));
   }
 
   // System Activity Logger
@@ -2736,19 +3120,19 @@ class ERPStorage {
       action,
       details,
       created_at: new Date().toISOString(),
-      business_id: businessId
+      business_id: normalizeBusinessId(businessId)
     };
     this.cache.auditLogs.unshift(newLog); // newer logs first
     this.save('auditLogs', newLog);
   }
 
   public getSystemAuditLogs(businessId: string): SystemAuditLog[] {
-    return this.cache.auditLogs.filter(a => a.business_id === businessId);
+    return this.cache.auditLogs.filter(a => isSameBusiness(a.business_id, businessId));
   }
 
   // Business Settings
   public getSettings(businessId: string): BusinessSettings {
-    let setting = this.cache.settings.find(s => s.business_id === businessId);
+    let setting = this.cache.settings.find(s => isSameBusiness(s.business_id, businessId));
     if (!setting) {
       // fallback
       const business = this.getBusiness(businessId);
@@ -2802,7 +3186,7 @@ class ERPStorage {
         }
         await supabase.from('business_settings').update({ updated_at: new Date().toISOString() }).eq('business_id', businessId);
       } catch (e) {
-        console.error('Failed to wipe Supabase on reset', e);
+        console.warn('Failed to wipe Supabase on reset', e);
       }
     }
 
@@ -2986,12 +3370,13 @@ class ERPStorage {
 
   // Chat Operations
   public getMessages(businessId: string): ChatMessage[] {
-    return (this.cache.messages || []).filter(m => m.business_id === businessId);
+    return (this.cache.messages || []).filter(m => isSameBusiness(m.business_id, businessId));
   }
 
   public sendMessage(msg: Omit<ChatMessage, 'id' | 'created_at' | 'is_read'>): ChatMessage {
     const newMsg: ChatMessage = {
       ...msg,
+      business_id: normalizeBusinessId(msg.business_id),
       id: crypto.randomUUID(),
       created_at: new Date().toISOString(),
       is_read: false
@@ -3013,6 +3398,19 @@ class ERPStorage {
     let changed = false;
     this.cache.messages.forEach(m => {
       if (m.sender_id === senderId && m.receiver_id === receiverId && !m.is_read) {
+        m.is_read = true;
+        changed = true;
+      }
+    });
+    if (changed) {
+      this.save('messages', this.cache.messages);
+    }
+  }
+
+  public markAllMessagesRead(receiverId: string) {
+    let changed = false;
+    this.cache.messages.forEach(m => {
+      if (m.receiver_id === receiverId && !m.is_read) {
         m.is_read = true;
         changed = true;
       }

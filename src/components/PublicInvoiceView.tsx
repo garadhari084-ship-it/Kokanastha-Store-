@@ -168,7 +168,7 @@ export const PublicInvoiceView: React.FC<PublicInvoiceViewProps> = ({
       </div>
 
       {/* Main Bill of Supply Sheet */}
-      <div className="bg-white rounded-2xl shadow-xl overflow-hidden print:shadow-none">
+      <div id="printable-tax-invoice" className="print-area bg-white rounded-2xl shadow-xl overflow-hidden print:shadow-none print:bg-white print:m-0 print:p-0 print:border-none print:max-w-none print:w-full">
         <BillOfSupplyView
           order={order}
           customer={customer}

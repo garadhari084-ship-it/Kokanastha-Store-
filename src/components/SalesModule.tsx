@@ -380,6 +380,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [customDiscount, setCustomDiscount] = useState<number | string>('');
   const [discountType, setDiscountType] = useState<'Value' | 'Percentage'>('Percentage');
   const [additionalCharges, setAdditionalCharges] = useState<number | string>('');
+  const [deliveryCharges, setDeliveryCharges] = useState<number | string>('');
   const [additionalChargeType, setAdditionalChargeType] = useState<'Delivery' | 'Additional'>('Delivery');
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
   const [isNewCustomerSelected, setIsNewCustomerSelected] = useState(false);
@@ -560,6 +561,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setCustomDiscount(order.discount_percentage ? order.discount_percentage : (order.discount_amount || 0));
     setDiscountType('Percentage');
     setAdditionalCharges(order.additional_charges || 0);
+    setDeliveryCharges(order.delivery_charges || 0);
     setAdditionalChargeType(order.additional_charges_type || 'Delivery');
     setOrderItems([...order.items]);
     setIsCreateModalOpen(true);
@@ -688,8 +690,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     const discountAmount = Math.round(discAmt);
     
     const addCharges = additionalCharges !== '' && !isNaN(Number(additionalCharges)) ? Math.max(0, Number(additionalCharges)) : 0;
+    const delCharges = deliveryCharges !== '' && !isNaN(Number(deliveryCharges)) ? Math.max(0, Number(deliveryCharges)) : 0;
     
-    const finalAmount = Math.max(0, subtotalBeforeDiscount - discountAmount + addCharges);
+    const finalAmount = Math.max(0, subtotalBeforeDiscount - discountAmount + addCharges + delCharges);
     
     let computedPaid = 0;
     if (paymentStatus === 'Paid') {
@@ -711,9 +714,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       computedPaid,
       balance,
       actualRedeem,
-      addCharges
+      addCharges,
+      delCharges
     };
-  }, [orderItems, pointsToRedeem, customDiscount, discountType, additionalCharges, paymentStatus, paidAmount, selectedCustomerId, customers, businessId]);
+  }, [orderItems, pointsToRedeem, customDiscount, discountType, additionalCharges, deliveryCharges, paymentStatus, paidAmount, selectedCustomerId, customers, businessId]);
 
   const handleCreateSalesOrder = async (postAction: 'close' | 'save_new' | 'print' | 'share' = 'close') => {
     if (isSubmitting) return;
@@ -888,6 +892,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           discount_amount: calculatedDiscount,
           discount_percentage: discountType === 'Percentage' ? Number(customDiscount) : 0,
           additional_charges: Number(additionalCharges) || 0,
+          delivery_charges: Number(deliveryCharges) || 0,
           additional_charges_type: additionalChargeType,
           points_redeemed: actualRedeem,
           items: cleanItems,
@@ -959,6 +964,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           discount_amount: calculatedDiscount,
           discount_percentage: discountType === 'Percentage' ? Number(customDiscount) : 0,
           additional_charges: Number(additionalCharges) || 0,
+          delivery_charges: Number(deliveryCharges) || 0,
           additional_charges_type: additionalChargeType,
           points_redeemed: actualRedeem,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
@@ -1824,7 +1830,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         return (
           <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
             <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl h-[90vh] flex flex-col shadow-2xl animate-in zoom-in duration-150 overflow-hidden">
-              <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between">
+              <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between print:hidden">
                 <div>
                   <h2 className="text-[11px] font-bold uppercase tracking-wider">Commercial Tax Invoice</h2>
                   <p className="text-[10px] text-slate-400">Order: {viewingInvoiceOrder.order_number}</p>
@@ -1833,7 +1839,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   <X size={18} />
                 </button>
               </div>              {/* Printable Area block */}
-              <div className="flex-1 overflow-y-auto p-4 bg-slate-100 dark:bg-slate-950" id="printable-tax-invoice">
+              <div className="flex-1 overflow-y-auto p-4 bg-slate-100 dark:bg-slate-950 print:p-0 print:bg-white" id="printable-tax-invoice">
                 <BillOfSupplyView 
                   order={viewingInvoiceOrder} 
                   customer={custObj} 
@@ -1843,7 +1849,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               </div>
 
               {/* Action buttons in two distinct rows */}
-              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 space-y-2 print:hidden">
                 {/* Row 1 */}
                 <div className="grid grid-cols-3 gap-2">
                   <button
@@ -2845,14 +2851,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       </div>
                     </div>
                     <div>
-                      <select
-                        value={additionalChargeType}
-                        onChange={(e) => setAdditionalChargeType(e.target.value as 'Delivery' | 'Additional')}
-                        className="text-[10px] text-amber-600 dark:text-amber-400 uppercase block font-black tracking-wider mb-0.5 bg-transparent border-none p-0 cursor-pointer focus:outline-none focus:ring-0"
-                      >
-                        <option value="Delivery">Del. Chg. ({currencySymbol})</option>
-                        <option value="Additional">Additional Charges ({currencySymbol})</option>
-                      </select>
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 uppercase block font-black tracking-wider mb-0.5">
+                        Addl. Chg ({currencySymbol})
+                      </span>
                       <input 
                         type="number"
                         min={0}
@@ -2867,6 +2868,29 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           } else {
                             const num = parseFloat(val);
                             setAdditionalCharges(isNaN(num) ? '' : Math.max(0, num));
+                          }
+                        }}
+                        className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500 shadow-xs text-right"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 uppercase block font-black tracking-wider mb-0.5">
+                        Del. Chg ({currencySymbol})
+                      </span>
+                      <input 
+                        type="number"
+                        min={0}
+                        step="any"
+                        placeholder="0"
+                        value={deliveryCharges}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setDeliveryCharges('');
+                          } else {
+                            const num = parseFloat(val);
+                            setDeliveryCharges(isNaN(num) ? '' : Math.max(0, num));
                           }
                         }}
                         className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500 shadow-xs text-right"
@@ -2893,11 +2917,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       <button 
                         type="button" 
                         disabled={isSubmitting}
-                        onClick={() => handleCreateSalesOrder('save_new')}
+                        onClick={() => handleCreateSalesOrder('close')}
                         className={`px-4 py-2 rounded-l-lg text-[11px] font-bold shadow-md cursor-pointer transition flex items-center gap-1.5 ${isSubmitting ? 'bg-slate-400 cursor-not-allowed text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
                       >
                         {isSubmitting ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
-                        {editingOrderId ? 'Update Order' : 'Save & New'}
+                        {editingOrderId ? 'Update Order' : 'Save'}
                       </button>
                       <button
                         type="button"
@@ -2911,27 +2935,19 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         <div className="absolute bottom-full right-0 mb-2 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-150">
                            <button 
                              type="button"
-                             onClick={() => handleCreateSalesOrder('share')}
+                             onClick={() => handleCreateSalesOrder('print')}
                              className="w-full px-4 py-3 text-left text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between transition-colors cursor-pointer group"
                            >
-                             <span className="group-hover:text-indigo-600 transition-colors">Share</span>
-                             <Share2 size={13} className="text-slate-400 group-hover:text-indigo-500" />
-                           </button>
-                           <button 
-                             type="button"
-                             onClick={() => handleCreateSalesOrder('print')}
-                             className="w-full px-4 py-3 text-left text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between border-t border-slate-100 dark:border-slate-700 transition-colors cursor-pointer group"
-                           >
-                             <span className="group-hover:text-indigo-600 transition-colors">Print</span>
+                             <span className="group-hover:text-indigo-600 transition-colors">Save & Print</span>
                              <Printer size={13} className="text-slate-400 group-hover:text-indigo-500" />
                            </button>
                            <button 
                              type="button"
-                             onClick={() => handleCreateSalesOrder('save_new')}
-                             className="w-full px-4 py-3 text-left text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between border-t border-slate-100 dark:border-slate-700 transition-colors cursor-pointer"
+                             onClick={() => handleCreateSalesOrder('share')}
+                             className="w-full px-4 py-3 text-left text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between border-t border-slate-100 dark:border-slate-700 transition-colors cursor-pointer group"
                            >
-                             <span>Save & New</span>
-                             <Save size={13} />
+                             <span className="group-hover:text-indigo-600 transition-colors">Save & Share</span>
+                             <Share2 size={13} className="text-slate-400 group-hover:text-indigo-500" />
                            </button>
                         </div>
                       )}

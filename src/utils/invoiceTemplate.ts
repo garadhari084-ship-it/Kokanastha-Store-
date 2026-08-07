@@ -36,9 +36,13 @@ export async function generateBillOfSupplyHTML(
   const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const discount = order.discount_amount || 0;
   // If there's a discount, the logic for delivery/tax needs to be careful.
-  const delivery = order.additional_charges || (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
-  const deliveryLabel = (order.additional_charges_type || '').toLowerCase() === 'additional' ? 'Additional Charges' : 'DELIVERY';
-  const totalAmount = order.total_amount || (subTotal + delivery - discount);
+  const additionalCharges = order.additional_charges || 0;
+  const deliveryCharges = order.delivery_charges || 0;
+  let legacyDelivery = 0;
+  if (additionalCharges === 0 && deliveryCharges === 0) {
+    legacyDelivery = (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
+  }
+  const totalAmount = order.total_amount || (subTotal + additionalCharges + deliveryCharges + legacyDelivery - discount);
   const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
 
@@ -467,9 +471,17 @@ export async function generateBillOfSupplyHTML(
           <td style="text-align: right; color: #e11d48;">-₹ ${discount.toFixed(2)}</td>
         </tr>
         ` : ''}
-        ${delivery > 0 ? `<tr>
-          <td>${deliveryLabel}:</td>
-          <td style="text-align: right;">₹ ${delivery.toFixed(2)}</td>
+        ${legacyDelivery > 0 ? `<tr>
+          <td>DELIVERY:</td>
+          <td style="text-align: right;">₹ ${legacyDelivery.toFixed(2)}</td>
+        </tr>` : ''}
+        ${deliveryCharges > 0 ? `<tr>
+          <td>Delivery Charges:</td>
+          <td style="text-align: right;">₹ ${deliveryCharges.toFixed(2)}</td>
+        </tr>` : ''}
+        ${additionalCharges > 0 ? `<tr>
+          <td>Additional Charges:</td>
+          <td style="text-align: right;">₹ ${additionalCharges.toFixed(2)}</td>
         </tr>` : ''}
         <tr class="grand-row">
           <td>Total</td>
@@ -541,21 +553,16 @@ export async function generate3InchBillHTML(
   products: any[]
 ): Promise<string> {
   const bName = businessObj?.name || "KOKANASTHA";
-  const logoBase64 = businessObj?.logo_url ? await urlToBase64(businessObj.logo_url) : "";
   const bAddress = businessObj?.billing_address || "SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLA\nBH ROAD ASHOKVAN DAHISAR E MUMBAI 68";
-  const phone = businessObj?.phone || "8779792825";
+  const phone = businessObj?.phone || "9820769697";
   const email = businessObj?.email || "contact@kokanastha.in";
-
-  const custName = customerObj?.name || "Customer";
-  const custPhone = customerObj?.phone || "";
-  const custAddress = customerObj?.billing_address || "";
-
-  const orderDate = new Date(order.order_date).toLocaleDateString("en-IN", {
+  
+  const orderDate = new Date(order.order_date).toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric"
   });
-  const orderTime = new Date(order.created_at || order.order_date).toLocaleTimeString("en-IN", {
+  const orderTime = new Date(order.created_at || order.order_date).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true
@@ -571,7 +578,6 @@ export async function generate3InchBillHTML(
     const price = it.selling_price || 0;
     const amount = qty * price;
     totalQty += qty;
-
     itemsHtml += `
       <tr>
         <td style="vertical-align: top; width: 15px;">${index + 1}</td>
@@ -579,7 +585,7 @@ export async function generate3InchBillHTML(
       </tr>
       <tr>
         <td></td>
-        <td style="width: 30px;">${qty}</td>
+        <td>${qty}</td>
         <td style="text-align: right;">${price.toFixed(2)}</td>
         <td style="text-align: right;">${amount.toFixed(2)}</td>
       </tr>
@@ -588,212 +594,197 @@ export async function generate3InchBillHTML(
 
   const subTotal = (order.items || []).reduce((sum: number, it: any) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const discount = order.discount_amount || 0;
-  const delivery = order.additional_charges || (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
-  const deliveryLabel = (order.additional_charges_type || '').toLowerCase() === 'additional' ? 'Additional Charges' : 'DELIVERY';
-  const total = order.total_amount || (subTotal + delivery - discount);
-
+  const additionalCharges = order.additional_charges || 0;
+  const deliveryCharges = order.delivery_charges || 0;
+  
+  let legacyDelivery = 0;
+  if (additionalCharges === 0 && deliveryCharges === 0) {
+    legacyDelivery = (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
+  }
+  
+  const total = order.total_amount || (subTotal + additionalCharges + deliveryCharges + legacyDelivery - discount);
+  const receivedAmount = order.paid_amount || total; // Mocking received as total if paid
+  const balance = total - receivedAmount;
+  
   const savingsData = calculateOrderSavings(order.items || [], products);
-  const isLoyal = isLoyalMember(customerObj);
   const totalActualSavings = savingsData.totalSavings + discount;
 
-  const bankName = businessObj?.bank_name || "NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN";
+  const bankName = businessObj?.bank_name || "NKGSB COOPERATIVE BANK LIMITED";
   const accountNo = businessObj?.account_number || "092110100000085";
   const ifscCode = businessObj?.ifsc_code || "NKGS0000092";
-  const accountHolder = businessObj?.account_holder || bName;
-
-  const upiId = businessObj?.upi_id || "9820769697@okicici";
-  const upiString = buildUpiPayString({
-    upiId,
-    businessName: bName,
-    amount: total,
-    orderNumber: invoiceNo
-  });
+  const accountHolder = businessObj?.account_holder || "KOKANASTHA";
+  const bState = businessObj?.state || "27-Maharashtra";
   
-  // Using encodeURIComponent to ensure special chars are handled
-  const upiQrImgSrc = await generateQRCodeDataUrl(upiString, { width: 150, margin: 1 });
-  
-  const billString = buildBillVerificationString({
-    orderNumber: invoiceNo,
-    amount: total,
-    customerName: custName,
-    orderDate: order.order_date,
-    gstin: businessObj?.gstin
-  });
-  const billQrImgSrc = await generateQRCodeDataUrl(billString, { width: 150, margin: 1 });
+  let discountPerc = 0;
+  if (subTotal > 0 && discount > 0) {
+     discountPerc = (discount / subTotal) * 100;
+  }
 
-  return `
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>3-Inch Bill</title>
+  <title>Bill of Supply</title>
   <style>
-    @page { margin: 0; }
+    @page { margin: 0; size: auto; }
     body {
-      font-family: monospace;
-      font-size: 12px;
-      line-height: 1.2;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.3;
       width: 78mm;
       margin: 0 auto;
       padding: 2mm 4mm;
       color: #000;
       background: #fff;
       box-sizing: border-box;
+      text-transform: uppercase;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
     }
     .text-center { text-align: center; }
     .text-left { text-align: left; }
     .text-right { text-align: right; }
-    .bold { font-weight: bold; }
+    
     .dashed-line {
       border-top: 1px dashed #000;
-      margin: 5px 0;
+      margin: 6px 0;
     }
-    .header p { margin: 2px 0; }
-    .info-table { width: 100%; font-size: 11px; margin-bottom: 5px; }
-    .info-table td { vertical-align: top; }
-    .items-table { width: 100%; font-size: 11px; margin-bottom: 5px; }
-    .items-table td { vertical-align: top; padding: 2px 0; }
-    .totals-table { width: 100%; font-size: 12px; font-weight: bold; margin-bottom: 5px; }
+    
+    .header p { margin: 2px 0; font-size: 11px; }
+    .header h2 { margin: 0 0 4px 0; font-size: 16px; font-weight: 900; }
+    
+    .info-section {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      margin-top: 8px;
+    }
+    .info-left {
+      width: 35%;
+    }
+    .info-right {
+      width: 65%;
+      text-align: right;
+    }
+    .info-right div { margin-bottom: 2px; }
+    
+    .items-table { font-size: 12px; margin-bottom: 5px; }
+    .items-table th { border-bottom: 1px dashed #000; border-top: 1px dashed #000; padding: 4px 0; font-weight: 700; text-align: left; }
+    .items-table td { vertical-align: top; padding: 2px 0; font-weight: 700; }
+    
+    .totals-table { width: 100%; font-size: 12px; font-weight: 700; margin-bottom: 5px; }
     .totals-table td { padding: 2px 0; }
-    .qr-container { display: flex; justify-content: space-around; margin: 10px 0; }
-    .qr-box { text-align: center; }
-    .qr-box img { width: 65px; height: 65px; margin: 0 auto; display: block; }
-    .qr-box div { font-size: 10px; margin-top: 2px; }
-    .footer { font-size: 10px; margin-top: 5px; }
-    .footer p { margin: 2px 0; }
+    
+    .savings-table { width: 100%; font-size: 12px; font-weight: 700; border-top: 1px dashed #000; border-bottom: 1px dashed #000; margin: 5px 0; padding: 5px 0; }
+    
+    .bank-details { font-size: 11px; margin-top: 8px; line-height: 1.4; }
+    .terms { font-size: 11px; margin-top: 8px; line-height: 1.4; }
   </style>
 </head>
 <body>
-  <div class="header text-center bold">
-    <div style="font-size: 16px; margin-bottom: 2px;">${bName}</div>
-    <p style="font-size: 10px;">${bAddress.replace(/\n/g, "<br>")}</p>
-    <p style="font-size: 10px;">Ph. No.: ${phone}</p>
-    <p style="font-size: 10px;">Email: ${email}</p>
-    <div style="margin: 5px 0;">Bill of Supply</div>
+  <div class="header text-center">
+    <h2>${bName}</h2>
+    <p>${bAddress.replace(/\n/g, "<br>")}</p>
+    <p>State: ${bState}</p>
+    <p>Ph.No.: ${phone}</p>
+    <p>Email: ${email}</p>
   </div>
-
-  <table class="info-table">
-    <tr>
-      <td style="width: 50%;">
-        <div>${custName}</div>
-        <div>Ph. No: ${custPhone}</div>
-        <div>Bill To:</div>
-        <div>${custAddress}</div>
-      </td>
-      <td style="width: 50%; text-align: right;">
-        <div>Date: ${orderDate}</div>
-        <div>Time: ${orderTime}</div>
-        <div>Invoice No.: ${invoiceNo}</div>
-      </td>
-    </tr>
-  </table>
-
-  <div class="dashed-line"></div>
+  
+  <div class="text-center" style="margin-top: 8px; font-size: 13px; font-weight: 900;">Bill of Supply</div>
+  
+  <div class="info-section">
+    <div class="info-left">
+      <div>Cash Sale</div>
+    </div>
+    <div class="info-right">
+      <div>Date: ${orderDate}</div>
+      <div>Time: ${orderTime}</div>
+      <div>Invoice No.: ${invoiceNo}</div>
+    </div>
+  </div>
+  
   <table class="items-table">
-    <tr class="bold">
-      <td style="width: 15px;">#</td>
-      <td>Item Name</td>
-      <td style="width: 30px; text-align: right;"></td>
-      <td style="text-align: right;">Price</td>
-      <td style="text-align: right;">Amount</td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>Qty</td>
-      <td colspan="3"></td>
-    </tr>
-    <div class="dashed-line"></div>
-    ${itemsHtml}
+    <thead>
+      <tr>
+        <th style="width: 15px;">#</th>
+        <th>Item Name<br>Qty</th>
+        <th style="text-align: right;">Price</th>
+        <th style="text-align: right;">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemsHtml}
+    </tbody>
   </table>
+  
   <div class="dashed-line"></div>
-
+  
   <table class="totals-table">
-    ${discount > 0 ? `
     <tr>
-      <td>Qty: ${totalQty}</td>
-      <td style="text-align: right; font-weight: normal;">Sub Total</td>
-      <td style="text-align: right; width: 60px;">${subTotal.toFixed(2)}</td>
-    </tr>
-    <tr>
-      <td></td>
-      <td style="text-align: right; font-weight: normal; color: #e11d48;">Discount</td>
-      <td style="text-align: right; color: #e11d48;">-${discount.toFixed(2)}</td>
-    </tr>
-    ${delivery > 0 ? `<tr>
-      <td></td>
-      <td style="text-align: right; font-weight: normal;">${deliveryLabel}</td>
-      <td style="text-align: right; width: 60px;">${delivery.toFixed(2)}</td>
-    </tr>` : ''}
-    ` : `
-    <tr>
-      <td>Qty: ${totalQty}</td>
-      ${delivery > 0 ? `<td style="text-align: right; font-weight: normal;">${deliveryLabel}</td>
-      <td style="text-align: right; width: 60px;">${delivery.toFixed(2)}</td>` : '<td></td><td></td>'}
-    </tr>
-    `}
-    <tr>
-      <td></td>
-      <td style="text-align: right;">Total</td>
-      <td style="text-align: right;">${total.toFixed(2)}</td>
-    </tr>
-    <tr>
-      <td></td>
-      <td style="text-align: right; font-weight: normal;">Received</td>
-      <td style="text-align: right;">0.00</td>
-    </tr>
-    <tr>
-      <td></td>
-      <td style="text-align: right;">Balance</td>
-      <td style="text-align: right;">${total.toFixed(2)}</td>
+      <td style="width: 15px; vertical-align: top;">${totalQty}</td>
+      <td style="text-align: left;">
+        ${discount > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Disc.(${discountPerc.toFixed(3)}%)</span><span>:</span></div>` : ''}
+        ${deliveryCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Delivery</span><span>:</span></div>` : ''}
+        ${additionalCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Additional</span><span>:</span></div>` : ''}
+        ${legacyDelivery > 0 ? `<div style="display: flex; justify-content: space-between;"><span>DELIVERY</span><span>:</span></div>` : ''}
+        <div style="display: flex; justify-content: space-between;"><span>Total</span><span>:</span></div>
+        <div style="display: flex; justify-content: space-between;"><span>Received</span><span>:</span></div>
+        <div style="display: flex; justify-content: space-between;"><span>Balance</span><span>:</span></div>
+      </td>
+      <td style="text-align: right; vertical-align: top; width: 80px;">
+        ${discount > 0 ? `<div style="margin-bottom: 2px;">${subTotal.toFixed(2)}</div><div>-${discount.toFixed(2)}</div>` : `<div style="margin-bottom: 2px;">${subTotal.toFixed(2)}</div>`}
+        ${deliveryCharges > 0 ? `<div>${deliveryCharges.toFixed(2)}</div>` : ''}
+        ${additionalCharges > 0 ? `<div>${additionalCharges.toFixed(2)}</div>` : ''}
+        ${legacyDelivery > 0 ? `<div>${legacyDelivery.toFixed(2)}</div>` : ''}
+        <div>${total.toFixed(2)}</div>
+        <div>${receivedAmount.toFixed(2)}</div>
+        <div>${balance.toFixed(2)}</div>
+      </td>
     </tr>
   </table>
-  <div class="dashed-line"></div>
+
   ${totalActualSavings > 0 ? `
-  <div class="text-center bold" style="margin: 5px 0; background: #f0fdf4; padding: 5px; border: 1px solid #bbf7d0; color: #166534;">
-    💰 TOTAL SAVINGS: ₹${totalActualSavings.toFixed(2)} 💰
-  </div>
-  <div class="dashed-line"></div>
+  <table class="savings-table">
+    <tr>
+      <td>You Saved</td>
+      <td style="text-align: right;">:</td>
+      <td style="text-align: right; width: 80px;">${totalActualSavings.toFixed(2)}</td>
+    </tr>
+  </table>
   ` : ''}
-  ${isLoyal ? `
-  <div class="text-center bold" style="margin: 5px 0; font-size: 11px; color: #92400e;">
-    ⭐ VALUED LOYAL MEMBER ⭐
+  
+  <table class="savings-table" style="border-top: ${totalActualSavings > 0 ? 'none' : '1px dashed #000'};">
+    <tr>
+      <td>Available Points</td>
+      <td style="text-align: right;">:</td>
+      <td style="text-align: right; width: 80px;">${customerObj?.loyalty_points || '0.00'}</td>
+    </tr>
+  </table>
+
+  <div class="bank-details">
+    <div style="font-weight: 900;">Bank Details</div>
+    <div>Bank Name: ${bankName}</div>
+    <div>Account Holder Name: ${accountHolder}</div>
+    <div>Account No.: ${accountNo}</div>
+    <div>IFSC Code: ${ifscCode}</div>
   </div>
+  
   <div class="dashed-line"></div>
-  ` : ''}
-  <div class="text-center bold" style="margin-top: 5px;">
-    Available Points &nbsp;&nbsp;&nbsp;&nbsp; ${customerObj?.loyalty_points || 0}
+  
+  <div class="terms">
+    <div style="font-weight: 900;">Terms & Conditions</div>
+    <div>Thanks for doing business with us!</div>
+    <div>NO REPLACEMENT AND NO REFUND FOR FOOD PRODUCTS</div>
+    <div>STAY SAFE AND STAY HOME</div>
   </div>
 
-  <div class="qr-container">
-    <div class="qr-box">
-      <img src="${upiQrImgSrc}" alt="UPI QR" />
-      <div>Scan to pay (UPI)</div>
-    </div>
-    <div class="qr-box">
-      <img src="${billQrImgSrc}" alt="Bill QR" />
-      <div>Scan for Bill</div>
-    </div>
-  </div>
-
-  <div class="dashed-line"></div>
-  <div class="footer bold">
-    <div>Bank Details</div>
-    <div style="font-weight: normal;">
-      Bank Name: ${bankName}<br>
-      A/C Holder: ${accountHolder}<br>
-      A/C No: ${accountNo}<br>
-      IFSC Code: ${ifscCode}
-    </div>
-  </div>
-
-  <div class="dashed-line"></div>
-  <div class="footer bold">
-    <div>Terms & Conditions</div>
-    <div style="font-weight: normal;">
-      Thanks for doing business with us!<br>
-      NO REPLACEMENT AND NO REFUND FOR FOOD PRODUCTS<br>
-      STAY SAFE AND STAY HOME
-    </div>
+  <div style="text-align: center; margin-top: 15px; font-size: 10px;">
+    - End of Bill -
   </div>
   <script>
     window.onload = function() {
@@ -803,6 +794,5 @@ export async function generate3InchBillHTML(
     };
   </script>
 </body>
-</html>
-  `;
+</html>`;
 }

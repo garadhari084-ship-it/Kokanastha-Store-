@@ -16,47 +16,71 @@ select, select option, option {
 
 @media print {
   @page {
-    size: auto;
-    margin: 5mm;
+    size: A4 portrait;
+    margin: 8mm;
   }
   
   html, body {
-    background-color: white !important;
-    color: black !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     margin: 0 !important;
     padding: 0 !important;
-  }
-
-  body * {
-    visibility: hidden;
-  }
-
-  .print-area, .print-area *, #printable-tax-invoice, #printable-tax-invoice * {
-    visibility: visible !important;
-  }
-
-  .print-area, #printable-tax-invoice {
-    display: block !important;
-    position: fixed !important;
-    left: 0 !important;
-    top: 0 !important;
     width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: white !important;
-    z-index: 9999999 !important;
-  }
-
-  /* Prevent overflow hidden on modal containers from clipping print areas */
-  body, #root, div, section, main {
+    height: auto !important;
+    min-height: 0 !important;
     overflow: visible !important;
   }
 
-  .no-print, .no-print * {
+  /* Hide non-print elements */
+  .no-print,
+  .print\:hidden,
+  [class*="print:hidden"] {
     display: none !important;
-    visibility: hidden !important;
+  }
+
+  /* Ensure containers do not restrict height or clip overflow during printing */
+  #root, body, main, section, div {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  /* Handle modals and fixed position overlays */
+  .fixed, [role="dialog"] {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    inset: auto !important;
+    box-shadow: none !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Make sure print area elements render cleanly */
+  .print-area, #printable-tax-invoice {
+    display: block !important;
+    position: static !important;
+    visibility: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+    float: none !important;
+  }
+
+  .print-area *, #printable-tax-invoice * {
+    visibility: visible !important;
   }
 }
 @layer utilities {

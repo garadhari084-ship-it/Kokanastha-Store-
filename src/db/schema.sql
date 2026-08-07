@@ -252,6 +252,7 @@ CREATE TABLE IF NOT EXISTS sales_orders (
     discount_amount DECIMAL(15,2) DEFAULT 0.00,
     discount_percentage DECIMAL(5,2) DEFAULT 0.00,
     additional_charges DECIMAL(15,2) DEFAULT 0.00,
+    delivery_charges DECIMAL(15,2) DEFAULT 0.00,
     additional_charges_type VARCHAR(50) DEFAULT 'Delivery',
     qr_code_data TEXT NOT NULL, -- QR Code containing: Order ID, customer, total items, etc.
     delivery_partner VARCHAR(100),

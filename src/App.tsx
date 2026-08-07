@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -44,31 +44,32 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { dbStore } from './services/store';
+import { useNotificationSound } from './utils/useNotificationSound';
 import { UserProfile, Business, UserRole } from './types/erp';
 import { supabase, isSupabaseConfigured } from './services/supabase';
 
 // Import Views
-import { DashboardView } from './components/DashboardView';
-import { SalesModule } from './components/SalesModule';
-import { PackingVerificationModule } from './components/PackingVerificationModule';
-import { DeliveryModule } from './components/DeliveryModule';
-import { InventoryModule } from './components/InventoryModule';
-import { ProductModule } from './components/ProductModule';
-import { CategoryModule } from './components/CategoryModule';
-import { PartiesLayout } from './components/PartiesLayout';
-import { CustomerModule } from './components/CustomerModule';
-import { PartiesModule } from './components/PartiesModule';
-import { SupplierModule } from './components/SupplierModule';
-import { PurchaseModule } from './components/PurchaseModule';
-import { ReportsModule } from './components/ReportsModule';
-import { AuditLogView } from './components/AuditLogView';
-import { SettingsModule } from './components/SettingsModule';
-import { UsersModule } from './components/UsersModule';
-import { InboxModule } from './components/InboxModule';
-import { LoyaltySubscriptionModule } from './components/LoyaltySubscriptionModule';
-
-import { ItemStockLiveReportModule } from './components/ItemStockLiveReportModule';
-import { PublicInvoiceView } from './components/PublicInvoiceView';
+import { PackingAlertBanner } from "./components/PackingAlertBanner";
+const DashboardView = lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
+const SalesModule = lazy(() => import('./components/SalesModule').then(m => ({ default: m.SalesModule })));
+const PackingVerificationModule = lazy(() => import('./components/PackingVerificationModule').then(m => ({ default: m.PackingVerificationModule })));
+const DeliveryModule = lazy(() => import('./components/DeliveryModule').then(m => ({ default: m.DeliveryModule })));
+const InventoryModule = lazy(() => import('./components/InventoryModule').then(m => ({ default: m.InventoryModule })));
+const ProductModule = lazy(() => import('./components/ProductModule').then(m => ({ default: m.ProductModule })));
+const CategoryModule = lazy(() => import('./components/CategoryModule').then(m => ({ default: m.CategoryModule })));
+const PartiesLayout = lazy(() => import('./components/PartiesLayout').then(m => ({ default: m.PartiesLayout })));
+const CustomerModule = lazy(() => import('./components/CustomerModule').then(m => ({ default: m.CustomerModule })));
+const PartiesModule = lazy(() => import('./components/PartiesModule').then(m => ({ default: m.PartiesModule })));
+const SupplierModule = lazy(() => import('./components/SupplierModule').then(m => ({ default: m.SupplierModule })));
+const PurchaseModule = lazy(() => import('./components/PurchaseModule').then(m => ({ default: m.PurchaseModule })));
+const ReportsModule = lazy(() => import('./components/ReportsModule').then(m => ({ default: m.ReportsModule })));
+const AuditLogView = lazy(() => import('./components/AuditLogView').then(m => ({ default: m.AuditLogView })));
+const SettingsModule = lazy(() => import('./components/SettingsModule').then(m => ({ default: m.SettingsModule })));
+const UsersModule = lazy(() => import('./components/UsersModule').then(m => ({ default: m.UsersModule })));
+const InboxModule = lazy(() => import('./components/InboxModule').then(m => ({ default: m.InboxModule })));
+const LoyaltySubscriptionModule = lazy(() => import('./components/LoyaltySubscriptionModule').then(m => ({ default: m.LoyaltySubscriptionModule })));
+const ItemStockLiveReportModule = lazy(() => import('./components/ItemStockLiveReportModule').then(m => ({ default: m.ItemStockLiveReportModule })));
+const PublicInvoiceView = lazy(() => import('./components/PublicInvoiceView').then(m => ({ default: m.PublicInvoiceView })));
 
 interface Toast {
   id: string;
@@ -338,9 +339,14 @@ export default function App() {
     }
   });
   const [isAllNotificationsModalOpen, setIsAllNotificationsModalOpen] = useState(false);
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState<any[]>([]);
+  const [pendingPackingCount, setPendingPackingCount] = useState(0);
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'order' | 'stock' | 'system'>('all');
   const [toasts, setToasts] = useState<Toast[]>([]);
+  
+  // Only play sound for Packing Staff
+  const isPackingStaff = currentUser?.role && (currentUser.role === 'Packing Staff' || currentUser.role.toLowerCase().includes('pack'));
+  useNotificationSound(!!(isPackingStaff && unreadMessages.length > 0));
 
   const triggerToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random()}`;
@@ -370,6 +376,14 @@ export default function App() {
 
   // Subscribe to store updates to keep UI in sync across devices
   useEffect(() => {
+    // Initial fetch
+    if (currentBusiness && currentUser) {
+      const messages = dbStore.getMessages(currentBusiness.id);
+      setUnreadMessages(messages.filter(m => m.receiver_id === currentUser.id && !m.is_read));
+      const orders = dbStore.getSalesOrders(currentBusiness.id);
+      setPendingPackingCount(orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length);
+    }
+
     return dbStore.subscribe(() => {
       setSyncTick(prev => prev + 1);
       
@@ -394,10 +408,18 @@ export default function App() {
 
       if (currentBusiness && currentUser) {
         const messages = dbStore.getMessages(currentBusiness.id);
-        setUnreadMessagesCount(messages.filter(m => m.receiver_id === currentUser.id && !m.is_read).length);
+        setUnreadMessages(messages.filter(m => m.receiver_id === currentUser.id && !m.is_read));
+        const orders = dbStore.getSalesOrders(currentBusiness.id);
+        setPendingPackingCount(orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length);
       }
     });
   }, [currentBusiness?.id, currentUser?.id]);
+
+  useEffect(() => {
+    if (activeView === 'packing' && currentUser && unreadMessages.length > 0) {
+      dbStore.markAllMessagesRead(currentUser.id);
+    }
+  }, [activeView, currentUser, unreadMessages.length]);
 
   // Restore session on mount
   useEffect(() => {
@@ -1681,17 +1703,27 @@ export default function App() {
                 <div className={`flex items-center gap-2.5 ${isSidebarMinimized ? 'lg:justify-center' : ''}`}>
                   <div className="relative shrink-0">
                     <item.icon size={18} className={`${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`} />
-                    {item.id === 'inbox' && unreadMessagesCount > 0 && isSidebarMinimized && (
+                    {item.id === 'inbox' && unreadMessages.length > 0 && isSidebarMinimized && (
                       <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full font-black shadow-sm ring-1 ring-slate-900 animate-in zoom-in duration-150">
-                        {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                        {unreadMessages.length > 9 ? '9+' : unreadMessages.length}
+                      </span>
+                    )}
+                    {item.id === 'packing' && pendingPackingCount > 0 && isSidebarMinimized && (
+                      <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full font-black shadow-sm ring-1 ring-slate-900 animate-in zoom-in duration-150">
+                        {pendingPackingCount > 9 ? '9+' : pendingPackingCount}
                       </span>
                     )}
                   </div>
                   <span className={isSidebarMinimized ? 'lg:hidden' : ''}>{item.label}</span>
                 </div>
-                {item.id === 'inbox' && unreadMessagesCount > 0 && !isSidebarMinimized && (
+                {item.id === 'inbox' && unreadMessages.length > 0 && !isSidebarMinimized && (
                   <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black min-w-[18px] text-center shadow-sm animate-in zoom-in duration-150">
-                    {unreadMessagesCount}
+                    {unreadMessages.length}
+                  </span>
+                )}
+                {item.id === 'packing' && pendingPackingCount > 0 && !isSidebarMinimized && (
+                  <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black min-w-[18px] text-center shadow-sm animate-in zoom-in duration-150">
+                    {pendingPackingCount}
                   </span>
                 )}
               </button>
@@ -1782,9 +1814,9 @@ export default function App() {
             >
               <div className="absolute inset-0 bg-gradient-to-tr from-sky-500/20 to-blue-500/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"></div>
               <MessageSquare size={18} className="text-slate-600 dark:text-slate-300 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors relative z-10" />
-              {unreadMessagesCount > 0 && (
+              {unreadMessages.length > 0 && (
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white dark:border-slate-900 z-20">
-                  {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                  {unreadMessages.length > 9 ? '9+' : unreadMessages.length}
                 </span>
               )}
             </button>
@@ -1955,10 +1987,19 @@ export default function App() {
             ? 'overflow-hidden flex flex-col p-2 sm:p-4' 
             : 'overflow-y-auto overflow-x-hidden px-0 pt-0.5 pb-4 sm:px-0 lg:px-0 sm:pt-1 sm:pb-6 space-y-4'
         }`}>
-          {renderActiveModule()}
+          <Suspense fallback={<div className="flex items-center justify-center p-12 h-[60vh] text-slate-500"><Loader2 className="animate-spin w-8 h-8 text-indigo-500" /></div>}>
+            {renderActiveModule()}
+          </Suspense>
         </main>
 
       </div>
+
+      {isPackingStaff && (
+        <PackingAlertBanner 
+          unreadMessages={unreadMessages} 
+          onViewMessages={() => setActiveView('packing')} 
+        />
+      )}
 
       {/* Toast Alert notifications overlay bubbles */}
       <div className="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none">

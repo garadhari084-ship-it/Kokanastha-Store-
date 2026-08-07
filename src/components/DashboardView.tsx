@@ -2479,7 +2479,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
               
               {/* Header */}
-              <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between shrink-0">
+              <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between shrink-0 print:hidden">
                 <div className="flex items-center gap-1.5.5">
                   <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
                     <FileText size={18} />
@@ -2498,7 +2498,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
 
               {/* Invoice Printable Body */}
-              <div className="flex-1 overflow-y-auto p-4 bg-slate-100 dark:bg-slate-950" id="printable-tax-invoice">
+              <div className="flex-1 overflow-y-auto p-4 bg-slate-100 dark:bg-slate-950 print:p-0 print:bg-white" id="printable-tax-invoice">
                 <BillOfSupplyView 
                   order={viewingInvoiceOrder} 
                   customer={custObj} 
@@ -2508,7 +2508,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
 
               {/* Action buttons in two distinct rows */}
-              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 space-y-2 shrink-0">
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 space-y-2 shrink-0 print:hidden">
                 {/* Row 1 */}
                 <div className="grid grid-cols-3 gap-2">
                   <button

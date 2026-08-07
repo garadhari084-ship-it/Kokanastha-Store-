@@ -1,5 +1,5 @@
 import { PageHeader } from './PageHeader';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
   Package, 
   Search, 
@@ -14,6 +14,8 @@ import {
   AlertTriangle, 
   X,
   Upload,
+  FileDown,
+  AlertCircle,
   Image as ImageIcon,
   Loader2,
   Layers,
@@ -29,6 +31,7 @@ import {
   ChevronDown,
   Check
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { dbStore, isComboProduct } from '../services/store';
 import { Product, Category, UserProfile, ComboItem, ComboHistoryLog } from '../types/erp';
 import { Camera } from 'lucide-react';
@@ -206,6 +209,14 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [selectedStockStatus, setSelectedStockStatus] = useState('All');
   const [selectedType, setSelectedType] = useState<'All' | 'Product' | 'Combo'>('All');
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory, selectedStockStatus, selectedType]);
+
   // Standard Product Modal controls
   const [isModalOpen, setIsModalOpen] = useState(openAddModalInitially);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -225,7 +236,27 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       setPrintMrp(printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price || 0);
     }
   }, [printingBarcodeProduct]);
-  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  // Excel Import controls
+  const excelFileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadProgress, setUploadProgress] = useState<{
+    fileName: string;
+    progressPercent: number;
+    statusText: string;
+    processedRows: number;
+    totalRows: number;
+  } | null>(null);
+
+  const [importSummaryModal, setImportSummaryModal] = useState<{
+    isOpen: boolean;
+    importedCount: number;
+    skippedCount: number;
+    skippedDetails: { rowNum: number; name: string; reason: string }[];
+  }>({
+    isOpen: false,
+    importedCount: 0,
+    skippedCount: 0,
+    skippedDetails: []
+  });
 
   // Combo Box Modal Controls
   const [isComboModalOpen, setIsComboModalOpen] = useState(false);
@@ -733,6 +764,403 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     }
   };
 
+  const handleDownloadSampleExcel = () => {
+    try {
+      const sampleRows = [
+        {
+          'Product Name': 'Basmati Rice 5kg',
+          'SKU': 'RICE-BAS-5K',
+          'Barcode': '8901234567890',
+          'Category': 'Grocery',
+          'Purchase Price': 350,
+          'Selling Price': 420,
+          'MRP': 450,
+          'GST Rate (%)': 5,
+          'Opening Stock': 50,
+          'Minimum Stock': 10,
+          'Purchase Unit': 'BAG',
+          'Selling Unit': 'BAG',
+          'Description': 'Premium long grain basmati rice'
+        },
+        {
+          'Product Name': 'Refined Sunflower Oil 1L',
+          'SKU': 'OIL-SUN-1L',
+          'Barcode': '8901234567891',
+          'Category': 'Edible Oils',
+          'Purchase Price': 120,
+          'Selling Price': 145,
+          'MRP': 160,
+          'GST Rate (%)': 5,
+          'Opening Stock': 100,
+          'Minimum Stock': 20,
+          'Purchase Unit': 'BOTTLE',
+          'Selling Unit': 'BOTTLE',
+          'Description': '100% Pure refined sunflower oil'
+        },
+        {
+          'Product Name': 'Chakki Fresh Atta 10kg',
+          'SKU': 'ATTA-CHK-10K',
+          'Barcode': '8901234567892',
+          'Category': 'Flour & Atta',
+          'Purchase Price': 310,
+          'Selling Price': 360,
+          'MRP': 390,
+          'GST Rate (%)': 0,
+          'Opening Stock': 40,
+          'Minimum Stock': 10,
+          'Purchase Unit': 'BAG',
+          'Selling Unit': 'BAG',
+          'Description': 'Whole wheat fresh chakki atta'
+        }
+      ];
+
+      const ws = XLSX.utils.json_to_sheet(sampleRows, {
+        header: [
+          'Product Name', 'SKU', 'Barcode', 'Category', 
+          'Purchase Price', 'Selling Price', 'MRP', 'GST Rate (%)', 
+          'Opening Stock', 'Minimum Stock', 'Purchase Unit', 'Selling Unit', 'Description'
+        ]
+      });
+
+      ws['!cols'] = [
+        { wch: 25 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 18 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 35 }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Sample_Products');
+      XLSX.writeFile(wb, 'Product_Import_Sample.xlsx');
+
+      triggerToast('Sample product Excel template downloaded successfully.', 'success');
+      dbStore.logActivity(user.id, user.name, user.role, 'Download Template', 'Downloaded Product Import Excel sample template', businessId);
+    } catch (err: any) {
+      console.error('Failed to download sample excel:', err);
+      triggerToast('Failed to download sample excel template.', 'error');
+    }
+  };
+
+  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadProgress({
+      fileName: file.name,
+      progressPercent: 5,
+      statusText: 'Reading Excel file...',
+      processedRows: 0,
+      totalRows: 0
+    });
+
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      triggerToast('Failed to read file. Please try again.', 'error');
+      setUploadProgress(null);
+    };
+
+    reader.onload = (evt) => {
+      try {
+        const arrayBuffer = evt.target?.result;
+        if (!arrayBuffer) {
+          triggerToast('Empty file uploaded.', 'error');
+          setUploadProgress(null);
+          return;
+        }
+
+        setUploadProgress({
+          fileName: file.name,
+          progressPercent: 20,
+          statusText: 'Parsing Excel workbook...',
+          processedRows: 0,
+          totalRows: 0
+        });
+
+        const wb = XLSX.read(arrayBuffer, { type: 'array', cellFormula: false, raw: false, cellDates: true });
+        const wsName = wb.SheetNames[0];
+        if (!wsName) {
+          triggerToast('Invalid or empty Excel file.', 'error');
+          setUploadProgress(null);
+          return;
+        }
+        const ws = wb.Sheets[wsName];
+
+        const rawMatrix = XLSX.utils.sheet_to_json<any>(ws, { header: 1, raw: false, defval: '' });
+
+        if (!rawMatrix || rawMatrix.length === 0) {
+          triggerToast('The uploaded Excel file contains no data.', 'error');
+          setUploadProgress(null);
+          return;
+        }
+
+        let startIdx = 0;
+        let nameIdx = -1;
+        let skuIdx = -1;
+        let barcodeIdx = -1;
+        let categoryIdx = -1;
+        let purchasePriceIdx = -1;
+        let sellingPriceIdx = -1;
+        let mrpIdx = -1;
+        let gstIdx = -1;
+        let stockIdx = -1;
+        let minStockIdx = -1;
+        let purchaseUnitIdx = -1;
+        let sellingUnitIdx = -1;
+        let descIdx = -1;
+
+        const firstRow = rawMatrix[0];
+        if (Array.isArray(firstRow) && firstRow.some(cell => {
+          const str = String(cell || '').toLowerCase();
+          return str.includes('product') || str.includes('name') || str.includes('sku') || str.includes('barcode') || str.includes('category') || str.includes('price');
+        })) {
+          startIdx = 1;
+          firstRow.forEach((cell, colIdx) => {
+            const str = String(cell || '').toLowerCase().trim();
+            if (/name|product|title|item/i.test(str) && !/unit|price|category|code|sku|barcode/i.test(str) && nameIdx === -1) nameIdx = colIdx;
+            else if (/sku|code/i.test(str) && !/barcode/i.test(str) && skuIdx === -1) skuIdx = colIdx;
+            else if (/barcode|upc|ean/i.test(str) && barcodeIdx === -1) barcodeIdx = colIdx;
+            else if (/category|group|dept/i.test(str) && categoryIdx === -1) categoryIdx = colIdx;
+            else if (/purchase|cost|buy/i.test(str) && purchasePriceIdx === -1) purchasePriceIdx = colIdx;
+            else if (/selling|sell|sale|rate|price/i.test(str) && !/purchase|mrp|cost/i.test(str) && sellingPriceIdx === -1) sellingPriceIdx = colIdx;
+            else if (/mrp/i.test(str) && mrpIdx === -1) mrpIdx = colIdx;
+            else if (/gst|tax/i.test(str) && gstIdx === -1) gstIdx = colIdx;
+            else if (/stock|opening|qty|quantity/i.test(str) && !/min|minimum/i.test(str) && stockIdx === -1) stockIdx = colIdx;
+            else if (/min|minimum/i.test(str) && minStockIdx === -1) minStockIdx = colIdx;
+            else if (/purchase unit|buy unit/i.test(str) && purchaseUnitIdx === -1) purchaseUnitIdx = colIdx;
+            else if (/selling unit|unit/i.test(str) && sellingUnitIdx === -1) sellingUnitIdx = colIdx;
+            else if (/desc|description|details/i.test(str) && descIdx === -1) descIdx = colIdx;
+          });
+        }
+
+        if (nameIdx === -1) nameIdx = 0;
+        if (skuIdx === -1) skuIdx = 1;
+        if (barcodeIdx === -1) barcodeIdx = 2;
+        if (categoryIdx === -1) categoryIdx = 3;
+
+        const dataRows = rawMatrix.slice(startIdx).filter((row: any) => 
+          Array.isArray(row) && row.some((cell: any) => cell !== null && cell !== undefined && String(cell).trim() !== '')
+        );
+
+        if (dataRows.length === 0) {
+          triggerToast('No valid product data rows found in Excel sheet.', 'error');
+          setUploadProgress(null);
+          return;
+        }
+
+        const totalRows = dataRows.length;
+        setUploadProgress({
+          fileName: file.name,
+          progressPercent: 50,
+          statusText: `Processing ${totalRows} product records...`,
+          processedRows: 0,
+          totalRows
+        });
+
+        const currentProducts = dbStore.getProducts(businessId);
+        const existingNames = new Set(currentProducts.map(p => p.name ? p.name.trim().toLowerCase() : '').filter(Boolean));
+        const existingSkus = new Set(currentProducts.map(p => p.sku ? p.sku.trim().toLowerCase() : '').filter(Boolean));
+        const existingBarcodes = new Set(currentProducts.map(p => p.barcode ? p.barcode.trim().toLowerCase() : '').filter(Boolean));
+
+        const batchNames = new Set<string>();
+        const batchSkus = new Set<string>();
+        const batchBarcodes = new Set<string>();
+
+        const existingCategories = dbStore.getCategories(businessId);
+        const categoryMap = new Map<string, string>();
+        existingCategories.forEach(c => categoryMap.set(c.name.trim().toLowerCase(), c.id));
+
+        const newProductsToCreate: Omit<Product, 'id' | 'created_at' | 'current_stock'>[] = [];
+        let skippedCount = 0;
+        const skippedDetails: { rowNum: number; name: string; reason: string }[] = [];
+
+        dataRows.forEach((row: any, idx: number) => {
+          const rowNum = startIdx + idx + 1;
+          const rawName = row[nameIdx] ?? '';
+          let name = String(rawName).trim();
+
+          if (!name) {
+            skippedCount++;
+            skippedDetails.push({ rowNum, name: 'Empty Name', reason: 'Product name is required' });
+            return;
+          }
+
+          let cleanName = name.toLowerCase();
+
+          let rawSku = skuIdx !== -1 && row[skuIdx] ? String(row[skuIdx]).trim() : '';
+          const userProvidedSku = !!rawSku;
+          let sku = rawSku;
+          if (!sku) {
+            const prefix = name.substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, 'X') || 'PROD';
+            sku = `SKU-${prefix}-${idx + 1}-${Math.floor(1000 + Math.random() * 9000)}`;
+          }
+          let cleanSku = sku.toLowerCase();
+
+          let skuCounter = 1;
+          while (!userProvidedSku && (existingSkus.has(cleanSku) || batchSkus.has(cleanSku))) {
+            const prefix = name.substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, 'X') || 'PROD';
+            sku = `SKU-${prefix}-${idx + 1}-${skuCounter}-${Math.floor(1000 + Math.random() * 9000)}`;
+            cleanSku = sku.toLowerCase();
+            skuCounter++;
+            if (skuCounter > 100) break;
+          }
+
+          let rawBarcode = barcodeIdx !== -1 && row[barcodeIdx] ? String(row[barcodeIdx]).trim() : '';
+          const userProvidedBarcode = !!rawBarcode;
+          let barcode = rawBarcode;
+          if (!barcode) {
+            barcode = '890' + String(Date.now()).slice(-5) + String(idx + 1000).slice(-4);
+          }
+          let cleanBarcode = barcode.toLowerCase();
+
+          let barcodeCounter = 1;
+          while (!userProvidedBarcode && (existingBarcodes.has(cleanBarcode) || batchBarcodes.has(cleanBarcode))) {
+            barcode = '890' + String(Date.now()).slice(-5) + String(idx + 1000 + barcodeCounter).slice(-4);
+            cleanBarcode = barcode.toLowerCase();
+            barcodeCounter++;
+            if (barcodeCounter > 100) break;
+          }
+
+          const skuExists = userProvidedSku && (existingSkus.has(cleanSku) || batchSkus.has(cleanSku));
+          const barcodeExists = userProvidedBarcode && (existingBarcodes.has(cleanBarcode) || batchBarcodes.has(cleanBarcode));
+
+          if (skuExists || barcodeExists) {
+            skippedCount++;
+            let reason = '';
+            if (skuExists) reason = `SKU "${sku}" already exists`;
+            else reason = `Barcode "${barcode}" already exists`;
+
+            skippedDetails.push({ rowNum, name, reason });
+            return;
+          }
+
+          if (existingNames.has(cleanName) || batchNames.has(cleanName)) {
+            name = `${name} (${sku})`;
+            cleanName = name.toLowerCase();
+          }
+
+          let catName = categoryIdx !== -1 && row[categoryIdx] ? String(row[categoryIdx]).trim() : 'General';
+          if (!catName) catName = 'General';
+
+          let categoryId = categoryMap.get(catName.toLowerCase());
+          if (!categoryId) {
+            const newCat = dbStore.createCategory({
+              name: catName,
+              parent_id: null,
+              business_id: businessId,
+              active: true
+            });
+            categoryId = newCat.id;
+            categoryMap.set(catName.toLowerCase(), categoryId);
+          }
+
+          const purchasePrice = purchasePriceIdx !== -1 && row[purchasePriceIdx] ? Number(row[purchasePriceIdx]) || 0 : 0;
+          const sellingPrice = sellingPriceIdx !== -1 && row[sellingPriceIdx] ? Number(row[sellingPriceIdx]) || purchasePrice : purchasePrice;
+          const mrp = mrpIdx !== -1 && row[mrpIdx] ? Number(row[mrpIdx]) || sellingPrice : sellingPrice;
+          const gstRate = gstIdx !== -1 && row[gstIdx] ? Number(row[gstIdx]) || 0 : 0;
+          const openingStock = stockIdx !== -1 && row[stockIdx] ? Number(row[stockIdx]) || 0 : 0;
+          const minStock = minStockIdx !== -1 && row[minStockIdx] ? Number(row[minStockIdx]) || 5 : 5;
+          const purchaseUnit = purchaseUnitIdx !== -1 && row[purchaseUnitIdx] ? String(row[purchaseUnitIdx]).trim() : 'Pcs';
+          const sellingUnit = sellingUnitIdx !== -1 && row[sellingUnitIdx] ? String(row[sellingUnitIdx]).trim() : purchaseUnit;
+          const description = descIdx !== -1 && row[descIdx] ? String(row[descIdx]).trim() : '';
+
+          batchNames.add(cleanName);
+          if (cleanSku) batchSkus.add(cleanSku);
+          if (cleanBarcode) batchBarcodes.add(cleanBarcode);
+
+          newProductsToCreate.push({
+            name,
+            sku,
+            barcode,
+            category_id: categoryId,
+            gst_rate: gstRate,
+            purchase_price: purchasePrice,
+            selling_price: sellingPrice,
+            rate_nr: sellingPrice,
+            rate_lmr: sellingPrice,
+            rate_abr: sellingPrice,
+            rate_ddr: sellingPrice,
+            mrp,
+            opening_stock: openingStock,
+            minimum_stock: minStock,
+            maximum_stock: 100,
+            image_url: `https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=300&auto=format&fit=crop&q=60`,
+            description,
+            active: true,
+            qr_code: sku,
+            brand: 'General',
+            unit: sellingUnit,
+            hsn_code: '',
+            business_id: businessId,
+            purchase_unit: purchaseUnit,
+            selling_unit: sellingUnit,
+            auto_conversion: false
+          });
+
+          existingNames.add(cleanName);
+          batchNames.add(cleanName);
+          existingSkus.add(cleanSku);
+          batchSkus.add(cleanSku);
+          existingBarcodes.add(cleanBarcode);
+          batchBarcodes.add(cleanBarcode);
+        });
+
+        setUploadProgress({
+          fileName: file.name,
+          progressPercent: 90,
+          statusText: `Saving ${newProductsToCreate.length} new products to database...`,
+          processedRows: totalRows,
+          totalRows
+        });
+
+        if (newProductsToCreate.length > 0) {
+          dbStore.createProductsBatch(newProductsToCreate);
+          dbStore.logActivity(
+            user.id,
+            user.name,
+            user.role,
+            'Import Products',
+            `Bulk imported ${newProductsToCreate.length} products from ${file.name} (${skippedCount} skipped/duplicates)`,
+            businessId
+          );
+        }
+
+        setProducts(dbStore.getProducts(businessId));
+        setCategories(dbStore.getCategories(businessId));
+        setUploadProgress(null);
+
+        if (excelFileInputRef.current) excelFileInputRef.current.value = '';
+
+        if (skippedCount > 0) {
+          setImportSummaryModal({
+            isOpen: true,
+            importedCount: newProductsToCreate.length,
+            skippedCount,
+            skippedDetails
+          });
+          triggerToast(`Imported ${newProductsToCreate.length} products. ${skippedCount} items skipped as duplicates.`, 'info');
+        } else {
+          triggerToast(`Successfully imported all ${newProductsToCreate.length} products!`, 'success');
+        }
+      } catch (err: any) {
+        console.error('Failed to parse Excel import:', err);
+        setUploadProgress(null);
+        triggerToast('Failed to parse Excel file. Please check file format.', 'error');
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
   const handleBulkExport = () => {
     try {
       const csvHeader = "ID,Name,SKU,Barcode,Category,PurchasePrice,SellingPrice,CurrentStock,IsCombo\n";
@@ -763,30 +1191,41 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   };
 
   // Filters & Searches
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = 
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.barcode.includes(searchQuery);
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    const lowLimit = dbStore.getSettings(businessId).low_stock_limit || 10;
 
-    const matchesCategory = selectedCategory === 'All' || 
-      p.category_id === selectedCategory ||
-      categories.find(c => c.id === p.category_id)?.parent_id === selectedCategory;
+    return products.filter(p => {
+      const matchesSearch = !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        p.barcode.includes(q);
 
-    const lowLimit = dbStore.getSettings(businessId).low_stock_limit;
-    const matchesStock = 
-      selectedStockStatus === 'All' ||
-      (selectedStockStatus === 'Low' && p.current_stock > 0 && p.current_stock <= lowLimit) ||
-      (selectedStockStatus === 'Out' && p.current_stock === 0) ||
-      (selectedStockStatus === 'Healthy' && p.current_stock > lowLimit);
+      const matchesCategory = selectedCategory === 'All' || 
+        p.category_id === selectedCategory ||
+        categories.find(c => c.id === p.category_id)?.parent_id === selectedCategory;
 
-    const matchesType = 
-      selectedType === 'All' ||
-      (selectedType === 'Product' && !isComboProduct(p)) ||
-      (selectedType === 'Combo' && isComboProduct(p));
+      const matchesStock = 
+        selectedStockStatus === 'All' ||
+        (selectedStockStatus === 'Low' && p.current_stock > 0 && p.current_stock <= lowLimit) ||
+        (selectedStockStatus === 'Out' && p.current_stock === 0) ||
+        (selectedStockStatus === 'Healthy' && p.current_stock > lowLimit);
 
-    return matchesSearch && matchesCategory && matchesStock && matchesType;
-  });
+      const matchesType = 
+        selectedType === 'All' ||
+        (selectedType === 'Product' && !isComboProduct(p)) ||
+        (selectedType === 'Combo' && isComboProduct(p));
+
+      return matchesSearch && matchesCategory && matchesStock && matchesType;
+    });
+  }, [products, searchQuery, selectedCategory, selectedStockStatus, selectedType, businessId, categories]);
+
+  const totalPages = Math.ceil(filteredProducts.length / pageSize) || 1;
+
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredProducts.slice(start, start + pageSize);
+  }, [filteredProducts, currentPage, pageSize]);
 
   return (
     <div className="space-y-4 max-w-full pb-8 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="product-catalog-root">
@@ -796,6 +1235,34 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         icon={Package}
       >
         <div className="flex flex-nowrap overflow-x-auto md:flex-wrap gap-2 hide-scrollbar w-full justify-end">
+          <input 
+            type="file" 
+            ref={excelFileInputRef} 
+            onChange={handleImportExcel} 
+            accept=".xlsx, .xls, .csv" 
+            className="hidden" 
+          />
+
+          <button 
+            onClick={handleDownloadSampleExcel} 
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap shrink-0 border border-amber-400/30"
+            title="Download Sample Product Excel Template"
+          >
+            <FileDown size={14} className="text-amber-400" />
+            <span>Sample Excel</span>
+          </button>
+
+          {user.role !== 'Viewer' && (
+            <button 
+              onClick={() => excelFileInputRef.current?.click()} 
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/30 hover:bg-emerald-600/40 text-emerald-300 rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap shrink-0 border border-emerald-400/30"
+              title="Import Products from Excel / CSV File"
+            >
+              <Upload size={14} className="text-emerald-400" />
+              <span>Import Excel</span>
+            </button>
+          )}
+
           <button 
             onClick={handleBulkExport} 
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-sm transition-all whitespace-nowrap shrink-0 border border-white/10"
@@ -1023,7 +1490,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 text-[11px]">
-            {filteredProducts.length === 0 ? (
+            {paginatedProducts.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-8 text-center">
                   <div className="flex flex-col items-center justify-center text-slate-500">
@@ -1033,7 +1500,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 </td>
               </tr>
             ) : (
-              filteredProducts.map((prod) => {
+              paginatedProducts.map((prod) => {
                 const category = categories.find(c => c.id === prod.category_id);
                 const isOut = prod.current_stock === 0;
                 const lowLimit = dbStore.getSettings(businessId).low_stock_limit || 10;
@@ -1216,6 +1683,75 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
             )}
           </tbody>
         </table>
+
+        {/* Pagination Controls */}
+        {filteredProducts.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-[11px] rounded-b-2xl">
+            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium">
+              <span>
+                Showing <strong className="text-slate-900 dark:text-white font-black">{Math.min((currentPage - 1) * pageSize + 1, filteredProducts.length)}</strong> to <strong className="text-slate-900 dark:text-white font-black">{Math.min(currentPage * pageSize, filteredProducts.length)}</strong> of <strong className="text-slate-900 dark:text-white font-black">{filteredProducts.length}</strong> items
+              </span>
+              <span className="hidden sm:inline text-slate-300 dark:text-slate-700">|</span>
+              <div className="flex items-center gap-1">
+                <span className="hidden sm:inline">Rows per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="px-2 py-0.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[11px] font-bold focus:outline-none"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                  <option value={500}>500</option>
+                  <option value={1000}>1000</option>
+                  <option value={5000}>5000</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-bold text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                title="First Page"
+              >
+                « First
+              </button>
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-bold text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                ‹ Prev
+              </button>
+
+              <span className="px-2 font-bold text-slate-800 dark:text-slate-200">
+                Page {currentPage} of {totalPages}
+              </span>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage >= totalPages}
+                className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-bold text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                Next ›
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage >= totalPages}
+                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-bold text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                title="Last Page"
+              >
+                Last »
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       </div>
 
@@ -1999,7 +2535,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <style>{`
             @media print {
               @page { 
-                size: ${printLabelsPerRow === 2 ? (printLabelSize === '38x25' ? '80mm' : '105mm') : (printLabelSize === '38x25' ? '40mm' : '55mm')} auto; 
+                size: ${printLabelsPerRow === 2 ? (printLabelSize === '38x25' ? '80mm' : '104mm') : (printLabelSize === '38x25' ? '40mm' : '52mm')} ${printLabelSize === '50x38' ? '38mm' : '25mm'}; 
                 margin: 0mm !important; 
               }
               html, body { 
@@ -2039,7 +2575,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 position: fixed !important;
                 top: 0 !important;
                 left: 0 !important;
-                width: ${printLabelsPerRow === 2 ? (printLabelSize === '38x25' ? '80mm' : '105mm') : (printLabelSize === '38x25' ? '40mm' : '55mm')} !important;
+                width: ${printLabelsPerRow === 2 ? (printLabelSize === '38x25' ? '80mm' : '104mm') : (printLabelSize === '38x25' ? '40mm' : '52mm')} !important;
                 height: auto !important;
                 margin: 0 !important;
                 padding: 0 !important;
@@ -2050,22 +2586,20 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               
               .barcode-print-grid { 
                 display: flex !important; 
-                flex-wrap: wrap !important; 
-                flex-direction: row !important;
-                justify-content: flex-start !important;
-                align-items: flex-start !important;
+                flex-wrap: wrap !important;
                 width: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
+                align-content: flex-start !important;
               }
-
+              
               .barcode-label-sticker {
                 box-sizing: border-box !important;
                 margin: 0 !important;
                 border: none !important;
                 display: flex !important;
                 flex-direction: column !important;
-                justify-content: space-between !important;
+                justify-content: flex-start !important;
                 align-items: center !important;
                 text-align: center !important;
                 overflow: hidden !important;
@@ -2073,7 +2607,19 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 color: #000000 !important;
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
+                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
               }
+              
+              .barcode-label-sticker * {
+                color: #000000 !important;
+              }
+              ${printLabelsPerRow === 2 ? `
+              .barcode-label-sticker:nth-child(odd) {
+                margin-right: 4mm !important; /* Space between two columns */
+              }
+              ` : ''}
 
               /* SVG Barcode crisp rendering */
               .barcode-label-sticker svg {
@@ -2382,90 +2928,77 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   {Array.from({ length: printLabelCount }).map((_, idx) => (
                     <div key={idx} className="barcode-label-sticker bg-white">
                       {printLabelSize === '50x25' ? (
-                        <div className="w-full h-full flex flex-col justify-between items-center text-center p-0.5">
-                          <div className="w-full">
-                            <div className="text-[7.5px] font-black text-slate-900 uppercase leading-none truncate mb-0.5">{printCompanyName}</div>
-                            <div className="text-[8.5px] font-black text-slate-900 uppercase tracking-tight leading-none truncate w-full border-b border-slate-200 pb-0.5">
+                        <div className="w-full h-full flex flex-col justify-start items-center text-center p-0 bg-white">
+                          <div className="w-full mt-[1mm] px-[1mm]">
+                            <div className="text-[10px] font-black text-black uppercase leading-tight truncate w-full">
                               {printingBarcodeProduct.name}
                             </div>
                           </div>
-                          <div className="my-0.5 flex items-center justify-center">
+                          <div className="my-[1mm] flex items-center justify-center">
                             <ReactBarcode 
                               value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
-                              height={24} 
-                              width={1.05}
-                              fontSize={7.5}
+                              height={26} 
+                              width={1.2}
+                              fontSize={10}
+                              fontOptions="bold"
                               margin={0}
                               displayValue={true}
                             />
                           </div>
-                          <div className="w-full text-[7.5px] font-black text-slate-900 leading-none pt-0.5 uppercase border-t border-slate-300">
-                            <div className="flex justify-between items-center px-1 mb-0.5">
-                              <span>MRP: ₹{printMrp}</span>
-                              <span>SALE: ₹{printSalePrice}</span>
-                            </div>
-                            <div className="flex justify-between items-center px-1 text-[6.5px] text-slate-600 font-bold">
-                              <span>PKD: {printPackedOn}</span>
-                              <span>EXP: {printExpiryOn}</span>
-                            </div>
+                          <div className="w-full text-[9px] font-bold text-black uppercase leading-[12px] flex flex-col items-center pb-[1mm]">
+                            <div>Sale Price: RS.{printSalePrice}</div>
+                            <div>PACKED DATE {printPackedOn}</div>
+                            <div>EXPIRY ON {printExpiryOn}</div>
+                            <div className="mt-[1mm] text-[10px] font-black tracking-widest">{printCompanyName}</div>
                           </div>
                         </div>
                       ) : printLabelSize === '50x38' ? (
-                        <div className="w-full h-full flex flex-col justify-between items-center text-center p-1">
-                          <div className="w-full">
-                            <div className="text-[8.5px] font-black uppercase text-slate-900 mb-0.5">{printCompanyName}</div>
-                            <span className="text-[9.5px] font-black uppercase leading-tight truncate w-full border-b border-slate-200 pb-0.5">
+                        <div className="w-full h-full flex flex-col justify-start items-center text-center p-0 bg-white">
+                          <div className="w-full mt-[2mm] px-[2mm]">
+                            <div className="text-[12px] font-black text-black uppercase leading-tight truncate w-full">
                               {printingBarcodeProduct.name}
-                            </span>
+                            </div>
                           </div>
-                          <div className="my-1">
+                          <div className="my-[2mm] flex items-center justify-center">
                             <ReactBarcode 
                               value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
-                              height={34} 
-                              width={1.1}
-                              fontSize={9}
+                              height={36} 
+                              width={1.3}
+                              fontSize={12}
+                              fontOptions="bold"
                               margin={0}
                               displayValue={true}
                             />
                           </div>
-                          <div className="w-full text-[8.5px] font-black uppercase border-t border-slate-200 pt-1">
-                            <div className="flex justify-between px-1">
-                              <span>MRP: ₹{printMrp}</span>
-                              <span>SALE: ₹{printSalePrice}</span>
-                            </div>
-                            <div className="flex justify-between px-1 text-[7.5px] text-slate-600 mt-0.5">
-                              <span>PKD: {printPackedOn}</span>
-                              <span>EXP: {printExpiryOn}</span>
-                            </div>
+                          <div className="w-full text-[11px] font-bold text-black uppercase leading-[14px] flex flex-col items-center">
+                            <div>Sale Price: RS.{printSalePrice}</div>
+                            <div>PACKED DATE {printPackedOn}</div>
+                            <div>EXPIRY ON {printExpiryOn}</div>
+                            <div className="mt-[2mm] text-[12px] font-black tracking-widest">{printCompanyName}</div>
                           </div>
                         </div>
                       ) : printLabelSize === '38x25' ? (
-                        <div className="w-full h-full flex flex-col justify-between items-center text-center p-0.5">
-                          <div className="w-full">
-                            <div className="text-[6.5px] font-black uppercase text-slate-900 leading-none truncate">{printCompanyName}</div>
-                            <div className="text-[7.5px] font-black uppercase tracking-tight leading-none truncate w-full border-b border-slate-200 pb-0.5">
+                        <div className="w-full h-full flex flex-col justify-start items-center text-center p-0 bg-white">
+                          <div className="w-full mt-[1mm] px-[1mm]">
+                            <div className="text-[8px] font-black text-black uppercase leading-tight truncate w-full">
                               {printingBarcodeProduct.name}
                             </div>
                           </div>
-                          <div className="my-0.5">
+                          <div className="my-[1mm] flex items-center justify-center">
                             <ReactBarcode 
                               value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
-                              height={18} 
-                              width={0.95}
-                              fontSize={7.5}
+                              height={20} 
+                              width={1.05}
+                              fontSize={8}
+                              fontOptions="bold"
                               margin={0}
                               displayValue={true}
                             />
                           </div>
-                          <div className="w-full text-[6.5px] font-black border-t border-slate-200 pt-0.5 uppercase px-0.5">
-                            <div className="flex justify-between">
-                              <span>MRP: ₹{printMrp}</span>
-                              <span>SALE: ₹{printSalePrice}</span>
-                            </div>
-                            <div className="flex justify-between text-[5.5px] text-slate-600 font-bold mt-0.5">
-                              <span>PKD: {printPackedOn}</span>
-                              <span>EXP: {printExpiryOn}</span>
-                            </div>
+                          <div className="w-full text-[7px] font-bold text-black uppercase leading-[9px] flex flex-col items-center">
+                            <div>Sale Price: RS.{printSalePrice}</div>
+                            <div>PKD: {printPackedOn} | EXP: {printExpiryOn}</div>
+                            <div className="mt-[1mm] text-[8px] font-black tracking-widest">{printCompanyName}</div>
                           </div>
                         </div>
                       ) : (
@@ -2922,6 +3455,99 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 className="flex-1 px-4 py-3 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-colors shadow-lg shadow-rose-200 dark:shadow-none cursor-pointer active:scale-95"
               >
                 Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Progress Modal Overlay */}
+      {uploadProgress && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-md border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                <Loader2 size={24} className="animate-spin" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Importing Products</h4>
+                <p className="text-xs text-slate-500 truncate max-w-[260px]">{uploadProgress.fileName}</p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
+                <span>{uploadProgress.statusText}</span>
+                <span>{uploadProgress.progressPercent}%</span>
+              </div>
+              <div className="w-full bg-slate-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-indigo-600 h-full transition-all duration-300 rounded-full"
+                  style={{ width: `${uploadProgress.progressPercent}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Skipped Items Summary Modal */}
+      {importSummaryModal.isOpen && (
+        <div className="fixed inset-0 z-[110] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg">
+                  <AlertCircle size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Import Summary Report</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Imported: <span className="font-bold text-emerald-600 dark:text-emerald-400">{importSummaryModal.importedCount}</span> | Skipped: <span className="font-bold text-amber-600 dark:text-amber-400">{importSummaryModal.skippedCount}</span>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setImportSummaryModal(prev => ({ ...prev, isOpen: false }))}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-4 flex-1 overflow-y-auto space-y-3 custom-scrollbar">
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                The following product rows were skipped to prevent duplicates or invalid entries:
+              </p>
+
+              <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden text-xs">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold">
+                    <tr>
+                      <th className="py-2 px-3 border-b border-slate-200 dark:border-slate-700 w-16">Row #</th>
+                      <th className="py-2 px-3 border-b border-slate-200 dark:border-slate-700">Product Name</th>
+                      <th className="py-2 px-3 border-b border-slate-200 dark:border-slate-700">Reason Skipped</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {importSummaryModal.skippedDetails.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                        <td className="py-2 px-3 font-mono text-slate-500">{item.rowNum}</td>
+                        <td className="py-2 px-3 font-bold text-slate-800 dark:text-slate-200">{item.name}</td>
+                        <td className="py-2 px-3 text-amber-600 dark:text-amber-400 font-medium">{item.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+              <button
+                onClick={() => setImportSummaryModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors cursor-pointer shadow-md"
+              >
+                Done
               </button>
             </div>
           </div>

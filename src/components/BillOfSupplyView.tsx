@@ -25,8 +25,14 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const items = order.items || [];
   const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const discount = order.discount_amount || 0;
-  const delivery = order.additional_charges || (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
-  const totalAmount = order.total_amount || (subTotal + delivery - discount);
+  
+  const additionalCharges = order.additional_charges || 0;
+  const deliveryCharges = order.delivery_charges || 0;
+  let legacyDelivery = 0;
+  if (additionalCharges === 0 && deliveryCharges === 0) {
+    legacyDelivery = (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
+  }
+  const totalAmount = order.total_amount || (subTotal + additionalCharges + deliveryCharges + legacyDelivery - discount);
   const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
 
@@ -77,7 +83,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const savingsInfo = calculateOrderSavings(items, products);
 
   return (
-    <div className="bg-white text-slate-900 px-0.5 sm:px-1 py-6 sm:py-8 font-sans text-[11px] leading-relaxed shadow-lg max-w-2xl mx-auto rounded-xl border border-slate-200">
+    <div className="bg-white text-slate-900 px-0.5 sm:px-1 py-6 sm:py-8 font-sans text-[11px] leading-relaxed shadow-lg max-w-2xl mx-auto rounded-xl border border-slate-200 print:border-none print:shadow-none print:max-w-none print:w-full print:p-0">
       
       {/* Header */}
       <div className="flex justify-between items-start mb-3">
@@ -298,10 +304,22 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
                 <span>{order.discount_percentage ? `-${order.discount_percentage}%` : `-${currencySymbol} ${discount.toFixed(2)}`}</span>
               </div>
             )}
-            {delivery > 0 && (
+            {legacyDelivery > 0 && (
               <div className="flex justify-between font-mono text-slate-600">
-                <span className="font-sans uppercase">{(order.additional_charges_type || '').toLowerCase() === 'additional' ? 'Additional Charges:' : 'DELIVERY:'}</span>
-                <span>{currencySymbol} {delivery.toFixed(2)}</span>
+                <span className="font-sans uppercase">DELIVERY:</span>
+                <span>{currencySymbol} {legacyDelivery.toFixed(2)}</span>
+              </div>
+            )}
+            {deliveryCharges > 0 && (
+              <div className="flex justify-between font-mono text-slate-600">
+                <span className="font-sans uppercase">Delivery Charges:</span>
+                <span>{currencySymbol} {deliveryCharges.toFixed(2)}</span>
+              </div>
+            )}
+            {additionalCharges > 0 && (
+              <div className="flex justify-between font-mono text-slate-600">
+                <span className="font-sans uppercase">Additional Charges:</span>
+                <span>{currencySymbol} {additionalCharges.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between font-mono font-black border-y border-slate-950 py-1 text-slate-950 text-xs">

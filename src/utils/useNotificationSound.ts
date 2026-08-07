@@ -1,93 +1,114 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 export function useNotificationSound(shouldPlay: boolean) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [interacted, setInteracted] = useState(false);
 
-  useEffect(() => {
-    const initAudio = () => {
-      if (!interacted) {
-        setInteracted(true);
-        try {
-          if (!audioCtxRef.current) {
-            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-          }
-          if (audioCtxRef.current.state === 'suspended') {
-            audioCtxRef.current.resume().catch(() => {});
-          }
-        } catch (e) {
-          console.error("Audio init error:", e);
-        }
-      }
-      window.removeEventListener('click', initAudio);
-      window.removeEventListener('keydown', initAudio);
-    };
+  const playBeep = () => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
 
-    window.addEventListener('click', initAudio);
-    window.addEventListener('keydown', initAudio);
-
-    return () => {
-      window.removeEventListener('click', initAudio);
-      window.removeEventListener('keydown', initAudio);
-    };
-  }, [interacted]);
-
-  useEffect(() => {
-    if (shouldPlay && interacted) {
-      if (!audioCtxRef.current) {
-        try {
-          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        } catch (e) {}
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioContextClass();
       }
 
-      const playBeep = () => {
-        if (!audioCtxRef.current) return;
-        
-        // Try to resume if it's suspended
-        if (audioCtxRef.current.state === 'suspended') {
-            audioCtxRef.current.resume().catch(() => {});
-        }
-        
-        try {
-          const oscillator = audioCtxRef.current.createOscillator();
-          const gainNode = audioCtxRef.current.createGain();
+      const ctx = audioCtxRef.current;
+      if (!ctx) return;
 
-          oscillator.type = 'sine';
-          oscillator.frequency.setValueAtTime(880, audioCtxRef.current.currentTime);
-          oscillator.frequency.exponentialRampToValueAtTime(1760, audioCtxRef.current.currentTime + 0.1);
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
 
-          gainNode.gain.setValueAtTime(0, audioCtxRef.current.currentTime);
-          gainNode.gain.linearRampToValueAtTime(0.3, audioCtxRef.current.currentTime + 0.05);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtxRef.current.currentTime + 0.5);
+      const now = ctx.currentTime;
 
-          oscillator.connect(gainNode);
-          gainNode.connect(audioCtxRef.current.destination);
+      // First Chime Tone (high pitch)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
 
-          oscillator.start(audioCtxRef.current.currentTime);
-          oscillator.stop(audioCtxRef.current.currentTime + 0.5);
-        } catch (e) {
-          console.error("Error playing notification sound:", e);
-        }
-      };
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(880, now); // A5
+      osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.12); // E6
 
-      // Play initially
-      playBeep();
-      
-      // Then play every 3 seconds
-      intervalRef.current = setInterval(playBeep, 3000);
-      
-    } else {
+      gain1.gain.setValueAtTime(0.01, now);
+      gain1.gain.linearRampToValueAtTime(0.35, now + 0.04);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+
+      osc1.start(now);
+      osc1.stop(now + 0.35);
+
+      // Second Chime Tone (Harmonic Echo)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(1046.5, now + 0.15); // C6
+      osc2.frequency.exponentialRampToValueAtTime(1567.98, now + 0.28); // G6
+
+      gain2.gain.setValueAtTime(0.01, now + 0.15);
+      gain2.gain.linearRampToValueAtTime(0.4, now + 0.19);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+
+      osc2.start(now + 0.15);
+      osc2.stop(now + 0.5);
+    } catch (e) {
+      console.error("Error playing notification sound:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (!shouldPlay) {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      return;
     }
+
+    // Try playing immediately
+    playBeep();
+
+    // Repeat every 2.5 seconds while notification popup is active
+    intervalRef.current = setInterval(() => {
+      playBeep();
+    }, 2500);
+
+    // Global listener to unlock/resume audio if browser restricted initial autoplay
+    const unlockAndPlay = () => {
+      if (audioCtxRef.current) {
+        if (audioCtxRef.current.state === 'suspended') {
+          audioCtxRef.current.resume().then(() => {
+            playBeep();
+          }).catch(() => {});
+        } else {
+          playBeep();
+        }
+      } else {
+        playBeep();
+      }
+    };
+
+    window.addEventListener('click', unlockAndPlay);
+    window.addEventListener('touchstart', unlockAndPlay);
+    window.addEventListener('keydown', unlockAndPlay);
+    window.addEventListener('pointerdown', unlockAndPlay);
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
+      window.removeEventListener('click', unlockAndPlay);
+      window.removeEventListener('touchstart', unlockAndPlay);
+      window.removeEventListener('keydown', unlockAndPlay);
+      window.removeEventListener('pointerdown', unlockAndPlay);
     };
-  }, [shouldPlay, interacted]);
+  }, [shouldPlay]);
 }
+

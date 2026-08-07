@@ -623,19 +623,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     // Send message to packaging users for new order
     const allUsers = dbStore.getUsers(businessId);
     let packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
-    if (packingStaff.length === 0) {
-      packingStaff = allUsers;
-    }
-    if (packingStaff.length > 0) {
-      packingStaff.forEach(staff => {
-        dbStore.sendMessage({
-          sender_id: user?.id || 'sys',
-          receiver_id: staff.id,
-          content: `New Sales Order ${nextNumber} has been placed. Please prepare for packing.`,
-          business_id: businessId
-        });
+    
+    const notifyTargetMap = new Map();
+    packingStaff.forEach(u => notifyTargetMap.set(u.id, u));
+    allUsers.forEach(u => notifyTargetMap.set(u.id, u));
+
+    notifyTargetMap.forEach(staff => {
+      dbStore.sendMessage({
+        sender_id: user?.id || 'sys',
+        receiver_id: staff.id,
+        content: `New Sales Order ${nextNumber} has been placed. Please prepare for packing.`,
+        business_id: businessId
       });
-    }
+    });
+
+    // Ensure payment modal is closed
+    setIsPaymentModalOpen(false);
+    setSelectedOrderForPayment(null);
 
     triggerToast(`Order ${nextNumber} created successfully and saved!`, 'success');
 

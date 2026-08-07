@@ -516,12 +516,13 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
   const getDeliveryStatus = (deliveryDate: string | undefined) => {
     if (!deliveryDate) return { 
-      badge: 'bg-emerald-950 text-emerald-200 border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800', 
-      border: 'border-emerald-800/80 dark:border-emerald-800/80 bg-emerald-950/10 dark:bg-emerald-950/30',
-      icon: 'text-emerald-400',
-      text: 'text-emerald-500 dark:text-emerald-400 font-extrabold',
-      dot: 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]',
-      statusText: '>10 DAYS',
+      badge: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700', 
+      border: 'border-slate-200 dark:border-slate-800',
+      cardBg: 'bg-white dark:bg-slate-900',
+      icon: 'text-slate-500 dark:text-slate-400',
+      text: 'text-slate-600 dark:text-slate-400 font-bold',
+      dot: 'bg-slate-400',
+      statusText: 'NO DATE SET',
       isOverdue: false
     };
     
@@ -540,12 +541,13 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     
     if (isNaN(dDate.getTime())) {
       return { 
-        badge: 'bg-emerald-950 text-emerald-200 border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800', 
-        border: 'border-emerald-800/80 dark:border-emerald-800/80 bg-emerald-950/10 dark:bg-emerald-950/30',
-        icon: 'text-emerald-400',
-        text: 'text-emerald-500 dark:text-emerald-400 font-extrabold',
-        dot: 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]',
-        statusText: '>10 DAYS',
+        badge: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700', 
+        border: 'border-slate-200 dark:border-slate-800',
+        cardBg: 'bg-white dark:bg-slate-900',
+        icon: 'text-slate-500 dark:text-slate-400',
+        text: 'text-slate-600 dark:text-slate-400 font-bold',
+        dot: 'bg-slate-400',
+        statusText: 'NO DATE SET',
         isOverdue: false
       };
     }
@@ -554,48 +556,52 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     if (diffDays < 0) {
-      // Overdue / Missed delivery date -> Dark Red
+      // Overdue / Missed delivery date -> Dark Red badge with clean card
       return { 
-        badge: 'bg-rose-950 text-rose-200 border-rose-800 dark:bg-rose-950 dark:text-rose-200 dark:border-rose-800 shadow-md', 
-        border: 'border-rose-800/90 dark:border-rose-700/90 bg-rose-950/20 dark:bg-rose-950/40',
-        icon: 'text-rose-400',
-        text: 'text-rose-500 dark:text-rose-400 font-extrabold',
+        badge: 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-800 font-extrabold shadow-sm', 
+        border: 'border-rose-300 dark:border-rose-800/80',
+        cardBg: 'bg-rose-50/20 dark:bg-rose-950/10',
+        icon: 'text-rose-600 dark:text-rose-400',
+        text: 'text-rose-600 dark:text-rose-400 font-extrabold',
         ping: true,
-        dot: 'bg-rose-600 shadow-[0_0_10px_rgba(225,29,72,0.9)]',
+        dot: 'bg-rose-600 shadow-[0_0_8px_rgba(225,29,72,0.8)]',
         statusText: 'OVERDUE / MISSED',
         isOverdue: true
       };
     } else if (diffDays <= 5) {
-      // Within 5 days due -> Dark Yellow
+      // Within 5 days due -> Dark Yellow badge with clean card
       return { 
-        badge: 'bg-yellow-950 text-yellow-200 border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200 dark:border-yellow-800 shadow-md', 
-        border: 'border-yellow-800/90 dark:border-yellow-700/90 bg-yellow-950/20 dark:bg-yellow-950/40',
-        icon: 'text-yellow-400',
-        text: 'text-yellow-500 dark:text-yellow-400 font-extrabold',
+        badge: 'bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-800 font-extrabold shadow-sm', 
+        border: 'border-amber-300 dark:border-amber-800/70',
+        cardBg: 'bg-amber-50/15 dark:bg-amber-950/10',
+        icon: 'text-amber-600 dark:text-amber-400',
+        text: 'text-amber-700 dark:text-amber-400 font-extrabold',
         ping: diffDays <= 1,
-        dot: 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.9)]',
-        statusText: `DUE IN ${diffDays}D (≤5 DAYS)`,
+        dot: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]',
+        statusText: diffDays === 0 ? 'DUE TODAY' : `DUE IN ${diffDays}D (≤5 DAYS)`,
         isOverdue: false
       };
     } else if (diffDays <= 10) {
-      // Within 10 days due -> Dark Orange
+      // Within 10 days due -> Dark Orange badge with clean card
       return { 
-        badge: 'bg-orange-950 text-orange-200 border-orange-800 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800 shadow-md', 
-        border: 'border-orange-800/90 dark:border-orange-700/90 bg-orange-950/20 dark:bg-orange-950/40',
-        icon: 'text-orange-400',
-        text: 'text-orange-500 dark:text-orange-400 font-extrabold',
-        dot: 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.9)]',
+        badge: 'bg-orange-50 text-orange-900 border-orange-300 dark:bg-orange-950/80 dark:text-orange-200 dark:border-orange-800 font-extrabold shadow-sm', 
+        border: 'border-orange-300 dark:border-orange-800/60',
+        cardBg: 'bg-orange-50/10 dark:bg-orange-950/10',
+        icon: 'text-orange-600 dark:text-orange-400',
+        text: 'text-orange-700 dark:text-orange-400 font-extrabold',
+        dot: 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]',
         statusText: `DUE IN ${diffDays}D (≤10 DAYS)`,
         isOverdue: false
       };
     } else {
-      // More than 10 days -> Dark Green
+      // More than 10 days -> Dark Green badge with clean card
       return { 
-        badge: 'bg-emerald-950 text-emerald-200 border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800 shadow-md', 
-        border: 'border-emerald-800/90 dark:border-emerald-700/90 bg-emerald-950/20 dark:bg-emerald-950/40',
-        icon: 'text-emerald-400',
-        text: 'text-emerald-500 dark:text-emerald-400 font-extrabold',
-        dot: 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]',
+        badge: 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-800 font-extrabold shadow-sm', 
+        border: 'border-emerald-300 dark:border-emerald-800/50',
+        cardBg: 'bg-emerald-50/10 dark:bg-emerald-950/10',
+        icon: 'text-emerald-600 dark:text-emerald-400',
+        text: 'text-emerald-700 dark:text-emerald-400 font-extrabold',
+        dot: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]',
         statusText: '>10 DAYS',
         isOverdue: false
       };
@@ -1232,7 +1238,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                       <div 
                         key={o.id}
                         onClick={() => handleOpenPackingStation(o)}
-                        className={`bg-white dark:bg-slate-900 rounded-xl border p-2.5 sm:p-3 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer relative overflow-hidden ${dStatus.border} hover:border-indigo-500/50`}
+                        className={`bg-white dark:bg-slate-900 ${dStatus.cardBg || ''} rounded-xl border p-2.5 sm:p-3 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer relative overflow-hidden ${dStatus.border} hover:border-indigo-500/50`}
                       >
                         <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-indigo-500/10 via-indigo-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
                         

@@ -387,8 +387,8 @@ export default function App() {
     }
   }, [activeView]);
 
-  // Play notification sound when there are unread messages or overdue orders for packing staff
-  useNotificationSound((unreadMessages.length > 0 || overdueOrdersCount > 0) && isPackingStaff);
+  // Play notification sound when there are unread messages for packing staff
+  useNotificationSound(unreadMessages.length > 0 && isPackingStaff);
 
   const triggerToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random()}`;

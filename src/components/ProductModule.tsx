@@ -222,8 +222,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [printingBarcodeProduct, setPrintingBarcodeProduct] = useState<Product | null>(null);
   const [printLabelCount, setPrintLabelCount] = useState(10);
-  const [printLabelSize, setPrintLabelSize] = useState<'50x25' | '50x38' | '38x25' | 'standard'>('50x25');
-  const [printLabelsPerRow, setPrintLabelsPerRow] = useState<1 | 2>(1);
+  const [printerType, setPrinterType] = useState<'thermal' | 'a4'>('thermal');
+  const [printLabelSize, setPrintLabelSize] = useState<'50x25' | '50x38' | '38x25' | '40x25' | 'standard'>('50x25');
+  const [printLabelsPerRow, setPrintLabelsPerRow] = useState<1 | 2>(2);
   const [printSalePrice, setPrintSalePrice] = useState<number | string>('');
   const [printMrp, setPrintMrp] = useState<number | string>('');
   const [printPackedOn, setPrintPackedOn] = useState(new Date().toISOString().split('T')[0]);
@@ -771,7 +772,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       
       if (currentProducts.length > 0) {
         exportRows = currentProducts.map(p => {
-          const category = dbStore.getCategoryById(p.category_id)?.name || 'General';
+          const category = dbStore.getCategories(businessId).find(c => c.id === p.category_id)?.name || 'General';
           return {
             'Product Name': p.name,
             'SKU': p.sku,
@@ -2555,11 +2556,17 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       {/* Barcode Print Setup Modal */}
       {printingBarcodeProduct && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          {/* Dynamic Print Styles for thermal sticker sizes */}
+          {/* Dynamic Print Styles for thermal sticker sizes & paper rolls */}
           <style>{`
             @media print {
               @page { 
-                size: ${printLabelsPerRow === 2 ? (printLabelSize === '38x25' ? '80mm' : '104mm') : (printLabelSize === '38x25' ? '40mm' : '52mm')} ${printLabelSize === '50x38' ? '38mm' : '25mm'}; 
+                size: ${
+                  printerType === 'a4' 
+                    ? 'A4 portrait' 
+                    : printLabelsPerRow === 2 
+                      ? (printLabelSize === '38x25' ? '80mm 25mm' : printLabelSize === '40x25' ? '84mm 25mm' : printLabelSize === '50x38' ? '104mm 38mm' : '104mm 25mm')
+                      : (printLabelSize === '38x25' ? '38mm 25mm' : printLabelSize === '40x25' ? '40mm 25mm' : printLabelSize === '50x38' ? '50mm 38mm' : '50mm 25mm')
+                }; 
                 margin: 0mm !important; 
               }
               html, body { 
@@ -2596,11 +2603,16 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
               .print-area { 
                 display: block !important; 
-                position: fixed !important;
+                position: absolute !important;
                 top: 0 !important;
                 left: 0 !important;
-                width: ${printLabelsPerRow === 2 ? (printLabelSize === '38x25' ? '80mm' : '104mm') : (printLabelSize === '38x25' ? '40mm' : '52mm')} !important;
-                height: auto !important;
+                width: ${
+                  printerType === 'a4' 
+                    ? '210mm' 
+                    : printLabelsPerRow === 2 
+                      ? (printLabelSize === '38x25' ? '80mm' : printLabelSize === '40x25' ? '84mm' : '104mm')
+                      : (printLabelSize === '38x25' ? '38mm' : printLabelSize === '40x25' ? '40mm' : '50mm')
+                } !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 background: #ffffff !important;
@@ -2608,13 +2620,18 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 overflow: visible !important;
               }
               
-              .barcode-print-grid { 
+              .barcode-print-row { 
                 display: flex !important; 
-                flex-wrap: wrap !important;
+                flex-direction: row !important;
+                justify-content: ${printLabelsPerRow === 2 ? 'space-between' : 'center'} !important;
+                align-items: center !important;
                 width: 100% !important;
+                page-break-after: always !important;
+                break-after: page !important;
+                box-sizing: border-box !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                align-content: flex-start !important;
+                overflow: hidden !important;
               }
               
               .barcode-label-sticker {
@@ -2639,11 +2656,6 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               .barcode-label-sticker * {
                 color: #000000 !important;
               }
-              ${printLabelsPerRow === 2 ? `
-              .barcode-label-sticker:nth-child(odd) {
-                margin-right: 4mm !important; /* Space between two columns */
-              }
-              ` : ''}
 
               /* SVG Barcode crisp rendering */
               .barcode-label-sticker svg {
@@ -2664,19 +2676,25 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 .barcode-label-sticker {
                   width: 50mm !important;
                   height: 25mm !important;
-                  padding: 1mm 1.5mm !important;
+                  padding: 0.5mm 1mm !important;
+                }
+              ` : printLabelSize === '40x25' ? `
+                .barcode-label-sticker {
+                  width: 40mm !important;
+                  height: 25mm !important;
+                  padding: 0.5mm 1mm !important;
                 }
               ` : printLabelSize === '50x38' ? `
                 .barcode-label-sticker {
                   width: 50mm !important;
                   height: 38mm !important;
-                  padding: 1.5mm 2mm !important;
+                  padding: 1mm 1.5mm !important;
                 }
               ` : printLabelSize === '38x25' ? `
                 .barcode-label-sticker {
                   width: 38mm !important;
                   height: 25mm !important;
-                  padding: 1mm 1.5mm !important;
+                  padding: 0.5mm 0.5mm !important;
                 }
               ` : `
                 .barcode-label-sticker {
@@ -2691,7 +2709,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg overflow-hidden shadow-xl animate-in zoom-in duration-150 my-auto border border-slate-200 dark:border-slate-800">
             <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                <Printer size={16} />
+                <Printer size={16} className="text-indigo-400" />
                 <span>Barcode Generator & Thermal Print Station</span>
               </h2>
               <button onClick={() => setPrintingBarcodeProduct(null)} className="text-slate-400 hover:text-white cursor-pointer">
@@ -2699,60 +2717,113 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
-              {/* Size & Layout Selector */}
-              <div className="no-print grid grid-cols-2 gap-3 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                    Label Size
-                  </label>
-                  <div className="grid grid-cols-2 gap-1">
-                    {(['50x25', '50x38', '38x25', 'standard'] as const).map(size => (
-                      <button
-                        key={size}
-                        type="button"
-                        onClick={() => setPrintLabelSize(size)}
-                        className={`py-1.5 px-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                          printLabelSize === size
-                            ? 'bg-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {size.replace('x', ' x ')} {size !== 'standard' && 'mm'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                    Labels Per Row
-                  </label>
-                  <div className="grid grid-cols-2 gap-1">
-                    {[1, 2].map(num => (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => setPrintLabelsPerRow(num as 1 | 2)}
-                        className={`py-1.5 px-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                          printLabelsPerRow === num
-                            ? 'bg-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {num} Column{num > 1 && 's'}
-                      </button>
-                    ))}
-                  </div>
+            <div className="p-6 space-y-4">
+              {/* Printer Format Switch: Thermal Roll vs A4 Sheet */}
+              <div className="no-print space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Printer Type & Media Format
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrinterType('thermal');
+                      setPrintLabelsPerRow(2);
+                    }}
+                    className={`py-2 px-3 rounded-xl text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      printerType === 'thermal'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Printer size={14} />
+                    <span>🖨️ Thermal Sticker Roll</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrinterType('a4')}
+                    className={`py-2 px-3 rounded-xl text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      printerType === 'a4'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    <FileSpreadsheet size={14} />
+                    <span>📄 Standard A4 Sheet</span>
+                  </button>
                 </div>
               </div>
+
+              {/* Size & Layout Selector */}
+              {printerType === 'thermal' && (
+                <div className="no-print grid grid-cols-2 gap-3 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                      Roll Label Size
+                    </label>
+                    <div className="grid grid-cols-2 gap-1">
+                      {(['50x25', '38x25', '50x38', '40x25'] as const).map(size => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => setPrintLabelSize(size)}
+                          className={`py-1.5 px-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                            printLabelSize === size
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {size.replace('x', ' x ')} mm
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                      Roll Columns (Per Row)
+                    </label>
+                    <div className="grid grid-cols-2 gap-1">
+                      {[2, 1].map(num => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => setPrintLabelsPerRow(num as 1 | 2)}
+                          className={`py-1.5 px-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                            printLabelsPerRow === num
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {num === 2 ? '2-Up Roll (Dual)' : '1-Up Roll (Single)'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Thermal Printer Quick Tip Banner */}
+              {printerType === 'thermal' && (
+                <div className="no-print bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-[11px] text-amber-900 dark:text-amber-200 flex gap-2.5 items-start">
+                  <Info size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <span className="font-bold">Thermal Barcode Roll Printing Tips:</span>
+                    <ul className="list-disc list-inside space-y-0.5 text-[10.5px] opacity-90">
+                      <li>In print popup, select your <b>Thermal Printer</b> (TVS / TSC / Zebra / Xprinter).</li>
+                      <li>Set Paper Size to <span className="font-mono font-bold bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 rounded">{printLabelsPerRow === 2 ? (printLabelSize === '38x25' ? '80mm x 25mm' : printLabelSize === '40x25' ? '84mm x 25mm' : '104mm x 25mm') : (printLabelSize === '38x25' ? '38mm x 25mm' : printLabelSize === '40x25' ? '40mm x 25mm' : '50mm x 25mm')}</span> or <b>User Defined Roll</b>.</li>
+                      <li>Set <b>Margins</b> to <b>None</b> (0) and disable Headers/Footers.</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
 
               {/* LIVE PREVIEW */}
               <div className="flex flex-col items-center justify-center no-print">
                 <span className="text-[10px] font-bold text-slate-500 uppercase mb-2">Live Print Preview</span>
                 
                 {/* 50x25 mm Sticker Preview */}
-                {printLabelSize === '50x25' && (
+                {(printLabelSize === '50x25' || printLabelSize === '40x25') && (
                   <div className="w-[189px] h-[95px] p-1 bg-white rounded-md border-2 border-indigo-400 shadow-md flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none relative">
                     <div className="w-full">
                       <div className="text-[7.5px] font-black text-slate-900 uppercase leading-none truncate mb-0.5">{printCompanyName}</div>
@@ -2946,128 +3017,149 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 </div>
               </div>
 
-              {/* Printable Area */}
+              {/* Printable Area - Rendered row by row for thermal paper roll feeding */}
               <div className="print-area hidden">
-                <div className="barcode-print-grid">
-                  {Array.from({ length: printLabelCount }).map((_, idx) => (
-                    <div key={idx} className="barcode-label-sticker bg-white">
-                      {printLabelSize === '50x25' ? (
-                        <div className="w-full h-full flex flex-col justify-start items-center text-center p-0 bg-white">
-                          <div className="w-full mt-[1mm] px-[1mm]">
-                            <div className="text-[10px] font-black text-black uppercase leading-tight truncate w-full">
-                              {printingBarcodeProduct.name}
-                            </div>
+                {printerType === 'thermal' ? (
+                  Array.from({ length: Math.ceil(printLabelCount / printLabelsPerRow) }).map((_, rIdx) => {
+                    const countInThisRow = Math.min(printLabelsPerRow, printLabelCount - rIdx * printLabelsPerRow);
+                    return (
+                      <div 
+                        key={rIdx} 
+                        className="barcode-print-row"
+                        style={{
+                          height: printLabelSize === '50x38' ? '38mm' : '25mm',
+                          width: printLabelsPerRow === 2 
+                            ? (printLabelSize === '38x25' ? '80mm' : printLabelSize === '40x25' ? '84mm' : '104mm')
+                            : (printLabelSize === '38x25' ? '38mm' : printLabelSize === '40x25' ? '40mm' : '50mm'),
+                          display: 'flex',
+                          flexDirection: 'row',
+                          justifyContent: printLabelsPerRow === 2 ? 'space-between' : 'center',
+                          alignItems: 'center',
+                          pageBreakAfter: 'always',
+                          breakAfter: 'page'
+                        }}
+                      >
+                        {Array.from({ length: countInThisRow }).map((_, cIdx) => (
+                          <div 
+                            key={cIdx} 
+                            className="barcode-label-sticker"
+                            style={{
+                              width: printLabelSize === '38x25' ? '38mm' : printLabelSize === '40x25' ? '40mm' : '50mm',
+                              height: printLabelSize === '50x38' ? '38mm' : '25mm'
+                            }}
+                          >
+                            {printLabelSize === '50x25' || printLabelSize === '40x25' ? (
+                              <div className="w-full h-full flex flex-col justify-start items-center text-center p-0 bg-white">
+                                <div className="w-full mt-[0.5mm] px-[1mm]">
+                                  <div className="text-[9px] font-black text-black uppercase leading-tight truncate w-full">
+                                    {printingBarcodeProduct.name}
+                                  </div>
+                                </div>
+                                <div className="my-[0.5mm] flex items-center justify-center">
+                                  <ReactBarcode 
+                                    value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                                    height={22} 
+                                    width={1.1}
+                                    fontSize={9}
+                                    fontOptions="bold"
+                                    margin={0}
+                                    displayValue={true}
+                                  />
+                                </div>
+                                <div className="w-full text-[8px] font-bold text-black uppercase leading-[10px] flex flex-col items-center">
+                                  <div>SALE: RS.{printSalePrice}</div>
+                                  <div>PKD: {printPackedOn} {printExpiryOn ? `| EXP: ${printExpiryOn}` : ''}</div>
+                                  <div className="text-[8px] font-black tracking-wider mt-[0.5mm]">{printCompanyName}</div>
+                                </div>
+                              </div>
+                            ) : printLabelSize === '50x38' ? (
+                              <div className="w-full h-full flex flex-col justify-start items-center text-center p-0 bg-white">
+                                <div className="w-full mt-[1mm] px-[1mm]">
+                                  <div className="text-[11px] font-black text-black uppercase leading-tight truncate w-full">
+                                    {printingBarcodeProduct.name}
+                                  </div>
+                                </div>
+                                <div className="my-[1.5mm] flex items-center justify-center">
+                                  <ReactBarcode 
+                                    value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                                    height={32} 
+                                    width={1.2}
+                                    fontSize={10}
+                                    fontOptions="bold"
+                                    margin={0}
+                                    displayValue={true}
+                                  />
+                                </div>
+                                <div className="w-full text-[10px] font-bold text-black uppercase leading-[12px] flex flex-col items-center">
+                                  <div>MRP: RS.{printMrp} | SALE: RS.{printSalePrice}</div>
+                                  <div>PACKED: {printPackedOn} | EXP: {printExpiryOn}</div>
+                                  <div className="mt-[1mm] text-[10px] font-black tracking-widest">{printCompanyName}</div>
+                                </div>
+                              </div>
+                            ) : (
+                              /* 38x25 */
+                              <div className="w-full h-full flex flex-col justify-start items-center text-center p-0 bg-white">
+                                <div className="w-full mt-[0.5mm] px-[0.5mm]">
+                                  <div className="text-[7.5px] font-black text-black uppercase leading-tight truncate w-full">
+                                    {printingBarcodeProduct.name}
+                                  </div>
+                                </div>
+                                <div className="my-[0.5mm] flex items-center justify-center">
+                                  <ReactBarcode 
+                                    value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                                    height={18} 
+                                    width={0.95}
+                                    fontSize={7}
+                                    fontOptions="bold"
+                                    margin={0}
+                                    displayValue={true}
+                                  />
+                                </div>
+                                <div className="w-full text-[6.5px] font-bold text-black uppercase leading-[8px] flex flex-col items-center">
+                                  <div>SALE: RS.{printSalePrice}</div>
+                                  <div>PKD: {printPackedOn}</div>
+                                  <div className="text-[7px] font-black tracking-widest">{printCompanyName}</div>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <div className="my-[1mm] flex items-center justify-center">
-                            <ReactBarcode 
-                              value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
-                              height={26} 
-                              width={1.2}
-                              fontSize={10}
-                              fontOptions="bold"
-                              margin={0}
-                              displayValue={true}
-                            />
-                          </div>
-                          <div className="w-full text-[9px] font-bold text-black uppercase leading-[12px] flex flex-col items-center pb-[1mm]">
-                            <div>Sale Price: RS.{printSalePrice}</div>
-                            <div>PACKED DATE {printPackedOn}</div>
-                            <div>EXPIRY ON {printExpiryOn}</div>
-                            <div className="mt-[1mm] text-[10px] font-black tracking-widest">{printCompanyName}</div>
-                          </div>
+                        ))}
+                        {/* Empty spacer if odd number of labels in last row */}
+                        {printLabelsPerRow === 2 && countInThisRow === 1 && (
+                          <div style={{ width: printLabelSize === '38x25' ? '38mm' : printLabelSize === '40x25' ? '40mm' : '50mm', height: printLabelSize === '50x38' ? '38mm' : '25mm' }} />
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  /* A4 Sheet Grid */
+                  <div className="grid grid-cols-3 gap-4 p-4 bg-white w-[210mm]">
+                    {Array.from({ length: printLabelCount }).map((_, idx) => (
+                      <div key={idx} className="barcode-label-sticker p-3 border border-slate-300 rounded bg-white flex flex-col items-center">
+                        <div className="text-[9px] font-black uppercase text-center mb-1">{printingBarcodeProduct.name}</div>
+                        <ReactBarcode 
+                          value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
+                          height={30} 
+                          width={1.1}
+                          fontSize={9}
+                          margin={0}
+                          displayValue={true}
+                        />
+                        <div className="text-[8px] font-bold mt-1 text-center">
+                          <div>Sale Price: ₹{printSalePrice} (MRP: ₹{printMrp})</div>
+                          <div>PKD: {printPackedOn} | EXP: {printExpiryOn}</div>
+                          <div className="font-black mt-0.5">{printCompanyName}</div>
                         </div>
-                      ) : printLabelSize === '50x38' ? (
-                        <div className="w-full h-full flex flex-col justify-start items-center text-center p-0 bg-white">
-                          <div className="w-full mt-[2mm] px-[2mm]">
-                            <div className="text-[12px] font-black text-black uppercase leading-tight truncate w-full">
-                              {printingBarcodeProduct.name}
-                            </div>
-                          </div>
-                          <div className="my-[2mm] flex items-center justify-center">
-                            <ReactBarcode 
-                              value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
-                              height={36} 
-                              width={1.3}
-                              fontSize={12}
-                              fontOptions="bold"
-                              margin={0}
-                              displayValue={true}
-                            />
-                          </div>
-                          <div className="w-full text-[11px] font-bold text-black uppercase leading-[14px] flex flex-col items-center">
-                            <div>Sale Price: RS.{printSalePrice}</div>
-                            <div>PACKED DATE {printPackedOn}</div>
-                            <div>EXPIRY ON {printExpiryOn}</div>
-                            <div className="mt-[2mm] text-[12px] font-black tracking-widest">{printCompanyName}</div>
-                          </div>
-                        </div>
-                      ) : printLabelSize === '38x25' ? (
-                        <div className="w-full h-full flex flex-col justify-start items-center text-center p-0 bg-white">
-                          <div className="w-full mt-[1mm] px-[1mm]">
-                            <div className="text-[8px] font-black text-black uppercase leading-tight truncate w-full">
-                              {printingBarcodeProduct.name}
-                            </div>
-                          </div>
-                          <div className="my-[1mm] flex items-center justify-center">
-                            <ReactBarcode 
-                              value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
-                              height={20} 
-                              width={1.05}
-                              fontSize={8}
-                              fontOptions="bold"
-                              margin={0}
-                              displayValue={true}
-                            />
-                          </div>
-                          <div className="w-full text-[7px] font-bold text-black uppercase leading-[9px] flex flex-col items-center">
-                            <div>Sale Price: RS.{printSalePrice}</div>
-                            <div>PKD: {printPackedOn} | EXP: {printExpiryOn}</div>
-                            <div className="mt-[1mm] text-[8px] font-black tracking-widest">{printCompanyName}</div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="p-4 bg-white border border-slate-200 flex flex-col items-center text-center w-[220px]">
-                          <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{printCompanyName}</div>
-                          <span className="text-[11px] font-black text-slate-900 uppercase mb-1 leading-tight">{printingBarcodeProduct.name}</span>
-                          <div className="py-1">
-                            <ReactBarcode 
-                              value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku} 
-                              height={40} 
-                              width={1.2}
-                              fontSize={11}
-                              margin={0}
-                              displayValue={true}
-                            />
-                          </div>
-                          <div className="flex flex-col items-center gap-0.5 mt-1 text-slate-900 font-bold uppercase" style={{ fontSize: '10px' }}>
-                            <div className="flex items-center gap-1">
-                              <span>MRP:</span>
-                              <span className="font-black">₹{printMrp}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span>Sale Price:</span>
-                              <span className="font-black">₹{printSalePrice}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span>PACKED ON:</span>
-                              <span className="font-black">{printPackedOn}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span>EXPIRY ON:</span>
-                              <span className="font-black">{printExpiryOn}</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 no-print">
                 <button 
                   onClick={() => setPrintingBarcodeProduct(null)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold hover:bg-slate-200 cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-[11px] font-semibold hover:bg-slate-200 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -3077,7 +3169,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold hover:bg-indigo-700 cursor-pointer flex items-center gap-2 shadow-sm"
                 >
                   <Printer size={14} />
-                  <span>Send to Barcode Printer ({printLabelSize === '50x25' ? '50x25 mm' : printLabelSize})</span>
+                  <span>Send to Barcode Printer ({printerType === 'thermal' ? `${printLabelsPerRow}-Up ${printLabelSize} mm` : 'A4 Sheet'})</span>
                 </button>
               </div>
             </div>

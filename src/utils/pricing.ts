@@ -41,23 +41,16 @@ export function calculateApplicablePrice(
     ? product.selling_price 
     : (typeof product.rate_nr === 'number' && !isNaN(product.rate_nr) ? product.rate_nr : 0);
 
-  // If DDR Auto-Festival Pricing setting is OFF, price as per Normal Rate (NR)
-  const isDdrSettingOn = Boolean(options.business?.enable_ddr);
-  if (!isDdrSettingOn) {
-    return {
-      appliedPrice: normalRate,
-      normalRate,
-      rateType: 'NR',
-      rateReason: 'Normal Rate',
-      unitSavings: 0
-    };
-  }
-
+  // Priority Order for special pricing:
+  // 1. Loyal Member -> LMR (if set)
+  // 2. Advance Booking -> ABR (if set)
+  // 3. Festive / Diwali Sale -> DDR (if set)
+  // 4. Fallback -> NR (Normal Rate)
   const hasLmr = typeof product.rate_lmr === 'number' && !isNaN(product.rate_lmr) && product.rate_lmr > 0;
   const hasAbr = typeof product.rate_abr === 'number' && !isNaN(product.rate_abr) && product.rate_abr > 0;
   const hasDdr = typeof product.rate_ddr === 'number' && !isNaN(product.rate_ddr) && product.rate_ddr > 0;
 
-  const isDdrActive = Boolean(options.isDiwaliSale) || isDdrDateActive(options.business, options.orderDate);
+  const isDdrActive = Boolean(options.isDiwaliSale) || (Boolean(options.business?.enable_ddr) && isDdrDateActive(options.business, options.orderDate));
 
   // Priority Order when setting Diwali Discount Rate (DDR) Auto-Festival Pricing is ON:
   // 1. Loyal Member -> LMR (if updated in product)

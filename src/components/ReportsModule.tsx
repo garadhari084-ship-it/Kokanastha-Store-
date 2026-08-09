@@ -4,7 +4,7 @@ import {
   FileSpreadsheet, TrendingUp, TrendingDown, Percent, BarChart4, 
   Calendar, Download, Activity, ArrowUpRight, ArrowDownRight,
   DollarSign, PieChart as PieIcon, Landmark, Target, ShieldCheck,
-  Layers, Scale, CheckCircle2, AlertCircle, Zap, Database,
+  Layers, Scale, CheckCircle2, AlertCircle, Zap, Database, Sparkles,
   Users, UserCheck, Briefcase, Package, Box, ClipboardList, MapPin
 } from 'lucide-react';
 import { 
@@ -70,6 +70,7 @@ export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
   const [datePreset, setDatePreset] = useState<'month' | 'quarter' | 'year' | 'all'>('year');
   const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [bookingTypeFilter, setBookingTypeFilter] = useState<'all' | 'advance' | 'festive' | 'regular'>('all');
 
   useEffect(() => {
     return dbStore.subscribe(() => {
@@ -105,9 +106,43 @@ export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
     marginTrendData,
     taxBreakdownData,
     sparklines,
-    itcEfficiency
+    itcEfficiency,
+    advanceBookingsCount,
+    advanceBookingsTotal,
+    festiveBookingsCount,
+    festiveBookingsTotal,
+    regularOrdersCount,
+    regularOrdersTotal
   } = useMemo(() => {
-    const fSales = sales.filter(o => o.status !== 'Cancelled' && o.order_date >= startDate && o.order_date <= endDate);
+    const fSales = sales.filter(o => {
+      if (o.status === 'Cancelled') return false;
+      if (o.order_date < startDate || o.order_date > endDate) return false;
+      if (bookingTypeFilter === 'advance' && !o.advance_booking) return false;
+      if (bookingTypeFilter === 'festive' && !o.festive_booking) return false;
+      if (bookingTypeFilter === 'regular' && (o.advance_booking || o.festive_booking)) return false;
+      return true;
+    });
+
+    // Counts & Stats across date range for booking types
+    const dateRangeSales = sales.filter(o => o.status !== 'Cancelled' && o.order_date >= startDate && o.order_date <= endDate);
+    let advCount = 0; let advTotal = 0;
+    let festCount = 0; let festTotal = 0;
+    let regCount = 0; let regTotal = 0;
+
+    dateRangeSales.forEach(o => {
+      const amt = o.total_amount || 0;
+      if (o.advance_booking) {
+        advCount++;
+        advTotal += amt;
+      } else if (o.festive_booking) {
+        festCount++;
+        festTotal += amt;
+      } else {
+        regCount++;
+        regTotal += amt;
+      }
+    });
+
     const fPurchases = purchases.filter(po => po.status !== 'Cancelled' && po.order_date >= startDate && po.order_date <= endDate);
 
     let tSalesRevenue = 0; let tGstCollected = 0;
@@ -173,6 +208,12 @@ export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
       marginTrendData: mTrendData,
       taxBreakdownData: tBreakdownData,
       itcEfficiency: itcRatio,
+      advanceBookingsCount: advCount,
+      advanceBookingsTotal: advTotal,
+      festiveBookingsCount: festCount,
+      festiveBookingsTotal: festTotal,
+      regularOrdersCount: regCount,
+      regularOrdersTotal: regTotal,
       sparklines: {
         sales: sByMonth.map(d => ({ value: d.Revenue })),
         proc: sByMonth.map(d => ({ value: d.COGS })),
@@ -798,6 +839,72 @@ export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
           </button>
         </div>
       </PageHeader>
+
+      {/* BOOKING TYPE FILTER BAR & QUICK STATS */}
+      <div className="bg-white dark:bg-slate-900 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider px-2 shrink-0">
+            Booking Filter:
+          </span>
+          <button
+            onClick={() => setBookingTypeFilter('all')}
+            className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap ${
+              bookingTypeFilter === 'all'
+                ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400/50'
+                : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            All Bookings ({sales.filter(s => s.status !== 'Cancelled' && s.order_date >= startDate && s.order_date <= endDate).length})
+          </button>
+
+          <button
+            onClick={() => setBookingTypeFilter('advance')}
+            className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+              bookingTypeFilter === 'advance'
+                ? 'bg-amber-600 text-white shadow-sm ring-1 ring-amber-400/50'
+                : 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-800'
+            }`}
+          >
+            <Zap size={13} />
+            <span>Advance Bookings ({advanceBookingsCount})</span>
+          </button>
+
+          <button
+            onClick={() => setBookingTypeFilter('festive')}
+            className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+              bookingTypeFilter === 'festive'
+                ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-400/50'
+                : 'text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/60 border border-purple-200 dark:border-purple-800'
+            }`}
+          >
+            <Sparkles size={13} />
+            <span>Festival Bookings ({festiveBookingsCount})</span>
+          </button>
+
+          <button
+            onClick={() => setBookingTypeFilter('regular')}
+            className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap ${
+              bookingTypeFilter === 'regular'
+                ? 'bg-slate-800 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            Regular Orders ({regularOrdersCount})
+          </button>
+        </div>
+
+        {/* Quick Revenue Summary Badges */}
+        <div className="flex items-center gap-3 shrink-0 text-[10px] font-mono">
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+            <span className="font-bold">Advance Vol:</span>
+            <span className="font-black">₹{advanceBookingsTotal.toLocaleString()}</span>
+          </div>
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+            <span className="font-bold">Festival Vol:</span>
+            <span className="font-black">₹{festiveBookingsTotal.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
 
       {/* Row 1: High Density Bento KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

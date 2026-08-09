@@ -41,7 +41,9 @@ import {
   Minus,
   Loader2,
   UserPlus,
-  Save
+  Save,
+  Phone,
+  Building2
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
@@ -391,6 +393,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [newCustomerAddress, setNewCustomerAddress] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
 
+  // Editable fields for selected existing customer
+  const [selectedCustomerPhone, setSelectedCustomerPhone] = useState('');
+  const [selectedCustomerAddress, setSelectedCustomerAddress] = useState('');
+  const [selectedCustomerShippingAddress, setSelectedCustomerShippingAddress] = useState('');
+  const [isSameShippingAddress, setIsSameShippingAddress] = useState(true);
+
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [isSubmitDropdownOpen, setIsSubmitDropdownOpen] = useState(false);
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState<string>('');
@@ -496,6 +504,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setNewCustomerName('');
     setNewCustomerAddress('');
     setNewCustomerPhone('');
+    setSelectedCustomerPhone('');
+    setSelectedCustomerAddress('');
+    setSelectedCustomerShippingAddress('');
+    setIsSameShippingAddress(true);
     setRowProductId('');
     setRowQty(1);
     setRowPrice(0);
@@ -549,6 +561,14 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setEditingOrderId(order.id);
     setCustomInvoiceNumber(order.order_number);
     setSelectedCustomerId(order.customer_id);
+
+    const c = customers.find(cust => cust.id === order.customer_id);
+    if (c) {
+      setSelectedCustomerPhone(c.phone || '');
+      setSelectedCustomerAddress(c.billing_address || c.address || '');
+      setSelectedCustomerShippingAddress(c.shipping_address || c.billing_address || c.address || '');
+      setIsSameShippingAddress(!c.shipping_address || c.shipping_address === c.billing_address);
+    }
     setPointsToRedeem(order.points_redeemed || 0);
     setSelectedArea(order.area || 'Dahisar');
     setOrderDate(order.order_date || getLocalTodayDate());
@@ -722,6 +742,29 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     };
   }, [orderItems, pointsToRedeem, customDiscount, discountType, additionalCharges, deliveryCharges, paymentStatus, paidAmount, selectedCustomerId, customers, businessId]);
 
+  const scheduledCountForSelectedDate = useMemo(() => {
+    if (!deliveryDate) return 0;
+    return orders.filter(o => o.delivery_date === deliveryDate && o.status !== 'Cancelled').length;
+  }, [deliveryDate, orders]);
+
+  const upcoming7DaysLoad = useMemo(() => {
+    const list: Array<{ date: string; label: string; count: number }> = [];
+    const today = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const count = orders.filter(o => o.delivery_date === dateStr && o.status !== 'Cancelled').length;
+      const dayName = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short' });
+      list.push({
+        date: dateStr,
+        label: `${dayName} (${d.getDate()}/${d.getMonth()+1})`,
+        count
+      });
+    }
+    return list;
+  }, [orders]);
+
   const handleCreateSalesOrder = async (postAction: 'close' | 'save_new' | 'print' | 'share' = 'close') => {
     if (isSubmitting) return;
 
@@ -824,6 +867,14 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
          if (cObj) {
             finalCustomerName = cObj.name;
             finalCustomerArea = selectedArea || (cObj.area && cObj.area !== 'Other' ? cObj.area : 'Dahisar');
+            // Save updated customer contact & addresses if changed inline
+            if (selectedCustomerPhone.trim() || selectedCustomerAddress.trim() || selectedCustomerShippingAddress.trim()) {
+              dbStore.updateCustomer(cObj.id, {
+                phone: selectedCustomerPhone.trim() || cObj.phone,
+                billing_address: selectedCustomerAddress.trim() || cObj.billing_address,
+                shipping_address: isSameShippingAddress ? (selectedCustomerAddress.trim() || cObj.billing_address) : (selectedCustomerShippingAddress.trim() || cObj.shipping_address)
+              });
+            }
          }
       }
 
@@ -2010,6 +2061,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         setSelectedCustomerId(val);
                         const c = customers.find(cust => cust.id === val);
                         if (c) {
+                          setSelectedCustomerPhone(c.phone || '');
+                          setSelectedCustomerAddress(c.billing_address || c.address || '');
+                          setSelectedCustomerShippingAddress(c.shipping_address || c.billing_address || c.address || '');
+                          setIsSameShippingAddress(!c.shipping_address || c.shipping_address === c.billing_address);
                           setPointsToRedeem(c.loyalty_points || 0);
                           if (c.area && c.area !== 'Other') {
                             setSelectedArea(c.area);
@@ -2018,6 +2073,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           }
                           setOrderItems(prev => recalculateOrderPrices(prev, c, isAdvanceBooking, isFestiveBooking));
                         } else {
+                          setSelectedCustomerPhone('');
+                          setSelectedCustomerAddress('');
+                          setSelectedCustomerShippingAddress('');
+                          setIsSameShippingAddress(true);
                           setPointsToRedeem(0);
                           setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
                           setOrderItems(prev => recalculateOrderPrices(prev, undefined, isAdvanceBooking, isFestiveBooking));
@@ -2106,6 +2165,96 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         <Save size={14} />
                         <span>Save Customer</span>
                       </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Inline Editable Customer Details Card */}
+                {selectedCustomerId && selectedCustomerId !== 'WALK_IN' && !isNewCustomerSelected && (
+                  <div className="md:col-span-4 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700/80 pb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <User size={13} className="text-indigo-600 dark:text-indigo-400" />
+                        <span className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">
+                          Editable Customer Details (Phone, Billing & Shipping)
+                        </span>
+                      </div>
+                      <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                        Inline Editing
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Contact Phone Number */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                          <Phone size={10} />
+                          <span>Contact Number *</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={selectedCustomerPhone}
+                          onChange={(e) => setSelectedCustomerPhone(e.target.value)}
+                          placeholder="10-digit Mobile"
+                          className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+
+                      {/* Billing Address */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                          <MapPin size={10} />
+                          <span>Customer Address</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={selectedCustomerAddress}
+                          onChange={(e) => {
+                            setSelectedCustomerAddress(e.target.value);
+                            if (isSameShippingAddress) {
+                              setSelectedCustomerShippingAddress(e.target.value);
+                            }
+                          }}
+                          placeholder="Street / Billing Address"
+                          className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-[11px] font-medium rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+
+                      {/* Shipping Address */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                            <Building2 size={10} />
+                            <span>Shipping Address</span>
+                          </label>
+                          <label className="inline-flex items-center gap-1 text-[9px] text-slate-500 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isSameShippingAddress}
+                              onChange={(e) => {
+                                setIsSameShippingAddress(e.target.checked);
+                                if (e.target.checked) {
+                                  setSelectedCustomerShippingAddress(selectedCustomerAddress);
+                                }
+                              }}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span>Same</span>
+                          </label>
+                        </div>
+                        <input
+                          type="text"
+                          disabled={isSameShippingAddress}
+                          value={isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress}
+                          onChange={(e) => setSelectedCustomerShippingAddress(e.target.value)}
+                          placeholder="Shipping / Delivery Address"
+                          className={`w-full h-8 px-2.5 text-[11px] font-medium rounded-lg border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+                            isSameShippingAddress
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed'
+                              : 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700'
+                          }`}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -2257,7 +2406,22 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Date</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                        Delivery Date
+                      </label>
+                      {deliveryDate && (
+                        <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full ${
+                          scheduledCountForSelectedDate === 0
+                            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800'
+                            : scheduledCountForSelectedDate <= 4
+                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800'
+                            : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800 animate-pulse'
+                        }`}>
+                          {scheduledCountForSelectedDate} Scheduled
+                        </span>
+                      )}
+                    </div>
                     <input 
                       type="date"
                       value={deliveryDate}
@@ -2279,6 +2443,45 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       ]}
                       placeholder="Select delivery type"
                     />
+                  </div>
+                </div>
+
+                {/* 7-Day Live Delivery Load Tracker Chip Bar */}
+                <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider flex items-center gap-1">
+                      <Clock size={11} className="text-amber-500" />
+                      <span>Delivery Load Tracker (Upcoming 7 Days)</span>
+                    </span>
+                    <span className="text-[9px] text-slate-400 italic">Click date chip to select</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                    {upcoming7DaysLoad.map((item) => {
+                      const isSelected = deliveryDate === item.date;
+                      return (
+                        <button
+                          key={item.date}
+                          type="button"
+                          onClick={() => setDeliveryDate(item.date)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 border cursor-pointer ${
+                            isSelected
+                              ? 'bg-amber-500 text-slate-950 border-amber-600 shadow-sm ring-1 ring-amber-400 font-black'
+                              : item.count === 0
+                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100'
+                              : item.count <= 4
+                              ? 'bg-amber-50/80 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/60 hover:bg-amber-100'
+                              : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800/60 hover:bg-rose-100'
+                          }`}
+                        >
+                          <span>{item.label}:</span>
+                          <span className={`px-1 rounded text-[9px] font-black ${
+                            isSelected ? 'bg-slate-950 text-amber-400' : 'bg-slate-200 dark:bg-slate-700'
+                          }`}>
+                            {item.count}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

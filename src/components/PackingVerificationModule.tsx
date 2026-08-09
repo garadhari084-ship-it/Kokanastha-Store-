@@ -8,6 +8,7 @@ import {
   Check, 
   X, 
   AlertCircle, 
+  AlertTriangle,
   Printer, 
   ArrowLeft, 
   ArrowRight,
@@ -30,7 +31,10 @@ import {
   Building2,
   Navigation,
   LayoutGrid,
-  List
+  List,
+  SlidersHorizontal,
+  Minimize2,
+  Maximize2
 } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
 import { dbStore } from '../services/store';
@@ -64,7 +68,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [dateFilter, setDateFilter] = useState<'All' | 'Today' | 'Tomorrow' | 'Upcoming' | 'Next7' | 'Custom'>('Today');
+  const [isCompactDensity, setIsCompactDensity] = useState<boolean>(false);
+  const [dateFilter, setDateFilter] = useState<'All' | 'Overdue' | 'Today' | 'Tomorrow' | 'Upcoming' | 'Next7' | 'Custom'>('Today');
   const [customDateValue, setCustomDateValue] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // Scanning flow states
@@ -387,13 +392,10 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
         throw new Error(res.error || 'Failed to complete packing.');
       }
 
-      triggerToast(`Order #${selectedOrder.order_number} verified & marked as Packed! Moved to Ready to Dispatch.`, 'success');
+      triggerToast(`Order #${selectedOrder.order_number} verified & marked as Packed! Ready for dispatch.`, 'success');
       setSelectedOrder(null);
       setRecentScanLog(null);
       reloadOrders();
-      if (onNavigate) {
-        onNavigate('delivery');
-      }
     } catch (err: any) {
       triggerToast(err.message || 'Packing completion failed.', 'error');
     }
@@ -429,6 +431,177 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const packingProgressPercent = totalItemsCount > 0 ? Math.round((packedItemsCount / totalItemsCount) * 100) : 0;
   const isFullyVerified = totalItemsCount > 0 && packingProgressPercent === 100;
 
+  const parseOrderDate = (dStr: string | undefined): number => {
+    if (!dStr) return 0;
+    const clean = dStr.trim();
+    if (!clean || clean === 'Unknown Date') return 0;
+
+    if (clean.includes('/') && clean.split('/').length === 3) {
+      const [d, m, y] = clean.split('/').map(Number);
+      return new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+    }
+    if (clean.includes('-') && clean.split('-').length === 3) {
+      const parts = clean.split('-').map(Number);
+      if (parts[0] > 1000) {
+        return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0).getTime();
+      } else {
+        return new Date(parts[2], parts[1] - 1, parts[0], 0, 0, 0, 0).getTime();
+      }
+    }
+    const dt = new Date(clean);
+    dt.setHours(0, 0, 0, 0);
+    return isNaN(dt.getTime()) ? 0 : dt.getTime();
+  };
+
+  const getDeliveryStatus = (deliveryDate: string | undefined) => {
+    if (!deliveryDate) return { 
+      badge: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700', 
+      border: 'border-slate-200 dark:border-slate-800',
+      cardBg: 'bg-white dark:bg-slate-900',
+      icon: 'text-slate-500 dark:text-slate-400',
+      text: 'text-slate-600 dark:text-slate-400 font-bold',
+      dot: 'bg-slate-400',
+      statusText: 'NO DATE SET',
+      daysRemainingText: 'No Date Set',
+      diffDays: null,
+      isOverdue: false
+    };
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTime = today.getTime();
+    
+    const dTime = parseOrderDate(deliveryDate);
+    if (dTime === 0) {
+      return { 
+        badge: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700', 
+        border: 'border-slate-200 dark:border-slate-800',
+        cardBg: 'bg-white dark:bg-slate-900',
+        icon: 'text-slate-500 dark:text-slate-400',
+        text: 'text-slate-600 dark:text-slate-400 font-bold',
+        dot: 'bg-slate-400',
+        statusText: 'NO DATE SET',
+        daysRemainingText: 'No Date Set',
+        diffDays: null,
+        isOverdue: false
+      };
+    }
+    
+    const diffTime = dTime - todayTime;
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) {
+      const absDays = Math.abs(diffDays);
+      return { 
+        badge: 'bg-rose-100 text-rose-950 border-rose-500 dark:bg-rose-950/90 dark:text-rose-200 dark:border-rose-800 font-black shadow-sm', 
+        border: 'border-rose-400 dark:border-rose-800/80',
+        cardBg: 'bg-rose-50/20 dark:bg-rose-950/10',
+        icon: 'text-rose-700 dark:text-rose-400',
+        text: 'text-rose-800 dark:text-rose-400 font-extrabold',
+        ping: true,
+        dot: 'bg-rose-600 shadow-[0_0_8px_rgba(225,29,72,0.9)]',
+        statusText: `OVERDUE BY ${absDays} DAY${absDays > 1 ? 'S' : ''}`,
+        daysRemainingText: `${absDays} Day${absDays > 1 ? 's' : ''} Overdue`,
+        pillClass: 'bg-rose-600 text-white shadow-sm animate-pulse',
+        pingBg: 'bg-rose-500',
+        diffDays,
+        isOverdue: true
+      };
+    } else if (diffDays === 0) {
+      return { 
+        badge: 'bg-amber-100 text-amber-950 border-amber-500 dark:bg-amber-950/90 dark:text-amber-200 dark:border-amber-800 font-black shadow-sm', 
+        border: 'border-amber-400 dark:border-amber-800/70',
+        cardBg: 'bg-amber-50/20 dark:bg-amber-950/10',
+        icon: 'text-amber-700 dark:text-amber-400',
+        text: 'text-amber-800 dark:text-amber-400 font-extrabold',
+        ping: true,
+        dot: 'bg-[#F59E0B] shadow-[0_0_8px_rgba(245,158,11,0.9)]',
+        statusText: 'DUE TODAY (0 DAYS LEFT)',
+        daysRemainingText: '0 Days Left (Due Today)',
+        pillClass: 'bg-[#F59E0B] text-white shadow-sm animate-pulse',
+        pingBg: 'bg-[#F59E0B]',
+        diffDays,
+        isOverdue: false
+      };
+    } else if (diffDays === 1) {
+      return { 
+        badge: 'bg-amber-100 text-amber-950 border-amber-500 dark:bg-amber-950/90 dark:text-amber-200 dark:border-amber-800 font-black shadow-sm', 
+        border: 'border-amber-400 dark:border-amber-800/70',
+        cardBg: 'bg-amber-50/20 dark:bg-amber-950/10',
+        icon: 'text-amber-700 dark:text-amber-400',
+        text: 'text-amber-800 dark:text-amber-400 font-extrabold',
+        ping: true,
+        dot: 'bg-[#F59E0B] shadow-[0_0_8px_rgba(245,158,11,0.9)]',
+        statusText: 'DUE TOMORROW (1 DAY LEFT)',
+        daysRemainingText: '1 Day Remaining',
+        pillClass: 'bg-[#F59E0B] text-white shadow-sm animate-pulse',
+        pingBg: 'bg-[#F59E0B]',
+        diffDays,
+        isOverdue: false
+      };
+    } else if (diffDays <= 5) {
+      return { 
+        badge: 'bg-amber-100 text-amber-950 border-amber-500 dark:bg-amber-950/90 dark:text-amber-200 dark:border-amber-800 font-black shadow-sm', 
+        border: 'border-amber-400 dark:border-amber-800/70',
+        cardBg: 'bg-amber-50/20 dark:bg-amber-950/10',
+        icon: 'text-amber-700 dark:text-amber-400',
+        text: 'text-amber-800 dark:text-amber-400 font-extrabold',
+        ping: true,
+        dot: 'bg-[#F59E0B] shadow-[0_0_8px_rgba(245,158,11,0.9)]',
+        statusText: `DUE IN ${diffDays} DAYS`,
+        daysRemainingText: `${diffDays} Days Remaining`,
+        pillClass: 'bg-[#F59E0B] text-white shadow-sm animate-pulse',
+        pingBg: 'bg-[#F59E0B]',
+        diffDays,
+        isOverdue: false
+      };
+    } else if (diffDays <= 10) {
+      return { 
+        badge: 'bg-orange-100 text-orange-950 border-orange-500 dark:bg-orange-950/90 dark:text-orange-200 dark:border-orange-800 font-black shadow-sm', 
+        border: 'border-orange-400 dark:border-orange-800/60',
+        cardBg: 'bg-orange-50/20 dark:bg-orange-950/10',
+        icon: 'text-orange-700 dark:text-orange-400',
+        text: 'text-orange-800 dark:text-orange-400 font-extrabold',
+        ping: true,
+        dot: 'bg-orange-600 shadow-[0_0_8px_rgba(234,88,12,0.9)]',
+        statusText: `DUE IN ${diffDays} DAYS`,
+        daysRemainingText: `${diffDays} Days Remaining`,
+        pillClass: 'bg-orange-600 text-white shadow-sm animate-pulse',
+        pingBg: 'bg-orange-500',
+        diffDays,
+        isOverdue: false
+      };
+    } else {
+      return { 
+        badge: 'bg-emerald-100 text-emerald-950 border-emerald-500 dark:bg-emerald-950/90 dark:text-emerald-200 dark:border-emerald-700 font-black shadow-sm', 
+        border: 'border-emerald-400 dark:border-emerald-800/50',
+        cardBg: 'bg-emerald-50/20 dark:bg-emerald-950/10',
+        icon: 'text-[#15803D] dark:text-[#22C55E]',
+        text: 'text-[#15803D] dark:text-[#22C55E] font-extrabold',
+        ping: true,
+        dot: 'bg-[#22C55E] shadow-[0_0_8px_rgba(34,197,94,0.9)]',
+        statusText: `DUE IN ${diffDays} DAYS`,
+        daysRemainingText: `${diffDays} Days Remaining`,
+        pillClass: 'bg-[#22C55E] text-white shadow-sm animate-pulse',
+        pingBg: 'bg-[#22C55E]',
+        diffDays,
+        isOverdue: false
+      };
+    }
+  };
+
+  // Calculate live counts for overdue and today orders
+  const { overdueCount, todayCount } = useMemo(() => {
+    let overdue = 0;
+    let today = 0;
+    pendingOrders.forEach(o => {
+      const dStatus = getDeliveryStatus(o.delivery_date);
+      if (dStatus.isOverdue) overdue++;
+      if (dStatus.diffDays === 0) today++;
+    });
+    return { overdueCount: overdue, todayCount: today };
+  }, [pendingOrders]);
+
   // Filter queue orders
   const filteredQueue = pendingOrders.filter(o => {
     const cust = customers.find(c => c.id === o.customer_id);
@@ -436,29 +609,28 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     
     // Apply date filter
     if (dateFilter !== 'All') {
-      const dateStr = (o.delivery_date || o.order_date || '').trim();
-      if (!dateStr || dateStr === 'Unknown Date') return false;
-      
-      const parseDate = (d: any) => {
-        const parts = d.split('-');
-        if (parts.length !== 3) return 0;
-        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
-      };
-      
-      const now = new Date();
-      const todayTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const tmrwTime = todayTime + 86400000;
-      const next7Time = todayTime + (7 * 86400000);
-      
-      const orderTime = parseDate(dateStr);
-      
-      if (dateFilter === 'Today' && orderTime !== todayTime) return false;
-      if (dateFilter === 'Tomorrow' && orderTime !== tmrwTime) return false;
-      if (dateFilter === 'Upcoming' && orderTime <= tmrwTime) return false;
-      if (dateFilter === 'Next7' && (orderTime < todayTime || orderTime > next7Time)) return false;
-      if (dateFilter === 'Custom') {
-        const customTime = parseDate(customDateValue);
-        if (orderTime !== customTime) return false;
+      const dStatus = getDeliveryStatus(o.delivery_date);
+
+      if (dateFilter === 'Overdue') {
+        if (!dStatus.isOverdue) return false;
+      } else {
+        const dateStr = (o.delivery_date || o.order_date || '').trim();
+        if (!dateStr || dateStr === 'Unknown Date') return false;
+        
+        const orderTime = parseOrderDate(dateStr);
+        const now = new Date();
+        const todayTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const tmrwTime = todayTime + 86400000;
+        const next7Time = todayTime + (7 * 86400000);
+        
+        if (dateFilter === 'Today' && orderTime !== todayTime) return false;
+        if (dateFilter === 'Tomorrow' && orderTime !== tmrwTime) return false;
+        if (dateFilter === 'Upcoming' && orderTime <= tmrwTime) return false;
+        if (dateFilter === 'Next7' && (orderTime < todayTime || orderTime > next7Time)) return false;
+        if (dateFilter === 'Custom') {
+          const customTime = parseOrderDate(customDateValue);
+          if (orderTime !== customTime) return false;
+        }
       }
     }
     
@@ -495,117 +667,21 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     });
   }, [filteredQueue]);
 
-    const getRelativeDateLabel = (dateString: string) => {
+  const getRelativeDateLabel = (dateString: string) => {
     if (!dateString || dateString === 'Unknown Date') return dateString || 'Unknown Date';
     
-    const parseDate = (d: string) => {
-      const parts = d.split('-');
-      return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
-    };
-    
+    const orderTime = parseOrderDate(dateString.trim());
     const now = new Date();
     const todayTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const tmrwTime = todayTime + 86400000;
     
-    const orderTime = parseDate(dateString.trim());
-    
-    if (orderTime === todayTime) return `Today's Delivery (${dateString})`;
-    if (orderTime === tmrwTime) return `Tomorrow's Delivery (${dateString})`;
-    return `Delivery on ${dateString}`;
-  };
-
-  const getDeliveryStatus = (deliveryDate: string | undefined) => {
-    if (!deliveryDate) return { 
-      badge: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700', 
-      border: 'border-slate-200 dark:border-slate-800',
-      cardBg: 'bg-white dark:bg-slate-900',
-      icon: 'text-slate-500 dark:text-slate-400',
-      text: 'text-slate-600 dark:text-slate-400 font-bold',
-      dot: 'bg-slate-400',
-      statusText: 'NO DATE SET',
-      isOverdue: false
-    };
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    let dDate: Date;
-    // Handle DD/MM/YYYY format if present
-    if (deliveryDate.includes('/') && deliveryDate.split('/').length === 3) {
-      const [d, m, y] = deliveryDate.split('/').map(Number);
-      dDate = new Date(y, m - 1, d);
-    } else {
-      dDate = new Date(deliveryDate);
+    if (orderTime < todayTime) {
+      const diffDays = Math.round((todayTime - orderTime) / 86400000);
+      return `⚠️ OVERDUE Orders (${formatDisplayDate(dateString)} • ${diffDays} Day${diffDays > 1 ? 's' : ''} Overdue)`;
     }
-    dDate.setHours(0, 0, 0, 0);
-    
-    if (isNaN(dDate.getTime())) {
-      return { 
-        badge: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700', 
-        border: 'border-slate-200 dark:border-slate-800',
-        cardBg: 'bg-white dark:bg-slate-900',
-        icon: 'text-slate-500 dark:text-slate-400',
-        text: 'text-slate-600 dark:text-slate-400 font-bold',
-        dot: 'bg-slate-400',
-        statusText: 'NO DATE SET',
-        isOverdue: false
-      };
-    }
-    
-    const diffTime = dDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays < 0) {
-      // Overdue / Missed delivery date -> Dark Red badge with clean card
-      return { 
-        badge: 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-800 font-extrabold shadow-sm', 
-        border: 'border-rose-300 dark:border-rose-800/80',
-        cardBg: 'bg-rose-50/20 dark:bg-rose-950/10',
-        icon: 'text-rose-600 dark:text-rose-400',
-        text: 'text-rose-600 dark:text-rose-400 font-extrabold',
-        ping: true,
-        dot: 'bg-rose-600 shadow-[0_0_8px_rgba(225,29,72,0.8)]',
-        statusText: 'OVERDUE / MISSED',
-        isOverdue: true
-      };
-    } else if (diffDays <= 5) {
-      // Within 5 days due -> Dark Yellow badge with clean card
-      return { 
-        badge: 'bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-800 font-extrabold shadow-sm', 
-        border: 'border-amber-300 dark:border-amber-800/70',
-        cardBg: 'bg-amber-50/15 dark:bg-amber-950/10',
-        icon: 'text-amber-600 dark:text-amber-400',
-        text: 'text-amber-700 dark:text-amber-400 font-extrabold',
-        ping: diffDays <= 1,
-        dot: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]',
-        statusText: diffDays === 0 ? 'DUE TODAY' : `DUE IN ${diffDays}D (≤5 DAYS)`,
-        isOverdue: false
-      };
-    } else if (diffDays <= 10) {
-      // Within 10 days due -> Dark Orange badge with clean card
-      return { 
-        badge: 'bg-orange-50 text-orange-900 border-orange-300 dark:bg-orange-950/80 dark:text-orange-200 dark:border-orange-800 font-extrabold shadow-sm', 
-        border: 'border-orange-300 dark:border-orange-800/60',
-        cardBg: 'bg-orange-50/10 dark:bg-orange-950/10',
-        icon: 'text-orange-600 dark:text-orange-400',
-        text: 'text-orange-700 dark:text-orange-400 font-extrabold',
-        dot: 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]',
-        statusText: `DUE IN ${diffDays}D (≤10 DAYS)`,
-        isOverdue: false
-      };
-    } else {
-      // More than 10 days -> Dark Green badge with clean card
-      return { 
-        badge: 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-800 font-extrabold shadow-sm', 
-        border: 'border-emerald-300 dark:border-emerald-800/50',
-        cardBg: 'bg-emerald-50/10 dark:bg-emerald-950/10',
-        icon: 'text-emerald-600 dark:text-emerald-400',
-        text: 'text-emerald-700 dark:text-emerald-400 font-extrabold',
-        dot: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]',
-        statusText: '>10 DAYS',
-        isOverdue: false
-      };
-    }
+    if (orderTime === todayTime) return `Today's Delivery (${formatDisplayDate(dateString)})`;
+    if (orderTime === tmrwTime) return `Tomorrow's Delivery (${formatDisplayDate(dateString)})`;
+    return `Delivery on ${formatDisplayDate(dateString)}`;
   };
 
   const stats = useMemo(() => {
@@ -740,42 +816,146 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               </div>
             </div>
 
-            {/* ADVANCED FILTER & SEARCH BAR */}
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-              <div className="flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
-                <div className="relative flex-1">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input
-                    type="text"
-                    placeholder="Search by Order #, Customer Name, Area or Channel..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-12 pr-4 h-12 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/50"
-                  />
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
-                    {[
-                      { id: 'Today', label: 'Today', icon: Calendar },
-                      { id: 'Tomorrow', label: 'Tomorrow', icon: Clock },
-                      { id: 'Next7', label: 'Next 7 Days', icon: Sparkles },
-                      { id: 'All', label: 'All Time', icon: LayoutGrid },
-                      { id: 'Custom', label: 'Select Date', icon: CalendarDays }
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        onClick={() => setDateFilter(tab.id as any)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
-                          dateFilter === tab.id 
-                            ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' 
-                            : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-                        }`}
+            {/* ADVANCED SINGLE-LINE FILTER & SEARCH TOOLBAR */}
+            <div className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all ${
+              isCompactDensity ? 'p-1.5 sm:p-2' : 'p-2 sm:p-2.5'
+            }`}>
+              <div className="flex flex-col lg:flex-row items-center justify-between gap-2">
+                
+                {/* Left: Search Box & Filter Tabs in One Inline Flex Flow */}
+                <div className="flex flex-col sm:flex-row items-center gap-2 w-full lg:w-auto flex-1 min-w-0">
+                  
+                  {/* Search Box */}
+                  <div className="relative w-full sm:w-52 md:w-64 shrink-0">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                    <input
+                      type="text"
+                      placeholder="Search Order #, Name, Area..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className={`w-full pl-7 pr-6 border border-slate-200 dark:border-slate-700/80 rounded-xl text-[11px] font-medium focus:ring-2 focus:ring-indigo-500/50 transition-all bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-white ${
+                        isCompactDensity ? 'h-7' : 'h-8'
+                      }`}
+                    />
+                    {searchQuery && (
+                      <button 
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                       >
-                        <tab.icon size={14} />
-                        <span>{tab.label}</span>
+                        <X size={11} />
                       </button>
-                    ))}
+                    )}
+                  </div>
+
+                  {/* Filter Pill Tabs Strip */}
+                  <div className="flex items-center overflow-x-auto no-scrollbar bg-slate-100/90 dark:bg-slate-800/90 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 gap-0.5 w-full sm:w-auto">
+                    
+                    {/* 1. OVERDUE TAB */}
+                    <button
+                      onClick={() => setDateFilter('Overdue')}
+                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
+                      } ${
+                        dateFilter === 'Overdue'
+                          ? 'bg-rose-600 text-white shadow-sm ring-1 ring-rose-400/50'
+                          : 'text-rose-700 dark:text-rose-300 bg-rose-50/80 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200/80 dark:border-rose-800/80'
+                      }`}
+                    >
+                      <AlertTriangle size={12} className={dateFilter === 'Overdue' ? 'animate-bounce text-white' : 'text-rose-600 dark:text-rose-400'} />
+                      <span>Overdue</span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[8.5px] font-black ${
+                        dateFilter === 'Overdue' ? 'bg-white text-rose-700' : 'bg-rose-600 text-white'
+                      }`}>
+                        {overdueCount}
+                      </span>
+                    </button>
+
+                    {/* 2. TODAY TAB */}
+                    <button
+                      onClick={() => setDateFilter('Today')}
+                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
+                      } ${
+                        dateFilter === 'Today'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <Calendar size={12} />
+                      <span>Today</span>
+                      {todayCount > 0 && (
+                        <span className={`px-1 py-0.2 rounded-full text-[8.5px] font-black ${
+                          dateFilter === 'Today' ? 'bg-white text-indigo-700' : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                        }`}>
+                          {todayCount}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* 3. TOMORROW TAB */}
+                    <button
+                      onClick={() => setDateFilter('Tomorrow')}
+                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
+                      } ${
+                        dateFilter === 'Tomorrow'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <Clock size={12} />
+                      <span>Tomorrow</span>
+                    </button>
+
+                    {/* 4. NEXT 7 DAYS TAB */}
+                    <button
+                      onClick={() => setDateFilter('Next7')}
+                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
+                      } ${
+                        dateFilter === 'Next7'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <Sparkles size={12} />
+                      <span>Next 7 Days</span>
+                    </button>
+
+                    {/* 5. ALL ORDERS TAB */}
+                    <button
+                      onClick={() => setDateFilter('All')}
+                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
+                      } ${
+                        dateFilter === 'All'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <LayoutGrid size={12} />
+                      <span>All Orders</span>
+                      <span className={`px-1 py-0.2 rounded-full text-[8.5px] font-black ${
+                        dateFilter === 'All' ? 'bg-white text-indigo-700' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                      }`}>
+                        {pendingOrders.length}
+                      </span>
+                    </button>
+
+                    {/* 6. SELECT DATE TAB */}
+                    <button
+                      onClick={() => setDateFilter('Custom')}
+                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
+                      } ${
+                        dateFilter === 'Custom'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <CalendarDays size={12} />
+                      <span>Select Date</span>
+                    </button>
                   </div>
 
                   {dateFilter === 'Custom' && (
@@ -784,26 +964,47 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                         type="date"
                         value={customDateValue}
                         onChange={(e) => setCustomDateValue(e.target.value)}
-                        className="h-10 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                        className="h-7.5 px-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 shadow-sm"
                       />
                     </div>
                   )}
+                </div>
 
-                  <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+                {/* Right Action Group: View Mode Switcher + Reduce/Compact Option */}
+                <div className="flex items-center gap-1.5 shrink-0 justify-end w-full lg:w-auto">
+                  {/* Grid / List View Toggle */}
+                  <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700">
                     <button 
                       onClick={() => setViewMode('grid')}
-                      className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
+                      title="Grid View"
+                      className={`p-1 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
                     >
-                      <LayoutGrid size={18} />
+                      <LayoutGrid size={14} />
                     </button>
                     <button 
                       onClick={() => setViewMode('list')}
-                      className={`p-2 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
+                      title="List View"
+                      className={`p-1 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
                     >
-                      <List size={18} />
+                      <List size={14} />
                     </button>
                   </div>
+
+                  {/* Advanced Reduce / Density Toggle Button */}
+                  <button
+                    onClick={() => setIsCompactDensity(!isCompactDensity)}
+                    title={isCompactDensity ? "Switch to Standard View" : "Reduce Spacing & Font Size (Compact Mode)"}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-sm ${
+                      isCompactDensity
+                        ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-400/40'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80 hover:bg-slate-200/80 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <SlidersHorizontal size={12} className={isCompactDensity ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'} />
+                    <span>{isCompactDensity ? 'Dense' : 'Reduce Size'}</span>
+                  </button>
                 </div>
+
               </div>
             </div>
           </>
@@ -1117,7 +1318,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                 </div>
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="text-[10px] text-slate-500 mb-1 block ml-1">Rack</label>
+                    <label className="text-[10px] text-slate-500 mb-1 block ml-1">Rack No</label>
                     <input
                       type="text"
                       value={rackLocation}
@@ -1127,12 +1328,12 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="text-[10px] text-slate-500 mb-1 block ml-1">Section</label>
+                    <label className="text-[10px] text-slate-500 mb-1 block ml-1">Table No / Section</label>
                     <input
                       type="text"
                       value={rackSection}
                       onChange={(e) => setRackSection(e.target.value)}
-                      placeholder="e.g. Shelf 3"
+                      placeholder="e.g. Table 3"
                       className="w-full bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-medium px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                     />
                   </div>
@@ -1151,10 +1352,19 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                       type="number"
                       min="1"
                       value={totalBags}
-                      onChange={(e) => setTotalBags(Math.max(1, parseInt(e.target.value) || 1))}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setTotalBags(1);
+                        } else {
+                          const parsed = parseInt(val, 10);
+                          setTotalBags(isNaN(parsed) ? 1 : Math.max(1, parsed));
+                        }
+                      }}
                       className="w-24 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-bold px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                     />
-                    <span className="text-[10px] text-slate-400 font-medium italic">Specify bag count for multi-bag orders</span>
+                    <span className="text-[10px] text-slate-400 font-medium italic">Click field to clear & type new count</span>
                   </div>
                 </div>
               </div>
@@ -1224,7 +1434,11 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                 </span>
               </h3>
               {viewMode === 'grid' ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
+                <div className={
+                  isCompactDensity 
+                    ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2" 
+                    : "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5"
+                }>
                   {dateOrders.map((o) => {
                     const customer = customers.find(c => c.id === o.customer_id);
                     const items = o.items || [];
@@ -1238,7 +1452,9 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                       <div 
                         key={o.id}
                         onClick={() => handleOpenPackingStation(o)}
-                        className={`bg-white dark:bg-slate-900 ${dStatus.cardBg || ''} rounded-xl border p-2.5 sm:p-3 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer relative overflow-hidden ${dStatus.border} hover:border-indigo-500/50`}
+                        className={`bg-white dark:bg-slate-900 ${dStatus.cardBg || ''} rounded-xl border ${
+                          isCompactDensity ? 'p-2 space-y-1' : 'p-2.5 sm:p-3 space-y-2'
+                        } shadow-sm hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer relative overflow-hidden ${dStatus.border} hover:border-indigo-500/50`}
                       >
                         <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-indigo-500/10 via-indigo-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
                         
@@ -1288,18 +1504,32 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                             </div>
                           </div>
                           
-                          {/* Delivery Date Badge - High priority feature */}
-                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-sm ${dStatus.badge}`}>
-                              <Clock size={12} className={dStatus.icon} />
-                              <div className="flex flex-col">
-                                <span className="text-[8px] uppercase font-black leading-none opacity-90 tracking-wider">{dStatus.statusText}</span>
-                                <span className="text-[10px] font-black">{formatDisplayDate(o.delivery_date) || formatDisplayDate(o.order_date) || 'No Date Set'}</span>
+                          {/* Delivery Target & Days Remaining Badge - Prominent Card Element */}
+                          <div className="flex items-center my-1.5">
+                            <div className={`w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl border shadow-sm ${dStatus.badge}`}>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Clock size={13} className={`${dStatus.icon} shrink-0`} />
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-[8px] uppercase font-black leading-tight tracking-wider opacity-90 truncate">
+                                    {dStatus.statusText}
+                                  </span>
+                                  <span className="text-[10px] font-black truncate">
+                                    {formatDisplayDate(o.delivery_date) || formatDisplayDate(o.order_date) || 'No Date Set'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-tight ${dStatus.pillClass}`}>
+                                  {dStatus.daysRemainingText}
+                                </span>
+                                {dStatus.ping && (
+                                  <span 
+                                    className={`flex h-2 w-2 rounded-full ${dStatus.pingBg} animate-ping`} 
+                                    title={dStatus.isOverdue ? 'Critical Overdue' : 'Delivery Target'}
+                                  ></span>
+                                )}
                               </div>
                             </div>
-                            {dStatus.ping && (
-                              <span className="flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-ping" title="Critical Overdue"></span>
-                            )}
                           </div>
 
                           {/* Customer Info Container */}
@@ -1392,21 +1622,21 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                               className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer"
                             >
                               <td className="p-3">
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
                                   <div className={`w-2.5 h-2.5 rounded-full ${dStatus.dot} flex-shrink-0 shadow-sm animate-pulse`}></div>
-                                  <div className="flex items-center gap-2">
-                                    <Clock size={14} className={dStatus.icon} />
+                                  <div className={`px-2.5 py-1 rounded-xl border flex items-center gap-2 shadow-sm ${dStatus.badge}`}>
+                                    <Clock size={13} className={dStatus.icon} />
                                     <div className="flex flex-col">
-                                      <span className={`text-[9px] uppercase font-black leading-none opacity-60 mb-0.5 ${dStatus.text}`}>
-                                        Delivery Target
+                                      <span className="text-[8px] uppercase font-black leading-tight opacity-90 tracking-wider">
+                                        {dStatus.statusText}
                                       </span>
-                                      <span className={`text-[11px] font-bold ${dStatus.text}`}>
+                                      <span className="text-[10px] font-black">
                                         {formatDisplayDate(o.delivery_date) || formatDisplayDate(o.order_date) || 'N/A'}
                                       </span>
-                                      {dStatus.ping && (
-                                        <span className="text-[9px] font-black text-rose-500 uppercase tracking-tighter">Deliver Today</span>
-                                      )}
                                     </div>
+                                    <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-tight ${dStatus.pillClass}`}>
+                                      {dStatus.daysRemainingText}
+                                    </span>
                                   </div>
                                 </div>
                               </td>

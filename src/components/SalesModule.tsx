@@ -746,12 +746,26 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       ? percDiscVal
       : (subtotalBeforeDiscount > 0 ? Number(((amtDiscVal / subtotalBeforeDiscount) * 100).toFixed(2)) : 0);
 
+    const displayDiscountPerc = discountType === 'Percentage'
+      ? customDiscountPercentage
+      : (customDiscountAmount !== '' && subtotalBeforeDiscount > 0
+          ? Number(((Number(customDiscountAmount) / subtotalBeforeDiscount) * 100).toFixed(2))
+          : (customDiscountAmount !== '' ? 0 : ''));
+
+    const displayDiscountAmt = discountType === 'Value'
+      ? customDiscountAmount
+      : (customDiscountPercentage !== ''
+          ? Number(((subtotalBeforeDiscount * Number(customDiscountPercentage)) / 100).toFixed(2))
+          : (customDiscountAmount !== '' ? Number(customDiscountAmount) : ''));
+
     return {
       taxableVal,
       taxVal,
       subtotalBeforeDiscount,
       discountAmount,
       discountPercentage: calculatedDiscountPerc,
+      displayDiscountPerc,
+      displayDiscountAmt,
       finalAmount,
       computedPaid,
       balance,
@@ -2017,22 +2031,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-0">
           <div className="bg-white dark:bg-slate-900 w-full h-full flex flex-col animate-in zoom-in duration-150 overflow-hidden">
-            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b flex items-center justify-between">
-              <div>
-                <h2 className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-slate-900 dark:text-white">
-                  <PlusCircle className="text-amber-500" />
-                  <span>{editingOrderId ? 'Update Sales Order Invoice' : 'Compile New Sales Order Invoice'}</span>
-                </h2>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] bg-indigo-50 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 font-extrabold px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
-                    Currency: {currencySymbol} ({currentBiz?.currency_symbol || currentBiz?.currency_default || 'INR'})
-                  </span>
-                  <span className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 font-extrabold px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                    Default Tax: {defaultTenantTax}% GST
-                  </span>
-                </div>
-              </div>
-              <button onClick={handleCloseCreateModal} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition"><X size={18} /></button>
+            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-3.5 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2 text-slate-900 dark:text-white">
+                <PlusCircle className="text-amber-500" size={18} />
+                <span>{editingOrderId ? 'Update Sales Order' : 'Create Sales Order'}</span>
+              </h2>
+              <button onClick={handleCloseCreateModal} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition"><X size={18} /></button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -2049,7 +2053,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     className="w-full px-3 py-2 bg-amber-50/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-[11px] rounded-lg border border-amber-300 dark:border-amber-800/80 focus:outline-hidden font-black cursor-not-allowed select-none"
                   />
                 </div>
-                <div className="md:col-span-2 space-y-1 flex flex-col justify-end">
+                <div className="md:col-span-3 space-y-1 flex flex-col justify-end">
                   <div className="flex items-center justify-between">
                     <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Select Customer Party</label>
                     <button
@@ -2192,23 +2196,23 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   </div>
                 )}
 
-                {/* Inline Editable Customer Details Card */}
-                {selectedCustomerId && selectedCustomerId !== 'WALK_IN' && !isNewCustomerSelected && (
+                {/* Inline Editable Customer Details Card in ONE ROW */}
+                {!isNewCustomerSelected && (
                   <div className="md:col-span-4 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5 animate-in fade-in duration-200">
                     <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700/80 pb-1.5">
                       <div className="flex items-center gap-1.5">
                         <User size={13} className="text-indigo-600 dark:text-indigo-400" />
                         <span className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">
-                          Editable Customer Details (Phone, Billing & Shipping)
+                          Customer Contact & Delivery Information
                         </span>
                       </div>
                       <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                        Inline Editing
+                        Inline Details
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {/* Contact Phone Number */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                      {/* 1. Contact Number * */}
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
                           <Phone size={10} />
@@ -2223,7 +2227,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         />
                       </div>
 
-                      {/* Billing Address */}
+                      {/* 2. Customer Address */}
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
                           <MapPin size={10} />
@@ -2243,7 +2247,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         />
                       </div>
 
-                      {/* Shipping Address */}
+                      {/* 3. Shipping Address */}
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
                           <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
@@ -2278,26 +2282,30 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           }`}
                         />
                       </div>
+
+                      {/* 4. Area Zone Location */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                          <MapPin size={10} className="text-indigo-500" />
+                          <span>Area Zone Location</span>
+                        </label>
+                        {(() => {
+                          const areaZoneList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
+                            ? currentBiz.area_zones 
+                            : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
+                          return (
+                            <CustomDropdown 
+                              value={selectedArea}
+                              onChange={(val) => setSelectedArea(val)}
+                              options={areaZoneList.map(aZone => ({ value: aZone, label: aZone }))}
+                              className="font-bold text-slate-700 dark:text-slate-200 h-8 text-[11px]"
+                            />
+                          );
+                        })()}
+                      </div>
                     </div>
                   </div>
                 )}
-
-                <div className="space-y-1 flex flex-col justify-end">
-                  <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Area Zone Location</label>
-                  {(() => {
-                    const areaZoneList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
-                      ? currentBiz.area_zones 
-                      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
-                    return (
-                      <CustomDropdown 
-                        value={selectedArea}
-                        onChange={(val) => setSelectedArea(val)}
-                        options={areaZoneList.map(aZone => ({ value: aZone, label: aZone }))}
-                        className="font-bold text-slate-700 dark:text-slate-200"
-                      />
-                    );
-                  })()}
-                </div>
 
                 {/* Loyalty Account Banner */}
                 {selectedCustomerId && selectedCustomerId !== 'WALK_IN' && (() => {
@@ -3039,247 +3047,257 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
             {/* Bottom Actions Footer */}
             {(() => {
-              const { taxableVal, taxVal, subtotalBeforeDiscount, discountAmount, finalAmount, actualRedeem } = calculatedTotals;
+              const {
+                taxableVal,
+                taxVal,
+                subtotalBeforeDiscount,
+                discountAmount,
+                displayDiscountPerc,
+                displayDiscountAmt,
+                finalAmount,
+                actualRedeem
+              } = calculatedTotals;
               const totalVal = finalAmount;
               const savingsInfo = calculateOrderSavings(orderItems, products);
               const selectedCust = customers.find(c => c.id === selectedCustomerId);
               const pointVal = dbStore.getLoyaltyConfig(businessId)?.point_value || 1;
 
               return (
-                <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-3">
+                <div className="p-4 bg-slate-900 text-white border-t border-slate-800 flex flex-col gap-3 rounded-b-2xl shadow-xl">
                   {savingsInfo.totalSavings > 0 && (
-                    <div className="px-3 py-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/80 dark:to-teal-950/80 border border-emerald-300 dark:border-emerald-800 rounded-xl text-emerald-950 dark:text-emerald-200 text-xs font-bold flex items-center justify-between gap-2 shadow-xs">
+                    <div className="px-3 py-2 bg-gradient-to-r from-emerald-900/80 to-teal-900/80 border border-emerald-500/50 rounded-xl text-emerald-100 text-xs font-bold flex items-center justify-between gap-2 shadow-xs">
                       <div className="flex items-center gap-2">
                         <span className="text-base">🎉</span>
                         <span className="font-extrabold">{savingsInfo.bannerMessage}</span>
                       </div>
-                      <span className="text-[10px] font-mono font-black text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700">
+                      <span className="text-[10px] font-mono font-black text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-700">
                         Total Member Savings: {currencySymbol}{savingsInfo.totalSavings.toLocaleString()}
                       </span>
                     </div>
                   )}
 
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <div className="flex items-center gap-4 text-left font-mono text-[11px] flex-wrap">
-                    {actualRedeem > 0 && selectedCust && (
-                      <div className="bg-amber-50 dark:bg-amber-950/70 px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700/80 flex flex-col justify-center gap-0.5 shrink-0 shadow-2xs">
-                        <span className="text-[9.5px] uppercase font-black text-amber-800 dark:text-amber-300 tracking-wider">
-                          Loyalty Points Status
+                  {actualRedeem > 0 && selectedCust && (
+                    <div className="bg-amber-950/60 px-3 py-2 rounded-xl border border-amber-600/50 flex items-center justify-between gap-3 text-[11px] font-mono">
+                      <span className="text-amber-300 font-extrabold uppercase tracking-wider text-[10px]">Loyalty Points Status</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-amber-300 font-bold">
+                          Redeemed: -{actualRedeem} Pts (-{currencySymbol}{(actualRedeem * pointVal).toLocaleString()})
                         </span>
-                        <div className="flex items-center gap-2.5 text-[10.5px] font-mono">
-                          <span className="text-amber-800 dark:text-amber-300 font-black">
-                            Redeemed: -{actualRedeem} Pts (-{currencySymbol}{(actualRedeem * pointVal).toLocaleString()})
-                          </span>
-                          <span className="text-emerald-700 dark:text-emerald-400 font-black border-l border-amber-300 dark:border-amber-700 pl-2.5">
-                            Remaining: {Math.max(0, (selectedCust.loyalty_points || 0) - actualRedeem).toLocaleString()} Pts
-                          </span>
+                        <span className="text-emerald-400 font-bold border-l border-amber-800/80 pl-3">
+                          Remaining: {Math.max(0, (selectedCust.loyalty_points || 0) - actualRedeem).toLocaleString()} Pts
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center pt-1">
+                    {/* Left 7 Columns: Adjustment Controls Grid */}
+                    <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-800/80 p-3 rounded-xl border border-slate-700/80">
+                      <div>
+                        <span className="text-[10px] text-rose-400 uppercase block font-black tracking-wider mb-1">
+                          Discount (%)
+                        </span>
+                        <div className="flex items-stretch rounded-lg overflow-hidden border border-rose-500/50 bg-slate-900 focus-within:ring-2 focus-within:ring-rose-500">
+                          <div className="px-2 bg-rose-950/80 text-rose-400 text-xs font-bold font-mono flex items-center justify-center border-r border-rose-800">
+                            %
+                          </div>
+                          <input 
+                            type="number"
+                            min={0}
+                            step="any"
+                            placeholder="0"
+                            value={displayDiscountPerc}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setDiscountType('Percentage');
+                              if (val === '') {
+                                setCustomDiscountPercentage('');
+                                setCustomDiscountAmount('');
+                              } else {
+                                const num = parseFloat(val);
+                                const validNum = isNaN(num) ? '' : Math.max(0, num);
+                                setCustomDiscountPercentage(validNum);
+                                if (typeof validNum === 'number' && subtotalBeforeDiscount > 0) {
+                                  const calcAmt = Number(((subtotalBeforeDiscount * validNum) / 100).toFixed(2));
+                                  setCustomDiscountAmount(calcAmt > 0 ? calcAmt : '');
+                                } else {
+                                  setCustomDiscountAmount('');
+                                }
+                              }
+                            }}
+                            className="w-full px-2 py-1.5 bg-transparent text-xs font-mono font-bold text-rose-300 focus:outline-none text-right min-w-0"
+                          />
                         </div>
                       </div>
-                    )}
-                    <div>
-                      <span className="text-[10px] text-slate-900 dark:text-slate-100 uppercase block font-black tracking-wider mb-0.5">Base Subtotal</span>
-                      <strong className="font-bold text-slate-700 dark:text-slate-300">
-                        {currencySymbol}{taxableVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-900 dark:text-slate-100 uppercase block font-black tracking-wider mb-0.5">Total Tax (GST)</span>
-                      <strong className="font-bold text-emerald-600 dark:text-emerald-400">
-                        +{currencySymbol}{taxVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-rose-600 dark:text-rose-400 uppercase block font-black tracking-wider mb-0.5">
-                        Discount (%)
-                      </span>
-                      <div className="flex items-stretch w-24 border border-rose-300 dark:border-rose-700 rounded-lg overflow-hidden shadow-xs focus-within:ring-2 focus-within:ring-rose-500">
-                        <div className="px-2 bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-400 text-xs font-bold font-mono flex items-center justify-center border-r border-rose-300 dark:border-rose-700">
-                          %
+
+                      <div>
+                        <span className="text-[10px] text-rose-400 uppercase block font-black tracking-wider mb-1">
+                          Discount ({currencySymbol})
+                        </span>
+                        <div className="flex items-stretch rounded-lg overflow-hidden border border-rose-500/50 bg-slate-900 focus-within:ring-2 focus-within:ring-rose-500">
+                          <div className="px-2 bg-rose-950/80 text-rose-400 text-xs font-bold font-mono flex items-center justify-center border-r border-rose-800">
+                            {currencySymbol}
+                          </div>
+                          <input 
+                            type="number"
+                            min={0}
+                            step="any"
+                            placeholder="0.00"
+                            value={displayDiscountAmt}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setDiscountType('Value');
+                              if (val === '') {
+                                setCustomDiscountAmount('');
+                                setCustomDiscountPercentage('');
+                              } else {
+                                const num = parseFloat(val);
+                                const validNum = isNaN(num) ? '' : Math.max(0, num);
+                                setCustomDiscountAmount(validNum);
+                                if (typeof validNum === 'number' && subtotalBeforeDiscount > 0) {
+                                  const calcPerc = Number(((validNum / subtotalBeforeDiscount) * 100).toFixed(2));
+                                  setCustomDiscountPercentage(calcPerc > 0 ? calcPerc : '');
+                                } else {
+                                  setCustomDiscountPercentage('');
+                                }
+                              }
+                            }}
+                            className="w-full px-2 py-1.5 bg-transparent text-xs font-mono font-bold text-rose-300 focus:outline-none text-right min-w-0"
+                          />
                         </div>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-amber-400 uppercase block font-black tracking-wider mb-1">
+                          Addl. Chg ({currencySymbol})
+                        </span>
                         <input 
                           type="number"
                           min={0}
                           step="any"
                           placeholder="0"
-                          value={
-                            discountType === 'Percentage'
-                              ? customDiscountPercentage
-                              : (customDiscountAmount !== '' && subtotalBeforeDiscount > 0
-                                  ? Number(((Number(customDiscountAmount) / subtotalBeforeDiscount) * 100).toFixed(2))
-                                  : customDiscountPercentage)
-                          }
+                          value={additionalCharges}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => {
                             const val = e.target.value;
-                            setDiscountType('Percentage');
                             if (val === '') {
-                              setCustomDiscountPercentage('');
-                              setCustomDiscountAmount('');
+                              setAdditionalCharges('');
                             } else {
                               const num = parseFloat(val);
-                              const validNum = isNaN(num) ? '' : Math.max(0, num);
-                              setCustomDiscountPercentage(validNum);
-                              if (typeof validNum === 'number' && subtotalBeforeDiscount > 0) {
-                                const calcAmt = Number(((subtotalBeforeDiscount * validNum) / 100).toFixed(2));
-                                setCustomDiscountAmount(calcAmt > 0 ? calcAmt : '');
-                              } else {
-                                setCustomDiscountAmount('');
-                              }
+                              setAdditionalCharges(isNaN(num) ? '' : Math.max(0, num));
                             }
                           }}
-                          className="w-full px-2 py-1 bg-white dark:bg-slate-800 text-xs font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-none text-right min-w-0"
+                          className="w-full px-2.5 py-1.5 bg-slate-900 border border-amber-500/50 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
                         />
                       </div>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-rose-600 dark:text-rose-400 uppercase block font-black tracking-wider mb-0.5">
-                        Discount ({currencySymbol})
-                      </span>
-                      <div className="flex items-stretch w-28 border border-rose-300 dark:border-rose-700 rounded-lg overflow-hidden shadow-xs focus-within:ring-2 focus-within:ring-rose-500">
-                        <div className="px-2 bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-400 text-xs font-bold font-mono flex items-center justify-center border-r border-rose-300 dark:border-rose-700">
-                          {currencySymbol}
-                        </div>
+
+                      <div>
+                        <span className="text-[10px] text-amber-400 uppercase block font-black tracking-wider mb-1">
+                          Del. Chg ({currencySymbol})
+                        </span>
                         <input 
                           type="number"
                           min={0}
                           step="any"
-                          placeholder="0.00"
-                          value={
-                            discountType === 'Value'
-                              ? customDiscountAmount
-                              : (customDiscountPercentage !== '' && subtotalBeforeDiscount > 0
-                                  ? Number(((subtotalBeforeDiscount * Number(customDiscountPercentage)) / 100).toFixed(2))
-                                  : customDiscountAmount)
-                          }
+                          placeholder="0"
+                          value={deliveryCharges}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => {
                             const val = e.target.value;
-                            setDiscountType('Value');
                             if (val === '') {
-                              setCustomDiscountAmount('');
-                              setCustomDiscountPercentage('');
+                              setDeliveryCharges('');
                             } else {
                               const num = parseFloat(val);
-                              const validNum = isNaN(num) ? '' : Math.max(0, num);
-                              setCustomDiscountAmount(validNum);
-                              if (typeof validNum === 'number' && subtotalBeforeDiscount > 0) {
-                                const calcPerc = Number(((validNum / subtotalBeforeDiscount) * 100).toFixed(2));
-                                setCustomDiscountPercentage(calcPerc > 0 ? calcPerc : '');
-                              } else {
-                                setCustomDiscountPercentage('');
-                              }
+                              setDeliveryCharges(isNaN(num) ? '' : Math.max(0, num));
                             }
                           }}
-                          className="w-full px-2 py-1 bg-white dark:bg-slate-800 text-xs font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-none text-right min-w-0"
+                          className="w-full px-2.5 py-1.5 bg-slate-900 border border-amber-500/50 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
                         />
                       </div>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 uppercase block font-black tracking-wider mb-0.5">
-                        Addl. Chg ({currencySymbol})
-                      </span>
-                      <input 
-                        type="number"
-                        min={0}
-                        step="any"
-                        placeholder="0"
-                        value={additionalCharges}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '') {
-                            setAdditionalCharges('');
-                          } else {
-                            const num = parseFloat(val);
-                            setAdditionalCharges(isNaN(num) ? '' : Math.max(0, num));
-                          }
-                        }}
-                        className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500 shadow-xs text-right"
-                      />
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 uppercase block font-black tracking-wider mb-0.5">
-                        Del. Chg ({currencySymbol})
-                      </span>
-                      <input 
-                        type="number"
-                        min={0}
-                        step="any"
-                        placeholder="0"
-                        value={deliveryCharges}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '') {
-                            setDeliveryCharges('');
-                          } else {
-                            const num = parseFloat(val);
-                            setDeliveryCharges(isNaN(num) ? '' : Math.max(0, num));
-                          }
-                        }}
-                        className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500 shadow-xs text-right"
-                      />
-                    </div>
-                    <div className="border-l border-slate-200 dark:border-slate-700 pl-4">
-                      <span className="text-[11px] text-indigo-700 dark:text-indigo-400 uppercase block font-black tracking-widest mb-0.5">Grand Total Value</span>
-                      <strong className="text-lg font-black text-indigo-600 dark:text-indigo-400">
-                        {currencySymbol}{totalVal.toLocaleString()}
-                      </strong>
-                    </div>
-                  </div>
 
-                  <div className="flex gap-2 w-full sm:w-auto justify-end">
-                    <button 
-                      type="button" 
-                      onClick={handleCloseCreateModal}
-                      className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[11px] font-semibold hover:bg-slate-300 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    
-                    <div className="relative flex">
-                      <button 
-                        type="button" 
-                        disabled={isSubmitting}
-                        onClick={() => handleCreateSalesOrder('close')}
-                        className={`px-4 py-2 rounded-l-lg text-[11px] font-bold shadow-md cursor-pointer transition flex items-center gap-1.5 ${isSubmitting ? 'bg-slate-400 cursor-not-allowed text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
-                      >
-                        {isSubmitting ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
-                        {editingOrderId ? 'Update Order' : 'Save'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsSubmitDropdownOpen(!isSubmitDropdownOpen)}
-                        className="px-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-r-lg border-l border-indigo-500 transition-colors cursor-pointer"
-                      >
-                        <ChevronDown size={14} className={`transition-transform duration-200 ${isSubmitDropdownOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                      
-                      {isSubmitDropdownOpen && (
-                        <div className="absolute bottom-full right-0 mb-2 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-150">
-                           <button 
-                             type="button"
-                             onClick={() => handleCreateSalesOrder('print')}
-                             className="w-full px-4 py-3 text-left text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between transition-colors cursor-pointer group"
-                           >
-                             <span className="group-hover:text-indigo-600 transition-colors">Save & Print</span>
-                             <Printer size={13} className="text-slate-400 group-hover:text-indigo-500" />
-                           </button>
-                           <button 
-                             type="button"
-                             onClick={() => handleCreateSalesOrder('share')}
-                             className="w-full px-4 py-3 text-left text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between border-t border-slate-100 dark:border-slate-700 transition-colors cursor-pointer group"
-                           >
-                             <span className="group-hover:text-indigo-600 transition-colors">Save & Share</span>
-                             <Share2 size={13} className="text-slate-400 group-hover:text-indigo-500" />
-                           </button>
+                    {/* Right 5 Columns: Totals & Action Buttons */}
+                    <div className="lg:col-span-5 flex flex-col justify-between items-end gap-3 pl-2">
+                      <div className="flex items-center justify-end gap-4 text-right w-full">
+                        <div>
+                          <span className="text-[9.5px] text-slate-400 uppercase font-black tracking-wider block">Base Subtotal</span>
+                          <span className="font-mono text-xs font-bold text-slate-200">
+                            {currencySymbol}{taxableVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
                         </div>
-                      )}
+                        <div>
+                          <span className="text-[9.5px] text-emerald-400 uppercase font-black tracking-wider block">Tax (GST)</span>
+                          <span className="font-mono text-xs font-bold text-emerald-400">
+                            +{currencySymbol}{taxVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="pl-3 border-l border-slate-700">
+                          <span className="text-[10.5px] text-indigo-300 uppercase font-black tracking-widest block">Grand Total Value</span>
+                          <span className="text-xl font-mono font-black text-emerald-400">
+                            {currencySymbol}{totalVal.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2.5 justify-end w-full pt-1">
+                        <button 
+                          type="button" 
+                          onClick={handleCloseCreateModal}
+                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                        >
+                          Cancel
+                        </button>
+                        
+                        <div className="relative flex shadow-md shadow-indigo-950/60 rounded-xl">
+                          <button 
+                            type="button" 
+                            disabled={isSubmitting}
+                            onClick={() => handleCreateSalesOrder('close')}
+                            className={`px-5 py-2 text-xs font-bold transition-all cursor-pointer flex items-center gap-2 rounded-l-xl ${
+                              isSubmitting 
+                                ? 'bg-slate-700 cursor-not-allowed text-slate-400' 
+                                : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white'
+                            }`}
+                          >
+                            {isSubmitting ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                            {editingOrderId ? 'Update Order' : 'Save Order'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsSubmitDropdownOpen(!isSubmitDropdownOpen)}
+                            className="px-2.5 py-2 bg-indigo-700 hover:bg-indigo-600 text-white border-l border-indigo-500/50 transition-colors cursor-pointer flex items-center rounded-r-xl"
+                          >
+                            <ChevronDown size={14} className={`transition-transform duration-200 ${isSubmitDropdownOpen ? 'rotate-180' : ''}`} />
+                          </button>
+                          
+                          {isSubmitDropdownOpen && (
+                            <div className="absolute bottom-full right-0 mb-2 w-48 bg-slate-800 text-slate-100 rounded-xl shadow-2xl border border-slate-700 overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-150">
+                               <button 
+                                 type="button"
+                                 onClick={() => handleCreateSalesOrder('print')}
+                                 className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-slate-700 flex items-center justify-between transition-colors cursor-pointer group"
+                               >
+                                 <span className="group-hover:text-indigo-400 transition-colors">Save & Print</span>
+                                 <Printer size={14} className="text-slate-400 group-hover:text-indigo-400" />
+                               </button>
+                               <button 
+                                 type="button"
+                                 onClick={() => handleCreateSalesOrder('share')}
+                                 className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-slate-700 flex items-center justify-between border-t border-slate-700/60 transition-colors cursor-pointer group"
+                               >
+                                 <span className="group-hover:text-indigo-400 transition-colors">Save & Share</span>
+                                 <Share2 size={14} className="text-slate-400 group-hover:text-indigo-400" />
+                               </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            );
+              );
             })()}
           </div>
         </div>

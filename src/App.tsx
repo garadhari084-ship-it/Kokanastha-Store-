@@ -1822,7 +1822,7 @@ export default function App() {
                 }`}
                 title={isSidebarMinimized ? item.label : undefined}
               >
-                <div className={`flex items-center gap-2.5 ${isSidebarMinimized ? 'lg:justify-center' : ''}`}>
+                <div className={`flex items-center gap-2.5 flex-1 min-w-0 ${isSidebarMinimized ? 'lg:justify-center' : ''}`}>
                   <div className="relative shrink-0">
                     <item.icon size={18} className={`${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`} />
                     {item.id === 'inbox' && unreadMessages.length > 0 && isSidebarMinimized && (
@@ -1836,7 +1836,7 @@ export default function App() {
                       </span>
                     )}
                   </div>
-                  <span className={isSidebarMinimized ? 'lg:hidden' : ''}>{item.label}</span>
+                  <span className={`whitespace-nowrap truncate text-left ${isSidebarMinimized ? 'lg:hidden' : ''}`}>{item.label}</span>
                 </div>
                 {item.id === 'inbox' && unreadMessages.length > 0 && !isSidebarMinimized && (
                   <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black min-w-[18px] text-center shadow-sm animate-in zoom-in duration-150">

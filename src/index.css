@@ -98,3 +98,36 @@ select, select option, option {
     @apply bg-slate-300 dark:bg-slate-600;
   }
 }
+
+@layer utilities {
+  .always-show-spinners {
+    -moz-appearance: number-input !important;
+  }
+  
+}
+
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark .always-show-spinners {
+  color-scheme: dark !important;
+}
+
+@layer utilities {
+  .always-show-spinners::-webkit-inner-spin-button,
+  .always-show-spinners::-webkit-outer-spin-button {
+    -webkit-appearance: none !important;
+    display: block !important;
+    width: 14px !important;
+    height: 24px !important;
+    opacity: 1 !important;
+    background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 24'%3E%3Cpath fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M3 9l5-5 5 5M3 15l5 5 5-5'/%3E%3C/svg%3E") no-repeat center center !important;
+    background-size: 14px 20px !important;
+    cursor: pointer;
+  }
+}

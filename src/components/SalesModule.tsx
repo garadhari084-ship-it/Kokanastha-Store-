@@ -3092,7 +3092,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center pt-1">
                     {/* Left 7 Columns: Adjustment Controls Grid */}
-                    <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-800/80 p-3 rounded-xl border border-slate-700/80">
+                    <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-4 bg-slate-800/80 p-3 rounded-xl border border-slate-700/80">
                       <div>
                         <span className="text-[10px] text-rose-400 uppercase block font-black tracking-wider mb-1">
                           Discount (%)
@@ -3106,27 +3106,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             min={0}
                             step="any"
                             placeholder="0"
-                            value={displayDiscountPerc}
-                            onFocus={(e) => e.target.select()}
+                            value={customDiscountPercentage}
+                            onFocus={(e) => {
+                              e.target.select();
+                              setDiscountType('Percentage');
+                            }}
                             onChange={(e) => {
                               const val = e.target.value;
                               setDiscountType('Percentage');
-                              if (val === '') {
-                                setCustomDiscountPercentage('');
-                                setCustomDiscountAmount('');
-                              } else {
-                                const num = parseFloat(val);
-                                const validNum = isNaN(num) ? '' : Math.max(0, num);
-                                setCustomDiscountPercentage(validNum);
-                                if (typeof validNum === 'number' && subtotalBeforeDiscount > 0) {
-                                  const calcAmt = Number(((subtotalBeforeDiscount * validNum) / 100).toFixed(2));
-                                  setCustomDiscountAmount(calcAmt > 0 ? calcAmt : '');
-                                } else {
-                                  setCustomDiscountAmount('');
-                                }
-                              }
+                              setCustomDiscountPercentage(val);
+                              setCustomDiscountAmount('');
                             }}
-                            className="w-full px-2 py-1.5 bg-transparent text-xs font-mono font-bold text-rose-300 focus:outline-none text-right min-w-0"
+                            className="w-full pl-2 py-1.5 always-show-spinners bg-transparent text-xs font-mono font-bold text-rose-300 focus:outline-none text-right min-w-0"
                           />
                         </div>
                       </div>
@@ -3144,27 +3135,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             min={0}
                             step="any"
                             placeholder="0.00"
-                            value={displayDiscountAmt}
-                            onFocus={(e) => e.target.select()}
+                            value={customDiscountAmount}
+                            onFocus={(e) => {
+                              e.target.select();
+                              setDiscountType('Value');
+                            }}
                             onChange={(e) => {
                               const val = e.target.value;
                               setDiscountType('Value');
-                              if (val === '') {
-                                setCustomDiscountAmount('');
-                                setCustomDiscountPercentage('');
-                              } else {
-                                const num = parseFloat(val);
-                                const validNum = isNaN(num) ? '' : Math.max(0, num);
-                                setCustomDiscountAmount(validNum);
-                                if (typeof validNum === 'number' && subtotalBeforeDiscount > 0) {
-                                  const calcPerc = Number(((validNum / subtotalBeforeDiscount) * 100).toFixed(2));
-                                  setCustomDiscountPercentage(calcPerc > 0 ? calcPerc : '');
-                                } else {
-                                  setCustomDiscountPercentage('');
-                                }
-                              }
+                              setCustomDiscountAmount(val);
+                              setCustomDiscountPercentage('');
                             }}
-                            className="w-full px-2 py-1.5 bg-transparent text-xs font-mono font-bold text-rose-300 focus:outline-none text-right min-w-0"
+                            className="w-full pl-2 py-1.5 always-show-spinners bg-transparent text-xs font-mono font-bold text-rose-300 focus:outline-none text-right min-w-0"
                           />
                         </div>
                       </div>
@@ -3174,14 +3156,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           Addl. Chg ({currencySymbol})
                         </span>
                         <input 
-                          type="number"
-                          min={0}
-                          step="any"
+                          type="text"
+                          inputMode="decimal"
                           placeholder="0"
                           value={additionalCharges}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.target.value.replace(/[^0-9.]/g, '');
                             if (val === '') {
                               setAdditionalCharges('');
                             } else {
@@ -3189,7 +3170,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                               setAdditionalCharges(isNaN(num) ? '' : Math.max(0, num));
                             }
                           }}
-                          className="w-full px-2.5 py-1.5 bg-slate-900 border border-amber-500/50 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
+                          className="w-full pl-2.5 py-1.5 always-show-spinners bg-slate-900 border border-amber-500/50 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
                         />
                       </div>
 
@@ -3198,14 +3179,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           Del. Chg ({currencySymbol})
                         </span>
                         <input 
-                          type="number"
-                          min={0}
-                          step="any"
+                          type="text"
+                          inputMode="decimal"
                           placeholder="0"
                           value={deliveryCharges}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.target.value.replace(/[^0-9.]/g, '');
                             if (val === '') {
                               setDeliveryCharges('');
                             } else {
@@ -3213,7 +3193,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                               setDeliveryCharges(isNaN(num) ? '' : Math.max(0, num));
                             }
                           }}
-                          className="w-full px-2.5 py-1.5 bg-slate-900 border border-amber-500/50 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
+                          className="w-full pl-2.5 py-1.5 always-show-spinners bg-slate-900 border border-amber-500/50 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
                         />
                       </div>
                     </div>

@@ -311,8 +311,8 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
             </div>
             {discount > 0 && (
               <div className="flex justify-between font-mono text-rose-600">
-                <span className="font-sans">Discount</span>
-                <span>{order.discount_percentage ? `-${order.discount_percentage}%` : `-${currencySymbol} ${discount.toFixed(2)}`}</span>
+                <span className="font-sans">Discount {order.discount_percentage ? `(${order.discount_percentage}%)` : ''}</span>
+                <span>-{currencySymbol} {discount.toFixed(2)}</span>
               </div>
             )}
             {order.points_redeemed !== undefined && order.points_redeemed > 0 && (

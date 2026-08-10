@@ -382,8 +382,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [paidAmount, setPaidAmount] = useState<number | string>('');
   const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
-  const [customDiscount, setCustomDiscount] = useState<number | string>('');
-  const [discountType, setDiscountType] = useState<'Value' | 'Percentage'>('Percentage');
+  const [customDiscountPercentage, setCustomDiscountPercentage] = useState<number | string>('');
+  const [customDiscountAmount, setCustomDiscountAmount] = useState<number | string>('');
+  const [discountType, setDiscountType] = useState<'Percentage' | 'Value'>('Percentage');
   const [additionalCharges, setAdditionalCharges] = useState<number | string>('');
   const [deliveryCharges, setDeliveryCharges] = useState<number | string>('');
   const [additionalChargeType, setAdditionalChargeType] = useState<'Delivery' | 'Additional'>('Delivery');
@@ -495,7 +496,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setPaymentMode('Cash');
     setPaidAmount('');
     setPointsToRedeem(0);
-    setCustomDiscount('');
+    setCustomDiscountPercentage('');
+    setCustomDiscountAmount('');
     setDiscountType('Percentage');
     setAdditionalCharges('');
     setAdditionalChargeType('Delivery');
@@ -581,8 +583,19 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setPaymentStatus(order.payment_status);
     setPaymentMode(order.payment_mode || 'Cash');
     setPaidAmount(order.paid_amount || 0);
-    setCustomDiscount(order.discount_percentage ? order.discount_percentage : (order.discount_amount || 0));
-    setDiscountType('Percentage');
+    if (order.discount_percentage && order.discount_percentage > 0) {
+      setDiscountType('Percentage');
+      setCustomDiscountPercentage(order.discount_percentage);
+      setCustomDiscountAmount(order.discount_amount || '');
+    } else if (order.discount_amount && order.discount_amount > 0) {
+      setDiscountType('Value');
+      setCustomDiscountAmount(order.discount_amount);
+      setCustomDiscountPercentage(order.discount_percentage || '');
+    } else {
+      setDiscountType('Percentage');
+      setCustomDiscountPercentage('');
+      setCustomDiscountAmount('');
+    }
     setAdditionalCharges(order.additional_charges || 0);
     setDeliveryCharges(order.delivery_charges || 0);
     setAdditionalChargeType(order.additional_charges_type || 'Delivery');
@@ -701,15 +714,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     const pts = selCust?.loyalty_points || 0;
     const actualRedeem = Math.min(pts, Number(pointsToRedeem) || 0);
     
-    let customDiscVal = customDiscount !== '' && !isNaN(Number(customDiscount)) ? Math.max(0, Number(customDiscount)) : 0;
+    let percDiscVal = customDiscountPercentage !== '' && !isNaN(Number(customDiscountPercentage)) ? Math.max(0, Number(customDiscountPercentage)) : 0;
+    let amtDiscVal = customDiscountAmount !== '' && !isNaN(Number(customDiscountAmount)) ? Math.max(0, Number(customDiscountAmount)) : 0;
+
     let discAmt = actualRedeem * pointVal;
-    if (customDiscVal > 0) {
-      if (discountType === 'Percentage') {
-        discAmt += (subtotalBeforeDiscount * customDiscVal) / 100;
-      } else {
-        discAmt += customDiscVal;
-      }
+    if (discountType === 'Percentage') {
+      discAmt += (subtotalBeforeDiscount * percDiscVal) / 100;
+    } else {
+      discAmt += amtDiscVal;
     }
+
     const discountAmount = Math.round(discAmt);
     
     const addCharges = additionalCharges !== '' && !isNaN(Number(additionalCharges)) ? Math.max(0, Number(additionalCharges)) : 0;
@@ -728,11 +742,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     
     const balance = Math.max(0, finalAmount - computedPaid);
 
+    const calculatedDiscountPerc = discountType === 'Percentage'
+      ? percDiscVal
+      : (subtotalBeforeDiscount > 0 ? Number(((amtDiscVal / subtotalBeforeDiscount) * 100).toFixed(2)) : 0);
+
     return {
       taxableVal,
       taxVal,
       subtotalBeforeDiscount,
       discountAmount,
+      discountPercentage: calculatedDiscountPerc,
       finalAmount,
       computedPaid,
       balance,
@@ -740,7 +759,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       addCharges,
       delCharges
     };
-  }, [orderItems, pointsToRedeem, customDiscount, discountType, additionalCharges, deliveryCharges, paymentStatus, paidAmount, selectedCustomerId, customers, businessId]);
+  }, [orderItems, pointsToRedeem, customDiscountPercentage, customDiscountAmount, discountType, additionalCharges, deliveryCharges, paymentStatus, paidAmount, selectedCustomerId, customers, businessId]);
 
   const scheduledCountForSelectedDate = useMemo(() => {
     if (!deliveryDate) return 0;
@@ -944,7 +963,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
           discount_amount: calculatedDiscount,
-          discount_percentage: discountType === 'Percentage' ? Number(customDiscount) : 0,
+          discount_percentage: calculatedTotals.discountPercentage,
           additional_charges: Number(additionalCharges) || 0,
           delivery_charges: Number(deliveryCharges) || 0,
           additional_charges_type: additionalChargeType,
@@ -1016,7 +1035,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
           discount_amount: calculatedDiscount,
-          discount_percentage: discountType === 'Percentage' ? Number(customDiscount) : 0,
+          discount_percentage: calculatedTotals.discountPercentage,
           additional_charges: Number(additionalCharges) || 0,
           delivery_charges: Number(deliveryCharges) || 0,
           additional_charges_type: additionalChargeType,
@@ -3020,7 +3039,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
             {/* Bottom Actions Footer */}
             {(() => {
-              const { taxableVal, taxVal, discountAmount, finalAmount, actualRedeem } = calculatedTotals;
+              const { taxableVal, taxVal, subtotalBeforeDiscount, discountAmount, finalAmount, actualRedeem } = calculatedTotals;
               const totalVal = finalAmount;
               const savingsInfo = calculateOrderSavings(orderItems, products);
               const selectedCust = customers.find(c => c.id === selectedCustomerId);
@@ -3071,32 +3090,84 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </div>
                     <div>
                       <span className="text-[10px] text-rose-600 dark:text-rose-400 uppercase block font-black tracking-wider mb-0.5">
-                        Discount
+                        Discount (%)
                       </span>
-                      <div className="flex items-stretch w-28 border border-rose-300 dark:border-rose-700 rounded-lg overflow-hidden shadow-xs focus-within:ring-2 focus-within:ring-rose-500">
-                        <select 
-                          value={discountType}
-                          onChange={(e) => setDiscountType(e.target.value as 'Value' | 'Percentage')}
-                          className="px-1.5 bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-400 text-xs font-bold font-mono border-r border-rose-300 dark:border-rose-700 outline-none cursor-pointer text-center appearance-none"
-                          title="Toggle Percentage / Fixed Amount"
-                        >
-                          <option value="Percentage">%</option>
-                          <option value="Value">{currencySymbol}</option>
-                        </select>
+                      <div className="flex items-stretch w-24 border border-rose-300 dark:border-rose-700 rounded-lg overflow-hidden shadow-xs focus-within:ring-2 focus-within:ring-rose-500">
+                        <div className="px-2 bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-400 text-xs font-bold font-mono flex items-center justify-center border-r border-rose-300 dark:border-rose-700">
+                          %
+                        </div>
                         <input 
                           type="number"
                           min={0}
                           step="any"
                           placeholder="0"
-                          value={customDiscount}
+                          value={
+                            discountType === 'Percentage'
+                              ? customDiscountPercentage
+                              : (customDiscountAmount !== '' && subtotalBeforeDiscount > 0
+                                  ? Number(((Number(customDiscountAmount) / subtotalBeforeDiscount) * 100).toFixed(2))
+                                  : customDiscountPercentage)
+                          }
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => {
                             const val = e.target.value;
+                            setDiscountType('Percentage');
                             if (val === '') {
-                              setCustomDiscount('');
+                              setCustomDiscountPercentage('');
+                              setCustomDiscountAmount('');
                             } else {
                               const num = parseFloat(val);
-                              setCustomDiscount(isNaN(num) ? '' : Math.max(0, num));
+                              const validNum = isNaN(num) ? '' : Math.max(0, num);
+                              setCustomDiscountPercentage(validNum);
+                              if (typeof validNum === 'number' && subtotalBeforeDiscount > 0) {
+                                const calcAmt = Number(((subtotalBeforeDiscount * validNum) / 100).toFixed(2));
+                                setCustomDiscountAmount(calcAmt > 0 ? calcAmt : '');
+                              } else {
+                                setCustomDiscountAmount('');
+                              }
+                            }
+                          }}
+                          className="w-full px-2 py-1 bg-white dark:bg-slate-800 text-xs font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-none text-right min-w-0"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-rose-600 dark:text-rose-400 uppercase block font-black tracking-wider mb-0.5">
+                        Discount ({currencySymbol})
+                      </span>
+                      <div className="flex items-stretch w-28 border border-rose-300 dark:border-rose-700 rounded-lg overflow-hidden shadow-xs focus-within:ring-2 focus-within:ring-rose-500">
+                        <div className="px-2 bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-400 text-xs font-bold font-mono flex items-center justify-center border-r border-rose-300 dark:border-rose-700">
+                          {currencySymbol}
+                        </div>
+                        <input 
+                          type="number"
+                          min={0}
+                          step="any"
+                          placeholder="0.00"
+                          value={
+                            discountType === 'Value'
+                              ? customDiscountAmount
+                              : (customDiscountPercentage !== '' && subtotalBeforeDiscount > 0
+                                  ? Number(((subtotalBeforeDiscount * Number(customDiscountPercentage)) / 100).toFixed(2))
+                                  : customDiscountAmount)
+                          }
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setDiscountType('Value');
+                            if (val === '') {
+                              setCustomDiscountAmount('');
+                              setCustomDiscountPercentage('');
+                            } else {
+                              const num = parseFloat(val);
+                              const validNum = isNaN(num) ? '' : Math.max(0, num);
+                              setCustomDiscountAmount(validNum);
+                              if (typeof validNum === 'number' && subtotalBeforeDiscount > 0) {
+                                const calcPerc = Number(((validNum / subtotalBeforeDiscount) * 100).toFixed(2));
+                                setCustomDiscountPercentage(calcPerc > 0 ? calcPerc : '');
+                              } else {
+                                setCustomDiscountPercentage('');
+                              }
                             }
                           }}
                           className="w-full px-2 py-1 bg-white dark:bg-slate-800 text-xs font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-none text-right min-w-0"

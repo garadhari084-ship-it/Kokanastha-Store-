@@ -100,5 +100,12 @@ export function buildBillVerificationString(params: {
   gstin?: string;
 }): string {
   const { orderNumber, orderDate, amount, customerName, businessName, gstin } = params;
+  
+  // Return a URL pointing to the public invoice view
+  // Fallback to a plain text formatted string if window is not defined (e.g., SSR)
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/?inv=${encodeURIComponent(orderNumber)}`;
+  }
+  
   return `INV:${orderNumber}|DATE:${orderDate}|AMT:${amount.toFixed(2)}|CUST:${customerName.trim()}|BIZ:${businessName || ''}|GSTIN:${gstin || ''}`;
 }

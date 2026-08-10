@@ -51,26 +51,49 @@ import { supabase, isSupabaseConfigured } from './services/supabase';
 // Import Views
 import { PackingAlertBanner } from "./components/PackingAlertBanner";
 import { OverdueAlertBanner } from "./components/OverdueAlertBanner";
-const DashboardView = lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
-const SalesModule = lazy(() => import('./components/SalesModule').then(m => ({ default: m.SalesModule })));
-const PackingVerificationModule = lazy(() => import('./components/PackingVerificationModule').then(m => ({ default: m.PackingVerificationModule })));
-const DeliveryModule = lazy(() => import('./components/DeliveryModule').then(m => ({ default: m.DeliveryModule })));
-const InventoryModule = lazy(() => import('./components/InventoryModule').then(m => ({ default: m.InventoryModule })));
-const ProductModule = lazy(() => import('./components/ProductModule').then(m => ({ default: m.ProductModule })));
-const CategoryModule = lazy(() => import('./components/CategoryModule').then(m => ({ default: m.CategoryModule })));
-const PartiesLayout = lazy(() => import('./components/PartiesLayout').then(m => ({ default: m.PartiesLayout })));
-const CustomerModule = lazy(() => import('./components/CustomerModule').then(m => ({ default: m.CustomerModule })));
-const PartiesModule = lazy(() => import('./components/PartiesModule').then(m => ({ default: m.PartiesModule })));
-const SupplierModule = lazy(() => import('./components/SupplierModule').then(m => ({ default: m.SupplierModule })));
-const PurchaseModule = lazy(() => import('./components/PurchaseModule').then(m => ({ default: m.PurchaseModule })));
-const ReportsModule = lazy(() => import('./components/ReportsModule').then(m => ({ default: m.ReportsModule })));
-const AuditLogView = lazy(() => import('./components/AuditLogView').then(m => ({ default: m.AuditLogView })));
-const SettingsModule = lazy(() => import('./components/SettingsModule').then(m => ({ default: m.SettingsModule })));
-const UsersModule = lazy(() => import('./components/UsersModule').then(m => ({ default: m.UsersModule })));
-const InboxModule = lazy(() => import('./components/InboxModule').then(m => ({ default: m.InboxModule })));
-const LoyaltySubscriptionModule = lazy(() => import('./components/LoyaltySubscriptionModule').then(m => ({ default: m.LoyaltySubscriptionModule })));
-const ItemStockLiveReportModule = lazy(() => import('./components/ItemStockLiveReportModule').then(m => ({ default: m.ItemStockLiveReportModule })));
-const PublicInvoiceView = lazy(() => import('./components/PublicInvoiceView').then(m => ({ default: m.PublicInvoiceView })));
+// Helper to handle dynamic import failures (e.g. chunk missing after new deployment)
+const lazyWithReload = (importFunc: () => Promise<any>) => {
+  return lazy(async () => {
+    try {
+      const module = await importFunc();
+      window.sessionStorage.removeItem('chunk-reload-attempted');
+      return module;
+    } catch (error) {
+      // If the chunk failed to load, reload the page once
+      const isChunkLoadFailed = error instanceof TypeError && (error.message.includes('dynamically imported module') || error.message.includes('Failed to fetch dynamically imported module') || error.message.includes('importing a dynamic module'));
+      const hasReloaded = window.sessionStorage.getItem('chunk-reload-attempted');
+      
+      if (isChunkLoadFailed && !hasReloaded) {
+        window.sessionStorage.setItem('chunk-reload-attempted', 'true');
+        window.location.reload();
+        // Return a promise that never resolves so React doesn't crash while reloading
+        return new Promise(() => {}) as any;
+      }
+      throw error;
+    }
+  });
+};
+
+const DashboardView = lazyWithReload(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
+const SalesModule = lazyWithReload(() => import('./components/SalesModule').then(m => ({ default: m.SalesModule })));
+const PackingVerificationModule = lazyWithReload(() => import('./components/PackingVerificationModule').then(m => ({ default: m.PackingVerificationModule })));
+const DeliveryModule = lazyWithReload(() => import('./components/DeliveryModule').then(m => ({ default: m.DeliveryModule })));
+const InventoryModule = lazyWithReload(() => import('./components/InventoryModule').then(m => ({ default: m.InventoryModule })));
+const ProductModule = lazyWithReload(() => import('./components/ProductModule').then(m => ({ default: m.ProductModule })));
+const CategoryModule = lazyWithReload(() => import('./components/CategoryModule').then(m => ({ default: m.CategoryModule })));
+const PartiesLayout = lazyWithReload(() => import('./components/PartiesLayout').then(m => ({ default: m.PartiesLayout })));
+const CustomerModule = lazyWithReload(() => import('./components/CustomerModule').then(m => ({ default: m.CustomerModule })));
+const PartiesModule = lazyWithReload(() => import('./components/PartiesModule').then(m => ({ default: m.PartiesModule })));
+const SupplierModule = lazyWithReload(() => import('./components/SupplierModule').then(m => ({ default: m.SupplierModule })));
+const PurchaseModule = lazyWithReload(() => import('./components/PurchaseModule').then(m => ({ default: m.PurchaseModule })));
+const ReportsModule = lazyWithReload(() => import('./components/ReportsModule').then(m => ({ default: m.ReportsModule })));
+const AuditLogView = lazyWithReload(() => import('./components/AuditLogView').then(m => ({ default: m.AuditLogView })));
+const SettingsModule = lazyWithReload(() => import('./components/SettingsModule').then(m => ({ default: m.SettingsModule })));
+const UsersModule = lazyWithReload(() => import('./components/UsersModule').then(m => ({ default: m.UsersModule })));
+const InboxModule = lazyWithReload(() => import('./components/InboxModule').then(m => ({ default: m.InboxModule })));
+const LoyaltySubscriptionModule = lazyWithReload(() => import('./components/LoyaltySubscriptionModule').then(m => ({ default: m.LoyaltySubscriptionModule })));
+const ItemStockLiveReportModule = lazyWithReload(() => import('./components/ItemStockLiveReportModule').then(m => ({ default: m.ItemStockLiveReportModule })));
+const PublicInvoiceView = lazyWithReload(() => import('./components/PublicInvoiceView').then(m => ({ default: m.PublicInvoiceView })));
 
 interface Toast {
   id: string;

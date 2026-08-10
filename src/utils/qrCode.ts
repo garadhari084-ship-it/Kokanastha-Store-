@@ -71,26 +71,21 @@ export function buildUpiPayString(params: {
   
   // Clean Order / Invoice Number
   const cleanOrderNo = (orderNumber || '').trim().replace(/[^\w-]/gi, '');
-  const refId = cleanOrderNo ? cleanOrderNo : `INV-${Date.now()}`;
   const note = cleanOrderNo ? `Invoice ${cleanOrderNo}` : 'Invoice Payment';
 
   // Amount formatted to 2 decimal places
   const numAmount = Number(amount) || 0;
-  const formattedAmount = numAmount > 0 ? numAmount.toFixed(2) : '0.00';
 
   // NPCI UPI Specification Parameters:
-  // pa: Payee VPA Address
-  // pn: Payee Name
-  // tr: Transaction Reference (Crucial for GPay & PhonePe dynamic QR verification)
-  // tn: Transaction Note
-  // am: Amount
-  // cu: Currency Code (INR)
-  // mode: 02 (Dynamic/Static QR Code mode)
-  // mc: 0000 (General Merchant)
-  const encodedName = encodeURIComponent(cleanName).replace(/%20/g, ' ');
-  const encodedNote = encodeURIComponent(note).replace(/%20/g, ' ');
+  const encodedName = encodeURIComponent(cleanName);
+  const encodedNote = encodeURIComponent(note);
 
-  return `upi://pay?pa=${cleanUpi}&pn=${encodedName}&mc=0000&tr=${refId}&tn=${encodedNote}&am=${formattedAmount}&cu=INR&mode=02`;
+  let upiUrl = `upi://pay?pa=${cleanUpi}&pn=${encodedName}&tn=${encodedNote}&cu=INR`;
+  if (numAmount > 0) {
+    upiUrl += `&am=${numAmount.toFixed(2)}`;
+  }
+
+  return upiUrl;
 }
 
 /**

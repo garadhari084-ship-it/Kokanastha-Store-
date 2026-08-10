@@ -82,7 +82,15 @@ export async function generateBillOfSupplyHTML(
   const custPhone = cust?.phone || (order as any).phone || '8779792825';
 
   const bName = businessObj?.name || 'KOKANASTHA';
-  const bAddress = businessObj?.billing_address || 'SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLABH ROAD ASHOKVAN DAHISAR E MUMBAI 68, Ph. no.: 9820769697 Email: contact@kokanastha.in';
+  let bAddress = businessObj?.billing_address || 'SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLABH ROAD ASHOKVAN DAHISAR E MUMBAI 68, Ph. no.: 9820769697 Email: contact@kokanastha.in';
+  
+  if (businessObj?.mobile_number) {
+    const waIcon = `<img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21'/><path d='M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1Z'/><path d='M14 14a.5.5 0 0 0 1 0v-1a.5.5 0 0 0-1 0v1Z'/></svg>" style="vertical-align: text-bottom;" alt="WA"/>`;
+    bAddress += `<br/>Mobile: ${waIcon} ${businessObj.mobile_number}`;
+  }
+  if (businessObj?.fssai_number) {
+    bAddress += `<br/>FSSAI No: <strong>${businessObj.fssai_number}</strong>`;
+  }
 
   // Real UPI QR Code and Bill QR Code parameters
   const upiId = businessObj?.upi_id || '9820769697@okicici';
@@ -102,8 +110,8 @@ export async function generateBillOfSupplyHTML(
     gstin: businessObj?.gstin
   });
 
-  const upiQrImgSrc = await generateQRCodeDataUrl(upiString, { width: 150, margin: 1 });
-  const billQrImgSrc = await generateQRCodeDataUrl(billString, { width: 150, margin: 1 });
+  const upiQrImgSrc = await generateQRCodeDataUrl(upiString, { width: 220, margin: 1 });
+  const billQrImgSrc = await generateQRCodeDataUrl(billString, { width: 220, margin: 1 });
 
   const bankName = businessObj?.bank_name || 'NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN';
   const accountNo = businessObj?.account_number || '092110100000085';
@@ -433,19 +441,19 @@ export async function generateBillOfSupplyHTML(
       <div class="section-label" style="margin-top: 10px;">Payment QRs & Bank Details</div>
       <div style="display: flex; gap: 8px; margin-top: 6px; align-items: flex-start;">
         <!-- QR 1: Real UPI Payment QR -->
-        <div style="text-align: center; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; background: #ffffff; width: 72px; shrink: 0;">
-          <div style="font-size: 5.5pt; font-weight: 800; color: #0f172a; text-transform: uppercase; margin-bottom: 2px;">UPI PAY QR</div>
-          <img src="${upiQrImgSrc}" width="62" height="62" style="display: block; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff;" alt="UPI QR" />
-          <div style="font-size: 5pt; font-weight: 700; color: #047857; margin-top: 2px;">SCAN TO PAY</div>
-          <div style="font-size: 4.8pt; color: #475569; font-family: monospace; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 62px;">${upiId}</div>
+        <div style="text-align: center; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; background: #ffffff; width: 80px; shrink: 0;">
+          <div style="font-size: 6pt; font-weight: 800; color: #0f172a; text-transform: uppercase; margin-bottom: 2px;">UPI PAY QR</div>
+          <img src="${upiQrImgSrc}" width="72" height="72" style="display: block; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff;" alt="UPI QR" />
+          <div style="font-size: 5.5pt; font-weight: 700; color: #047857; margin-top: 2px;">SCAN TO PAY</div>
+          <div style="font-size: 5pt; color: #475569; font-family: monospace; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 72px;">${upiId}</div>
         </div>
 
         <!-- QR 2: Real Bill Verification QR -->
-        <div style="text-align: center; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; background: #ffffff; width: 72px; shrink: 0;">
-          <div style="font-size: 5.5pt; font-weight: 800; color: #0f172a; text-transform: uppercase; margin-bottom: 2px;">BILL QR</div>
-          <img src="${billQrImgSrc}" width="62" height="62" style="display: block; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff;" alt="Bill QR" />
-          <div style="font-size: 5pt; font-weight: 700; color: #1d4ed8; margin-top: 2px;">VERIFIED BILL</div>
-          <div style="font-size: 4.8pt; color: #475569; font-family: monospace;">${order.order_number}</div>
+        <div style="text-align: center; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; background: #ffffff; width: 80px; shrink: 0;">
+          <div style="font-size: 6pt; font-weight: 800; color: #0f172a; text-transform: uppercase; margin-bottom: 2px;">BILL QR</div>
+          <img src="${billQrImgSrc}" width="72" height="72" style="display: block; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff;" alt="Bill QR" />
+          <div style="font-size: 5.5pt; font-weight: 700; color: #1d4ed8; margin-top: 2px;">VERIFIED BILL</div>
+          <div style="font-size: 5pt; color: #475569; font-family: monospace;">${order.order_number}</div>
         </div>
 
         <!-- Bank Details -->
@@ -467,7 +475,7 @@ export async function generateBillOfSupplyHTML(
         </tr>
         ${discount > 0 ? `
         <tr>
-          <td>Discount</td>
+          <td>Discount${order.discount_percentage ? ` (${order.discount_percentage}%)` : ''}</td>
           <td style="text-align: right; color: #e11d48;">-₹ ${discount.toFixed(2)}</td>
         </tr>
         ` : ''}
@@ -615,6 +623,15 @@ export async function generate3InchBillHTML(
   const ifscCode = businessObj?.ifsc_code || "NKGS0000092";
   const accountHolder = businessObj?.account_holder || "KOKANASTHA";
   const bState = businessObj?.state || "27-Maharashtra";
+
+  const upiId = businessObj?.upi_id || "9820769697@okicici";
+  const upiPayString = buildUpiPayString({
+    upiId,
+    businessName: bName,
+    amount: total,
+    orderNumber: invoiceNo
+  });
+  const upiQrImgSrc = await generateQRCodeDataUrl(upiPayString, { width: 220, margin: 1 });
   
   let discountPerc = 0;
   if (subTotal > 0 && discount > 0) {
@@ -696,7 +713,9 @@ export async function generate3InchBillHTML(
     <p>${bAddress.replace(/\n/g, "<br>")}</p>
     <p>State: ${bState}</p>
     <p>Ph.No.: ${phone}</p>
+    ${businessObj?.mobile_number ? `<p>Mobile (WhatsApp): ${businessObj.mobile_number}</p>` : ''}
     <p>Email: ${email}</p>
+    ${businessObj?.fssai_number ? `<p style="font-weight: bold; margin-top: 4px;">FSSAI No: ${businessObj.fssai_number}</p>` : ''}
   </div>
   
   <div class="text-center" style="margin-top: 8px; font-size: 13px; font-weight: 900;">Bill of Supply</div>
@@ -732,7 +751,7 @@ export async function generate3InchBillHTML(
     <tr>
       <td style="width: 15px; vertical-align: top;">${totalQty}</td>
       <td style="text-align: left;">
-        ${discount > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Disc.(${discountPerc.toFixed(3)}%)</span><span>:</span></div>` : ''}
+        ${discount > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Disc.${order.discount_percentage ? `(${order.discount_percentage}%)` : ''}</span><span>:</span></div>` : ''}
         ${deliveryCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Delivery</span><span>:</span></div>` : ''}
         ${additionalCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Additional</span><span>:</span></div>` : ''}
         ${legacyDelivery > 0 ? `<div style="display: flex; justify-content: space-between;"><span>DELIVERY</span><span>:</span></div>` : ''}
@@ -776,6 +795,16 @@ export async function generate3InchBillHTML(
     <div>Account Holder Name: ${accountHolder}</div>
     <div>Account No.: ${accountNo}</div>
     <div>IFSC Code: ${ifscCode}</div>
+  </div>
+  
+  <div class="dashed-line"></div>
+
+  <div class="text-center" style="margin: 8px 0;">
+    <div style="font-weight: 900; font-size: 11px; margin-bottom: 4px; text-transform: uppercase;">SCAN & PAY VIA UPI</div>
+    <img src="${upiQrImgSrc}" alt="UPI QR Code" style="width: 40mm; height: 40mm; margin: 0 auto; display: block; border: 1px solid #000; padding: 2px; background: #fff;" />
+    <div style="font-size: 9px; font-weight: 800; margin-top: 4px;">GPay / PhonePe / Paytm / BHIM</div>
+    <div style="font-size: 8.5px; font-family: monospace; font-weight: 700; margin-top: 2px;">UPI ID: ${upiId}</div>
+    <div style="font-size: 9.5px; font-weight: 900; margin-top: 2px;">Amount: ₹${total.toFixed(2)}</div>
   </div>
   
   <div class="dashed-line"></div>

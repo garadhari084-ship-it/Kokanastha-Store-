@@ -33,9 +33,14 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
   const business = dbStore.getBusiness(businessId);
   const currencySymbol = business?.currency_symbol || '₹';
 
-  // Calculate current figures
-  const totalAmount = order.total_amount || 0;
-  const previouslyPaid = order.paid_amount || 0;
+  // Always resolve latest order record from dbStore to avoid stale prop snapshots
+  const freshOrder = (type === 'Sales' 
+    ? dbStore.getSalesOrders(businessId).find(s => s.id === order.id) 
+    : dbStore.getPurchaseOrders(businessId).find(p => p.id === order.id)) || order;
+
+  // Calculate current figures using fresh data
+  const totalAmount = Number(freshOrder.total_amount) || 0;
+  const previouslyPaid = Number(freshOrder.paid_amount) || 0;
   const currentOutstanding = Math.max(0, totalAmount - previouslyPaid);
 
   // Form states
@@ -45,6 +50,20 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
   const [bankAccount, setBankAccount] = useState<string>(business?.bank_name || 'Main Cash / Bank Account');
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState<string>('');
+
+  // Sync state when order changes or modal opens
+  useEffect(() => {
+    const latest = (type === 'Sales' 
+      ? dbStore.getSalesOrders(businessId).find(s => s.id === order.id) 
+      : dbStore.getPurchaseOrders(businessId).find(p => p.id === order.id)) || order;
+
+    const tot = Number(latest.total_amount) || 0;
+    const paid = Number(latest.paid_amount) || 0;
+    const outstanding = Math.max(0, tot - paid);
+
+    setPaymentAmount(outstanding);
+    setUpdatedOrderState(latest);
+  }, [order.id, order.paid_amount, order.total_amount, businessId, type]);
 
   // Step state: 'entry' -> 'success_options'
   const [step, setStep] = useState<'entry' | 'success_options'>('entry');

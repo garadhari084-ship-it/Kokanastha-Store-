@@ -63,6 +63,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [name, setName] = useState(business?.name || 'Kokanastha Faral ERP');
   const [gstin, setGstin] = useState(business?.gstin || '27AAAAA0000A1Z5');
   const [pan, setPan] = useState(business?.pan || 'AAAAA0000A');
+  const [fssaiNumber, setFssaiNumber] = useState(business?.fssai_number || '');
+  const [mobileNumber, setMobileNumber] = useState(business?.mobile_number || '');
   const [invoicePrefix, setInvoicePrefix] = useState(business?.invoice_prefix || 'KOK-');
   const [festiveInvoicePrefix, setFestiveInvoicePrefix] = useState(business?.festive_invoice_prefix || 'FEST-KF-');
   const [taxRateDefault, setTaxRateDefault] = useState<number>(business?.tax_rate_default ?? 18);
@@ -112,6 +114,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       setName(updated.name || '');
       setGstin(updated.gstin || '');
       setPan(updated.pan || '');
+      setFssaiNumber(updated.fssai_number || '');
+      setMobileNumber(updated.mobile_number || '');
       setInvoicePrefix(updated.invoice_prefix || 'KF-');
       setFestiveInvoicePrefix(updated.festive_invoice_prefix || 'FEST-KF-');
       setTaxRateDefault(updated.tax_rate_default ?? 5);
@@ -338,6 +342,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         name: name.trim(),
         gstin: gstin.toUpperCase().trim().substring(0, 15),
         pan: pan.toUpperCase().trim().substring(0, 10),
+        fssai_number: fssaiNumber.trim().substring(0, 50),
+        mobile_number: mobileNumber.trim().substring(0, 20),
         invoice_prefix: invoicePrefix.toUpperCase().trim().substring(0, 10),
         festive_invoice_prefix: festiveInvoicePrefix.toUpperCase().trim().substring(0, 50),
         tax_rate_default: Number(taxRateDefault),
@@ -447,6 +453,30 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   value={pan}
                   onChange={(e) => setPan(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 uppercase"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-500 uppercase">FSSAI Number</label>
+                <input 
+                  type="text" 
+                  maxLength={50}
+                  value={fssaiNumber}
+                  onChange={(e) => setFssaiNumber(e.target.value)}
+                  placeholder="E.g. 10020022011223"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 uppercase"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-500 uppercase">Mobile Number (WhatsApp)</label>
+                <input 
+                  type="text" 
+                  maxLength={20}
+                  value={mobileNumber}
+                  onChange={(e) => setMobileNumber(e.target.value)}
+                  placeholder="E.g. +91 9876543210"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 

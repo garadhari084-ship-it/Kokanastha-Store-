@@ -2791,11 +2791,32 @@ class ERPStorage {
       }
     }
 
+    const numPaid = typeof so.paid_amount === 'number' ? so.paid_amount : Number(so.paid_amount) || 0;
     const newSO: SalesOrder = {
       ...so,
+      paid_amount: numPaid,
       id: crypto.randomUUID(),
       created_at: createdAtStr
     };
+
+    if (newSO.paid_amount > 0 && (!newSO.payment_history || newSO.payment_history.length === 0)) {
+      newSO.payment_history = [{
+        id: crypto.randomUUID(),
+        order_id: newSO.id,
+        order_number: newSO.order_number,
+        type: 'Sales',
+        amount: newSO.paid_amount,
+        payment_mode: newSO.payment_mode || 'Cash',
+        bank_account: 'Main Cash / Bank Account',
+        payment_date: newSO.order_date || new Date().toISOString().split('T')[0],
+        notes: 'Advance / Partial Payment Received on Order Creation',
+        receipt_number: `RCT-${newSO.order_number}-${Date.now().toString().slice(-4)}`,
+        collected_by: 'Staff',
+        business_id: newSO.business_id,
+        created_at: new Date().toISOString()
+      }];
+    }
+
     this.cache.sales.unshift(newSO);
     this.save('sales', newSO);
 
@@ -2825,7 +2846,15 @@ class ERPStorage {
     const index = this.cache.sales.findIndex(s => s.id === id);
     if (index !== -1) {
       const oldSO = this.cache.sales[index];
-      const newSO = { ...oldSO, ...updates };
+      const updatedPaidAmount = updates.paid_amount !== undefined 
+        ? (typeof updates.paid_amount === 'number' ? updates.paid_amount : Number(updates.paid_amount) || 0) 
+        : oldSO.paid_amount;
+
+      const newSO = { 
+        ...oldSO, 
+        ...updates, 
+        paid_amount: updatedPaidAmount 
+      };
       this.cache.sales[index] = newSO;
       this.save('sales', newSO);
 

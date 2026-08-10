@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS businesses (
     account_number VARCHAR(100),
     ifsc_code VARCHAR(50),
     account_holder VARCHAR(255),
+    fssai_number VARCHAR(50),
+    mobile_number VARCHAR(20),
     whatsapp_api_key TEXT,
     whatsapp_template TEXT,
     sms_gateway_url TEXT,
@@ -483,6 +485,66 @@ BEGIN
 
     ALTER TABLE sales_orders DROP CONSTRAINT IF EXISTS sales_orders_customer_id_fkey;
     ALTER TABLE sales_orders ALTER COLUMN customer_id DROP NOT NULL;
+
+    -- Ensure Payment and Partial Payment columns on sales_orders
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='paid_amount') THEN
+        ALTER TABLE sales_orders ADD COLUMN paid_amount DECIMAL(15,2) DEFAULT 0.00;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='payment_status') THEN
+        ALTER TABLE sales_orders ADD COLUMN payment_status VARCHAR(50) DEFAULT 'Unpaid';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='payment_mode') THEN
+        ALTER TABLE sales_orders ADD COLUMN payment_mode VARCHAR(100) DEFAULT 'Cash';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='payment_reference') THEN
+        ALTER TABLE sales_orders ADD COLUMN payment_reference VARCHAR(255);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='payment_bank') THEN
+        ALTER TABLE sales_orders ADD COLUMN payment_bank VARCHAR(255);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='payment_notes') THEN
+        ALTER TABLE sales_orders ADD COLUMN payment_notes TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='payment_date') THEN
+        ALTER TABLE sales_orders ADD COLUMN payment_date TIMESTAMP WITH TIME ZONE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='payment_history') THEN
+        ALTER TABLE sales_orders ADD COLUMN payment_history JSONB DEFAULT '[]'::jsonb;
+    END IF;
+
+    -- Ensure Payment and Partial Payment columns on purchase_orders
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_orders' AND column_name='paid_amount') THEN
+        ALTER TABLE purchase_orders ADD COLUMN paid_amount DECIMAL(15,2) DEFAULT 0.00;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_orders' AND column_name='payment_status') THEN
+        ALTER TABLE purchase_orders ADD COLUMN payment_status VARCHAR(50) DEFAULT 'Unpaid';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_orders' AND column_name='payment_mode') THEN
+        ALTER TABLE purchase_orders ADD COLUMN payment_mode VARCHAR(100) DEFAULT 'Cash';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_orders' AND column_name='payment_reference') THEN
+        ALTER TABLE purchase_orders ADD COLUMN payment_reference VARCHAR(255);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_orders' AND column_name='payment_bank') THEN
+        ALTER TABLE purchase_orders ADD COLUMN payment_bank VARCHAR(255);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_orders' AND column_name='payment_notes') THEN
+        ALTER TABLE purchase_orders ADD COLUMN payment_notes TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_orders' AND column_name='payment_date') THEN
+        ALTER TABLE purchase_orders ADD COLUMN payment_date TIMESTAMP WITH TIME ZONE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_orders' AND column_name='payment_history') THEN
+        ALTER TABLE purchase_orders ADD COLUMN payment_history JSONB DEFAULT '[]'::jsonb;
+    END IF;
+
+    -- Ensure outstanding_amount on customers and suppliers
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='outstanding_amount') THEN
+        ALTER TABLE customers ADD COLUMN outstanding_amount DECIMAL(15,2) DEFAULT 0.00;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='suppliers' AND column_name='outstanding_amount') THEN
+        ALTER TABLE suppliers ADD COLUMN outstanding_amount DECIMAL(15,2) DEFAULT 0.00;
+    END IF;
 EXCEPTION
     WHEN OTHERS THEN NULL;
 END $$;
@@ -672,4 +734,15 @@ BEGIN
             EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE %I', tbl);
         END IF;
     END LOOP;
+END $$;
+
+-- Ensure new columns on businesses table
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='businesses' AND column_name='fssai_number') THEN
+        ALTER TABLE businesses ADD COLUMN fssai_number VARCHAR(50);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='businesses' AND column_name='mobile_number') THEN
+        ALTER TABLE businesses ADD COLUMN mobile_number VARCHAR(20);
+    END IF;
 END $$;

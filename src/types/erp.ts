@@ -35,6 +35,8 @@ export interface Business {
   account_number?: string;
   ifsc_code?: string;
   account_holder?: string;
+  fssai_number?: string;
+  mobile_number?: string;
   whatsapp_api_key?: string;
   whatsapp_template?: string;
   sms_gateway_url?: string;

@@ -1653,17 +1653,19 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         <Eye size={15} />
                       </button>
 
-                      {/* Collect / Record Payment */}
-                      <button 
-                        onClick={() => {
-                          setSelectedOrderForPayment(o);
-                          setIsPaymentModalOpen(true);
-                        }}
-                        className="p-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 rounded-lg transition cursor-pointer"
-                        title="Collect Payment / Record Receipt"
-                      >
-                        <CreditCard size={15} />
-                      </button>
+                      {/* Collect / Record Payment - Only for Partial / Advance Received and Unpaid / On Credit */}
+                      {o.payment_status !== 'Paid' && (o.total_amount - (o.paid_amount || 0)) > 0.01 && (
+                        <button 
+                          onClick={() => {
+                            setSelectedOrderForPayment(o);
+                            setIsPaymentModalOpen(true);
+                          }}
+                          className="p-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 rounded-lg transition cursor-pointer"
+                          title="Collect Payment / Record Receipt"
+                        >
+                          <CreditCard size={15} />
+                        </button>
+                      )}
 
                       {/* Print Invoice */}
                       <button 
@@ -1808,16 +1810,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               >
                 <Download size={16} /> Save PDF
               </button>
-              <button 
-                onClick={() => {
-                  setSelectedOrderForPayment(selectedOrderForDetail);
-                  setSelectedOrderForDetail(null);
-                  setIsPaymentModalOpen(true);
-                }}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
-              >
-                <DollarSign size={16} /> Collect Payment
-              </button>
+              {selectedOrderForDetail.payment_status !== 'Paid' && (selectedOrderForDetail.total_amount - (selectedOrderForDetail.paid_amount || 0)) > 0.01 && (
+                <button 
+                  onClick={() => {
+                    setSelectedOrderForPayment(selectedOrderForDetail);
+                    setSelectedOrderForDetail(null);
+                    setIsPaymentModalOpen(true);
+                  }}
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                >
+                  <DollarSign size={16} /> Collect Payment
+                </button>
+              )}
 
               {selectedOrderForDetail.status === 'Delivered' && (
                 <button 
@@ -2065,7 +2069,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           setSelectedCustomerAddress(c.billing_address || c.address || '');
                           setSelectedCustomerShippingAddress(c.shipping_address || c.billing_address || c.address || '');
                           setIsSameShippingAddress(!c.shipping_address || c.shipping_address === c.billing_address);
-                          setPointsToRedeem(c.loyalty_points || 0);
+                          setPointsToRedeem(0);
                           if (c.area && c.area !== 'Other') {
                             setSelectedArea(c.area);
                           } else {
@@ -2155,7 +2159,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             active: true
                           });
                           setSelectedCustomerId(newCust.id);
-                          setPointsToRedeem(newCust.loyalty_points || 0);
+                          setPointsToRedeem(0);
                           setIsNewCustomerSelected(false);
                           setOrderItems(prev => recalculateOrderPrices(prev, newCust, isAdvanceBooking, isFestiveBooking));
                           triggerToast(`New customer "${newCust.name}" saved and selected.`, 'success');
@@ -2332,6 +2336,19 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                                 </span>
                               )}
                             </div>
+                            {Number(pointsToRedeem) > 0 && (
+                              <div className="flex items-center gap-1.5 mt-1 text-[10px] font-mono">
+                                <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 font-extrabold border border-amber-300 dark:border-amber-700 flex items-center gap-1">
+                                  <span>Redeemed:</span>
+                                  <strong className="font-black text-amber-950 dark:text-amber-100">-{Math.min(pts, Number(pointsToRedeem))} Pts</strong>
+                                  <span className="text-amber-700 dark:text-amber-300">(-{currencySymbol}{(Math.min(pts, Number(pointsToRedeem)) * pointVal).toLocaleString()})</span>
+                                </span>
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 font-extrabold border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
+                                  <span>Remaining:</span>
+                                  <strong className="font-black text-emerald-950 dark:text-emerald-100">{Math.max(0, pts - Math.min(pts, Number(pointsToRedeem))).toLocaleString()} Pts</strong>
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2352,39 +2369,42 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                             Redeem Points
                           </label>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <input
                               type="number"
                               min={0}
                               max={pts > 0 ? pts : undefined}
-                              value={pointsToRedeem}
+                              value={pointsToRedeem === 0 ? '' : pointsToRedeem}
                               onFocus={e => e.target.select()}
                               onChange={e => {
                                 const valStr = e.target.value;
                                 if (valStr === '') {
                                   setPointsToRedeem(0);
-                                  setCustomDiscount(0);
                                 } else {
                                   const num = parseInt(valStr, 10);
                                   if (!isNaN(num)) {
                                     const clamped = Math.max(0, pts > 0 ? Math.min(pts, num) : num);
                                     setPointsToRedeem(clamped);
-                                    setCustomDiscount(clamped * pointVal);
                                   }
                                 }
                               }}
-                              className="w-24 px-2 py-1.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-center text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm transition-all"
+                              className="w-20 px-2 py-1.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-center text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs transition-all"
                               placeholder="0"
                             />
-                            {pointsToRedeem > 0 && (
+                            {pts > 0 && (
                               <button 
+                                type="button"
                                 onClick={() => {
-                                  setPointsToRedeem(0);
-                                  setCustomDiscount(0);
+                                  if (pointsToRedeem === pts) {
+                                    setPointsToRedeem(0);
+                                  } else {
+                                    setPointsToRedeem(pts);
+                                  }
                                 }}
-                                className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-500 rounded-lg transition-colors"
+                                className="px-2 py-1 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/60 dark:hover:bg-amber-800 text-amber-800 dark:text-amber-200 text-[10px] font-extrabold rounded-lg transition-colors border border-amber-300 dark:border-amber-700 cursor-pointer shrink-0"
+                                title={pointsToRedeem === pts ? 'Reset to 0 points' : `Redeem maximum ${pts} points`}
                               >
-                                <X size={14} />
+                                {pointsToRedeem === pts ? 'Clear' : 'Use Max'}
                               </button>
                             )}
                           </div>
@@ -3003,6 +3023,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               const { taxableVal, taxVal, discountAmount, finalAmount, actualRedeem } = calculatedTotals;
               const totalVal = finalAmount;
               const savingsInfo = calculateOrderSavings(orderItems, products);
+              const selectedCust = customers.find(c => c.id === selectedCustomerId);
+              const pointVal = dbStore.getLoyaltyConfig(businessId)?.point_value || 1;
 
               return (
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-3">
@@ -3019,7 +3041,22 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   )}
 
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <div className="flex items-center gap-4 text-left font-mono text-[11px]">
+                  <div className="flex items-center gap-4 text-left font-mono text-[11px] flex-wrap">
+                    {actualRedeem > 0 && selectedCust && (
+                      <div className="bg-amber-50 dark:bg-amber-950/70 px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700/80 flex flex-col justify-center gap-0.5 shrink-0 shadow-2xs">
+                        <span className="text-[9.5px] uppercase font-black text-amber-800 dark:text-amber-300 tracking-wider">
+                          Loyalty Points Status
+                        </span>
+                        <div className="flex items-center gap-2.5 text-[10.5px] font-mono">
+                          <span className="text-amber-800 dark:text-amber-300 font-black">
+                            Redeemed: -{actualRedeem} Pts (-{currencySymbol}{(actualRedeem * pointVal).toLocaleString()})
+                          </span>
+                          <span className="text-emerald-700 dark:text-emerald-400 font-black border-l border-amber-300 dark:border-amber-700 pl-2.5">
+                            Remaining: {Math.max(0, (selectedCust.loyalty_points || 0) - actualRedeem).toLocaleString()} Pts
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     <div>
                       <span className="text-[10px] text-slate-900 dark:text-slate-100 uppercase block font-black tracking-wider mb-0.5">Base Subtotal</span>
                       <strong className="font-bold text-slate-700 dark:text-slate-300">
@@ -3034,12 +3071,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     </div>
                     <div>
                       <span className="text-[10px] text-rose-600 dark:text-rose-400 uppercase block font-black tracking-wider mb-0.5">
-                        Discount (%)
+                        Discount
                       </span>
-                      <div className="flex items-stretch w-24 border border-rose-300 dark:border-rose-700 rounded-lg overflow-hidden shadow-xs focus-within:ring-2 focus-within:ring-rose-500">
-                        <div className="px-2 bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-400 text-sm font-bold font-mono flex items-center justify-center border-r border-rose-300 dark:border-rose-700">
-                          %
-                        </div>
+                      <div className="flex items-stretch w-28 border border-rose-300 dark:border-rose-700 rounded-lg overflow-hidden shadow-xs focus-within:ring-2 focus-within:ring-rose-500">
+                        <select 
+                          value={discountType}
+                          onChange={(e) => setDiscountType(e.target.value as 'Value' | 'Percentage')}
+                          className="px-1.5 bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-400 text-xs font-bold font-mono border-r border-rose-300 dark:border-rose-700 outline-none cursor-pointer text-center appearance-none"
+                          title="Toggle Percentage / Fixed Amount"
+                        >
+                          <option value="Percentage">%</option>
+                          <option value="Value">{currencySymbol}</option>
+                        </select>
                         <input 
                           type="number"
                           min={0}

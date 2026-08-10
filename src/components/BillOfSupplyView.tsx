@@ -71,8 +71,8 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const [billQrImgSrc, setBillQrImgSrc] = useState('');
 
   useEffect(() => {
-    QRCode.toDataURL(upiString, { width: 150, margin: 1 }).then(setUpiQrImgSrc).catch(console.error);
-    QRCode.toDataURL(billString, { width: 150, margin: 1 }).then(setBillQrImgSrc).catch(console.error);
+    QRCode.toDataURL(upiString, { width: 220, margin: 1 }).then(setUpiQrImgSrc).catch(console.error);
+    QRCode.toDataURL(billString, { width: 220, margin: 1 }).then(setBillQrImgSrc).catch(console.error);
   }, [upiString, billString]);
 
   const bankName = businessObj?.bank_name || 'NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN';
@@ -102,6 +102,17 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
             <p className="text-[10px] text-slate-600 font-medium max-w-sm leading-tight">
               {bAddress}
             </p>
+            {businessObj?.mobile_number && (
+              <p className="text-[10px] text-slate-700 font-medium flex items-center gap-1 leading-tight">
+                <span className="text-emerald-600"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21"/><path d="M9 10a.5 5 0 0 0 1 0V9a.5 5 0 0 0-1 0v1Z"/><path d="M14 14a.5 5 0 0 0 1 0v-1a.5 5 0 0 0-1 0v1Z"/></svg></span>
+                {businessObj.mobile_number}
+              </p>
+            )}
+            {businessObj?.fssai_number && (
+              <p className="text-[10px] text-slate-700 font-bold leading-tight">
+                FSSAI No: {businessObj.fssai_number}
+              </p>
+            )}
           </div>
         </div>
         <div className="text-right text-[9px] font-bold text-slate-500 uppercase tracking-wider">
@@ -256,27 +267,27 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
             <div className="font-extrabold text-slate-900 uppercase text-[9px] mb-1">Payment QRs & Bank Details</div>
             <div className="flex items-start gap-2 text-[9px] text-slate-700 bg-slate-50 p-2 rounded border border-slate-200">
               {/* UPI QR */}
-              <div className="text-center bg-white border border-slate-300 rounded p-1 shrink-0 w-16">
-                <div className="text-[7px] font-black uppercase text-slate-900 leading-none mb-0.5">UPI PAY</div>
+              <div className="text-center bg-white border border-slate-300 rounded p-1 shrink-0 w-20">
+                <div className="text-[7.5px] font-black uppercase text-slate-900 leading-none mb-0.5">UPI PAY</div>
                 {upiQrImgSrc ? (
-                  <img src={upiQrImgSrc} alt="UPI QR" className="w-12 h-12 mx-auto border rounded border-slate-200" />
+                  <img src={upiQrImgSrc} alt="UPI QR" className="w-16 h-16 mx-auto border rounded border-slate-200" />
                 ) : (
-                  <div className="w-12 h-12 mx-auto border rounded border-slate-200 bg-slate-100" />
+                  <div className="w-16 h-16 mx-auto border rounded border-slate-200 bg-slate-100" />
                 )}
-                <div className="text-[6px] font-bold text-emerald-700 mt-0.5">SCAN TO PAY</div>
-                <div className="text-[5.5px] font-mono text-slate-500 truncate max-w-[52px] mx-auto">{upiId}</div>
+                <div className="text-[6.5px] font-bold text-emerald-700 mt-0.5">SCAN TO PAY</div>
+                <div className="text-[5.5px] font-mono text-slate-500 truncate max-w-[64px] mx-auto">{upiId}</div>
               </div>
 
               {/* Bill QR */}
-              <div className="text-center bg-white border border-slate-300 rounded p-1 shrink-0 w-16">
-                <div className="text-[7px] font-black uppercase text-slate-900 leading-none mb-0.5">BILL QR</div>
+              <div className="text-center bg-white border border-slate-300 rounded p-1 shrink-0 w-20">
+                <div className="text-[7.5px] font-black uppercase text-slate-900 leading-none mb-0.5">BILL QR</div>
                 {billQrImgSrc ? (
-                  <img src={billQrImgSrc} alt="Bill QR" className="w-12 h-12 mx-auto border rounded border-slate-200" />
+                  <img src={billQrImgSrc} alt="Bill QR" className="w-16 h-16 mx-auto border rounded border-slate-200" />
                 ) : (
-                  <div className="w-12 h-12 mx-auto border rounded border-slate-200 bg-slate-100" />
+                  <div className="w-16 h-16 mx-auto border rounded border-slate-200 bg-slate-100" />
                 )}
-                <div className="text-[6px] font-bold text-blue-700 mt-0.5">VERIFIED</div>
-                <div className="text-[5.5px] font-mono text-slate-500 truncate max-w-[52px] mx-auto">{order.order_number}</div>
+                <div className="text-[6.5px] font-bold text-blue-700 mt-0.5">VERIFIED</div>
+                <div className="text-[5.5px] font-mono text-slate-500 truncate max-w-[64px] mx-auto">{order.order_number}</div>
               </div>
 
               {/* Bank Details */}
@@ -302,6 +313,18 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               <div className="flex justify-between font-mono text-rose-600">
                 <span className="font-sans">Discount</span>
                 <span>{order.discount_percentage ? `-${order.discount_percentage}%` : `-${currencySymbol} ${discount.toFixed(2)}`}</span>
+              </div>
+            )}
+            {order.points_redeemed !== undefined && order.points_redeemed > 0 && (
+              <div className="flex justify-between font-mono text-amber-800 font-bold bg-amber-50/80 px-1 py-0.5 rounded border border-amber-200">
+                <span className="font-sans">Loyalty Points Redeemed</span>
+                <span>-{order.points_redeemed} Pts</span>
+              </div>
+            )}
+            {order.points_redeemed !== undefined && order.points_redeemed > 0 && customer && (
+              <div className="flex justify-between font-mono text-emerald-800 font-medium text-[9.5px] px-1 py-0.5">
+                <span className="font-sans text-slate-500">Remaining Loyalty Points</span>
+                <span>{(customer.loyalty_points || 0).toLocaleString()} Pts</span>
               </div>
             )}
             {legacyDelivery > 0 && (

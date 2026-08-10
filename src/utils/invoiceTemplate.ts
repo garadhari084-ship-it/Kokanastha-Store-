@@ -356,6 +356,10 @@ export async function generateBillOfSupplyHTML(
       <div style="text-align: left;">
         <h1 class="company-title" style="margin: 0 0 4px 0; font-size: 20pt; text-align: left;">${bName}</h1>
         <div class="company-address" style="text-align: left; margin: 0;">${bAddress}</div>
+        <div style="margin-top: 4px; font-size: 8pt; font-weight: bold; color: #16a34a; display: flex; align-items: center; gap: 4px; text-align: left; justify-content: flex-start;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+          WhatsApp: 9820769697
+        </div>
       </div>
     </div>
     <div style="text-align: right;">
@@ -711,6 +715,10 @@ export async function generate3InchBillHTML(
     </div>` : ''}
     <h2>${bName}</h2>
     <p>${bAddress.replace(/\n/g, "<br>")}</p>
+    <div style="margin-top: 4px; margin-bottom: 4px; font-size: 12px; font-weight: bold; color: #16a34a; display: flex; align-items: center; justify-content: center; gap: 4px;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+      9820769697
+    </div>
     <p>State: ${bState}</p>
     <p>Ph.No.: ${phone}</p>
     ${businessObj?.mobile_number ? `<p>Mobile (WhatsApp): ${businessObj.mobile_number}</p>` : ''}

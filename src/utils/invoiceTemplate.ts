@@ -566,7 +566,6 @@ export async function generate3InchBillHTML(
   businessObj: any,
   products: any[]
 ): Promise<string> {
-  const logoBase64 = businessObj?.logo_url ? await urlToBase64(businessObj.logo_url) : "";
   const bName = businessObj?.name || "KOKANASTHA";
   const bAddress = businessObj?.billing_address || "SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLA\nBH ROAD ASHOKVAN DAHISAR E MUMBAI 68";
   const phone = businessObj?.phone || "9820769697";
@@ -596,7 +595,7 @@ export async function generate3InchBillHTML(
     itemsHtml += `
       <tr>
         <td style="vertical-align: top; width: 15px;">${index + 1}</td>
-        <td colspan="3">${itemName}</td>
+        <td colspan="3" style="padding-bottom: 2px;">${itemName}</td>
       </tr>
       <tr>
         <td></td>
@@ -618,19 +617,20 @@ export async function generate3InchBillHTML(
   }
   
   const total = order.total_amount || (subTotal + additionalCharges + deliveryCharges + legacyDelivery - discount);
-  const receivedAmount = order.paid_amount || total; // Mocking received as total if paid
+  const receivedAmount = order.paid_amount || total;
   const balance = total - receivedAmount;
   
-  const savingsData = calculateOrderSavings(order.items || [], products);
-  const totalActualSavings = savingsData.totalSavings + discount;
+  // Example for points: 1 point per 100 spent, if they don't have a specific field.
+  const earnedPoints = (total * 0.01).toFixed(2);
+  const availablePoints = customerObj?.loyalty_points || earnedPoints;
 
   const bankName = businessObj?.bank_name || "NKGSB COOPERATIVE BANK LIMITED";
   const accountNo = businessObj?.account_number || "092110100000085";
   const ifscCode = businessObj?.ifsc_code || "NKGS0000092";
   const accountHolder = businessObj?.account_holder || "KOKANASTHA";
   const bState = businessObj?.state || "27-Maharashtra";
-
   const upiId = businessObj?.upi_id || "9820769697@okicici";
+
   const upiPayString = buildUpiPayString({
     upiId,
     businessName: bName,
@@ -638,11 +638,6 @@ export async function generate3InchBillHTML(
     orderNumber: invoiceNo
   });
   const upiQrImgSrc = await generateQRCodeDataUrl(upiPayString, { width: 220, margin: 1 });
-  
-  let discountPerc = 0;
-  if (subTotal > 0 && discount > 0) {
-     discountPerc = (discount / subTotal) * 100;
-  }
 
   return `<!DOCTYPE html>
 <html>
@@ -650,15 +645,18 @@ export async function generate3InchBillHTML(
   <meta charset="utf-8">
   <title>Bill of Supply</title>
   <style>
-    @page { margin: 0; size: auto; }
+    @page { 
+      margin: 0; 
+    }
     body {
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 900;
       line-height: 1.3;
-      width: 78mm;
+      width: 100%;
+      max-width: 80mm;
       margin: 0 auto;
-      padding: 2mm 4mm;
+      padding: 4mm 4mm;
       color: #000;
       background: #fff;
       box-sizing: border-box;
@@ -666,75 +664,63 @@ export async function generate3InchBillHTML(
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
+    table { width: 100%; border-collapse: collapse; }
     .text-center { text-align: center; }
-    .text-left { text-align: left; }
     .text-right { text-align: right; }
     
-    .dashed-line {
-      border-top: 1px dashed #000;
-      margin: 6px 0;
-    }
+    .dashed-line { border-top: 1.5px dashed #000; margin: 6px 0; }
     
-    .header p { margin: 2px 0; font-size: 11px; }
-    .header h2 { margin: 0 0 4px 0; font-size: 16px; font-weight: 900; }
+    .header { text-align: center; font-weight: 900; }
+    .header h2 { margin: 0 0 4px 0; font-size: 17px; font-weight: 900; }
+    .header p { margin: 2px 0; font-size: 12px; }
+    
+    .bill-title { text-align: center; font-size: 14px; font-weight: 900; margin: 12px 0 8px; }
     
     .info-section {
       display: flex;
       justify-content: space-between;
-      font-size: 11px;
+      font-size: 12px;
       margin-top: 8px;
+      font-weight: 900;
     }
-    .info-left {
-      width: 35%;
-    }
-    .info-right {
-      width: 65%;
-      text-align: right;
-    }
-    .info-right div { margin-bottom: 2px; }
+    .info-left { width: 55%; }
+    .info-right { width: 45%; text-align: right; }
+    .info-section div { margin-bottom: 2px; }
     
-    .items-table { font-size: 12px; margin-bottom: 5px; }
-    .items-table th { border-bottom: 1px dashed #000; border-top: 1px dashed #000; padding: 4px 0; font-weight: 700; text-align: left; }
-    .items-table td { vertical-align: top; padding: 2px 0; font-weight: 700; }
+    .items-table { font-size: 13px; margin-bottom: 5px; font-weight: 900; margin-top: 8px; }
+    .items-table th { border-bottom: 1.5px dashed #000; border-top: 1.5px dashed #000; padding: 6px 0; text-align: left; }
+    .items-table td { vertical-align: top; padding: 2px 0; }
     
-    .totals-table { width: 100%; font-size: 12px; font-weight: 700; margin-bottom: 5px; }
-    .totals-table td { padding: 2px 0; }
+    .totals-table { width: 100%; font-size: 13px; font-weight: 900; margin-bottom: 5px; }
+    .totals-table td { padding: 3px 0; }
     
-    .savings-table { width: 100%; font-size: 12px; font-weight: 700; border-top: 1px dashed #000; border-bottom: 1px dashed #000; margin: 5px 0; padding: 5px 0; }
-    
-    .bank-details { font-size: 11px; margin-top: 8px; line-height: 1.4; }
-    .terms { font-size: 11px; margin-top: 8px; line-height: 1.4; }
+    .bank-details { font-size: 12px; margin-top: 8px; line-height: 1.4; font-weight: 900; }
+    .terms { font-size: 12px; margin-top: 8px; line-height: 1.4; font-weight: 900; }
   </style>
 </head>
 <body>
-  <div class="header text-center">
-    ${logoBase64 ? `<div style="text-align: center; margin-bottom: 6px;">
-      <img src="${logoBase64}" alt="${bName}" style="max-width: 48mm; max-height: 24mm; width: auto; height: auto; object-fit: contain; display: block; margin: 0 auto 4px auto;" />
-    </div>` : ''}
+  <div class="header">
     <h2>${bName}</h2>
     <p>${bAddress.replace(/\n/g, "<br>")}</p>
-    <div style="margin-top: 4px; margin-bottom: 4px; font-size: 12px; font-weight: bold; color: #16a34a; display: flex; align-items: center; justify-content: center; gap: 4px;">
-      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
-      </svg>
-      9820769697
-    </div>
     <p>State: ${bState}</p>
     <p>Ph.No.: ${phone}</p>
     ${businessObj?.mobile_number ? `<p>Mobile (WhatsApp): ${businessObj.mobile_number}</p>` : ''}
     <p>Email: ${email}</p>
-    ${businessObj?.fssai_number ? `<p style="font-weight: bold; margin-top: 4px;">FSSAI No: ${businessObj.fssai_number}</p>` : ''}
+    ${businessObj?.fssai_number ? `<p style="font-weight: 900; margin-top: 4px;">FSSAI No: ${businessObj.fssai_number}</p>` : ''}
   </div>
   
-  <div class="text-center" style="margin-top: 8px; font-size: 13px; font-weight: 900;">Bill of Supply</div>
+  <div class="bill-title">Bill of Supply</div>
   
   <div class="info-section">
     <div class="info-left">
-      <div>Cash Sale</div>
+      ${customerObj ? `
+        <div style="font-weight: 900;">${customerObj.name || ''}</div>
+        ${customerObj.phone ? `<div>Ph. No.: ${customerObj.phone}</div>` : ''}
+        <div>Bill To:</div>
+        <div style="word-break: break-word;">${customerObj.billing_address || customerObj.address || ''}</div>
+      ` : `
+        <div>Cash Sale</div>
+      `}
     </div>
     <div class="info-right">
       <div>Date: ${orderDate}</div>
@@ -761,8 +747,9 @@ export async function generate3InchBillHTML(
   
   <table class="totals-table">
     <tr>
-      <td style="width: 15px; vertical-align: top;">${totalQty}</td>
+      <td style="width: 15px; vertical-align: top;"></td>
       <td style="text-align: left;">
+        <div style="margin-bottom: 2px;">Qty: ${totalQty}</div>
         ${discount > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Disc.${order.discount_percentage ? `(${order.discount_percentage}%)` : ''}</span><span>:</span></div>` : ''}
         ${deliveryCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Delivery</span><span>:</span></div>` : ''}
         ${additionalCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Additional</span><span>:</span></div>` : ''}
@@ -772,7 +759,8 @@ export async function generate3InchBillHTML(
         <div style="display: flex; justify-content: space-between;"><span>Balance</span><span>:</span></div>
       </td>
       <td style="text-align: right; vertical-align: top; width: 80px;">
-        ${discount > 0 ? `<div style="margin-bottom: 2px;">${subTotal.toFixed(2)}</div><div>-${discount.toFixed(2)}</div>` : `<div style="margin-bottom: 2px;">${subTotal.toFixed(2)}</div>`}
+        <div style="margin-bottom: 2px;">${subTotal.toFixed(2)}</div>
+        ${discount > 0 ? `<div>-${discount.toFixed(2)}</div>` : ''}
         ${deliveryCharges > 0 ? `<div>${deliveryCharges.toFixed(2)}</div>` : ''}
         ${additionalCharges > 0 ? `<div>${additionalCharges.toFixed(2)}</div>` : ''}
         ${legacyDelivery > 0 ? `<div>${legacyDelivery.toFixed(2)}</div>` : ''}
@@ -782,27 +770,32 @@ export async function generate3InchBillHTML(
       </td>
     </tr>
   </table>
-
-  ${totalActualSavings > 0 ? `
-  <table class="savings-table">
-    <tr>
-      <td>You Saved</td>
-      <td style="text-align: right;">:</td>
-      <td style="text-align: right; width: 80px;">${totalActualSavings.toFixed(2)}</td>
-    </tr>
-  </table>
-  ` : ''}
   
-  <table class="savings-table" style="border-top: ${totalActualSavings > 0 ? 'none' : '1px dashed #000'};">
+  <div class="dashed-line"></div>
+  
+  <table class="totals-table">
     <tr>
-      <td>Available Points</td>
-      <td style="text-align: right;">:</td>
-      <td style="text-align: right; width: 80px;">${customerObj?.loyalty_points || '0.00'}</td>
+      <td style="width: 15px;"></td>
+      <td style="text-align: left;">
+        <div style="display: flex; justify-content: space-between;"><span>Earned Points</span><span>:</span></div>
+        <div style="display: flex; justify-content: space-between;"><span>Available Points</span><span>:</span></div>
+      </td>
+      <td style="text-align: right; width: 80px;">
+        <div>${earnedPoints}</div>
+        <div>${availablePoints}</div>
+      </td>
     </tr>
   </table>
 
+  <div class="text-center" style="margin: 12px 0;">
+    <img src="${upiQrImgSrc}" alt="UPI QR Code" style="width: 45mm; height: 45mm; margin: 0 auto; display: block;" />
+    <div style="font-size: 12px; font-weight: 900; margin-top: 6px;">Scan this QR Code to pay</div>
+  </div>
+
+  <div class="dashed-line"></div>
+  
   <div class="bank-details">
-    <div style="font-weight: 900;">Bank Details</div>
+    <div style="font-weight: 900; margin-bottom: 2px;">Bank Details</div>
     <div>Bank Name: ${bankName}</div>
     <div>Account Holder Name: ${accountHolder}</div>
     <div>Account No.: ${accountNo}</div>
@@ -810,25 +803,14 @@ export async function generate3InchBillHTML(
   </div>
   
   <div class="dashed-line"></div>
-
-  <div class="text-center" style="margin: 8px 0;">
-    <div style="font-weight: 900; font-size: 11px; margin-bottom: 4px; text-transform: uppercase;">SCAN & PAY VIA UPI</div>
-    <img src="${upiQrImgSrc}" alt="UPI QR Code" style="width: 40mm; height: 40mm; margin: 0 auto; display: block; border: 1px solid #000; padding: 2px; background: #fff;" />
-    <div style="font-size: 9px; font-weight: 800; margin-top: 4px;">GPay / PhonePe / Paytm / BHIM</div>
-    <div style="font-size: 8.5px; font-family: monospace; font-weight: 700; margin-top: 2px;">UPI ID: ${upiId}</div>
-    <div style="font-size: 9.5px; font-weight: 900; margin-top: 2px;">Amount: ₹${total.toFixed(2)}</div>
-  </div>
-  
-  <div class="dashed-line"></div>
   
   <div class="terms">
-    <div style="font-weight: 900;">Terms & Conditions</div>
+    <div style="font-weight: 900; margin-bottom: 2px;">Terms & Conditions</div>
     <div>Thanks for doing business with us!</div>
     <div>NO REPLACEMENT AND NO REFUND FOR FOOD PRODUCTS</div>
     <div>STAY SAFE AND STAY HOME</div>
   </div>
-
-  <div style="text-align: center; margin-top: 15px; font-size: 10px;">
+  <div style="text-align: center; margin-top: 15px; font-size: 11px; font-weight: bold;">
     - End of Bill -
   </div>
   <script>

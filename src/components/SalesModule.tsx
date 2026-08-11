@@ -478,7 +478,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   // Quick line-item row helper
   const [rowProductId, setRowProductId] = useState('');
-  const [barcodeInput, setBarcodeInput] = useState('');
   const fastScanInputRef = useRef<HTMLInputElement>(null);
   const [rowQty, setRowQty] = useState<number | string>(1);
   const [rowPrice, setRowPrice] = useState<number | string>(0);
@@ -2632,17 +2631,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       <input 
                         ref={fastScanInputRef}
                         type="text" 
+                        defaultValue=""
                         placeholder="Scan or type barcode here and press Enter..."
-                        value={barcodeInput}
-                        onChange={(e) => setBarcodeInput(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
-                            const code = (e.currentTarget as HTMLInputElement).value.trim();
+                            const inputElem = e.currentTarget as HTMLInputElement;
+                            const code = inputElem.value.trim();
                             if (!code) return;
                             
-                            // Find product by SKU or exact name match
-                            const p = products.find(prod => prod.sku.toLowerCase() === code.toLowerCase() || prod.name.toLowerCase() === code.toLowerCase() || prod.id === code || (prod.barcode && prod.barcode.toLowerCase() === code.toLowerCase()));
+                            // Find product by SKU or exact name match from latest store data
+                            const latestProducts = dbStore.getProducts(businessId);
+                            const p = latestProducts.find(prod => prod.sku.toLowerCase() === code.toLowerCase() || prod.name.toLowerCase() === code.toLowerCase() || prod.id === code || (prod.barcode && prod.barcode.toLowerCase() === code.toLowerCase()));
                             
                             if (p) {
                               const selCust = customers.find(c => c.id === selectedCustomerId);
@@ -2684,11 +2684,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       return [...prevItems, newItem];
     }
   });
-  setBarcodeInput('');
+  inputElem.value = '';
   setTimeout(() => fastScanInputRef.current?.focus(), 10);
                             } else {
                               triggerToast('Product not found for barcode: ' + code, 'error');
-  setBarcodeInput('');
+  inputElem.value = '';
   setTimeout(() => fastScanInputRef.current?.focus(), 10);
                             }
                           }

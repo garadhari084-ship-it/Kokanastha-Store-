@@ -267,6 +267,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       }
 
       setBarcodeInput('');
+      if (barcodeInputRef.current) barcodeInputRef.current.value = '';
 
       return {
         success: true,
@@ -1120,22 +1121,24 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                   <input 
                     ref={barcodeInputRef}
                     type="text" 
+                    defaultValue=""
                     placeholder="Scan or type barcode / SKU / product name (e.g. AM-1001)..."
-                    value={barcodeInput}
                     onChange={(e) => setBarcodeInput(e.target.value)}
                     className="w-full pl-3 pr-10 h-10 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] font-mono font-bold rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   />
                   {barcodeInput && (
                     <button 
                       type="button" 
-                      onClick={() => setBarcodeInput('')}
+                      onClick={() => {
+                        setBarcodeInput('');
+                        if (barcodeInputRef.current) barcodeInputRef.current.value = '';
+                      }}
                       className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                     >
                       <X size={16} />
                     </button>
                   )}
                 </div>
-
                 {/* Verify Item button on tablet & desktop (sm+) */}
                 <button 
                   type="submit"

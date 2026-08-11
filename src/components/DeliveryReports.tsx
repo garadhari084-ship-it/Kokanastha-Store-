@@ -59,7 +59,7 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
       .filter(p => {
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
-        return (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q);
+        return String(p.name || '').toLowerCase().includes(q) || String(p.sku || '').toLowerCase().includes(q) || String(p.barcode || '').toLowerCase().includes(q);
       })
       .sort((a, b) => b.ordered - a.ordered);
   }, [products, filteredOrders, searchQuery]);

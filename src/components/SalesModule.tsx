@@ -2642,7 +2642,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             
                             // Find product by SKU or exact name match from latest store data
                             const latestProducts = dbStore.getProducts(businessId);
-                            const p = latestProducts.find(prod => prod.sku.toLowerCase() === code.toLowerCase() || prod.name.toLowerCase() === code.toLowerCase() || prod.id === code || (prod.barcode && prod.barcode.toLowerCase() === code.toLowerCase()));
+                            const searchCode = code.toLowerCase();
+                            const p = latestProducts.find(prod => 
+                              String(prod.sku || '').trim().toLowerCase() === searchCode || 
+                              String(prod.name || '').trim().toLowerCase() === searchCode || 
+                              String(prod.id || '').trim() === code || 
+                              String(prod.barcode || '').trim().toLowerCase() === searchCode
+                            );
                             
                             if (p) {
                               const selCust = customers.find(c => c.id === selectedCustomerId);

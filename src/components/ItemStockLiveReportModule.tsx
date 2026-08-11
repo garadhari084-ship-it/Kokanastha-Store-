@@ -56,7 +56,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
       // Show if it matches search
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        return (p.name || '').toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q);
+        return String(p.name || '').toLowerCase().includes(q) || String(p.barcode || '').toLowerCase().includes(q);
       }
       return true;
     });

@@ -993,9 +993,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         });
 
         const currentProducts = dbStore.getProducts(businessId);
-        const existingNames = new Set(currentProducts.map(p => p.name ? p.name.trim().toLowerCase() : '').filter(Boolean));
-        const existingSkus = new Set(currentProducts.map(p => p.sku ? p.sku.trim().toLowerCase() : '').filter(Boolean));
-        const existingBarcodes = new Set(currentProducts.map(p => p.barcode ? p.barcode.trim().toLowerCase() : '').filter(Boolean));
+        const existingNames = new Set(currentProducts.map(p => String(p.name || '').trim().toLowerCase()).filter(Boolean));
+        const existingSkus = new Set(currentProducts.map(p => String(p.sku || '').trim().toLowerCase()).filter(Boolean));
+        const existingBarcodes = new Set(currentProducts.map(p => String(p.barcode || '').trim().toLowerCase()).filter(Boolean));
 
         const batchNames = new Set<string>();
         const batchSkus = new Set<string>();

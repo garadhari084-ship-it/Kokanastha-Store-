@@ -2991,10 +2991,10 @@ class ERPStorage {
       const p = this.cache.products.find(prod => prod.id === item.product_id);
       if (p) {
         if (
-          p.barcode?.trim().toLowerCase() === cleanCode ||
-          p.sku?.trim().toLowerCase() === cleanCode ||
-          p.name?.trim().toLowerCase() === cleanCode ||
-          p.id === barcode.trim()
+          String(p.barcode || '').trim().toLowerCase() === cleanCode ||
+          String(p.sku || '').trim().toLowerCase() === cleanCode ||
+          String(p.name || '').trim().toLowerCase() === cleanCode ||
+          String(p.id || '').trim() === barcode.trim()
         ) {
           product = p;
           break;
@@ -3005,10 +3005,10 @@ class ERPStorage {
     // 2. If not found in order items, search all products in the database
     if (!product) {
       product = this.cache.products.find(p => p.business_id === businessId && (
-        p.barcode?.trim().toLowerCase() === cleanCode ||
-        p.sku?.trim().toLowerCase() === cleanCode ||
-        p.name?.trim().toLowerCase() === cleanCode ||
-        p.id === barcode.trim()
+        String(p.barcode || '').trim().toLowerCase() === cleanCode ||
+        String(p.sku || '').trim().toLowerCase() === cleanCode ||
+        String(p.name || '').trim().toLowerCase() === cleanCode ||
+        String(p.id || '').trim() === barcode.trim()
       ));
     }
 

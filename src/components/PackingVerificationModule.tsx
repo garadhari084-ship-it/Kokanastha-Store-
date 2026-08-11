@@ -340,7 +340,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    processBarcodeScan(barcodeInput);
+    const code = barcodeInputRef.current?.value || barcodeInput;
+    processBarcodeScan(code);
   };
 
   // Reset scans

@@ -2638,11 +2638,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
-                            const code = barcodeInput.trim();
+                            const code = (e.currentTarget as HTMLInputElement).value.trim();
                             if (!code) return;
                             
                             // Find product by SKU or exact name match
-                            const p = products.find(prod => prod.sku.toLowerCase() === code.toLowerCase() || prod.name.toLowerCase() === code.toLowerCase() || prod.id === code);
+                            const p = products.find(prod => prod.sku.toLowerCase() === code.toLowerCase() || prod.name.toLowerCase() === code.toLowerCase() || prod.id === code || (prod.barcode && prod.barcode.toLowerCase() === code.toLowerCase()));
                             
                             if (p) {
                               const selCust = customers.find(c => c.id === selectedCustomerId);

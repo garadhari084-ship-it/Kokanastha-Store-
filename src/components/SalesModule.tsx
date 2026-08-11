@@ -56,6 +56,7 @@ interface CustomDropdownOption {
   value: string;
   label: string;
   disabled?: boolean;
+  searchKeywords?: string;
 }
 
 interface CustomDropdownProps {
@@ -94,7 +95,8 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
   }, []);
 
   const filteredOptions = options.filter(opt => 
-    opt.label.toLowerCase().includes(searchTerm.toLowerCase())
+    opt.label.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (opt.searchKeywords && opt.searchKeywords.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   useEffect(() => {
@@ -2737,7 +2739,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           });
                           return {
                             value: p.id,
-                            label: `${p.name} (SKU: ${p.sku} | ${evalRes.rateType}: ${currencySymbol}${evalRes.appliedPrice.toLocaleString()})`
+                            label: `${p.name} (SKU: ${p.sku} | ${evalRes.rateType}: ${currencySymbol}${evalRes.appliedPrice.toLocaleString()})`,
+                            searchKeywords: p.barcode
                           };
                         })
                       ]}

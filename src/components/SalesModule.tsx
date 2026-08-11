@@ -475,6 +475,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   // Quick line-item row helper
   const [rowProductId, setRowProductId] = useState('');
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const fastScanInputRef = useRef<HTMLInputElement>(null);
   const [rowQty, setRowQty] = useState<number | string>(1);
   const [rowPrice, setRowPrice] = useState<number | string>(0);
   const [rowTaxRate, setRowTaxRate] = useState<number | string>(defaultTenantTax);
@@ -644,55 +646,62 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       triggerToast('Quantity must be greater than zero.', 'error');
       return;
     }
-
     const prod = products.find(p => p.id === rowProductId);
     if (!prod) return;
 
-    if (orderItems.some(it => it.product_id === rowProductId)) {
-      triggerToast('Item already listed in order line.', 'error');
-      return;
+    setOrderItems(prevItems => {
+    const existingItemIndex = prevItems.findIndex(it => it.product_id === rowProductId);
+    if (existingItemIndex >= 0) {
+      triggerToast('Item quantity updated.', 'success');
+      const updatedItems = [...prevItems];
+      updatedItems[existingItemIndex] = {
+        ...updatedItems[existingItemIndex],
+        qty: updatedItems[existingItemIndex].qty + finalQty
+      };
+      return updatedItems;
+    } else {
+      const selCust = customers.find(c => c.id === selectedCustomerId);
+      const evalRes = calculateApplicablePrice(prod, {
+        isLoyalMember: isLoyalMember(selCust),
+        isAdvanceBooking,
+        isDiwaliSale: isFestiveBooking,
+        business: currentBiz,
+        orderDate
+      });
+      
+      const isCustomPrice = rowPrice !== '' && !isNaN(Number(rowPrice)) && Number(rowPrice) !== evalRes.appliedPrice;
+      const finalPrice = rowPrice !== '' && !isNaN(Number(rowPrice)) ? Number(rowPrice) : evalRes.appliedPrice;
+      const finalTax = rowTaxRate !== '' && !isNaN(Number(rowTaxRate))
+        ? Number(rowTaxRate)
+        : (typeof prod.gst_rate === 'number' && !isNaN(prod.gst_rate) && prod.gst_rate >= 0 ? prod.gst_rate : defaultTenantTax);
+        
+      const newItem = {
+        product_id: rowProductId,
+        qty: finalQty,
+        scanned_qty: 0,
+        selling_price: finalPrice,
+        gst_rate: finalTax,
+        normal_rate: evalRes.normalRate,
+        rate_type: isCustomPrice ? 'OVERRIDE' : evalRes.rateType,
+        rate_reason: isCustomPrice ? 'Admin Price Override' : evalRes.rateReason,
+        unit_savings: Math.max(0, evalRes.normalRate - finalPrice),
+        is_overridden: isCustomPrice
+      };
+      
+      if (isCustomPrice) {
+        dbStore.logActivity(
+          user.id,
+          user.name,
+          user.role,
+          'Price Override',
+          `Admin price override for ${prod.name} (SKU: ${prod.sku}): calculated ${evalRes.rateType} ₹${evalRes.appliedPrice} -> overridden to ₹${finalPrice}`,
+          businessId
+        );
+      }
+      return [...prevItems, newItem];
     }
-
-    const selCust = customers.find(c => c.id === selectedCustomerId);
-    const evalRes = calculateApplicablePrice(prod, {
-      isLoyalMember: isLoyalMember(selCust),
-      isAdvanceBooking,
-      isDiwaliSale: isFestiveBooking,
-      business: currentBiz,
-      orderDate
-    });
-
-    const isCustomPrice = rowPrice !== '' && !isNaN(Number(rowPrice)) && Number(rowPrice) !== evalRes.appliedPrice;
-    const finalPrice = rowPrice !== '' && !isNaN(Number(rowPrice)) ? Number(rowPrice) : evalRes.appliedPrice;
-    const finalTax = rowTaxRate !== '' && !isNaN(Number(rowTaxRate))
-      ? Number(rowTaxRate)
-      : (typeof prod.gst_rate === 'number' && !isNaN(prod.gst_rate) && prod.gst_rate >= 0 ? prod.gst_rate : defaultTenantTax);
-
-    const newItem: SalesItem = {
-      product_id: rowProductId,
-      qty: finalQty,
-      scanned_qty: 0,
-      selling_price: finalPrice,
-      gst_rate: finalTax,
-      normal_rate: evalRes.normalRate,
-      rate_type: isCustomPrice ? 'OVERRIDE' : evalRes.rateType,
-      rate_reason: isCustomPrice ? 'Admin Price Override' : evalRes.rateReason,
-      unit_savings: Math.max(0, evalRes.normalRate - finalPrice),
-      is_overridden: isCustomPrice
-    };
-
-    if (isCustomPrice) {
-      dbStore.logActivity(
-        user.id,
-        user.name,
-        user.role,
-        'Price Override',
-        `Admin price override for ${prod.name} (SKU: ${prod.sku}): calculated ${evalRes.rateType} ₹${evalRes.appliedPrice} -> overridden to ₹${finalPrice}`,
-        businessId
-      );
-    }
-
-    setOrderItems([...orderItems, newItem]);
+  });
+    
     setRowProductId('');
     setRowQty(1);
     setRowPrice(0);
@@ -1287,7 +1296,24 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       if (statusFilter !== 'all' && o.status !== statusFilter) return false;
       const cust = customers.find(c => c.id === o.customer_id);
       const custName = o.customer_name || (cust ? cust.name : '');
-      const query = searchQuery.toLowerCase().trim();
+      let query = searchQuery.toLowerCase().trim();
+      
+      // If the scanned text is a full URL from the Bill QR code, extract the order number
+      if (query.includes('?inv=')) {
+        try {
+          const urlObj = new URL(searchQuery.trim());
+          const invParam = urlObj.searchParams.get('inv');
+          if (invParam) {
+            query = invParam.toLowerCase().trim();
+          }
+        } catch (e) {
+          // fallback regex if new URL fails
+          const match = query.match(/inv=([^&]+)/);
+          if (match) {
+            query = decodeURIComponent(match[1]).toLowerCase().trim();
+          }
+        }
+      }
       return !query || 
              o.order_number.toLowerCase().includes(query) || 
              custName.toLowerCase().includes(query) ||
@@ -2595,16 +2621,92 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                  <div className="md:col-span-12 flex items-end mb-2">
+                    <div className="w-full">
+                      <label className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1 mb-1">
+                        <ScanLine size={14} /> Fast Barcode Scan
+                      </label>
+                      <input 
+                        ref={fastScanInputRef}
+                        type="text" 
+                        placeholder="Scan or type barcode here and press Enter..."
+                        value={barcodeInput}
+                        onChange={(e) => setBarcodeInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const code = barcodeInput.trim();
+                            if (!code) return;
+                            
+                            // Find product by SKU or exact name match
+                            const p = products.find(prod => prod.sku.toLowerCase() === code.toLowerCase() || prod.name.toLowerCase() === code.toLowerCase() || prod.id === code);
+                            
+                            if (p) {
+                              const selCust = customers.find(c => c.id === selectedCustomerId);
+                              const evalRes = calculateApplicablePrice(p, {
+                                isLoyalMember: isLoyalMember(selCust),
+                                isAdvanceBooking,
+                                isDiwaliSale: isFestiveBooking,
+                                business: currentBiz,
+                                orderDate
+                              });
+                              
+                              const defaultTax = (defaultTenantTax === 0 || p.gst_rate === 18 || typeof p.gst_rate !== 'number' || isNaN(p.gst_rate))
+                                ? defaultTenantTax
+                                : p.gst_rate;
+                                
+                              setOrderItems(prevItems => {
+    const existingItem = prevItems.find(it => it.product_id === p.id);
+    if (existingItem) {
+      triggerToast('Item quantity updated.', 'success');
+      return prevItems.map(it => 
+        it.product_id === p.id 
+          ? { ...it, qty: it.qty + 1 }
+          : it
+      );
+    } else {
+      const newItem = {
+        product_id: p.id,
+        qty: 1,
+        scanned_qty: 0,
+        selling_price: evalRes.appliedPrice,
+        gst_rate: defaultTax,
+        normal_rate: evalRes.normalRate,
+        rate_type: evalRes.rateType,
+        rate_reason: evalRes.rateReason,
+        unit_savings: Math.max(0, evalRes.normalRate - evalRes.appliedPrice),
+        is_overridden: false
+      };
+      triggerToast('Added: ' + p.name, 'success');
+      return [...prevItems, newItem];
+    }
+  });
+  setBarcodeInput('');
+  setTimeout(() => fastScanInputRef.current?.focus(), 10);
+                            } else {
+                              triggerToast('Product not found for barcode: ' + code, 'error');
+  setBarcodeInput('');
+  setTimeout(() => fastScanInputRef.current?.focus(), 10);
+                            }
+                          }
+                        }}
+                        autoFocus
+                        className="w-full px-4 py-2.5 bg-indigo-50/50 dark:bg-indigo-950/20 border-2 border-indigo-200 dark:border-indigo-800 rounded-xl text-sm font-black focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 text-slate-900 dark:text-slate-100 placeholder:text-indigo-300 dark:placeholder:text-indigo-700/50 transition-all"
+                      />
+                    </div>
+                  </div>
+                  
                   <div className="md:col-span-4">
                     <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block mb-1">Product SKU *</label>
                     <CustomDropdown 
                       value={rowProductId}
-                      onChange={(pId) => {
-                        setRowProductId(pId);
-                        const prod = products.find(p => p.id === pId);
-                        if (prod) {
+                      onChange={(val) => {
+                        setRowProductId(val);
+                        // set price according to selection
+                        const p = products.find(prod => prod.id === val);
+                        if (p) {
                           const selCust = customers.find(c => c.id === selectedCustomerId);
-                          const evalRes = calculateApplicablePrice(prod, {
+                          const evalRes = calculateApplicablePrice(p, {
                             isLoyalMember: isLoyalMember(selCust),
                             isAdvanceBooking,
                             isDiwaliSale: isFestiveBooking,
@@ -2612,9 +2714,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             orderDate
                           });
                           setRowPrice(evalRes.appliedPrice);
-                          const defaultTax = (defaultTenantTax === 0 || prod.gst_rate === 18 || typeof prod.gst_rate !== 'number' || isNaN(prod.gst_rate))
-                            ? defaultTenantTax
-                            : prod.gst_rate;
+                          // Default to tenant default tax unless product has a specific valid GST rate
+                          const defaultTax = (defaultTenantTax === 0 || p.gst_rate === 18 || typeof p.gst_rate !== 'number' || isNaN(p.gst_rate)) 
+                            ? defaultTenantTax 
+                            : p.gst_rate;
                           setRowTaxRate(defaultTax);
                         }
                       }}

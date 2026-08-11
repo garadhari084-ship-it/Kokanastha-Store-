@@ -445,7 +445,7 @@ export async function generateBillOfSupplyHTML(
       </div>
 
       <div class="section-label" style="margin-top: 10px;">Payment QRs & Bank Details</div>
-      <div style="display: flex; gap: 8px; margin-top: 6px; align-items: flex-start;">
+      <div style="display: flex; gap: 24px; margin-top: 6px; align-items: flex-start;">
         <!-- QR 1: Real UPI Payment QR -->
         <div style="text-align: center; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; background: #ffffff; width: 80px; shrink: 0;">
           <div style="font-size: 6pt; font-weight: 800; color: #0f172a; text-transform: uppercase; margin-bottom: 2px;">UPI PAY QR</div>
@@ -639,6 +639,17 @@ export async function generate3InchBillHTML(
   });
   const upiQrImgSrc = await generateQRCodeDataUrl(upiPayString, { width: 220, margin: 1 });
 
+  const custName = customerObj?.name || 'Cash Customer';
+  const billString = buildBillVerificationString({
+    orderNumber: invoiceNo,
+    orderDate: order.order_date,
+    amount: total,
+    customerName: custName,
+    businessName: bName,
+    gstin: businessObj?.gstin
+  });
+  const billQrImgSrc = await generateQRCodeDataUrl(billString, { width: 220, margin: 1 });
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -787,9 +798,18 @@ export async function generate3InchBillHTML(
     </tr>
   </table>
 
-  <div class="text-center" style="margin: 12px 0;">
-    <img src="${upiQrImgSrc}" alt="UPI QR Code" style="width: 45mm; height: 45mm; margin: 0 auto; display: block;" />
-    <div style="font-size: 12px; font-weight: 900; margin-top: 6px;">Scan this QR Code to pay</div>
+  <div class="text-center" style="margin: 8px 0;">
+    <div style="margin-bottom: 12px;">
+      <img src="${upiQrImgSrc}" alt="UPI QR Code" style="width: 40mm; height: 40mm; margin: 0 auto; display: block;" />
+      <div style="font-size: 11px; font-weight: 900; margin-top: 4px;">SCAN TO PAY VIA UPI</div>
+    </div>
+    
+    <div class="dashed-line" style="margin: 10px 0;"></div>
+    
+    <div style="margin-top: 10px;">
+      <img src="${billQrImgSrc}" alt="Bill QR Code" style="width: 30mm; height: 30mm; margin: 0 auto; display: block;" />
+      <div style="font-size: 9px; font-weight: 900; margin-top: 4px;">VERIFIED BILL QR</div>
+    </div>
   </div>
 
   <div class="dashed-line"></div>

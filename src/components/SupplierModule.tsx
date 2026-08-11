@@ -499,7 +499,7 @@ export const SupplierModule: React.FC<SupplierModuleProps> = ({
               </button>
             </div>
             
-            <form onSubmit={handleSaveSupplier} className="p-6 space-y-4 overflow-y-auto flex-1">
+            <form onSubmit={handleSaveSupplier} className="p-6 space-y-4 overflow-y-auto flex-1" onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 
                 <div className="space-y-1 md:col-span-2">

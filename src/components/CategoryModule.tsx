@@ -341,7 +341,7 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
               </button>
             </div>
             
-            <form onSubmit={handleSaveCategory} className="p-6 space-y-4">
+            <form onSubmit={handleSaveCategory} className="p-6 space-y-4" onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }}>
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-slate-500 uppercase">Category Title *</label>
                 <input 

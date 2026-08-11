@@ -556,7 +556,7 @@ export default function App() {
               try {
                 const { businessId } = JSON.parse(sessionData);
                 if (businessId) {
-                  await dbStore.syncFromSupabase(businessId);
+                  await dbStore.syncFromSupabase(businessId, payload?.table || payload?.payload?.table);
                   // Force re-render of App to trickle down changes
                   setSyncTick(prev => prev + 1);
                 }
@@ -574,7 +574,7 @@ export default function App() {
               try {
                 const { businessId } = JSON.parse(sessionData);
                 if (businessId && payload.payload?.businessId === businessId) {
-                  await dbStore.syncFromSupabase(businessId);
+                  await dbStore.syncFromSupabase(businessId, payload?.table || payload?.payload?.table);
                   setSyncTick(prev => prev + 1);
                 }
               } catch(e) {}
@@ -614,18 +614,7 @@ export default function App() {
     }
   }, []);
 
-  // Live auto-sync interval across devices/browsers
-  useEffect(() => {
-    if (!currentBusiness?.id) return;
-    
-    const interval = setInterval(async () => {
-      if (isSupabaseConfigured && supabase && dbMode === 'supabase') {
-        await dbStore.syncFromSupabase(currentBusiness.id);
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [currentBusiness?.id, dbMode]);
+  // Removed auto-sync interval to improve performance and prevent lag
   
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

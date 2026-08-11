@@ -597,7 +597,7 @@ class ERPStorage {
     }
   }
 
-  public async syncFromSupabase(businessId?: string) {
+  public async syncFromSupabase(businessId?: string, targetTable?: string) {
     if (!isSupabaseConfigured || !supabase) return;
     
     console.log('Syncing from Supabase...');
@@ -647,7 +647,9 @@ class ERPStorage {
       return allRows;
     };
 
-       const syncPromises = Object.entries(tables).map(async ([key, table]) => {
+       const syncPromises = Object.entries(tables)
+      .filter(([_, table]) => !targetTable || table === targetTable)
+      .map(async ([key, table]) => {
        try {
        const data = await fetchAllFromTable(table, businessId);
        if (data) {

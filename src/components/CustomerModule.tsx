@@ -1044,7 +1044,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
               </button>
             </div>
             
-            <form onSubmit={handleSaveCustomer} className="p-6 space-y-4 overflow-y-auto flex-1">
+            <form onSubmit={handleSaveCustomer} className="p-6 space-y-4 overflow-y-auto flex-1" onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-[11px] font-bold text-slate-500 uppercase">Customer Profile Image</label>

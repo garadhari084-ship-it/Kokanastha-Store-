@@ -1797,7 +1797,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveCombo} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+            <form onSubmit={handleSaveCombo} onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
               {/* Section 1: Combo Master Details */}
               <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-3">
                 <h3 className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -3209,7 +3209,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+            <form onSubmit={handleSaveProduct} onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-[10px] font-bold text-slate-500 uppercase">Product Name *</label>

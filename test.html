@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html><body>
+<form onsubmit="event.preventDefault(); console.log('submit');">
+  <input type="text" onkeydown="if(event.key==='Enter') event.preventDefault();" />
+  <button type="submit">Submit</button>
+</form>
+</body></html>

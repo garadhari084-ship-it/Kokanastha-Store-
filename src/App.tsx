@@ -42,6 +42,7 @@ import {
   MessageSquare,
   Award,
   RefreshCw,
+  User,
 } from 'lucide-react';
 import { dbStore } from './services/store';
 import { useNotificationSound } from './utils/useNotificationSound';
@@ -352,6 +353,8 @@ export default function App() {
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
+  const [editProfileData, setEditProfileData] = useState({ name: '', email: '' });
   const [changePasswordData, setChangePasswordData] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
@@ -1118,6 +1121,45 @@ export default function App() {
     { id: 'settings', label: 'Tenant settings', icon: Settings, adminOnly: true },
     { id: 'audit', label: 'Security Logs', icon: ShieldAlert, adminOnly: true }
   ];
+
+  
+  const handleEditProfile = async () => {
+    if (!editProfileData.name || !editProfileData.email) {
+      triggerToast('Name and email are required', 'error');
+      return;
+    }
+
+    if (!currentUser) return;
+    
+    try {
+      if (isSupabaseConfigured && supabase) {
+        if (editProfileData.email !== currentUser.email) {
+            const { error: authError } = await supabase.auth.updateUser({ email: editProfileData.email });
+            if (authError) {
+              triggerToast('Failed to update email in auth: ' + authError.message, 'error');
+              return;
+            }
+        }
+        await supabase.from('users_profiles').update({ 
+            name: editProfileData.name, 
+            email: editProfileData.email 
+        }).eq('id', currentUser.id);
+      }
+      
+      dbStore.updateUser(currentUser.id, { 
+          name: editProfileData.name, 
+          email: editProfileData.email 
+      });
+      
+      // Update local state directly so UI updates immediately
+      setCurrentUser(prev => prev ? { ...prev, name: editProfileData.name, email: editProfileData.email } : prev);
+      
+      triggerToast('Profile updated successfully', 'success');
+      setIsEditProfileModalOpen(false);
+    } catch(e) {
+      triggerToast('Failed to update profile', 'error');
+    }
+  };
 
   const handleChangePassword = async () => {
     if (!changePasswordData.oldPassword || !changePasswordData.newPassword || !changePasswordData.confirmPassword) {
@@ -2088,6 +2130,16 @@ export default function App() {
                       className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 focus:outline-none cursor-pointer"
                     >
                       <Settings size={14} /> Account Settings
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        setEditProfileData({ name: currentUser?.name || '', email: currentUser?.email || '' });
+                        setIsEditProfileModalOpen(true);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 focus:outline-none cursor-pointer"
+                    >
+                      <User size={14} /> Edit Profile
                     </button>
                     <button 
                       onClick={() => {

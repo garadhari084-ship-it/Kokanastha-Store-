@@ -37,6 +37,7 @@ import {
   TrendingUp,
   Edit,
   RotateCcw,
+  ScanLine,
   Plus,
   Minus,
   Loader2,

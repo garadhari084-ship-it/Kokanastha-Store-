@@ -1123,10 +1123,13 @@ export default function App() {
     try {
       if (isSupabaseConfigured && supabase) {
         if (editProfileData.email !== currentUser.email) {
-            const { error: authError } = await supabase.auth.updateUser({ email: editProfileData.email });
-            if (authError) {
-              triggerToast('Failed to update email in auth: ' + authError.message, 'error');
-              return;
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+              const { error: authError } = await supabase.auth.updateUser({ email: editProfileData.email });
+              if (authError) {
+                triggerToast('Failed to update email in auth: ' + authError.message, 'error');
+                return;
+              }
             }
         }
         await supabase.from('users_profiles').update({ 
@@ -1142,6 +1145,7 @@ export default function App() {
       
       // Update local state directly so UI updates immediately
       setCurrentUser(prev => prev ? { ...prev, name: editProfileData.name, email: editProfileData.email } : prev);
+
       
       triggerToast('Profile updated successfully', 'success');
       setIsEditProfileModalOpen(false);

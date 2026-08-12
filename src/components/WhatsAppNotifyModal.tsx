@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Send, CheckCircle, AlertTriangle, ExternalLink, Copy, User, FileText, DollarSign, Wallet, Star } from 'lucide-react';
 import { SalesOrder, Customer, Business } from '../types/erp';
 import { formatWhatsAppPhone, formatDisplayPhone } from '../utils/formatters';
+import { getPublicInvoiceUrl } from '../utils/qrCode';
 
 interface WhatsAppNotifyModalProps {
   order: SalesOrder | null;
@@ -32,7 +33,7 @@ export function generateWhatsAppInvoiceMessage(
   const formattedPaid = formatAmount(paidAmount);
   const formattedBalance = formatAmount(balance);
   
-  const invoiceLink = `https://kokanastha-store.vercel.app/?inv=${encodeURIComponent(order.order_number)}`;
+  const invoiceLink = getPublicInvoiceUrl(order.order_number);
   const googleReviewLink = customGoogleReviewUrl || 'https://share.google/92HZuDJaVzQA5Sd5x';
 
   if (balance <= 0) {
@@ -94,7 +95,7 @@ export const WhatsAppNotifyModal: React.FC<WhatsAppNotifyModalProps> = ({
   const balanceAmount = Math.max(0, billAmount - paidAmount);
   const isPaidInFull = balanceAmount <= 0;
 
-  const invoiceLink = `https://kokanastha-store.vercel.app/?inv=${encodeURIComponent(order.order_number)}`;
+  const invoiceLink = getPublicInvoiceUrl(order.order_number);
 
   const handleSendWhatsApp = () => {
     const cleanPhone = formatWhatsAppPhone(customerPhone);

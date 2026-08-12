@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { SalesOrder, Customer, Business, Product } from '../types/erp';
 import { numberToWordsIndian } from '../utils/invoiceTemplate';
-import { buildUpiPayString, buildBillVerificationString } from '../utils/qrCode';
+import { buildUpiPayString, buildBillVerificationString, generateQRCodeDataUrl } from '../utils/qrCode';
 import { formatOrderTime } from '../utils/formatters';
 import { calculateOrderSavings } from '../utils/pricing';
 
@@ -71,8 +71,8 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const [billQrImgSrc, setBillQrImgSrc] = useState('');
 
   useEffect(() => {
-    QRCode.toDataURL(upiString, { width: 220, margin: 1 }).then(setUpiQrImgSrc).catch(console.error);
-    QRCode.toDataURL(billString, { width: 220, margin: 1 }).then(setBillQrImgSrc).catch(console.error);
+    generateQRCodeDataUrl(upiString, { width: 250, margin: 1 }).then(setUpiQrImgSrc).catch(console.error);
+    generateQRCodeDataUrl(billString, { width: 250, margin: 1 }).then(setBillQrImgSrc).catch(console.error);
   }, [upiString, billString]);
 
   const bankName = businessObj?.bank_name || 'NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN';
@@ -265,10 +265,10 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
 
           <div>
             <div className="font-extrabold text-slate-900 uppercase text-[9px] mb-1">Payment QRs & Bank Details</div>
-            <div className="flex items-start gap-2 text-[9px] text-slate-700 bg-slate-50 p-2 rounded border border-slate-200">
+            <div className="flex items-start gap-2 text-[9px] text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200">
               {/* UPI QR */}
-              <div className="text-center bg-white border border-slate-300 rounded p-1 shrink-0 w-20">
-                <div className="text-[7.5px] font-black uppercase text-slate-900 leading-none mb-0.5">UPI PAY</div>
+              <div className="text-center bg-white border border-slate-300 rounded-md p-1 shrink-0 w-20 shadow-2xs">
+                <div className="text-[7.5px] font-black uppercase text-slate-900 leading-none mb-0.5">UPI PAY QR</div>
                 {upiQrImgSrc ? (
                   <img src={upiQrImgSrc} alt="UPI QR" className="w-16 h-16 mx-auto border rounded border-slate-200" />
                 ) : (
@@ -279,19 +279,19 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               </div>
 
               {/* Bill QR */}
-              <div className="text-center bg-white border border-slate-300 rounded p-1 shrink-0 w-20">
+              <div className="text-center bg-white border border-slate-300 rounded-md p-1 shrink-0 w-20 shadow-2xs">
                 <div className="text-[7.5px] font-black uppercase text-slate-900 leading-none mb-0.5">BILL QR</div>
                 {billQrImgSrc ? (
                   <img src={billQrImgSrc} alt="Bill QR" className="w-16 h-16 mx-auto border rounded border-slate-200" />
                 ) : (
                   <div className="w-16 h-16 mx-auto border rounded border-slate-200 bg-slate-100" />
                 )}
-                <div className="text-[6.5px] font-bold text-blue-700 mt-0.5">VERIFIED</div>
+                <div className="text-[6.5px] font-bold text-blue-700 mt-0.5">VERIFIED BILL</div>
                 <div className="text-[5.5px] font-mono text-slate-500 truncate max-w-[64px] mx-auto">{order.order_number}</div>
               </div>
 
               {/* Bank Details */}
-              <div className="space-y-0.5 text-[8.5px] leading-tight shrink min-w-0 pl-1">
+              <div className="space-y-0.5 text-[8.5px] leading-tight shrink min-w-0 pl-1 my-auto">
                 <div><strong>Bank :</strong> {bankName}</div>
                 <div><strong>Account No. :</strong> {accountNo}</div>
                 <div><strong>IFSC code :</strong> {ifscCode}</div>

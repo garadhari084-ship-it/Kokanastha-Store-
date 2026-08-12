@@ -657,7 +657,22 @@ export async function generate3InchBillHTML(
   <title>Bill of Supply</title>
   <style>
     @page { 
+      size: 80mm auto; 
       margin: 0; 
+    }
+    @media print {
+      html, body {
+        width: 80mm !important;
+        max-width: 80mm !important;
+        margin: 0 auto !important;
+        padding: 2mm 3mm !important;
+        box-sizing: border-box !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      tr, .dashed-line, .bank-details, .terms {
+        page-break-inside: avoid !important;
+      }
     }
     body {
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -798,17 +813,23 @@ export async function generate3InchBillHTML(
     </tr>
   </table>
 
-  <div class="text-center" style="margin: 8px 0;">
-    <div style="margin-bottom: 12px;">
-      <img src="${upiQrImgSrc}" alt="UPI QR Code" style="width: 40mm; height: 40mm; margin: 0 auto; display: block;" />
-      <div style="font-size: 11px; font-weight: 900; margin-top: 4px;">SCAN TO PAY VIA UPI</div>
+  <div style="margin: 8px 0; border: 1.5px solid #000; border-radius: 4px; padding: 6px 4px; background: #fff; page-break-inside: avoid;">
+    <div style="font-size: 8.5px; font-weight: 900; text-align: center; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; border-bottom: 1px dashed #000; padding-bottom: 4px;">
+      Payment & Verification QRs
     </div>
-    
-    <div class="dashed-line" style="margin: 10px 0;"></div>
-    
-    <div style="margin-top: 10px;">
-      <img src="${billQrImgSrc}" alt="Bill QR Code" style="width: 30mm; height: 30mm; margin: 0 auto; display: block;" />
-      <div style="font-size: 9px; font-weight: 900; margin-top: 4px;">VERIFIED BILL QR</div>
+    <div style="display: flex; justify-content: space-around; align-items: flex-start; gap: 4px;">
+      <div style="text-align: center; flex: 1; min-width: 0;">
+        <div style="font-size: 8px; font-weight: 900; color: #000; margin-bottom: 3px;">UPI PAY QR</div>
+        <img src="${upiQrImgSrc}" alt="UPI QR Code" style="width: 26mm; height: 26mm; margin: 0 auto; display: block; border: 1px solid #000; border-radius: 3px; padding: 1px; background: #fff;" />
+        <div style="font-size: 7.5px; font-weight: 900; margin-top: 3px; color: #000;">SCAN TO PAY</div>
+        <div style="font-size: 6px; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32mm; margin: 0 auto;">${upiId}</div>
+      </div>
+      <div style="text-align: center; flex: 1; min-width: 0;">
+        <div style="font-size: 8px; font-weight: 900; color: #000; margin-bottom: 3px;">BILL QR</div>
+        <img src="${billQrImgSrc}" alt="Bill QR Code" style="width: 26mm; height: 26mm; margin: 0 auto; display: block; border: 1px solid #000; border-radius: 3px; padding: 1px; background: #fff;" />
+        <div style="font-size: 7.5px; font-weight: 900; margin-top: 3px; color: #000;">VERIFIED BILL</div>
+        <div style="font-size: 6px; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32mm; margin: 0 auto;">${invoiceNo}</div>
+      </div>
     </div>
   </div>
 

@@ -318,9 +318,13 @@ export default function App() {
   const [publicInvoiceNum, setPublicInvoiceNum] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
-      const searchParams = new URLSearchParams(window.location.search);
-      const inv = searchParams.get('inv') || searchParams.get('invoice');
-      if (inv) return inv.trim();
+      const queryString = window.location.search || (window.location.hash.includes('?') ? window.location.hash.substring(window.location.hash.indexOf('?')) : '');
+      const searchParams = new URLSearchParams(queryString);
+      const rawInv = searchParams.get('inv') || searchParams.get('invoice');
+      if (rawInv) {
+        const match = rawInv.trim().match(/(SO-?\d+|INV-?\d+|[A-Za-z0-9_-]{3,})/i);
+        return match ? match[0] : rawInv.trim();
+      }
 
       const pathMatches = window.location.pathname.match(/\/inv\/(.+)/);
       if (pathMatches && pathMatches[1]) {

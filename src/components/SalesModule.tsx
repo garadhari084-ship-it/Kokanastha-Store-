@@ -372,7 +372,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       : 0;
   }, [currentBiz?.tax_rate_default]);
 
-  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState('WALK_IN');
   const [selectedArea, setSelectedArea] = useState('Dahisar');
   const [orderDate, setOrderDate] = useState<string>(getLocalTodayDate);
   const [orderTime, setOrderTime] = useState<string>(getLocalCurrentTimeInput);
@@ -487,7 +487,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setEditingOrderId(null);
     const biz = dbStore.getBusiness(businessId);
     setCustomInvoiceNumber(getSuggestedInvoiceNumber(false, false));
-    setSelectedCustomerId('');
+    setSelectedCustomerId('WALK_IN');
     setSelectedArea(biz?.default_dispatch_zone || 'Dahisar');
     setOrderDate(getLocalTodayDate());
     setOrderTime(getLocalCurrentTimeInput());
@@ -566,7 +566,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     
     setEditingOrderId(order.id);
     setCustomInvoiceNumber(order.order_number);
-    setSelectedCustomerId(order.customer_id);
+    setSelectedCustomerId(order.customer_id || 'WALK_IN');
 
     const c = customers.find(cust => cust.id === order.customer_id);
     if (c) {

@@ -4,7 +4,7 @@ import {
   Users, Search, ShieldCheck, UserPlus, Edit2, Trash2, X, MoreVertical,
   Activity, Calendar, Mail, Clock, LayoutGrid, List, CheckCircle2,
   Lock, Key, Power, ExternalLink, ArrowUpRight, Zap, ShieldAlert,
-  BarChart2, Filter, ChevronDown, UserCheck, UserX, Shield, Fingerprint
+  BarChart2, Filter, ChevronDown, UserCheck, UserX, Shield, Fingerprint, Loader2
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { UserProfile, UserRole, SystemAuditLog } from '../types/erp';
@@ -46,6 +46,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
   const [newUserRole, setNewUserRole] = useState<UserRole>('Viewer');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [selectedAllowedPages, setSelectedAllowedPages] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleRoleChange = (role: string) => {
     setNewUserRole(role as UserRole);
@@ -78,12 +79,14 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
     setIsAddModalOpen(true);
   };
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (currentUser.role !== 'Super Admin' && currentUser.role !== 'Admin') {
       triggerToast('Unauthorized: Only Admins can create users.', 'error');
       return;
     }
+    
+    setIsSubmitting(true);
     try {
       const newUser = dbStore.createUser({
         name: newUserName,
@@ -95,7 +98,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
         allowed_pages: selectedAllowedPages
       });
       if (isSupabaseConfigured && supabase && newUserPassword) {
-        supabase.auth.signUp({
+        await supabase.auth.signUp({
           email: newUserEmail,
           password: newUserPassword,
           options: {
@@ -113,6 +116,8 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
       setSelectedAllowedPages([]);
     } catch (e: any) {
       triggerToast(e.message || 'Failed to provision identity', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -137,9 +142,10 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
     setIsEditModalOpen(true);
   };
 
-  const handleEditUser = (e: React.FormEvent) => {
+  const handleEditUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
+    setIsSubmitting(true);
     try {
       const updates: Partial<UserProfile> = { 
         name: newUserName, 
@@ -150,6 +156,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
       if (newUserPassword.trim() !== '') {
         (updates as any).password_hash = newUserPassword;
       }
+      // Assuming dbStore.updateUser is synchronous, but we can wrap it just the same
       dbStore.updateUser(selectedUser.id, updates);
       triggerToast(`Identity ${newUserName} updated successfully.`, 'success');
       dbStore.logActivity(currentUser.id, currentUser.name, currentUser.role, 'Update Identity', `Updated identity ${newUserName}`, businessId);
@@ -157,6 +164,8 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
       setSelectedUser(null);
     } catch (e: any) {
       triggerToast(e.message || 'Failed to update identity', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -727,16 +736,19 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
               <button 
                 type="button"
                 onClick={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }}
-                className="px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Abort
               </button>
               <button 
                 type="submit"
                 form="unifiedUserForm"
-                className="px-6 py-2.5 bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-extrabold rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 border border-amber-300"
+                disabled={isSubmitting}
+                className="px-6 py-2.5 bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-extrabold rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 border border-amber-300 disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                {isAddModalOpen ? 'Create User' : 'Save Changes'}
+                {isSubmitting && <Loader2 size={14} className="animate-spin" />}
+                {isAddModalOpen ? (isSubmitting ? 'Creating...' : 'Create User') : (isSubmitting ? 'Saving...' : 'Save Changes')}
               </button>
             </div>
           </div>

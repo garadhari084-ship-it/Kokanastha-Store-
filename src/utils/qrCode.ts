@@ -92,32 +92,33 @@ export function buildUpiPayString(params: {
 
 /**
  * Returns a publicly accessible URL for a given invoice/order number.
- * When running inside sandbox/container environments (.run.app / localhost), returns the public web domain link
- * so external mobile scanners do not hit container 403 / 404 errors.
+ * Automatically maps AI Studio development origins (ais-dev-) to public share origin (ais-pre-)
+ * so external mobile scanners open the digital invoice directly in the browser without 403 Google login errors.
  */
-export function getPublicInvoiceUrl(orderNumber: string): string {
+export function getPublicInvoiceUrl(orderNumber: string, extraPayload?: string): string {
   const cleanOrder = (orderNumber || '').trim();
   if (!cleanOrder) return '';
 
+  let origin = '';
   if (typeof window !== 'undefined' && window.location?.origin) {
-    const origin = window.location.origin;
-    const hostname = window.location.hostname;
-
-    // Standard public domain for external mobile scanner access
-    if (hostname.includes('run.app') || hostname.includes('localhost') || hostname === '127.0.0.1') {
-      return `https://kokanastha-store.vercel.app/?inv=${encodeURIComponent(cleanOrder)}`;
+    origin = window.location.origin;
+    // Replace private dev URL (ais-dev-) with public share URL (ais-pre-) so external phone cameras can open the invoice link directly
+    if (origin.includes('ais-dev-')) {
+      origin = origin.replace('ais-dev-', 'ais-pre-');
     }
-
-    return `${origin}/?inv=${encodeURIComponent(cleanOrder)}`;
   }
-  
-  return `https://kokanastha-store.vercel.app/?inv=${encodeURIComponent(cleanOrder)}`;
+
+  let url = `${origin}/?inv=${encodeURIComponent(cleanOrder)}`;
+  if (extraPayload) {
+    url += `&d=${encodeURIComponent(extraPayload)}`;
+  }
+  return url;
 }
 
 /**
- * Constructs a Bill Verification payload string for scanning invoices.
- * Outputs a clear, structured verification string readable by ANY mobile camera
- * or QR scanner app, showing key bill parameters immediately on screen.
+ * Constructs a Bill Verification URL string for scanning invoices.
+ * Generates an accessible digital invoice web URL with an embedded compact order payload so mobile phone
+ * cameras and QR scanners open the exact digital invoice immediately in the web browser.
  */
 export function buildBillVerificationString(params: {
   orderNumber: string;
@@ -126,8 +127,92 @@ export function buildBillVerificationString(params: {
   customerName?: string;
   businessName?: string;
   gstin?: string;
+  items?: any[];
+  paymentMode?: string;
+  upiId?: string;
 }): string {
-  const { orderNumber } = params;
-  const cleanOrder = (orderNumber || '').trim();
-  return getPublicInvoiceUrl(cleanOrder);
+  const cleanOrder = (params.orderNumber || '').trim();
+  if (!cleanOrder) return '';
+
+  let origin = '';
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    origin = window.location.origin;
+  }
+
+  // Check if running on a custom deployed production domain (not Cloud Run preview container or localhost)
+  const isDevContainer = !origin || origin.includes('run.app') || origin.includes('localhost') || origin.includes('ais-dev') || origin.includes('ais-pre');
+
+  if (!isDevContainer && origin.startsWith('http')) {
+    const compactPayload: Record<string, any> = {
+      no: cleanOrder,
+      dt: params.orderDate || new Date().toISOString().split('T')[0],
+      tot: params.amount || 0,
+      cust: params.customerName || 'Customer',
+      biz: params.businessName || 'Kokanastha Faral & Sweets',
+      pm: params.paymentMode || 'Paid'
+    };
+    if (params.gstin) compactPayload.gst = params.gstin;
+    if (params.items && Array.isArray(params.items) && params.items.length > 0) {
+      compactPayload.its = params.items.slice(0, 10).map((it: any) => ({
+        n: it.name || it.product_name || 'Item',
+        q: Number(it.qty) || 1,
+        p: Number(it.total_price || (it.qty * (it.unit_price || it.selling_price || 0))) || 0
+      }));
+    }
+
+    try {
+      const jsonStr = JSON.stringify(compactPayload);
+      const base64Data = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16))));
+      return `${origin}/?inv=${encodeURIComponent(cleanOrder)}&d=${encodeURIComponent(base64Data)}`;
+    } catch (e) {
+      return `${origin}/?inv=${encodeURIComponent(cleanOrder)}`;
+    }
+  }
+
+  // Otherwise, construct a clean, self-contained digital bill verification receipt text.
+  // Any phone camera, Google Lens, or QR scanner app will display the verified bill parameters instantly on screen
+  // without sending network requests to Cloud Run preview containers, completely eliminating 404 / 403 "Page Not Found" errors!
+  const bName = (params.businessName || 'Kokanastha Faral & Sweets').toUpperCase();
+  const dateStr = params.orderDate || new Date().toISOString().split('T')[0];
+  const custName = params.customerName || 'Customer';
+  const total = Number(params.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const payMode = params.paymentMode || 'Paid';
+
+  const lines: string[] = [
+    `===============================`,
+    `   ${bName}`,
+    `   BILL VERIFICATION RECEIPT   `,
+    `===============================`,
+    `Invoice No   : ${cleanOrder}`,
+    `Date         : ${dateStr}`,
+    `Customer     : ${custName}`
+  ];
+
+  if (params.gstin) {
+    lines.push(`GSTIN        : ${params.gstin}`);
+  }
+
+  lines.push(`Payment Mode : ${payMode}`);
+  lines.push(`-------------------------------`);
+
+  if (params.items && Array.isArray(params.items) && params.items.length > 0) {
+    lines.push(`ITEMS SUMMARY:`);
+    params.items.slice(0, 6).forEach((it: any) => {
+      const name = it.name || it.product_name || 'Item';
+      const qty = Number(it.qty) || 1;
+      const itemTot = Number(it.total_price || (qty * (it.unit_price || it.selling_price || 0))).toFixed(2);
+      lines.push(`• ${name} (x${qty}) - ₹${itemTot}`);
+    });
+    if (params.items.length > 6) {
+      lines.push(`+ ${params.items.length - 6} more items`);
+    }
+    lines.push(`-------------------------------`);
+  }
+
+  lines.push(`TOTAL AMOUNT : ₹${total}`);
+  lines.push(`STATUS       : VERIFIED & PAID`);
+  lines.push(`===============================`);
+  lines.push(`Authentic Digital Store Receipt`);
+
+  return lines.join('\n');
 }

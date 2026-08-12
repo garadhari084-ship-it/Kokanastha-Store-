@@ -107,7 +107,18 @@ export async function generateBillOfSupplyHTML(
     amount: totalAmount,
     customerName: custName,
     businessName: bName,
-    gstin: businessObj?.gstin
+    gstin: businessObj?.gstin,
+    upiId,
+    items: items.map(it => {
+      const p = products.find(prod => prod.id === it.product_id);
+      return {
+        name: p?.name || 'Faral Item',
+        qty: it.qty,
+        unit_price: it.selling_price || 0,
+        total_price: it.qty * (it.selling_price || 0)
+      };
+    }),
+    paymentMode
   });
 
   const upiQrImgSrc = await generateQRCodeDataUrl(upiString, { width: 220, margin: 1 });
@@ -458,7 +469,7 @@ export async function generateBillOfSupplyHTML(
         <div style="text-align: center; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; background: #ffffff; width: 80px; shrink: 0;">
           <div style="font-size: 6pt; font-weight: 800; color: #0f172a; text-transform: uppercase; margin-bottom: 2px;">BILL QR</div>
           <img src="${billQrImgSrc}" width="72" height="72" style="display: block; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff;" alt="Bill QR" />
-          <div style="font-size: 5.5pt; font-weight: 700; color: #1d4ed8; margin-top: 2px;">VERIFIED BILL</div>
+          <div style="font-size: 5.5pt; font-weight: 700; color: #1d4ed8; margin-top: 2px;">ONLINE INVOICE</div>
           <div style="font-size: 5pt; color: #475569; font-family: monospace;">${order.order_number}</div>
         </div>
 
@@ -646,7 +657,15 @@ export async function generate3InchBillHTML(
     amount: total,
     customerName: custName,
     businessName: bName,
-    gstin: businessObj?.gstin
+    gstin: businessObj?.gstin,
+    upiId,
+    items: (order.items || []).map((it: any) => ({
+      name: 'Faral Item',
+      qty: it.qty,
+      unit_price: it.selling_price || 0,
+      total_price: (it.qty || 1) * (it.selling_price || 0)
+    })),
+    paymentMode: order.payment_mode || 'Paid'
   });
   const billQrImgSrc = await generateQRCodeDataUrl(billString, { width: 220, margin: 1 });
 
@@ -827,7 +846,7 @@ export async function generate3InchBillHTML(
       <div style="text-align: center; flex: 1; min-width: 0;">
         <div style="font-size: 8px; font-weight: 900; color: #000; margin-bottom: 3px;">BILL QR</div>
         <img src="${billQrImgSrc}" alt="Bill QR Code" style="width: 26mm; height: 26mm; margin: 0 auto; display: block; border: 1px solid #000; border-radius: 3px; padding: 1px; background: #fff;" />
-        <div style="font-size: 7.5px; font-weight: 900; margin-top: 3px; color: #000;">VERIFIED BILL</div>
+        <div style="font-size: 7.5px; font-weight: 900; margin-top: 3px; color: #000;">ONLINE INVOICE</div>
         <div style="font-size: 6px; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32mm; margin: 0 auto;">${invoiceNo}</div>
       </div>
     </div>

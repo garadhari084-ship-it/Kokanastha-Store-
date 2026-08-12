@@ -2739,10 +2739,33 @@ class ERPStorage {
   }
 
   public async findSalesOrderByNumber(orderNumber: string): Promise<SalesOrder | null> {
-    const clean = orderNumber.trim().toLowerCase();
+    const rawClean = orderNumber.trim();
+    const clean = rawClean.toLowerCase();
     if (!clean) return null;
 
-    const foundLocal = (this.cache.sales || []).find(s => s.order_number?.toLowerCase() === clean);
+    const salesList = this.cache.sales || [];
+
+    // 1. Exact match
+    let foundLocal = salesList.find(s => (s.order_number || '').trim().toLowerCase() === clean);
+
+    // 2. Normalized prefix-stripped match (e.g. INV-2026-67 vs SO-2026-67 vs 2026-67)
+    if (!foundLocal) {
+      const numOnly = clean.replace(/^(inv|so)-?/i, '');
+      foundLocal = salesList.find(s => {
+        const sNum = (s.order_number || '').trim().toLowerCase();
+        const sNumOnly = sNum.replace(/^(inv|so)-?/i, '');
+        return sNumOnly === numOnly || sNum === clean;
+      });
+    }
+
+    // 3. Substring match fallback
+    if (!foundLocal) {
+      foundLocal = salesList.find(s => {
+        const sNum = (s.order_number || '').trim().toLowerCase();
+        return (sNum && clean.includes(sNum)) || (sNum && sNum.includes(clean));
+      });
+    }
+
     if (foundLocal) {
       const custs = this.getCustomers(foundLocal.business_id);
       const cust = custs.find(c => c.id === foundLocal.customer_id);
@@ -2757,11 +2780,11 @@ class ERPStorage {
         const { data } = await supabase
           .from('sales_orders')
           .select('*')
-          .ilike('order_number', clean)
-          .maybeSingle();
+          .or(`order_number.ilike.%${clean}%,order_number.ilike.%${clean.replace(/^(inv|so)-?/i, '')}%`)
+          .limit(1);
 
-        if (data) {
-          return data as SalesOrder;
+        if (data && data.length > 0) {
+          return data[0] as SalesOrder;
         }
       } catch (err) {
         console.warn("Error finding sales order from Supabase:", err);
@@ -2943,14 +2966,52 @@ class ERPStorage {
 
   // Packing Verification Operations (Mandatory Core Feature)
   public scanOrderQR(businessId: string, qrCodeContent: string): { success: boolean; order?: SalesOrder; error?: string } {
-    // Finds active order matching this qr_code or order number
+    const rawContent = (qrCodeContent || '').trim();
+    if (!rawContent) {
+      return { success: false, error: 'Empty QR code content.' };
+    }
+
+    // Extract clean order number from various possible QR code formats
+    let extractedOrderNum = rawContent;
+
+    if (rawContent.includes('inv=')) {
+      const match = rawContent.match(/inv=([^&]+)/i);
+      if (match) extractedOrderNum = decodeURIComponent(match[1]).trim();
+    } else if (rawContent.includes('tr=')) {
+      const match = rawContent.match(/tr=([^&]+)/i);
+      if (match) extractedOrderNum = decodeURIComponent(match[1]).trim();
+    } else if (rawContent.includes('tn=')) {
+      const match = rawContent.match(/tn=([^&]+)/i);
+      if (match) {
+        const tnText = decodeURIComponent(match[1]);
+        const orderMatch = tnText.match(/(SO-?\d+|INV-?\d+|[A-Za-z0-9_-]{3,})/i);
+        if (orderMatch) extractedOrderNum = orderMatch[0].trim();
+      }
+    } else if (rawContent.includes('Invoice No')) {
+      const match = rawContent.match(/Invoice No\s*:\s*([^\s\n\r]+)/i);
+      if (match) extractedOrderNum = match[1].trim();
+    } else if (rawContent.includes('|')) {
+      extractedOrderNum = rawContent.split('|')[0].trim();
+    } else {
+      const generalMatch = rawContent.match(/(SO-?\d+|INV-?\d+)/i);
+      if (generalMatch) extractedOrderNum = generalMatch[0].trim();
+    }
+
+    // Find active order matching in store
     const order = this.cache.sales.find(
       s => s.business_id === businessId &&
-      (s.qr_code_data === qrCodeContent || s.order_number === qrCodeContent || s.id === qrCodeContent)
+      (
+        s.order_number === rawContent ||
+        s.qr_code_data === rawContent ||
+        s.id === rawContent ||
+        s.order_number === extractedOrderNum ||
+        (extractedOrderNum && s.order_number.toLowerCase() === extractedOrderNum.toLowerCase()) ||
+        (s.qr_code_data && s.qr_code_data.startsWith(extractedOrderNum))
+      )
     );
 
     if (!order) {
-      return { success: false, error: 'Order QR Code not found.' };
+      return { success: false, error: `Order "${extractedOrderNum || rawContent}" not found.` };
     }
 
     if (order.status === 'Packed' || order.status === 'Dispatched' || order.status === 'Delivered') {

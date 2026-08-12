@@ -64,7 +64,18 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
     amount: totalAmount,
     customerName: custName,
     businessName: bName,
-    gstin: businessObj?.gstin
+    gstin: businessObj?.gstin,
+    upiId,
+    items: items.map(it => {
+      const p = products.find(prod => prod.id === it.product_id);
+      return {
+        name: p?.name || 'Faral Item',
+        qty: it.qty,
+        unit_price: it.selling_price || 0,
+        total_price: it.total_price || (it.qty * (it.selling_price || 0))
+      };
+    }),
+    paymentMode
   });
 
   const [upiQrImgSrc, setUpiQrImgSrc] = useState('');
@@ -286,7 +297,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
                 ) : (
                   <div className="w-16 h-16 mx-auto border rounded border-slate-200 bg-slate-100" />
                 )}
-                <div className="text-[6.5px] font-bold text-blue-700 mt-0.5">VERIFIED BILL</div>
+                <div className="text-[6.5px] font-bold text-blue-700 mt-0.5">ONLINE INVOICE</div>
                 <div className="text-[5.5px] font-mono text-slate-500 truncate max-w-[64px] mx-auto">{order.order_number}</div>
               </div>
 

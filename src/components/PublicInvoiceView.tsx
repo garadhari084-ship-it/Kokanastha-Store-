@@ -24,14 +24,82 @@ export const PublicInvoiceView: React.FC<PublicInvoiceViewProps> = ({
     let isMounted = true;
     const fetchOrder = async () => {
       setLoading(true);
-      const found = await dbStore.findSalesOrderByNumber(orderNumber);
+      let found = await dbStore.findSalesOrderByNumber(orderNumber);
+
+      // If not found in local storage (e.g. scanned on a customer's phone), try decoding embedded payload 'd=' parameter from URL
+      if (!found && typeof window !== 'undefined') {
+        try {
+          const queryString = window.location.search || (window.location.hash.includes('?') ? window.location.hash.substring(window.location.hash.indexOf('?')) : '');
+          const searchParams = new URLSearchParams(queryString);
+          const dParam = searchParams.get('d');
+          if (dParam) {
+            const decodedBase64 = decodeURIComponent(dParam);
+            const jsonStr = decodeURIComponent(Array.prototype.map.call(atob(decodedBase64), (c: string) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+            const payload = JSON.parse(jsonStr);
+
+            if (payload && (payload.no || payload.tot)) {
+              const reconstructedOrder: SalesOrder = {
+                id: `so-public-${payload.no || orderNumber}`,
+                business_id: 'b1111111-1111-1111-1111-111111111111',
+                order_number: payload.no || orderNumber,
+                customer_id: 'cust-public',
+                customer_name: payload.cust || 'Walk-in Customer',
+                order_date: payload.dt || new Date().toISOString().split('T')[0],
+                time: '12:00 PM',
+                items: (payload.its || []).map((it: any, idx: number) => ({
+                  product_id: `prod-public-${idx}`,
+                  product_name: it.n || 'Faral Item',
+                  qty: Number(it.q) || 1,
+                  unit_price: (Number(it.p) || 0) / (Number(it.q) || 1),
+                  selling_price: (Number(it.p) || 0) / (Number(it.q) || 1),
+                  total_price: Number(it.p) || 0
+                })),
+                total_amount: Number(payload.tot) || 0,
+                discount_amount: 0,
+                status: 'Delivered',
+                delivery_status: 'Delivered',
+                advance_booking: false,
+                qr_code_data: payload.no || orderNumber,
+                payment_mode: payload.pm || 'Paid',
+                payment_status: 'Paid',
+                created_at: payload.dt ? new Date(payload.dt).toISOString() : new Date().toISOString()
+              };
+              found = reconstructedOrder;
+            }
+          }
+        } catch (err) {
+          console.warn("Could not parse embedded public invoice payload from URL:", err);
+        }
+      }
+
       if (isMounted) {
         if (found) {
           setOrder(found);
-          const biz = dbStore.getBusiness(found.business_id) || dbStore.getBusinesses()[0];
+          const biz = dbStore.getBusiness(found.business_id) || dbStore.getBusinesses()[0] || {
+            id: 'b1111111-1111-1111-1111-111111111111',
+            name: 'Kokanastha Faral & Sweets',
+            gstin: '27AABCK1234F1ZM',
+            billing_address: 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092',
+            phone: '+91 98200 12345',
+            email: 'ops@kokanasthafaral.com',
+            currency_symbol: '₹',
+            tax_rate_default: 5,
+            created_at: new Date().toISOString()
+          } as Business;
+
           setBusiness(biz);
           const custs = dbStore.getCustomers(found.business_id);
-          const cust = custs.find(c => c.id === found.customer_id || (c.name && c.name.toLowerCase() === (found.customer_name || '').toLowerCase()));
+          const cust = custs.find(c => c.id === found.customer_id || (c.name && c.name.toLowerCase() === (found.customer_name || '').toLowerCase())) || {
+            id: 'cust-public',
+            business_id: biz.id,
+            name: found.customer_name || 'Valued Customer',
+            phone: '',
+            email: '',
+            loyalty_points: 0,
+            total_spent: found.total_amount || 0,
+            orders_count: 1,
+            created_at: new Date().toISOString()
+          };
           setCustomer(cust);
           const prods = dbStore.getProducts(found.business_id);
           setProducts(prods);

@@ -100,7 +100,7 @@ export const TodayDeliveryModal: React.FC<TodayDeliveryModalProps> = ({
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="relative w-full max-w-5xl max-h-[90vh] bg-slate-50 dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-white/20 dark:border-slate-800"
+        className="relative w-full max-w-7xl h-[95vh] bg-slate-50 dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-white/20 dark:border-slate-800"
       >
         {/* Header Section */}
         <div className="relative p-6 bg-gradient-to-br from-emerald-600 to-teal-700 text-white shrink-0">
@@ -201,7 +201,7 @@ export const TodayDeliveryModal: React.FC<TodayDeliveryModalProps> = ({
                 </p>
               </motion.div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredOrders.map((order) => (
                   <motion.div 
                     layout
@@ -249,9 +249,27 @@ export const TodayDeliveryModal: React.FC<TodayDeliveryModalProps> = ({
                           <span>{order.time || 'Anytime'}</span>
                         </div>
                       </div>
+
+                      {order.items && order.items.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-dashed border-slate-200 dark:border-slate-700/60">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Order Items Snapshot</p>
+                          <div className="flex flex-wrap gap-2">
+                            {order.items.map((item, idx) => (
+                              <div key={idx} className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/50 px-2.5 py-1 rounded-md text-[10px] font-bold text-slate-700 dark:text-slate-200">
+                                <Package className="w-3.5 h-3.5 text-emerald-500" />
+                                <span className="truncate max-w-[120px]">{item.product_name || 'Item'}</span>
+                                <span className="text-slate-400 ml-0.5">&times; {item.qty}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     
-                    <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                    <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                       <div className="text-[10px] font-medium text-slate-500">
+                         {order.items?.length || 0} items to deliver
+                       </div>
                        <button
                          onClick={() => {
                            onClose();

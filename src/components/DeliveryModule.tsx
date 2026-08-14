@@ -25,6 +25,8 @@ import {
   RotateCcw,
   Building2,
   LayoutGrid,
+  LayoutList,
+  Grid3X3,
   Banknote,
   XCircle,
   Sparkles,
@@ -51,7 +53,8 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   );
   const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'All' | 'Pending Delivery' | 'Ready to Dispatch' | 'In Transit' | 'Delivered' | 'Returned'>('Pending Delivery');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [activeFilter, setActiveFilter] = useState<'All' | 'Pending Delivery' | 'Ready to Dispatch' | 'In Transit' | 'Delivered' | 'Returned' | 'Overdue'>('Pending Delivery');
   const [dateFilter, setDateFilter] = useState<'All' | 'Today' | 'Tomorrow' | 'Upcoming'>('All');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [activeView, setActiveView] = useState<'Operations' | 'Reports'>('Operations');
@@ -70,6 +73,32 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   const [confirmingOrder, setConfirmingOrder] = useState<SalesOrder | null>(null);
   const [selectedPaymentMode, setSelectedPaymentMode] = useState<'Cash' | 'Card' | 'UPI' | 'Net Banking' | 'Not Paid' | null>(null);
   const [detailOrder, setDetailOrder] = useState<SalesOrder | null>(null);
+  const [editRackLocation, setEditRackLocation] = useState('');
+  const [editRackSection, setEditRackSection] = useState('');
+  const [editTotalBags, setEditTotalBags] = useState<number>(1);
+  const [isEditingStorage, setIsEditingStorage] = useState(false);
+
+  const openDetailModal = (o: SalesOrder) => {
+    setDetailOrder(o);
+    setEditRackLocation(o.rack_location || '');
+    setEditRackSection(o.rack_section || '');
+    setEditTotalBags(o.total_bags || 1);
+    setIsEditingStorage(false);
+  };
+  
+  const saveStorageInfo = () => {
+    if (detailOrder) {
+      dbStore.updateSalesOrder(detailOrder.id, {
+        rack_location: editRackLocation,
+        rack_section: editRackSection,
+        total_bags: editTotalBags
+      });
+      triggerToast('Storage info updated successfully', 'success');
+      setDetailOrder({...detailOrder, rack_location: editRackLocation, rack_section: editRackSection, total_bags: editTotalBags});
+      setIsEditingStorage(false);
+      reloadOrders();
+    }
+  };
 
   // Delivery Partner & Dispatch Station State
   const [dispatchingOrder, setDispatchingOrder] = useState<SalesOrder | null>(null);
@@ -232,6 +261,10 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
         if (o.status !== 'Delivered') return false;
       } else if (activeFilter === 'Returned') {
         if (o.status !== 'Returned') return false;
+      } else if (activeFilter === 'Overdue') {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        if (o.status === 'Delivered' || o.status === 'Returned' || !o.delivery_date || new Date(o.delivery_date) >= todayStart) return false;
       }
       
       // Apply search query
@@ -305,6 +338,15 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   const codPendingCount = orders.filter(o => (o.status === 'Dispatched' || o.status === 'Packed') && o.payment_status !== 'Paid').length;
   const codPendingAmount = orders.filter(o => (o.status === 'Dispatched' || o.status === 'Packed') && o.payment_status !== 'Paid')
     .reduce((sum, o) => sum + Math.max(0, o.total_amount - (o.paid_amount || 0)), 0);
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const overdueCount = orders.filter(o => 
+    o.status !== 'Delivered' && 
+    o.status !== 'Returned' && 
+    o.delivery_date && 
+    new Date(o.delivery_date) < todayStart
+  ).length;
 
   const handlePrintNote = (order: SalesOrder) => {
     const cust = customers.find(c => c.id === order.customer_id);
@@ -406,6 +448,15 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
         title="Delivery & Dispatch Operations"
         subtitle="Manage orders that are ready for dispatch and track delivery fulfillment."
         icon={Truck}
+        action={
+          <button
+            onClick={() => setShowTodayModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition-all active:scale-95"
+          >
+            <Clock className="w-4 h-4" />
+            <span className="text-sm">Today's Deliveries</span>
+          </button>
+        }
       />
 
       <div className="px-0.5 sm:px-1 space-y-4">
@@ -444,7 +495,27 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
         ) : (
           <>
             {/* Advanced Metrics Cards (Matched to SalesModule) */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+
+        <div 
+          onClick={() => setActiveFilter('Overdue')}
+          className={`bg-white dark:bg-slate-900 border p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-1 ${
+            activeFilter === 'Overdue' ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-200/80 dark:border-slate-800 hover:border-rose-400 dark:hover:border-rose-600'
+          }`}
+        >
+          <div className="flex items-center gap-1.5">
+            <div className="p-1.5 bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+              <AlertTriangle size={14} />
+            </div>
+            <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">OVERDUE</span>
+          </div>
+          <div className="text-right mt-1">
+            <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+              {overdueCount}
+            </span>
+          </div>
+        </div>
+
         <div 
           onClick={() => setActiveFilter('Ready to Dispatch')}
           className={`bg-white dark:bg-slate-900 border p-2 sm:p-3 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-1 ${
@@ -569,7 +640,24 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
         </div>
 
         </div>
-        <div className="flex-1 max-w-md flex items-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-full px-3 py-1.5 shadow-xs focus-within:ring-2 focus-within:ring-indigo-500 transition-shadow">
+        <div className="flex items-center gap-3 w-full lg:w-auto">
+          <div className="flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 shadow-xs">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+              title="List View"
+            >
+              <LayoutList size={16} />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+              title="Grid View"
+            >
+              <Grid3X3 size={16} />
+            </button>
+          </div>
+          <div className="flex-1 max-w-md flex items-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-full px-3 py-1.5 shadow-xs focus-within:ring-2 focus-within:ring-indigo-500 transition-shadow">
           <Search size={15} className="text-slate-400 mr-2 shrink-0" />
           <input 
             type="text" 
@@ -583,6 +671,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
               <X size={14} />
             </button>
           )}
+        </div>
         </div>
       </div>
 
@@ -741,7 +830,137 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
         );
       })()}
 
-      {/* Compact List View */}
+      {viewMode === 'grid' ? (
+        <div className="mt-4 space-y-8">
+          {groupedOrders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 py-12 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 border-dashed">
+              <Package size={32} className="mb-3 opacity-30" />
+              <p className="font-bold text-sm">No active deliveries found for filter "{activeFilter}".</p>
+              <p className="text-xs mt-1">Packed orders from the Packing station will appear under Ready to Dispatch.</p>
+            </div>
+          ) : (
+            groupedOrders.map(([date, dateOrders]) => (
+              <div key={date} className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-sm font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">{getRelativeDateLabel(date)}</h3>
+                  <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800"></div>
+                  <span className="text-[10px] font-black bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 py-1 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                    {dateOrders.length} ORDER{dateOrders.length > 1 ? 'S' : ''}
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {dateOrders.map((o) => {
+                    const cust = customers.find(c => c.id === o.customer_id);
+                    const isCOD = o.payment_status !== 'Paid';
+                    const todayStart = new Date();
+                    todayStart.setHours(0, 0, 0, 0);
+                    const isOverdue = o.delivery_date && new Date(o.delivery_date) < todayStart && o.status !== 'Delivered' && o.status !== 'Returned';
+                    
+                    return (
+                      <div key={o.id} className={`bg-white dark:bg-slate-900 rounded-2xl border ${isOverdue ? 'border-rose-300 dark:border-rose-900 shadow-rose-500/10' : 'border-slate-200 dark:border-slate-800'} shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow`}>
+                        {/* Header */}
+                        <div className={`px-4 py-3 border-b ${isOverdue ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/50' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800'} flex items-center justify-between`}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">{o.order_number}</span>
+                            {isOverdue && (
+                              <span className="text-[9px] font-black text-rose-700 dark:text-rose-400 bg-rose-200/50 dark:bg-rose-900/50 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                <AlertTriangle size={10} /> OVERDUE
+                              </span>
+                            )}
+                          </div>
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg border uppercase tracking-wider ${
+                            o.status === 'Dispatched' ? 'bg-blue-100 border-blue-200 text-blue-700' :
+                            o.status === 'Delivered' ? 'bg-emerald-100 border-emerald-200 text-emerald-700' :
+                            o.status === 'Packed' ? 'bg-yellow-100 border-yellow-200 text-yellow-700' :
+                            o.status === 'Returned' ? 'bg-rose-100 border-rose-200 text-rose-700' :
+                            'bg-slate-100 border-slate-200 text-slate-700'
+                          }`}>
+                            {o.status}
+                          </span>
+                        </div>
+                        
+                        {/* Body */}
+                        <div className="p-4 space-y-4 flex-1">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate pr-2 max-w-[180px]">
+                                {cust?.name || 'Walk-in Customer'}
+                              </p>
+                              <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-1">
+                                <MapPin size={10} className="text-emerald-500" />
+                                <span className="font-medium truncate max-w-[150px]">{o.area || 'Unknown Zone'}</span>
+                              </div>
+                            </div>
+                            <button onClick={() => openDetailModal(o)} className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-500 transition-colors" title="View Details">
+                              <Eye size={16} />
+                            </button>
+                          </div>
+                          
+                          {/* Storage Info */}
+                          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 border border-slate-100 dark:border-slate-700/50 grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Location</span>
+                              <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                <LayoutGrid size={12} className="text-emerald-500" />
+                                {o.rack_location || '-'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Packages</span>
+                              <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                <Package size={12} className="text-indigo-500" />
+                                {o.total_bags || 1} Bag{o.total_bags !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Footer */}
+                        <div className="px-4 py-3 bg-slate-50/50 dark:bg-slate-800/30 border-t border-slate-100 dark:border-slate-800/50 space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-lg font-black text-slate-900 dark:text-white tracking-tight">₹{o.total_amount.toLocaleString()}</span>
+                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ${isCOD ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'}`}>
+                              {isCOD ? 'COD PENDING' : 'PREPAID'}
+                            </span>
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handlePrintNote(o)}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-bold transition-colors"
+                            >
+                              <Printer size={12} /> Print
+                            </button>
+                            
+                            {o.status === 'Packed' && (
+                              <button
+                                onClick={() => handleModalAction(o)}
+                                className="flex-[2] flex items-center justify-center gap-1.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold transition-colors shadow-sm"
+                              >
+                                <Truck size={12} /> Dispatch
+                              </button>
+                            )}
+                            
+                            {o.status === 'Dispatched' && (
+                              <button
+                                onClick={() => handleModalAction(o)}
+                                className="flex-[2] flex items-center justify-center gap-1.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold transition-colors shadow-sm"
+                              >
+                                <CheckCircle2 size={12} /> Mark Delivered
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
       <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm mt-3">
         <table className="w-full text-left text-[11px]">
           <thead className="bg-slate-800 dark:bg-slate-800 text-white font-bold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
@@ -751,6 +970,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
               <th className="py-2.5 px-3">Customer</th>
               <th className="py-2.5 px-3">Contact</th>
               <th className="py-2.5 px-3">Area Zone</th>
+              <th className="py-2.5 px-3">Storage Rack</th>
               <th className="py-2.5 px-3">Delivery Partner</th>
               <th className="py-2.5 px-3">Amount</th>
               <th className="py-2.5 px-3">Status</th>
@@ -760,7 +980,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
             {groupedOrders.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-8 text-center">
+                <td colSpan={10} className="py-8 text-center">
                   <div className="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400">
                     <Package size={24} className="mb-2 opacity-50" />
                     <p className="font-bold text-xs">No active deliveries found for filter "{activeFilter}".</p>
@@ -772,7 +992,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
               groupedOrders.map(([date, dateOrders]) => (
                 <React.Fragment key={date}>
                   <tr className="bg-slate-100 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700/50">
-                    <td colSpan={9} className="py-2.5 px-4 font-bold text-slate-700 dark:text-slate-300 text-xs">
+                    <td colSpan={10} className="py-2.5 px-4 font-bold text-slate-700 dark:text-slate-300 text-xs">
                       {getRelativeDateLabel(date)}
                       <span className="ml-2 text-[10px] font-medium bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 py-0.5 px-2 rounded-full border border-slate-200 dark:border-slate-700">
                         {dateOrders.length} order{dateOrders.length > 1 ? 's' : ''}
@@ -783,12 +1003,15 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                 const cust = customers.find(c => c.id === o.customer_id);
                 const isCOD = o.payment_status !== 'Paid';
                 const unpaidBalance = Math.max(0, o.total_amount - (o.paid_amount || 0));
+                const todayStart = new Date();
+                todayStart.setHours(0, 0, 0, 0);
+                const isOverdue = o.delivery_date && new Date(o.delivery_date) < todayStart && o.status !== 'Delivered' && o.status !== 'Returned';
                 
                 return (
-                  <tr key={o.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                  <tr key={o.id} className={`transition-colors ${isOverdue ? 'bg-rose-50/70 hover:bg-rose-100/70 dark:bg-rose-950/20 dark:hover:bg-rose-900/30' : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'}`}>
                     <td className="py-2.5 px-3 font-black text-slate-900 dark:text-white">
                       <button 
-                        onClick={() => setDetailOrder(o)}
+                        onClick={() => openDetailModal(o)}
                         className="hover:text-indigo-500 cursor-pointer text-left transition-colors flex items-center gap-1.5"
                       >
                         <Eye size={12} className="text-indigo-400" />
@@ -830,6 +1053,15 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                     </td>
                     <td className="py-2.5 px-3 font-bold text-slate-700 dark:text-slate-300">
                       {o.area || 'Unknown'}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">
+                          {o.rack_location ? o.rack_location : '-'}
+                        </span>
+                        {o.rack_section && <span className="text-[9px] text-slate-500">Sec: {o.rack_section}</span>}
+                        {o.total_bags ? <span className="text-[9px] text-indigo-500 font-bold">{o.total_bags} Bags</span> : null}
+                      </div>
                     </td>
                     <td className="py-2.5 px-3">
                       {o.delivery_partner ? (
@@ -955,6 +1187,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
           </tbody>
         </table>
       </div>
+      )}
 
       {/* Confirmation Modal */}
       {confirmingOrder && (

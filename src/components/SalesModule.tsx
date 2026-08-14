@@ -1,6 +1,7 @@
 import { PaymentCollectionModal } from './PaymentCollectionModal';
 import { WhatsAppNotifyModal } from './WhatsAppNotifyModal';
 import { PageHeader } from './PageHeader';
+import { QuickCreateProductModal } from './QuickCreateProductModal';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { formatOrderTime } from '../utils/formatters';
 import { 
@@ -27,6 +28,7 @@ import {
   Trash2,
   Download,
   Package,
+  PackagePlus,
   CheckCircle2,
   CreditCard,
   FileDown,
@@ -66,6 +68,8 @@ interface CustomDropdownProps {
   placeholder?: string;
   className?: string;
   searchable?: boolean;
+  onAddNew?: (searchQuery?: string) => void;
+  addNewLabel?: string;
 }
 
 const CustomDropdown: React.FC<CustomDropdownProps> = ({
@@ -74,7 +78,9 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
   options,
   placeholder = 'Select...',
   className = '',
-  searchable = false
+  searchable = false,
+  onAddNew,
+  addNewLabel
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -194,6 +200,27 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
 
       {isOpen && (
         <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-64 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+          {onAddNew && (
+            <div className="p-1.5 border-b border-slate-100 dark:border-slate-700/80 bg-indigo-50/70 dark:bg-indigo-950/40">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsOpen(false);
+                  onAddNew(searchTerm);
+                }}
+                className="w-full py-1.5 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-black flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition active:scale-98"
+              >
+                <Plus size={12} className="stroke-[3]" />
+                <span className="truncate">
+                  {addNewLabel 
+                    ? (searchTerm ? `${addNewLabel}: "${searchTerm}"` : addNewLabel) 
+                    : `+ Create New ${searchTerm ? `"${searchTerm}"` : ''}`}
+                </span>
+              </button>
+            </div>
+          )}
+
           <div className="overflow-y-auto py-1 max-h-60">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((opt, idx) => (
@@ -220,8 +247,22 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
                 </button>
               ))
             ) : (
-              <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic">
-                No matching options found
+              <div className="px-3 py-4 text-center space-y-2">
+                <p className="text-[10px] text-slate-400 italic">No matching options found</p>
+                {onAddNew && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsOpen(false);
+                      onAddNew(searchTerm);
+                    }}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black inline-flex items-center gap-1 shadow-xs cursor-pointer"
+                  >
+                    <Plus size={11} className="stroke-[3]" />
+                    <span>Create "{searchTerm || 'New Item'}"</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -482,6 +523,78 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [rowQty, setRowQty] = useState<number | string>(1);
   const [rowPrice, setRowPrice] = useState<number | string>(0);
   const [rowTaxRate, setRowTaxRate] = useState<number | string>(defaultTenantTax);
+
+  // Quick Create Product Modal state
+  const [isQuickCreateProductOpen, setIsQuickCreateProductOpen] = useState(false);
+  const [quickCreateInitialName, setQuickCreateInitialName] = useState('');
+
+  const handleOpenQuickCreateProduct = (searchName: string = '') => {
+    setQuickCreateInitialName(searchName);
+    setIsQuickCreateProductOpen(true);
+  };
+
+  const handleProductCreatedFromModal = (newProd: Product, action: 'select' | 'add_to_order', initialQty: number = 1) => {
+    const latestProducts = dbStore.getProducts(businessId);
+    setProducts(latestProducts);
+
+    if (action === 'select') {
+      setRowProductId(newProd.id);
+      const selCust = customers.find(c => c.id === selectedCustomerId);
+      const evalRes = calculateApplicablePrice(newProd, {
+        isLoyalMember: isLoyalMember(selCust),
+        isAdvanceBooking,
+        isDiwaliSale: isFestiveBooking,
+        business: currentBiz,
+        orderDate
+      });
+      setRowPrice(evalRes.appliedPrice);
+      const defaultTax = (defaultTenantTax === 0 || newProd.gst_rate === 18 || typeof newProd.gst_rate !== 'number' || isNaN(newProd.gst_rate)) 
+        ? defaultTenantTax 
+        : newProd.gst_rate;
+      setRowTaxRate(defaultTax);
+      setRowQty(initialQty || 1);
+    } else if (action === 'add_to_order') {
+      const selCust = customers.find(c => c.id === selectedCustomerId);
+      const evalRes = calculateApplicablePrice(newProd, {
+        isLoyalMember: isLoyalMember(selCust),
+        isAdvanceBooking,
+        isDiwaliSale: isFestiveBooking,
+        business: currentBiz,
+        orderDate
+      });
+      const defaultTax = (defaultTenantTax === 0 || newProd.gst_rate === 18 || typeof newProd.gst_rate !== 'number' || isNaN(newProd.gst_rate)) 
+        ? defaultTenantTax 
+        : newProd.gst_rate;
+
+      const finalQty = Math.max(1, initialQty || 1);
+      const newItem: SalesItem = {
+        product_id: newProd.id,
+        qty: finalQty,
+        scanned_qty: 0,
+        selling_price: evalRes.appliedPrice,
+        gst_rate: defaultTax,
+        normal_rate: evalRes.normalRate,
+        rate_type: evalRes.rateType,
+        rate_reason: evalRes.rateReason,
+        unit_savings: Math.max(0, evalRes.normalRate - evalRes.appliedPrice),
+        is_overridden: false
+      };
+
+      setOrderItems(prev => {
+        const idx = prev.findIndex(item => item.product_id === newProd.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], qty: updated[idx].qty + finalQty };
+          return updated;
+        }
+        return [...prev, newItem];
+      });
+
+      triggerToast(`Added ${finalQty}x ${newProd.name} directly to order!`, 'success');
+      setRowProductId('');
+      setRowQty(1);
+    }
+  };
 
   const resetForm = () => {
     setEditingOrderId(null);
@@ -2706,7 +2819,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   </div>
                   
                   <div className="md:col-span-4">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block mb-1">Product SKU *</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">Product SKU *</label>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenQuickCreateProduct('')}
+                        className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 transition-all flex items-center gap-1 cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
+                        title="Create new product and save directly to product catalogue"
+                      >
+                        <Plus size={11} className="stroke-[3]" />
+                        <span>New Product</span>
+                      </button>
+                    </div>
                     <CustomDropdown 
                       value={rowProductId}
                       onChange={(val) => {
@@ -2732,6 +2856,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       }}
                       placeholder="-- Choose Product SKU --"
                       searchable={true}
+                      onAddNew={(searchVal) => handleOpenQuickCreateProduct(searchVal || '')}
+                      addNewLabel="Create & Add New Product"
                       options={[
                         { value: '', label: '-- Choose Product SKU --' },
                         ...products.map(p => {
@@ -2746,7 +2872,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           return {
                             value: p.id,
                             label: `${p.name} (SKU: ${p.sku} | ${evalRes.rateType}: ${currencySymbol}${evalRes.appliedPrice.toLocaleString()})`,
-                            searchKeywords: p.barcode
+                            searchKeywords: `${p.barcode} ${p.sku}`
                           };
                         })
                       ]}
@@ -3463,6 +3589,21 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           onClose={() => setSelectedOrderForNotify(null)}
           customers={customers}
           business={dbStore.getBusiness(businessId)}
+          triggerToast={triggerToast}
+        />
+      )}
+
+      {/* Quick Create Product Modal */}
+      {isQuickCreateProductOpen && (
+        <QuickCreateProductModal
+          isOpen={isQuickCreateProductOpen}
+          onClose={() => setIsQuickCreateProductOpen(false)}
+          businessId={businessId}
+          user={user}
+          initialName={quickCreateInitialName}
+          currencySymbol={currencySymbol}
+          defaultTenantTax={defaultTenantTax}
+          onProductCreated={handleProductCreatedFromModal}
           triggerToast={triggerToast}
         />
       )}

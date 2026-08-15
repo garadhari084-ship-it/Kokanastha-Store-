@@ -2878,12 +2878,14 @@ class ERPStorage {
       s => s && s.userId && s.deviceId && (now - s.lastHeartbeat) < EXPIRY_MS
     );
 
-    // Merge incoming with local
-    const mergedMap = new Map<string, ActiveDeviceSession>();
-    validLocal.forEach(s => mergedMap.set(`${s.userId}_${s.deviceId}`, s));
-    validIncoming.forEach(s => mergedMap.set(`${s.userId}_${s.deviceId}`, s));
+    // Identify which users are present in the incoming payload
+    const incomingUserIds = new Set(validIncoming.map(s => s.userId));
 
-    this.activeDeviceSessions = Array.from(mergedMap.values());
+    // Preserve local sessions for users NOT mentioned in the incoming broadcast
+    const localSessionsForOtherUsers = validLocal.filter(s => !incomingUserIds.has(s.userId));
+
+    // Combine unmentioned users' local sessions with incoming authoritative user sessions
+    this.activeDeviceSessions = [...localSessionsForOtherUsers, ...validIncoming];
     this.saveDeviceSessions();
     this.notify();
   }

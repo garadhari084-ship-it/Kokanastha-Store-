@@ -22,7 +22,8 @@ import {
   SubscriptionPlan,
   DEFAULT_LOYALTY_CONFIG,
   ComboItem,
-  ComboHistoryLog
+  ComboHistoryLog,
+  DraftInvoiceReservation
 } from '../types/erp';
 
 // ====================================================================
@@ -487,6 +488,7 @@ class ERPStorage {
     comboLogs: ComboHistoryLog[];
   };
 
+  private draftReservations: DraftInvoiceReservation[] = [];
   private bc: BroadcastChannel | null = null;
 
   constructor() {
@@ -514,6 +516,7 @@ class ERPStorage {
       subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS),
       comboLogs: this.load('comboLogs', [])
     };
+    this.draftReservations = this.load('draftReservations', []);
 
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
@@ -522,6 +525,9 @@ class ERPStorage {
           if (event.data) {
             if (event.data.type === 'SYNC_STATE') {
               this.reloadFromLocalStorage();
+            } else if (event.data.type === 'SYNC_DRAFT_RESERVATIONS') {
+              this.draftReservations = this.load('draftReservations', []);
+              this.notify();
             } else if (event.data.type === 'FORCE_LOGOUT') {
               // Trigger a state change to app
               this.notify();
@@ -533,7 +539,10 @@ class ERPStorage {
 
     if (typeof window !== 'undefined') {
       window.addEventListener('storage', (e) => {
-        if (e.key && e.key.startsWith('omnipack_erp_')) {
+        if (e.key === 'omnipack_erp_draftReservations') {
+          this.draftReservations = this.load('draftReservations', []);
+          this.notify();
+        } else if (e.key && e.key.startsWith('omnipack_erp_')) {
           this.reloadFromLocalStorage();
         }
       });
@@ -560,6 +569,7 @@ class ERPStorage {
       subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS),
       comboLogs: this.load('comboLogs', [])
     };
+    this.draftReservations = this.load('draftReservations', []);
     this.notify();
   }
 
@@ -2747,6 +2757,171 @@ class ERPStorage {
     throw new Error('Purchase Order not found');
   }
 
+  // ==================== CONCURRENT DRAFT INVOICE RESERVATION ====================
+  public getActiveDraftReservations(businessId?: string): DraftInvoiceReservation[] {
+    const now = Date.now();
+    const EXPIRY_MS = 15 * 60 * 1000; // 15 minutes auto-expiry for stale drafts
+    this.draftReservations = (this.draftReservations || []).filter(r => (now - r.timestamp) < EXPIRY_MS);
+    if (businessId) {
+      return this.draftReservations.filter(r => isSameBusiness(r.businessId, businessId));
+    }
+    return this.draftReservations;
+  }
+
+  public reserveDraftInvoiceNumber(
+    businessId: string,
+    userId: string,
+    userName: string,
+    draftId: string,
+    isFestive: boolean,
+    isAdvance: boolean
+  ): string {
+    const normBiz = normalizeBusinessId(businessId);
+    this.getActiveDraftReservations(); // purge expired
+
+    // Check if this draft already has an active reservation of the same type
+    const existing = this.draftReservations.find(r => r.id === draftId);
+    if (existing && existing.isFestive === isFestive && existing.isAdvance === isAdvance && isSameBusiness(existing.businessId, normBiz)) {
+      // Check if another submitted order took this invoiceNumber in the meantime
+      const allOrders = this.getSalesOrders(normBiz);
+      const isTaken = allOrders.some(o => o.order_number === existing.invoiceNumber);
+      if (!isTaken) {
+        existing.timestamp = Date.now();
+        this.saveDraftReservations();
+        return existing.invoiceNumber;
+      }
+    }
+
+    // Allocate a guaranteed fresh non-colliding number across all active orders and concurrent drafts
+    const invoiceNumber = this.getNextAvailableInvoiceNumber(normBiz, isFestive, isAdvance, draftId);
+
+    const newReservation: DraftInvoiceReservation = {
+      id: draftId,
+      userId,
+      userName,
+      businessId: normBiz,
+      invoiceNumber,
+      isFestive,
+      isAdvance,
+      timestamp: Date.now()
+    };
+
+    const idx = this.draftReservations.findIndex(r => r.id === draftId);
+    if (idx !== -1) {
+      this.draftReservations[idx] = newReservation;
+    } else {
+      this.draftReservations.push(newReservation);
+    }
+
+    this.saveDraftReservations();
+    this.broadcastDraftReservations();
+    return invoiceNumber;
+  }
+
+  public renewDraftReservation(draftId: string): void {
+    const res = this.draftReservations.find(r => r.id === draftId);
+    if (res) {
+      res.timestamp = Date.now();
+      this.saveDraftReservations();
+    }
+  }
+
+  public releaseDraftReservation(draftId: string): void {
+    const initialLen = this.draftReservations.length;
+    this.draftReservations = this.draftReservations.filter(r => r.id !== draftId);
+    if (this.draftReservations.length !== initialLen) {
+      this.saveDraftReservations();
+      this.broadcastDraftReservations();
+    }
+  }
+
+  public releaseDraftReservationByInvoice(invoiceNumber: string): void {
+    const initialLen = this.draftReservations.length;
+    this.draftReservations = this.draftReservations.filter(r => r.invoiceNumber !== invoiceNumber);
+    if (this.draftReservations.length !== initialLen) {
+      this.saveDraftReservations();
+      this.broadcastDraftReservations();
+    }
+  }
+
+  public getNextAvailableInvoiceNumber(
+    businessId: string,
+    isFestive: boolean,
+    isAdvance: boolean,
+    excludeDraftId?: string
+  ): string {
+    const normBiz = normalizeBusinessId(businessId);
+    const biz = this.getBusiness(normBiz);
+    const standardPrefix = biz?.invoice_prefix ? biz.invoice_prefix.trim() : 'SO-2026-';
+    const festivePrefix = biz?.festive_invoice_prefix ? biz.festive_invoice_prefix.trim() : 'FEST-KF-';
+    const prefix = isFestive ? festivePrefix : standardPrefix;
+
+    const allOrders = this.getSalesOrders(normBiz);
+    const existingPrefixOrders = allOrders.filter(o => o.order_number && o.order_number.startsWith(prefix));
+
+    // Also get all active drafts currently held by other users/sessions
+    const activeDrafts = this.getActiveDraftReservations(normBiz).filter(d => d.id !== excludeDraftId);
+    const existingDraftPrefixes = activeDrafts.filter(d => d.invoiceNumber && d.invoiceNumber.startsWith(prefix));
+
+    const usedSequences = new Set<number>();
+
+    existingPrefixOrders.forEach(o => {
+      const numPart = o.order_number.replace(prefix, '').replace('AB-', '');
+      const parsed = parseInt(numPart, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        usedSequences.add(parsed);
+      }
+    });
+
+    existingDraftPrefixes.forEach(d => {
+      const numPart = d.invoiceNumber.replace(prefix, '').replace('AB-', '');
+      const parsed = parseInt(numPart, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        usedSequences.add(parsed);
+      }
+    });
+
+    let nextSeq = 1;
+    if (usedSequences.size > 0) {
+      const maxSeq = Math.max(...Array.from(usedSequences));
+      nextSeq = maxSeq + 1;
+    }
+
+    // Ensure candidate isn't taken by checking in a safety loop
+    while (
+      allOrders.some(o => o.order_number === (isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`)) ||
+      activeDrafts.some(d => d.invoiceNumber === (isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`))
+    ) {
+      nextSeq++;
+    }
+
+    return isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`;
+  }
+
+  private saveDraftReservations() {
+    try {
+      localStorage.setItem('omnipack_erp_draftReservations', JSON.stringify(this.draftReservations));
+    } catch (e) {}
+  }
+
+  private broadcastDraftReservations() {
+    if (this.bc) {
+      try {
+        this.bc.postMessage({ type: 'SYNC_DRAFT_RESERVATIONS' });
+      } catch (e) {}
+    }
+    if (this.realtimeChannel) {
+      try {
+        this.realtimeChannel.send({
+          type: 'broadcast',
+          event: 'draft_reservation_changed',
+          payload: { reservations: this.draftReservations }
+        }).catch(() => {});
+      } catch (e) {}
+    }
+    this.notify();
+  }
+
   // Sales Order Operations
   public getSalesOrders(businessId: string): SalesOrder[] {
     const customers = this.getCustomers(businessId);
@@ -2858,27 +3033,13 @@ class ERPStorage {
     
     // ENSURE UNIQUE INVOICE NUMBER
     let finalOrderNumber = so.order_number;
-    const existingOrders = this.cache.sales.filter(o => o.business_id === so.business_id);
+    const existingOrders = this.cache.sales.filter(o => isSameBusiness(o.business_id, so.business_id));
     if (existingOrders.some(o => o.order_number === finalOrderNumber)) {
-        // Collision detected: Generate next sequence
-        const biz = this.cache.businesses.find(b => b.id === so.business_id);
-        const isFestive = so.festive_booking;
-        const isAdvance = so.advance_booking;
-        const standardPrefix = biz?.invoice_prefix ? biz.invoice_prefix.trim() : 'SO-2026-';
-        const festivePrefix = biz?.festive_invoice_prefix ? biz.festive_invoice_prefix.trim() : 'FEST-KF-';
-        const prefix = isFestive ? festivePrefix : standardPrefix;
-
-        let maxSeq = 0;
-        existingOrders.filter(o => o.order_number && o.order_number.startsWith(prefix)).forEach(o => {
-            const numPart = o.order_number.replace(prefix, '').replace('AB-', '');
-            const parsed = parseInt(numPart, 10);
-            if (!isNaN(parsed) && parsed > maxSeq) {
-                maxSeq = parsed;
-            }
-        });
-        const nextSeq = maxSeq + 1;
-        finalOrderNumber = isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`;
+      finalOrderNumber = this.getNextAvailableInvoiceNumber(so.business_id, !!so.festive_booking, !!so.advance_booking);
     }
+
+    // Release any active draft reservation held for this invoice number
+    this.releaseDraftReservationByInvoice(finalOrderNumber);
 
     const newSO: SalesOrder = {
       ...so,

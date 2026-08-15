@@ -447,25 +447,17 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [isSubmitDropdownOpen, setIsSubmitDropdownOpen] = useState(false);
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState<string>('');
+  const draftSessionIdRef = useRef<string>(crypto.randomUUID());
 
   const getSuggestedInvoiceNumber = (isFestive: boolean, isAdvance: boolean) => {
-    const biz = dbStore.getBusiness(businessId);
-    const standardPrefix = biz?.invoice_prefix ? biz.invoice_prefix.trim() : 'SO-2026-';
-    const festivePrefix = biz?.festive_invoice_prefix ? biz.festive_invoice_prefix.trim() : 'FEST-KF-';
-    const prefix = isFestive ? festivePrefix : standardPrefix;
-    
-    const allOrders = dbStore.getSalesOrders(businessId);
-    const existingPrefixOrders = allOrders.filter(o => o.order_number && o.order_number.startsWith(prefix));
-    let maxSeq = 0;
-    existingPrefixOrders.forEach(o => {
-      const numPart = o.order_number.replace(prefix, '').replace('AB-', '');
-      const parsed = parseInt(numPart, 10);
-      if (!isNaN(parsed) && parsed > maxSeq) {
-        maxSeq = parsed;
-      }
-    });
-    const nextSeq = maxSeq + 1;
-    return isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`;
+    return dbStore.reserveDraftInvoiceNumber(
+      businessId,
+      user.id,
+      user.name,
+      draftSessionIdRef.current,
+      isFestive,
+      isAdvance
+    );
   };
 
   const recalculateOrderPrices = (
@@ -599,7 +591,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const resetForm = () => {
     setEditingOrderId(null);
     const biz = dbStore.getBusiness(businessId);
-    setCustomInvoiceNumber(getSuggestedInvoiceNumber(false, false));
+    if (isCreateModalOpen) {
+      setCustomInvoiceNumber(getSuggestedInvoiceNumber(false, false));
+    }
     setSelectedCustomerId('WALK_IN');
     setSelectedArea(biz?.default_dispatch_zone || 'Dahisar');
     setOrderDate(getLocalTodayDate());
@@ -633,27 +627,68 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setRowTaxRate(typeof biz?.tax_rate_default === 'number' && !isNaN(biz.tax_rate_default) ? biz.tax_rate_default : 0);
     setIsSubmitDropdownOpen(false);
   };
+
   useEffect(() => {
     if (isCreateModalOpen && !editingOrderId) {
-      setCustomInvoiceNumber(getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking));
+      const allocatedNum = dbStore.reserveDraftInvoiceNumber(
+        businessId,
+        user.id,
+        user.name,
+        draftSessionIdRef.current,
+        isFestiveBooking,
+        isAdvanceBooking
+      );
+      setCustomInvoiceNumber(allocatedNum);
+
+      // Keep reservation fresh while modal stays open
+      const interval = setInterval(() => {
+        dbStore.renewDraftReservation(draftSessionIdRef.current);
+      }, 10000);
+
+      return () => {
+        clearInterval(interval);
+      };
+    } else if (!isCreateModalOpen) {
+      dbStore.releaseDraftReservation(draftSessionIdRef.current);
     }
-  }, [isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking, orders]);
+  }, [isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking, businessId, user.id, user.name]);
+
+  // Clean up any held reservation when module unmounts
+  useEffect(() => {
+    return () => {
+      dbStore.releaseDraftReservation(draftSessionIdRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     return dbStore.subscribe(() => {
       setOrders(dbStore.getSalesOrders(businessId));
       setCustomers(dbStore.getCustomers(businessId));
       setProducts(dbStore.getProducts(businessId));
-    });
-  }, [businessId]);
 
+      // Live synchronize invoice number if Create Order modal is actively open
+      if (isCreateModalOpen && !editingOrderId) {
+        const liveNum = dbStore.reserveDraftInvoiceNumber(
+          businessId,
+          user.id,
+          user.name,
+          draftSessionIdRef.current,
+          isFestiveBooking,
+          isAdvanceBooking
+        );
+        setCustomInvoiceNumber(liveNum);
+      }
+    });
+  }, [businessId, isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking, user.id, user.name]);
 
   const handleOpenAddModal = () => {
+    draftSessionIdRef.current = crypto.randomUUID();
     resetForm();
     setIsCreateModalOpen(true);
   };
 
   const handleCloseCreateModal = () => {
+    dbStore.releaseDraftReservation(draftSessionIdRef.current);
     setIsCreateModalOpen(false);
     resetForm();
     if (onClearDeepLink) {
@@ -1241,10 +1276,14 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       setIsPaymentModalOpen(false);
       setSelectedOrderForPayment(null);
       
+      // Release draft lock
+      dbStore.releaseDraftReservation(draftSessionIdRef.current);
+
       // Post-save actions
       if (postAction === 'save_new') {
+        draftSessionIdRef.current = crypto.randomUUID();
         resetForm();
-        setCustomInvoiceNumber('');
+        setCustomInvoiceNumber(getSuggestedInvoiceNumber(false, false));
       } else if (postAction === 'print' && finalCreatedOrder) {
         resetForm();
         setIsCreateModalOpen(false);
@@ -2193,9 +2232,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                 <div className="space-y-1 flex flex-col justify-end">
-                  <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
-                    <span>Invoice Number *</span>
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
+                      <span>Invoice Number *</span>
+                    </label>
+                    <span 
+                      title="Real-time multi-user concurrency lock active. Guaranteed unique invoice number."
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800/60 shadow-2xs select-none"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Live Synced
+                    </span>
+                  </div>
                   <input 
                     type="text"
                     value={customInvoiceNumber || getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking)}

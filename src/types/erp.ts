@@ -446,3 +446,15 @@ export const DEFAULT_LOYALTY_CONFIG: LoyaltyConfig = {
   point_expiry_days: 365
 };
 
+export interface DraftInvoiceReservation {
+  id: string; // unique draft ID per open modal / session
+  userId: string;
+  userName?: string;
+  businessId: string;
+  invoiceNumber: string;
+  isFestive: boolean;
+  isAdvance: boolean;
+  timestamp: number; // Unix epoch ms
+}
+
+

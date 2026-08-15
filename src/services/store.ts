@@ -1285,6 +1285,10 @@ class ERPStorage {
 
     // Persist password in local storage cache for seamless future syncs
     profile.password_hash = password_raw;
+    // Generate new session token to enforce single-device login
+    profile.session_token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    this.updateUser(profile.id, { password_hash: password_raw, session_token: profile.session_token });
+
     try {
       const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
       saved[cleanEmail] = password_raw;

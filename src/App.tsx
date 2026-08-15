@@ -463,6 +463,26 @@ export default function App() {
       setCurrentUser(prevUser => {
         if (!prevUser) return null;
         const freshUser = dbStore.getUserById(prevUser.id);
+        
+        // Single device login check
+        try {
+          const sessionDataStr = localStorage.getItem('omnipack_session');
+          if (sessionDataStr && freshUser && freshUser.session_token) {
+             const parsed = JSON.parse(sessionDataStr);
+             // If db token exists and doesn't match our local token, logout!
+             if (parsed.sessionToken && freshUser.session_token !== parsed.sessionToken) {
+               // Logout to enforce one device login
+               setTimeout(() => {
+                 localStorage.removeItem('omnipack_session');
+                 triggerToast('You have been logged out because your account was accessed from another device.', 'error');
+                 setCurrentUser(null);
+                 setCurrentBusiness(null);
+               }, 100);
+               return null;
+             }
+          }
+        } catch(e) {}
+
         if (freshUser && JSON.stringify(freshUser) !== JSON.stringify(prevUser)) {
           return freshUser;
         }
@@ -687,7 +707,7 @@ export default function App() {
              await dbStore.syncFromSupabase(fallbackResult.business.id);
              setCurrentUser(fallbackResult.user);
              setCurrentBusiness(fallbackResult.business);
-             localStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase' }));
+             localStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: fallbackResult.user?.session_token }));
              setActiveView('dashboard');
              triggerToast(`Session Established. Welcome, ${fallbackResult.user.name}!`, 'success');
              return;
@@ -767,7 +787,7 @@ export default function App() {
             const biz = dbStore.getBusiness(profile.business_id) || dbStore.getBusinesses()[0];
             setCurrentUser(profile);
             setCurrentBusiness(biz);
-            localStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase' }));
+            localStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase', sessionToken: profile.session_token }));
             
             // Save password for offline fallback
             try {
@@ -788,7 +808,7 @@ export default function App() {
       if (result.success && result.user && result.business) {
         setCurrentUser(result.user);
         setCurrentBusiness(result.business);
-        localStorage.setItem('omnipack_session', JSON.stringify({ userId: result.user.id, businessId: result.business.id, mode: 'local' }));
+        localStorage.setItem('omnipack_session', JSON.stringify({ userId: result.user.id, businessId: result.business.id, mode: 'local', sessionToken: result.user?.session_token }));
         setActiveView('dashboard');
         triggerToast(`Welcome back, ${result.user.name}!`, 'success');
       } else {

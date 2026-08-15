@@ -53,6 +53,7 @@ export interface UserProfile {
   active: boolean;
   created_at: string;
   allowed_pages?: string[]; // List of page IDs the user can access
+  session_token?: string; // Single device login session token
 }
 
 export interface Category {

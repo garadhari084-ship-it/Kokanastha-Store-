@@ -56,6 +56,14 @@ export interface UserProfile {
   session_token?: string; // Single device login session token
 }
 
+export interface ActiveDeviceSession {
+  userId: string;
+  deviceId: string;
+  sessionToken: string;
+  lastHeartbeat: number;
+  businessId?: string;
+}
+
 export interface Category {
   id: string;
   name: string;

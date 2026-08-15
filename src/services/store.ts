@@ -23,7 +23,8 @@ import {
   DEFAULT_LOYALTY_CONFIG,
   ComboItem,
   ComboHistoryLog,
-  DraftInvoiceReservation
+  DraftInvoiceReservation,
+  ActiveDeviceSession
 } from '../types/erp';
 
 // ====================================================================
@@ -461,6 +462,23 @@ class ERPStorage {
     }
   }
 
+  public broadcastForceLogoutAll(userId: string, reason: string = 'CONCURRENT_DEVICE_LOGIN') {
+    if (this.realtimeChannel) {
+      try {
+        this.realtimeChannel.send({
+          type: 'broadcast',
+          event: 'force_logout_all',
+          payload: { userId, reason }
+        }).catch(() => {});
+      } catch (e) {}
+    }
+    if (this.bc) {
+      try {
+        this.bc.postMessage({ type: 'FORCE_LOGOUT_ALL', payload: { userId, reason } });
+      } catch (e) {}
+    }
+  }
+
   public subscribe(listener: () => void) {
     this.listeners.push(listener);
     return () => { this.listeners = this.listeners.filter(l => l !== listener); };
@@ -489,6 +507,7 @@ class ERPStorage {
   };
 
   private draftReservations: DraftInvoiceReservation[] = [];
+  private activeDeviceSessions: ActiveDeviceSession[] = [];
   private bc: BroadcastChannel | null = null;
 
   constructor() {
@@ -517,6 +536,7 @@ class ERPStorage {
       comboLogs: this.load('comboLogs', [])
     };
     this.draftReservations = this.load('draftReservations', []);
+    this.activeDeviceSessions = this.load('deviceSessions', []);
 
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
@@ -532,7 +552,14 @@ class ERPStorage {
                 this.getActiveDraftReservations();
                 this.notify();
               }
-            } else if (event.data.type === 'FORCE_LOGOUT') {
+            } else if (event.data.type === 'SYNC_DEVICE_SESSIONS') {
+              if (event.data.sessions && Array.isArray(event.data.sessions)) {
+                this.syncIncomingDeviceSessions(event.data.sessions);
+              } else {
+                this.getActiveDeviceSessions();
+                this.notify();
+              }
+            } else if (event.data.type === 'FORCE_LOGOUT' || event.data.type === 'FORCE_LOGOUT_ALL') {
               // Trigger a state change to app
               this.notify();
             }
@@ -545,6 +572,9 @@ class ERPStorage {
       window.addEventListener('storage', (e) => {
         if (e.key === 'omnipack_erp_draftReservations') {
           this.draftReservations = this.load('draftReservations', []);
+          this.notify();
+        } else if (e.key === 'omnipack_erp_deviceSessions') {
+          this.activeDeviceSessions = this.load('deviceSessions', []);
           this.notify();
         } else if (e.key && e.key.startsWith('omnipack_erp_')) {
           this.reloadFromLocalStorage();
@@ -1306,7 +1336,7 @@ class ERPStorage {
   }
 
   // Auth Operations
-  public login(email: string, password_raw: string): { success: boolean; user?: UserProfile; business?: Business; error?: string } {
+  public login(email: string, password_raw: string, deviceId?: string): { success: boolean; user?: UserProfile; business?: Business; error?: string; conflictDetected?: boolean } {
     const cleanEmail = email.trim().toLowerCase();
     const profile = this.cache.profiles.find(p => p.email.toLowerCase().trim() === cleanEmail);
     if (!profile) {
@@ -1321,11 +1351,29 @@ class ERPStorage {
       return { success: false, error: 'Incorrect password.' };
     }
 
+    // Check if user is ALREADY active on another device!
+    if (deviceId) {
+      const activeOtherSessions = this.getActiveDeviceSessions(profile.id).filter(s => s.deviceId !== deviceId);
+      if (activeOtherSessions.length > 0) {
+        // TWO DEVICE LOGIN DETECTED! Automatically terminate all active sessions on BOTH devices
+        this.terminateAllUserSessions(profile.id, 'Concurrent login attempt detected on multiple devices');
+        return {
+          success: false,
+          conflictDetected: true,
+          error: 'This account was already active on another device. For security, both devices have been automatically logged out. Please sign in again.'
+        };
+      }
+    }
+
     // Persist password in local storage cache for seamless future syncs
     profile.password_hash = password_raw;
     // Generate new session token to enforce single-device login
     profile.session_token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     this.updateUser(profile.id, { password_hash: password_raw, session_token: profile.session_token });
+
+    if (deviceId) {
+      this.registerDeviceSession(profile.id, deviceId, profile.session_token, profile.business_id);
+    }
 
     try {
       const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
@@ -2809,6 +2857,186 @@ class ERPStorage {
       return newPO;
     }
     throw new Error('Purchase Order not found');
+  }
+
+  // ==================== CONCURRENT DEVICE SESSION ENFORCEMENT ====================
+  public getActiveDeviceSessions(userId?: string): ActiveDeviceSession[] {
+    const now = Date.now();
+    const EXPIRY_MS = 25 * 1000; // 25 seconds expiry for inactive device heartbeats
+
+    // Load freshest from localStorage
+    const localSessions = this.load<ActiveDeviceSession[]>('deviceSessions', []);
+    const validSessions = (Array.isArray(localSessions) ? localSessions : []).filter(
+      s => s && s.userId && s.deviceId && (now - s.lastHeartbeat) < EXPIRY_MS
+    );
+
+    this.activeDeviceSessions = validSessions;
+
+    if (userId) {
+      return this.activeDeviceSessions.filter(s => s.userId === userId);
+    }
+    return this.activeDeviceSessions;
+  }
+
+  public syncIncomingDeviceSessions(incoming: ActiveDeviceSession[]): void {
+    if (!Array.isArray(incoming)) return;
+    const now = Date.now();
+    const EXPIRY_MS = 25 * 1000;
+
+    const validSessions = incoming.filter(
+      s => s && s.userId && s.deviceId && (now - s.lastHeartbeat) < EXPIRY_MS
+    );
+
+    this.activeDeviceSessions = validSessions;
+    this.saveDeviceSessions();
+    this.notify();
+  }
+
+  private saveDeviceSessions() {
+    try {
+      localStorage.setItem('omnipack_erp_deviceSessions', JSON.stringify(this.activeDeviceSessions));
+    } catch (e) {}
+  }
+
+  public broadcastDeviceSessions() {
+    if (this.bc) {
+      try {
+        this.bc.postMessage({ type: 'SYNC_DEVICE_SESSIONS', sessions: this.activeDeviceSessions });
+      } catch (e) {}
+    }
+    if (this.realtimeChannel) {
+      try {
+        this.realtimeChannel.send({
+          type: 'broadcast',
+          event: 'device_sessions_changed',
+          payload: { sessions: this.activeDeviceSessions }
+        }).catch(() => {});
+      } catch (e) {}
+    }
+  }
+
+  public registerDeviceSession(
+    userId: string,
+    deviceId: string,
+    sessionToken: string,
+    businessId?: string
+  ): { success: boolean; conflictDetected: boolean; error?: string } {
+    if (!userId || !deviceId) {
+      return { success: false, conflictDetected: false, error: 'Invalid user or device identifier' };
+    }
+
+    const activeUserSessions = this.getActiveDeviceSessions(userId);
+    const existingOtherDevices = activeUserSessions.filter(s => s.deviceId !== deviceId);
+
+    // If another device is already active for this user account:
+    if (existingOtherDevices.length > 0) {
+      // Automatic security termination of ALL sessions for this user on BOTH devices
+      this.terminateAllUserSessions(userId, 'Concurrent login attempt detected from multiple devices');
+      return {
+        success: false,
+        conflictDetected: true,
+        error: 'This account was already active on another device. For security, both devices have been automatically logged out. Please sign in again.'
+      };
+    }
+
+    // Register or update this device's active session
+    const now = Date.now();
+    const updated = activeUserSessions.filter(s => s.deviceId !== deviceId);
+    updated.push({
+      userId,
+      deviceId,
+      sessionToken,
+      lastHeartbeat: now,
+      businessId
+    });
+
+    this.activeDeviceSessions = updated;
+    this.saveDeviceSessions();
+    this.broadcastDeviceSessions();
+    this.notify();
+
+    return { success: true, conflictDetected: false };
+  }
+
+  public heartbeatDeviceSession(
+    userId: string,
+    deviceId: string,
+    sessionToken: string
+  ): { active: boolean; conflictDetected: boolean } {
+    if (!userId || !deviceId) {
+      return { active: false, conflictDetected: false };
+    }
+
+    const activeUserSessions = this.getActiveDeviceSessions(userId);
+    const otherActiveDevices = activeUserSessions.filter(s => s.deviceId !== deviceId);
+
+    // If multiple devices are detected active simultaneously for the same user:
+    if (otherActiveDevices.length > 0) {
+      this.terminateAllUserSessions(userId, 'Simultaneous multi-device access detected');
+      return { active: false, conflictDetected: true };
+    }
+
+    const currentDeviceSession = activeUserSessions.find(s => s.deviceId === deviceId);
+    if (!currentDeviceSession) {
+      // Session was terminated or wiped
+      return { active: false, conflictDetected: false };
+    }
+
+    // Update heartbeat timestamp
+    currentDeviceSession.lastHeartbeat = Date.now();
+    if (sessionToken) {
+      currentDeviceSession.sessionToken = sessionToken;
+    }
+
+    this.saveDeviceSessions();
+    return { active: true, conflictDetected: false };
+  }
+
+  public removeDeviceSession(userId: string, deviceId: string): void {
+    if (!userId || !deviceId) return;
+    const now = Date.now();
+    const EXPIRY_MS = 25 * 1000;
+    const localSessions = this.load<ActiveDeviceSession[]>('deviceSessions', []);
+    
+    this.activeDeviceSessions = (Array.isArray(localSessions) ? localSessions : []).filter(
+      s => s && !(s.userId === userId && s.deviceId === deviceId) && (now - s.lastHeartbeat) < EXPIRY_MS
+    );
+    
+    this.saveDeviceSessions();
+    this.broadcastDeviceSessions();
+    this.notify();
+  }
+
+  public terminateAllUserSessions(userId: string, reason: string = 'Concurrent login detected on multiple devices'): void {
+    if (!userId) return;
+    const now = Date.now();
+    const EXPIRY_MS = 25 * 1000;
+    const localSessions = this.load<ActiveDeviceSession[]>('deviceSessions', []);
+
+    // Remove all sessions for this userId
+    this.activeDeviceSessions = (Array.isArray(localSessions) ? localSessions : []).filter(
+      s => s && s.userId !== userId && (now - s.lastHeartbeat) < EXPIRY_MS
+    );
+
+    // Clear session_token in profile
+    const profile = this.cache.profiles.find(p => p.id === userId);
+    if (profile) {
+      profile.session_token = undefined;
+      this.save('profiles', profile);
+      this.logActivity(
+        profile.id,
+        profile.name,
+        profile.role,
+        'Security Alert',
+        `Automatic security logout triggered for all active devices: ${reason}`,
+        profile.business_id
+      );
+    }
+
+    this.saveDeviceSessions();
+    this.broadcastDeviceSessions();
+    this.broadcastForceLogoutAll(userId, reason);
+    this.notify();
   }
 
   // ==================== CONCURRENT DRAFT INVOICE RESERVATION ====================

@@ -103,6 +103,19 @@ interface Toast {
   type: 'success' | 'error' | 'info';
 }
 
+const getDeviceId = (): string => {
+  try {
+    let devId = sessionStorage.getItem('omnipack_device_id');
+    if (!devId) {
+      devId = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+      sessionStorage.setItem('omnipack_device_id', devId);
+    }
+    return devId;
+  } catch (e) {
+    return 'dev_' + Date.now();
+  }
+};
+
 export default function App() {
 
   useEffect(() => {
@@ -467,14 +480,28 @@ export default function App() {
       setCurrentUser(prevUser => {
         if (!prevUser) return null;
         const freshUser = dbStore.getUserById(prevUser.id);
+        const deviceId = getDeviceId();
         
+        // Multi-device conflict check: If another device is active for the same user, trigger automatic logout of both
+        const activeSessions = dbStore.getActiveDeviceSessions(prevUser.id);
+        const otherDevices = activeSessions.filter(s => s.deviceId !== deviceId);
+        if (otherDevices.length > 0) {
+          setTimeout(() => {
+            localStorage.removeItem('omnipack_session');
+            triggerToast('Multiple active sessions detected. For security, both devices have been logged out.', 'error');
+            setCurrentUser(null);
+            setCurrentBusiness(null);
+          }, 50);
+          return null;
+        }
+
         // Single device login check
         try {
           const sessionDataStr = localStorage.getItem('omnipack_session');
-          if (sessionDataStr && freshUser && freshUser.session_token) {
+          if (sessionDataStr && freshUser) {
              const parsed = JSON.parse(sessionDataStr);
-             // If db token exists and doesn't match our local token, logout!
-             if (parsed.sessionToken && freshUser.session_token !== parsed.sessionToken) {
+             // If db token exists and doesn't match our local token or token was wiped, logout!
+             if (!freshUser.session_token || (parsed.sessionToken && freshUser.session_token !== parsed.sessionToken)) {
                // Logout to enforce one device login
                setTimeout(() => {
                  localStorage.removeItem('omnipack_session');
@@ -515,6 +542,7 @@ export default function App() {
   useEffect(() => {
     const restoreSession = async () => {
       const savedSession = localStorage.getItem('omnipack_session');
+      const deviceId = getDeviceId();
       
       if (isSupabaseConfigured && supabase) {
         // Sync public business info (logo, cover, QR) so login screen shows uploaded images
@@ -534,6 +562,17 @@ export default function App() {
             .maybeSingle();
                 
           if (dbProfile) {
+            // Check if other device is active
+            const activeOther = dbStore.getActiveDeviceSessions(dbProfile.id).filter(s => s.deviceId !== deviceId);
+            if (activeOther.length > 0) {
+              dbStore.terminateAllUserSessions(dbProfile.id, 'Concurrent session detected during restoration');
+              localStorage.removeItem('omnipack_session');
+              triggerToast('This account was active on another device. Both devices have been logged out for security.', 'error');
+              setIsInitializing(false);
+              return;
+            }
+
+            dbStore.registerDeviceSession(dbProfile.id, deviceId, dbProfile.session_token || '', dbProfile.business_id);
             setCurrentUser(dbProfile as UserProfile);
             await dbStore.syncFromSupabase(dbProfile.business_id);
             const biz = dbStore.getBusiness(dbProfile.business_id) || dbStore.getBusinesses()[0];
@@ -549,11 +588,21 @@ export default function App() {
       if (savedSession) {
         try {
           const parsed = JSON.parse(savedSession);
-          const { userId, businessId, mode } = parsed;
-          // Restore regardless of mode if supabase failed or was skipped
+          const { userId, businessId, mode, sessionToken } = parsed;
+          // Check if other device is active
+          const activeOther = dbStore.getActiveDeviceSessions(userId).filter(s => s.deviceId !== deviceId);
+          if (activeOther.length > 0) {
+            dbStore.terminateAllUserSessions(userId, 'Concurrent session detected during restoration');
+            localStorage.removeItem('omnipack_session');
+            triggerToast('This account was active on another device. Both devices have been logged out for security.', 'error');
+            setIsInitializing(false);
+            return;
+          }
+
           const user = dbStore.getUsers(businessId).find(u => u.id === userId);
           const biz = dbStore.getBusiness(businessId);
           if (user && biz) {
+            dbStore.registerDeviceSession(user.id, deviceId, sessionToken || user.session_token || '', businessId);
             setCurrentUser(user);
             setCurrentBusiness(biz);
             setDbMode(mode === 'supabase' ? 'supabase' : 'local');
@@ -620,11 +669,40 @@ export default function App() {
         )
         .on(
           'broadcast',
+          { event: 'device_sessions_changed' },
+          (payload: any) => {
+            if (payload?.payload?.sessions && Array.isArray(payload.payload.sessions)) {
+              dbStore.syncIncomingDeviceSessions(payload.payload.sessions);
+            }
+          }
+        )
+        .on(
+          'broadcast',
           { event: 'factory_reset' },
           (payload: any) => {
             console.log('Factory reset broadcast received:', payload);
             triggerToast('System was factory reset by administrator. Reloading...', 'error');
             setTimeout(() => window.location.reload(), 2000);
+          }
+        )
+        .on(
+          'broadcast',
+          { event: 'force_logout_all' },
+          (payload: any) => {
+            console.log('Force logout all broadcast received:', payload);
+            const sessionData = localStorage.getItem('omnipack_session');
+            if (sessionData && payload.payload?.userId) {
+              try {
+                const { userId } = JSON.parse(sessionData);
+                if (userId === payload.payload.userId) {
+                  localStorage.removeItem('omnipack_session');
+                  triggerToast('Your account was accessed on another device. For security, both devices have been logged out.', 'error');
+                  setCurrentUser(null);
+                  setCurrentBusiness(null);
+                  setDbMode('local');
+                }
+              } catch(e) {}
+            }
           }
         )
         .on(
@@ -672,12 +750,55 @@ export default function App() {
     }
   }, []);
 
-  // Removed auto-sync interval to improve performance and prevent lag
-  
+  // Continuous heartbeat to detect concurrent device logins in real-time
+  useEffect(() => {
+    if (!currentUser) return;
+    const deviceId = getDeviceId();
+    const sessionData = localStorage.getItem('omnipack_session');
+    let sessionToken = '';
+    if (sessionData) {
+      try {
+        sessionToken = JSON.parse(sessionData).sessionToken || '';
+      } catch (e) {}
+    }
+
+    // Immediate check
+    const check = dbStore.heartbeatDeviceSession(currentUser.id, deviceId, sessionToken);
+    if (check.conflictDetected) {
+      localStorage.removeItem('omnipack_session');
+      setCurrentUser(null);
+      setCurrentBusiness(null);
+      triggerToast('Multiple devices detected logged into this account simultaneously. Both devices have been logged out for security.', 'error');
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const result = dbStore.heartbeatDeviceSession(currentUser.id, deviceId, sessionToken);
+      if (result.conflictDetected) {
+        localStorage.removeItem('omnipack_session');
+        setCurrentUser(null);
+        setCurrentBusiness(null);
+        triggerToast('Multiple devices detected logged into this account simultaneously. Both devices have been logged out for security.', 'error');
+      }
+    }, 4000);
+
+    const handleBeforeUnload = () => {
+      dbStore.removeDeviceSession(currentUser.id, deviceId);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [currentUser?.id]);
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
     setIsLoggingIn(true);
+    const deviceId = getDeviceId();
+
     try {
     
     if (dbMode === 'supabase' && supabase) {
@@ -690,8 +811,14 @@ export default function App() {
 
         if (error) {
           // Fallback for users created via the UI (since they don't exist in Supabase Auth, only in users_profiles)
-          let fallbackResult = dbStore.login(emailInput, passwordInput);
+          let fallbackResult = dbStore.login(emailInput, passwordInput, deviceId);
           
+          if (fallbackResult.conflictDetected) {
+            setAuthError(fallbackResult.error || 'This account was already active on another device. Both devices have been logged out for security.');
+            setIsLoggingIn(false);
+            return;
+          }
+
           if (!fallbackResult.success && isSupabaseConfigured && supabase) {
             // Try to find them in users_profiles directly since local cache might be empty on a new device
             const { data: profiles } = await supabase
@@ -708,6 +835,15 @@ export default function App() {
                   setAuthError('Invalid credentials.');
                   setIsLoggingIn(false);
                   return;
+              }
+
+              // Check if already active on another device
+              const activeOther = dbStore.getActiveDeviceSessions(p.id).filter(s => s.deviceId !== deviceId);
+              if (activeOther.length > 0) {
+                dbStore.terminateAllUserSessions(p.id, 'Concurrent login attempt detected on multiple devices');
+                setAuthError('This account was already active on another device. For security, both devices have been automatically logged out. Please sign in again.');
+                setIsLoggingIn(false);
+                return;
               }
 
               // Fetch business
@@ -739,6 +875,7 @@ export default function App() {
 
           if (fallbackResult.success && fallbackResult.user && fallbackResult.business) {
              await dbStore.syncFromSupabase(fallbackResult.business.id);
+             dbStore.registerDeviceSession(fallbackResult.user.id, deviceId, fallbackResult.user.session_token || '', fallbackResult.business.id);
              setCurrentUser(fallbackResult.user);
              setCurrentBusiness(fallbackResult.business);
              localStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: fallbackResult.user?.session_token }));
@@ -765,15 +902,16 @@ export default function App() {
                 .from('users_profiles')
                 .select('*')
                 .eq('id', data.user.id)
-                .maybeSingle();            if (dbProfile) {
-              // Polyfill for allowed_pages if Supabase column is missing but local cache has it
-              const localUsers = JSON.parse(localStorage.getItem('omnipack_erp_db') || '{}')?.profiles || [];
-              const localUser = localUsers.find(u => u.id === dbProfile.id);
-              if (localUser && localUser.allowed_pages && !dbProfile.allowed_pages) {
-                  dbProfile.allowed_pages = localUser.allowed_pages;
+                .maybeSingle();
+              if (dbProfile) {
+                // Polyfill for allowed_pages if Supabase column is missing but local cache has it
+                const localUsers = JSON.parse(localStorage.getItem('omnipack_erp_db') || '{}')?.profiles || [];
+                const localUser = localUsers.find(u => u.id === dbProfile.id);
+                if (localUser && localUser.allowed_pages && !dbProfile.allowed_pages) {
+                    dbProfile.allowed_pages = localUser.allowed_pages;
+                }
+                profile = dbProfile as UserProfile;
               }
-              profile = dbProfile as UserProfile;
-            }
             } catch (err) {
               console.warn('Could not select from users_profiles in Supabase:', err);
             }
@@ -822,6 +960,19 @@ export default function App() {
               } catch (_) {}
             }
 
+            // Check if user is ALREADY active on another device!
+            const activeOtherSessions = dbStore.getActiveDeviceSessions(profile.id).filter(s => s.deviceId !== deviceId);
+            if (activeOtherSessions.length > 0) {
+              dbStore.terminateAllUserSessions(profile.id, 'Concurrent login attempt detected on multiple devices');
+              setAuthError('This account was already active on another device. For security, both devices have been automatically logged out. Please sign in again.');
+              setIsLoggingIn(false);
+              return;
+            }
+
+            profile.session_token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            dbStore.updateUser(profile.id, { session_token: profile.session_token });
+            dbStore.registerDeviceSession(profile.id, deviceId, profile.session_token, profile.business_id);
+
             await dbStore.syncFromSupabase(profile.business_id);
             const biz = dbStore.getBusiness(profile.business_id) || dbStore.getBusinesses()[0];
             setCurrentUser(profile);
@@ -847,7 +998,13 @@ export default function App() {
       }
     } else {
       // Local Database Mode
-      const result = dbStore.login(emailInput, passwordInput);
+      const result = dbStore.login(emailInput, passwordInput, deviceId);
+      if (result.conflictDetected) {
+        setAuthError(result.error || 'This account was already active on another device. For security, both devices have been automatically logged out. Please sign in again.');
+        setIsLoggingIn(false);
+        return;
+      }
+
       if (result.success && result.user && result.business) {
         setCurrentUser(result.user);
         setCurrentBusiness(result.business);
@@ -869,15 +1026,19 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    if (currentUser && currentBusiness) {
-      dbStore.logActivity(
-        currentUser.id,
-        currentUser.name,
-        currentUser.role,
-        'User Logout',
-        `${currentUser.name} signed out of session.`,
-        currentBusiness.id
-      );
+    const deviceId = getDeviceId();
+    if (currentUser) {
+      dbStore.removeDeviceSession(currentUser.id, deviceId);
+      if (currentBusiness) {
+        dbStore.logActivity(
+          currentUser.id,
+          currentUser.name,
+          currentUser.role,
+          'User Logout',
+          `${currentUser.name} signed out of session.`,
+          currentBusiness.id
+        );
+      }
     }
     setCurrentUser(null);
     setCurrentBusiness(null);
@@ -2029,7 +2190,7 @@ export default function App() {
       </aside>
 
       {/* Main Panel Content container */}
-      <div className={`flex-1 transition-all duration-300 ${isSidebarMinimized ? 'lg:pl-20' : 'lg:pl-56'} flex flex-col h-screen min-w-0 overflow-hidden`}>
+      <div className={`flex-1 transition-all duration-300 ${isSidebarMinimized ? 'lg:pl-20' : 'lg:pl-56'} pr-[13px] sm:pr-[15px] flex flex-col h-screen min-w-0 overflow-hidden`}>
         
         {/* Top interactive Header bar */}
         {/* Header content */}
@@ -2246,7 +2407,7 @@ export default function App() {
         {/* Dynamic active view body */}
         <main 
           ref={mainContentRef}
-          className={`flex-1 w-full min-w-0 min-h-0 ${
+          className={`flex-1 w-full min-w-0 min-h-0 hide-scrollbar ${
             activeView === 'inbox' 
               ? 'overflow-hidden flex flex-col p-2 sm:p-4' 
               : 'overflow-y-auto overflow-x-hidden px-0 pt-0.5 pb-4 sm:px-0 lg:px-0 sm:pt-1 sm:pb-6 space-y-4'

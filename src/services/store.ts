@@ -447,17 +447,17 @@ class ERPStorage {
     return this.realtimeChannel;
   }
 
-  public broadcastForceLogout(userId: string, newSessionToken: string) {
+  public broadcastForceLogout(userId: string, newSessionToken: string, activeDeviceId?: string) {
     if (this.realtimeChannel) {
       this.realtimeChannel.send({
         type: 'broadcast',
         event: 'force_logout',
-        payload: { userId, newSessionToken }
+        payload: { userId, newSessionToken, activeDeviceId }
       }).catch(() => {});
     }
     if (this.bc) {
       try {
-        this.bc.postMessage({ type: 'FORCE_LOGOUT', payload: { userId, newSessionToken } });
+        this.bc.postMessage({ type: 'FORCE_LOGOUT', payload: { userId, newSessionToken, activeDeviceId } });
       } catch (e) {}
     }
   }
@@ -1351,24 +1351,10 @@ class ERPStorage {
       return { success: false, error: 'Incorrect password.' };
     }
 
-    // Check if user is ALREADY active on another device!
-    if (deviceId) {
-      const activeOtherSessions = this.getActiveDeviceSessions(profile.id).filter(s => s.deviceId !== deviceId);
-      if (activeOtherSessions.length > 0) {
-        // TWO DEVICE LOGIN DETECTED! Automatically terminate all active sessions on BOTH devices
-        this.terminateAllUserSessions(profile.id, 'Concurrent login attempt detected on multiple devices');
-        return {
-          success: false,
-          conflictDetected: true,
-          error: 'This account was already active on another device. For security, both devices have been automatically logged out. Please sign in again.'
-        };
-      }
-    }
-
     // Persist password in local storage cache for seamless future syncs
     profile.password_hash = password_raw;
-    // Generate new session token to enforce single-device login
-    profile.session_token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    // Generate new unique session token to enforce single active session (logs out all other devices)
+    profile.session_token = 'st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
     this.updateUser(profile.id, { password_hash: password_raw, session_token: profile.session_token });
 
     if (deviceId) {
@@ -2925,24 +2911,17 @@ class ERPStorage {
       return { success: false, conflictDetected: false, error: 'Invalid user or device identifier' };
     }
 
-    const activeUserSessions = this.getActiveDeviceSessions(userId);
-    const existingOtherDevices = activeUserSessions.filter(s => s.deviceId !== deviceId);
-
-    // If another device is already active for this user account:
-    if (existingOtherDevices.length > 0) {
-      // Automatic security termination of ALL sessions for this user on BOTH devices
-      this.terminateAllUserSessions(userId, 'Concurrent login attempt detected from multiple devices');
-      return {
-        success: false,
-        conflictDetected: true,
-        error: 'This account was already active on another device. For security, both devices have been automatically logged out. Please sign in again.'
-      };
-    }
-
-    // Register or update this device's active session
     const now = Date.now();
-    const updated = activeUserSessions.filter(s => s.deviceId !== deviceId);
-    updated.push({
+    const EXPIRY_MS = 25 * 1000;
+    const localSessions = this.load<ActiveDeviceSession[]>('deviceSessions', []);
+
+    // Filter out all prior sessions for this user (so only this new device is active)
+    const otherUsersSessions = (Array.isArray(localSessions) ? localSessions : []).filter(
+      s => s && s.userId !== userId && (now - s.lastHeartbeat) < EXPIRY_MS
+    );
+
+    // Add current device session as the active session
+    otherUsersSessions.push({
       userId,
       deviceId,
       sessionToken,
@@ -2950,9 +2929,12 @@ class ERPStorage {
       businessId
     });
 
-    this.activeDeviceSessions = updated;
+    this.activeDeviceSessions = otherUsersSessions;
     this.saveDeviceSessions();
     this.broadcastDeviceSessions();
+
+    // Instantly notify and force logout all other devices/windows holding older tokens
+    this.broadcastForceLogout(userId, sessionToken, deviceId);
     this.notify();
 
     return { success: true, conflictDetected: false };
@@ -2962,24 +2944,28 @@ class ERPStorage {
     userId: string,
     deviceId: string,
     sessionToken: string
-  ): { active: boolean; conflictDetected: boolean } {
+  ): { active: boolean; conflictDetected: boolean; superseded?: boolean } {
     if (!userId || !deviceId) {
-      return { active: false, conflictDetected: false };
+      return { active: false, conflictDetected: false, superseded: true };
+    }
+
+    // Check profile session_token if available
+    const profile = this.cache.profiles.find(p => p.id === userId);
+    if (profile && profile.session_token && sessionToken && profile.session_token !== sessionToken) {
+      // Newer session was established on another device
+      return { active: false, conflictDetected: false, superseded: true };
     }
 
     const activeUserSessions = this.getActiveDeviceSessions(userId);
-    const otherActiveDevices = activeUserSessions.filter(s => s.deviceId !== deviceId);
-
-    // If multiple devices are detected active simultaneously for the same user:
-    if (otherActiveDevices.length > 0) {
-      this.terminateAllUserSessions(userId, 'Simultaneous multi-device access detected');
-      return { active: false, conflictDetected: true };
-    }
-
     const currentDeviceSession = activeUserSessions.find(s => s.deviceId === deviceId);
     if (!currentDeviceSession) {
-      // Session was terminated or wiped
-      return { active: false, conflictDetected: false };
+      // Session was superseded by a newer login on another device or expired
+      return { active: false, conflictDetected: false, superseded: true };
+    }
+
+    if (sessionToken && currentDeviceSession.sessionToken && currentDeviceSession.sessionToken !== sessionToken) {
+      // Token mismatch - superseded
+      return { active: false, conflictDetected: false, superseded: true };
     }
 
     // Update heartbeat timestamp
@@ -2989,7 +2975,7 @@ class ERPStorage {
     }
 
     this.saveDeviceSessions();
-    return { active: true, conflictDetected: false };
+    return { active: true, conflictDetected: false, superseded: false };
   }
 
   public removeDeviceSession(userId: string, deviceId: string): void {

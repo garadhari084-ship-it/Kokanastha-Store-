@@ -543,6 +543,12 @@ export default function App() {
     const restoreSession = async () => {
       const savedSession = localStorage.getItem('omnipack_session');
       const deviceId = getDeviceId();
+      let localSessionToken = '';
+      if (savedSession) {
+        try {
+          localSessionToken = JSON.parse(savedSession).sessionToken || '';
+        } catch (e) {}
+      }
       
       if (isSupabaseConfigured && supabase) {
         // Sync public business info (logo, cover, QR) so login screen shows uploaded images
@@ -562,17 +568,15 @@ export default function App() {
             .maybeSingle();
                 
           if (dbProfile) {
-            // Check if other device is active
-            const activeOther = dbStore.getActiveDeviceSessions(dbProfile.id).filter(s => s.deviceId !== deviceId);
-            if (activeOther.length > 0) {
-              dbStore.terminateAllUserSessions(dbProfile.id, 'Concurrent session detected during restoration');
+            // Check if profile session token in database has been superseded by a newer login
+            if (dbProfile.session_token && localSessionToken && dbProfile.session_token !== localSessionToken) {
               localStorage.removeItem('omnipack_session');
-              triggerToast('This account was active on another device. Both devices have been logged out for security.', 'error');
+              setAuthError('You were logged out because this account was logged in from another device.');
               setIsInitializing(false);
               return;
             }
 
-            dbStore.registerDeviceSession(dbProfile.id, deviceId, dbProfile.session_token || '', dbProfile.business_id);
+            dbStore.registerDeviceSession(dbProfile.id, deviceId, dbProfile.session_token || localSessionToken || '', dbProfile.business_id);
             setCurrentUser(dbProfile as UserProfile);
             await dbStore.syncFromSupabase(dbProfile.business_id);
             const biz = dbStore.getBusiness(dbProfile.business_id) || dbStore.getBusinesses()[0];
@@ -589,19 +593,17 @@ export default function App() {
         try {
           const parsed = JSON.parse(savedSession);
           const { userId, businessId, mode, sessionToken } = parsed;
-          // Check if other device is active
-          const activeOther = dbStore.getActiveDeviceSessions(userId).filter(s => s.deviceId !== deviceId);
-          if (activeOther.length > 0) {
-            dbStore.terminateAllUserSessions(userId, 'Concurrent session detected during restoration');
-            localStorage.removeItem('omnipack_session');
-            triggerToast('This account was active on another device. Both devices have been logged out for security.', 'error');
-            setIsInitializing(false);
-            return;
-          }
-
           const user = dbStore.getUsers(businessId).find(u => u.id === userId);
           const biz = dbStore.getBusiness(businessId);
           if (user && biz) {
+            // Check if profile session token has been superseded
+            if (user.session_token && sessionToken && user.session_token !== sessionToken) {
+              localStorage.removeItem('omnipack_session');
+              setAuthError('You were logged out because this account was logged in from another device.');
+              setIsInitializing(false);
+              return;
+            }
+
             dbStore.registerDeviceSession(user.id, deviceId, sessionToken || user.session_token || '', businessId);
             setCurrentUser(user);
             setCurrentBusiness(biz);
@@ -696,7 +698,8 @@ export default function App() {
                 const { userId } = JSON.parse(sessionData);
                 if (userId === payload.payload.userId) {
                   localStorage.removeItem('omnipack_session');
-                  triggerToast('Your account was accessed on another device. For security, both devices have been logged out.', 'error');
+                  setAuthError('You have been logged out because your account was logged in from another device.');
+                  triggerToast('You have been logged out because your account was accessed from another device.', 'error');
                   setCurrentUser(null);
                   setCurrentBusiness(null);
                   setDbMode('local');
@@ -714,13 +717,22 @@ export default function App() {
             if (sessionData && payload.payload?.userId) {
               try {
                 const { userId, sessionToken } = JSON.parse(sessionData);
-                // If it's the same user but a DIFFERENT session token, log them out
-                if (userId === payload.payload.userId && sessionToken !== payload.payload.newSessionToken) {
-                  localStorage.removeItem('omnipack_session');
-                  triggerToast('You have been logged out because your account was accessed from another device.', 'error');
-                  setCurrentUser(null);
-                  setCurrentBusiness(null);
-                  setDbMode('local');
+                const currentDeviceId = getDeviceId();
+                const targetUserId = payload.payload.userId;
+                const newSessionToken = payload.payload.newSessionToken;
+                const activeDeviceId = payload.payload.activeDeviceId;
+
+                // If it's the same user and this is NOT the newly logged-in device
+                if (userId === targetUserId) {
+                  const isCurrent = (activeDeviceId && activeDeviceId === currentDeviceId) || (newSessionToken && sessionToken === newSessionToken);
+                  if (!isCurrent) {
+                    localStorage.removeItem('omnipack_session');
+                    setAuthError('You have been logged out because your account was logged in from another device.');
+                    triggerToast('You have been logged out because this account was logged in from another device.', 'error');
+                    setCurrentUser(null);
+                    setCurrentBusiness(null);
+                    setDbMode('local');
+                  }
                 }
               } catch(e) {}
             }
@@ -728,6 +740,36 @@ export default function App() {
         )
         .subscribe();
     }
+
+    // Cross-tab BroadcastChannel listener for immediate local synchronization
+    let localBc: BroadcastChannel | null = null;
+    try {
+      localBc = new BroadcastChannel('omnipack_erp_sync_channel');
+      localBc.onmessage = (event) => {
+        if (!event || !event.data) return;
+        const { type, payload } = event.data;
+        if (type === 'FORCE_LOGOUT' || type === 'FORCE_LOGOUT_ALL') {
+          const sessionData = localStorage.getItem('omnipack_session');
+          if (sessionData && payload?.userId) {
+            try {
+              const { userId, sessionToken } = JSON.parse(sessionData);
+              const currentDeviceId = getDeviceId();
+              if (userId === payload.userId) {
+                const isCurrent = (payload.activeDeviceId && payload.activeDeviceId === currentDeviceId) || (payload.newSessionToken && sessionToken === payload.newSessionToken);
+                if (!isCurrent) {
+                  localStorage.removeItem('omnipack_session');
+                  setAuthError('You have been logged out because your account was logged in from another device.');
+                  triggerToast('You have been logged out because this account was logged in from another device.', 'error');
+                  setCurrentUser(null);
+                  setCurrentBusiness(null);
+                  setDbMode('local');
+                }
+              }
+            } catch(e) {}
+          }
+        }
+      };
+    } catch (e) {}
 
     // Subscribe to supabase auth changes if supabase is configured
     if (isSupabaseConfigured && supabase) {
@@ -746,8 +788,17 @@ export default function App() {
           supabase.removeChannel(realtimeChannel);
           dbStore.setRealtimeChannel(null);
         }
+        if (localBc) {
+          localBc.close();
+        }
       };
     }
+
+    return () => {
+      if (localBc) {
+        localBc.close();
+      }
+    };
   }, []);
 
   // Continuous heartbeat to detect concurrent device logins in real-time
@@ -764,23 +815,25 @@ export default function App() {
 
     // Immediate check
     const check = dbStore.heartbeatDeviceSession(currentUser.id, deviceId, sessionToken);
-    if (check.conflictDetected) {
+    if (!check.active || check.superseded) {
       localStorage.removeItem('omnipack_session');
       setCurrentUser(null);
       setCurrentBusiness(null);
-      triggerToast('Multiple devices detected logged into this account simultaneously. Both devices have been logged out for security.', 'error');
+      setAuthError('You have been logged out because your account was logged in from another device.');
+      triggerToast('You have been logged out because your account was logged in from another device.', 'error');
       return;
     }
 
     const interval = setInterval(() => {
       const result = dbStore.heartbeatDeviceSession(currentUser.id, deviceId, sessionToken);
-      if (result.conflictDetected) {
+      if (!result.active || result.superseded) {
         localStorage.removeItem('omnipack_session');
         setCurrentUser(null);
         setCurrentBusiness(null);
-        triggerToast('Multiple devices detected logged into this account simultaneously. Both devices have been logged out for security.', 'error');
+        setAuthError('You have been logged out because your account was logged in from another device.');
+        triggerToast('You have been logged out because your account was logged in from another device.', 'error');
       }
-    }, 4000);
+    }, 2500);
 
     const handleBeforeUnload = () => {
       dbStore.removeDeviceSession(currentUser.id, deviceId);
@@ -812,12 +865,6 @@ export default function App() {
         if (error) {
           // Fallback for users created via the UI (since they don't exist in Supabase Auth, only in users_profiles)
           let fallbackResult = dbStore.login(emailInput, passwordInput, deviceId);
-          
-          if (fallbackResult.conflictDetected) {
-            setAuthError(fallbackResult.error || 'This account was already active on another device. Both devices have been logged out for security.');
-            setIsLoggingIn(false);
-            return;
-          }
 
           if (!fallbackResult.success && isSupabaseConfigured && supabase) {
             // Try to find them in users_profiles directly since local cache might be empty on a new device
@@ -835,15 +882,6 @@ export default function App() {
                   setAuthError('Invalid credentials.');
                   setIsLoggingIn(false);
                   return;
-              }
-
-              // Check if already active on another device
-              const activeOther = dbStore.getActiveDeviceSessions(p.id).filter(s => s.deviceId !== deviceId);
-              if (activeOther.length > 0) {
-                dbStore.terminateAllUserSessions(p.id, 'Concurrent login attempt detected on multiple devices');
-                setAuthError('This account was already active on another device. For security, both devices have been automatically logged out. Please sign in again.');
-                setIsLoggingIn(false);
-                return;
               }
 
               // Fetch business
@@ -874,15 +912,17 @@ export default function App() {
           }
 
           if (fallbackResult.success && fallbackResult.user && fallbackResult.business) {
+             const newSessionToken = 'st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
+             fallbackResult.user.session_token = newSessionToken;
+             dbStore.updateUser(fallbackResult.user.id, { session_token: newSessionToken });
+
              await dbStore.syncFromSupabase(fallbackResult.business.id);
-             dbStore.registerDeviceSession(fallbackResult.user.id, deviceId, fallbackResult.user.session_token || '', fallbackResult.business.id);
+             dbStore.registerDeviceSession(fallbackResult.user.id, deviceId, newSessionToken, fallbackResult.business.id);
              setCurrentUser(fallbackResult.user);
              setCurrentBusiness(fallbackResult.business);
-             localStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: fallbackResult.user?.session_token }));
+             localStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
              
-             if (fallbackResult.user?.session_token) {
-               dbStore.broadcastForceLogout(fallbackResult.user.id, fallbackResult.user.session_token);
-             }
+             dbStore.broadcastForceLogout(fallbackResult.user.id, newSessionToken, deviceId);
              
              setActiveView('dashboard');
              triggerToast(`Session Established. Welcome, ${fallbackResult.user.name}!`, 'success');
@@ -960,28 +1000,23 @@ export default function App() {
               } catch (_) {}
             }
 
-            // Check if user is ALREADY active on another device!
-            const activeOtherSessions = dbStore.getActiveDeviceSessions(profile.id).filter(s => s.deviceId !== deviceId);
-            if (activeOtherSessions.length > 0) {
-              dbStore.terminateAllUserSessions(profile.id, 'Concurrent login attempt detected on multiple devices');
-              setAuthError('This account was already active on another device. For security, both devices have been automatically logged out. Please sign in again.');
-              setIsLoggingIn(false);
-              return;
-            }
+            const newSessionToken = 'st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
+            profile.session_token = newSessionToken;
+            dbStore.updateUser(profile.id, { session_token: newSessionToken });
+            dbStore.registerDeviceSession(profile.id, deviceId, newSessionToken, profile.business_id);
 
-            profile.session_token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-            dbStore.updateUser(profile.id, { session_token: profile.session_token });
-            dbStore.registerDeviceSession(profile.id, deviceId, profile.session_token, profile.business_id);
+            // Also update session_token in Supabase DB if possible
+            try {
+              await supabase.from('users_profiles').update({ session_token: newSessionToken }).eq('id', profile.id);
+            } catch (_) {}
 
             await dbStore.syncFromSupabase(profile.business_id);
             const biz = dbStore.getBusiness(profile.business_id) || dbStore.getBusinesses()[0];
             setCurrentUser(profile);
             setCurrentBusiness(biz);
-            localStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase', sessionToken: profile.session_token }));
+            localStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
             
-            if (profile.session_token) {
-              dbStore.broadcastForceLogout(profile.id, profile.session_token);
-            }
+            dbStore.broadcastForceLogout(profile.id, newSessionToken, deviceId);
             
             // Save password for offline fallback
             try {
@@ -999,20 +1034,14 @@ export default function App() {
     } else {
       // Local Database Mode
       const result = dbStore.login(emailInput, passwordInput, deviceId);
-      if (result.conflictDetected) {
-        setAuthError(result.error || 'This account was already active on another device. For security, both devices have been automatically logged out. Please sign in again.');
-        setIsLoggingIn(false);
-        return;
-      }
 
       if (result.success && result.user && result.business) {
+        const newSessionToken = result.user.session_token || ('st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11));
         setCurrentUser(result.user);
         setCurrentBusiness(result.business);
-        localStorage.setItem('omnipack_session', JSON.stringify({ userId: result.user.id, businessId: result.business.id, mode: 'local', sessionToken: result.user?.session_token }));
+        localStorage.setItem('omnipack_session', JSON.stringify({ userId: result.user.id, businessId: result.business.id, mode: 'local', sessionToken: newSessionToken, deviceId }));
         
-        if (result.user?.session_token) {
-          dbStore.broadcastForceLogout(result.user.id, result.user.session_token);
-        }
+        dbStore.broadcastForceLogout(result.user.id, newSessionToken, deviceId);
         
         setActiveView('dashboard');
         triggerToast(`Welcome back, ${result.user.name}!`, 'success');

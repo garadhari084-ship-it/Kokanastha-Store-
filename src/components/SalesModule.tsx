@@ -2,6 +2,7 @@ import { PaymentCollectionModal } from './PaymentCollectionModal';
 import { WhatsAppNotifyModal } from './WhatsAppNotifyModal';
 import { PageHeader } from './PageHeader';
 import { QuickCreateProductModal } from './QuickCreateProductModal';
+import { OutOfStockRestockModal } from './OutOfStockRestockModal';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { formatOrderTime } from '../utils/formatters';
 import { 
@@ -531,6 +532,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [rowPrice, setRowPrice] = useState<number | string>(0);
   const [rowTaxRate, setRowTaxRate] = useState<number | string>(defaultTenantTax);
 
+  // Out of Stock Restock Modal state
+  const [outOfStockProduct, setOutOfStockProduct] = useState<Product | null>(null);
+
   // Quick Create Product Modal state
   const [isQuickCreateProductOpen, setIsQuickCreateProductOpen] = useState(false);
   const [quickCreateInitialName, setQuickCreateInitialName] = useState('');
@@ -540,9 +544,87 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setIsQuickCreateProductOpen(true);
   };
 
+  const handleRestockSuccessFromModal = (
+    updatedProd: Product, 
+    addedStock: number, 
+    action: 'add_to_order' | 'select_only',
+    orderQty: number = 1
+  ) => {
+    const latestProducts = dbStore.getProducts(businessId);
+    setProducts(latestProducts);
+    const freshProd = latestProducts.find(p => p.id === updatedProd.id) || updatedProd;
+
+    if (action === 'add_to_order') {
+      const selCust = customers.find(c => c.id === selectedCustomerId);
+      const evalRes = calculateApplicablePrice(freshProd, {
+        isLoyalMember: isLoyalMember(selCust),
+        isAdvanceBooking,
+        isDiwaliSale: isFestiveBooking,
+        business: currentBiz,
+        orderDate
+      });
+      const defaultTax = (defaultTenantTax === 0 || freshProd.gst_rate === 18 || typeof freshProd.gst_rate !== 'number' || isNaN(freshProd.gst_rate)) 
+        ? defaultTenantTax 
+        : freshProd.gst_rate;
+
+      const finalQty = Math.max(1, orderQty || 1);
+      const newItem: SalesItem = {
+        product_id: freshProd.id,
+        qty: finalQty,
+        scanned_qty: 0,
+        selling_price: evalRes.appliedPrice,
+        gst_rate: defaultTax,
+        normal_rate: evalRes.normalRate,
+        rate_type: evalRes.rateType,
+        rate_reason: evalRes.rateReason,
+        unit_savings: Math.max(0, evalRes.normalRate - evalRes.appliedPrice),
+        is_overridden: false
+      };
+
+      setOrderItems(prev => {
+        const idx = prev.findIndex(item => item.product_id === freshProd.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], qty: updated[idx].qty + finalQty };
+          return updated;
+        }
+        return [...prev, newItem];
+      });
+
+      setRowProductId('');
+      setRowQty(1);
+      setOutOfStockProduct(null);
+      triggerToast(`Restocked +${addedStock} ${freshProd.unit || 'units'} & added ${finalQty}x "${freshProd.name}" to order!`, 'success');
+    } else {
+      // select_only
+      setRowProductId(freshProd.id);
+      const selCust = customers.find(c => c.id === selectedCustomerId);
+      const evalRes = calculateApplicablePrice(freshProd, {
+        isLoyalMember: isLoyalMember(selCust),
+        isAdvanceBooking,
+        isDiwaliSale: isFestiveBooking,
+        business: currentBiz,
+        orderDate
+      });
+      setRowPrice(evalRes.appliedPrice);
+      const defaultTax = (defaultTenantTax === 0 || freshProd.gst_rate === 18 || typeof freshProd.gst_rate !== 'number' || isNaN(freshProd.gst_rate)) 
+        ? defaultTenantTax 
+        : freshProd.gst_rate;
+      setRowTaxRate(defaultTax);
+      setRowQty(Math.max(1, orderQty || 1));
+      setOutOfStockProduct(null);
+      triggerToast(`Restocked +${addedStock} ${freshProd.unit || 'units'}. Product ready in order row.`, 'success');
+    }
+  };
+
   const handleProductCreatedFromModal = (newProd: Product, action: 'select' | 'add_to_order', initialQty: number = 1) => {
     const latestProducts = dbStore.getProducts(businessId);
     setProducts(latestProducts);
+
+    if ((newProd.current_stock ?? 0) <= 0) {
+      setOutOfStockProduct(newProd);
+      return;
+    }
 
     if (action === 'select') {
       setRowProductId(newProd.id);
@@ -827,6 +909,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     }
     const prod = products.find(p => p.id === rowProductId);
     if (!prod) return;
+
+    if ((prod.current_stock ?? 0) <= 0) {
+      setOutOfStockProduct(prod);
+      return;
+    }
 
     setOrderItems(prevItems => {
     const existingItemIndex = prevItems.findIndex(it => it.product_id === rowProductId);
@@ -2867,6 +2954,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             );
                             
                             if (p) {
+                              if ((p.current_stock ?? 0) <= 0) {
+                                setOutOfStockProduct(p);
+                                inputElem.value = '';
+                                setTimeout(() => fastScanInputRef.current?.focus(), 10);
+                                return;
+                              }
+
                               const selCust = customers.find(c => c.id === selectedCustomerId);
                               const evalRes = calculateApplicablePrice(p, {
                                 isLoyalMember: isLoyalMember(selCust),
@@ -2937,10 +3031,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     <CustomDropdown 
                       value={rowProductId}
                       onChange={(val) => {
-                        setRowProductId(val);
-                        // set price according to selection
+                        if (!val) {
+                          setRowProductId('');
+                          return;
+                        }
                         const p = products.find(prod => prod.id === val);
                         if (p) {
+                          if ((p.current_stock ?? 0) <= 0) {
+                            setRowProductId('');
+                            setOutOfStockProduct(p);
+                            return;
+                          }
+
+                          setRowProductId(val);
+                          // set price according to selection
                           const selCust = customers.find(c => c.id === selectedCustomerId);
                           const evalRes = calculateApplicablePrice(p, {
                             isLoyalMember: isLoyalMember(selCust),
@@ -2964,6 +3068,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       options={[
                         { value: '', label: '-- Choose Product SKU --' },
                         ...products.map(p => {
+                          const isOut = (p.current_stock ?? 0) <= 0;
                           const selCust = customers.find(c => c.id === selectedCustomerId);
                           const evalRes = calculateApplicablePrice(p, {
                             isLoyalMember: isLoyalMember(selCust),
@@ -2972,10 +3077,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             business: currentBiz,
                             orderDate
                           });
+                          const stockBadge = isOut 
+                            ? ` [⚠️ OUT OF STOCK - 0 ${p.unit || 'units'}]` 
+                            : ` [Stock: ${p.current_stock ?? 0} ${p.unit || ''}]`;
                           return {
                             value: p.id,
-                            label: `${p.name} (SKU: ${p.sku} | ${evalRes.rateType}: ${currencySymbol}${evalRes.appliedPrice.toLocaleString()})`,
-                            searchKeywords: `${p.barcode} ${p.sku}`
+                            label: `${p.name} (SKU: ${p.sku} | ${evalRes.rateType}: ${currencySymbol}${evalRes.appliedPrice.toLocaleString()})${stockBadge}`,
+                            searchKeywords: `${p.barcode} ${p.sku} ${isOut ? 'out of stock 0' : ''}`
                           };
                         })
                       ]}
@@ -3708,6 +3816,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           currencySymbol={currencySymbol}
           defaultTenantTax={defaultTenantTax}
           onProductCreated={handleProductCreatedFromModal}
+          triggerToast={triggerToast}
+        />
+      )}
+
+      {/* Out of Stock & Quick Inventory Restock Modal */}
+      {outOfStockProduct && (
+        <OutOfStockRestockModal
+          isOpen={!!outOfStockProduct}
+          product={outOfStockProduct}
+          businessId={businessId}
+          user={user}
+          currencySymbol={currencySymbol}
+          onClose={() => setOutOfStockProduct(null)}
+          onRestockSuccess={handleRestockSuccessFromModal}
           triggerToast={triggerToast}
         />
       )}

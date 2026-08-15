@@ -2869,11 +2869,21 @@ class ERPStorage {
     const now = Date.now();
     const EXPIRY_MS = 25 * 1000;
 
-    const validSessions = incoming.filter(
+    const validIncoming = incoming.filter(
       s => s && s.userId && s.deviceId && (now - s.lastHeartbeat) < EXPIRY_MS
     );
 
-    this.activeDeviceSessions = validSessions;
+    const localSessions = this.load<ActiveDeviceSession[]>('deviceSessions', []);
+    const validLocal = (Array.isArray(localSessions) ? localSessions : []).filter(
+      s => s && s.userId && s.deviceId && (now - s.lastHeartbeat) < EXPIRY_MS
+    );
+
+    // Merge incoming with local
+    const mergedMap = new Map<string, ActiveDeviceSession>();
+    validLocal.forEach(s => mergedMap.set(`${s.userId}_${s.deviceId}`, s));
+    validIncoming.forEach(s => mergedMap.set(`${s.userId}_${s.deviceId}`, s));
+
+    this.activeDeviceSessions = Array.from(mergedMap.values());
     this.saveDeviceSessions();
     this.notify();
   }

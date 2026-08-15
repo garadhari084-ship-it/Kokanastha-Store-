@@ -303,7 +303,6 @@ interface SalesModuleProps {
   openAddModalInitially?: boolean;
   selectedOrderIdInitially?: string | null;
   deepLinkData?: any;
-  onClearDeepLink?: () => void;
 }
 
 export const SalesModule: React.FC<SalesModuleProps> = ({ 
@@ -312,8 +311,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   triggerToast,
   openAddModalInitially = false,
   selectedOrderIdInitially = null,
-  deepLinkData = null,
-  onClearDeepLink
+  deepLinkData = null
 }) => {
   const [orders, setOrders] = useState<SalesOrder[]>(dbStore.getSalesOrders(businessId));
   const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
@@ -799,9 +797,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     }
     setIsCreateModalOpen(false);
     resetForm();
-    if (onClearDeepLink) {
-      onClearDeepLink();
-    }
   };
 
   useEffect(() => {
@@ -871,8 +866,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setRowPrice(0);
   };
 
+  const hasHandledDeepLinkRef = useRef(false);
+
   useEffect(() => {
+    if (hasHandledDeepLinkRef.current) return;
     if (deepLinkData?.openAddModal || (openAddModalInitially && !deepLinkData)) {
+      hasHandledDeepLinkRef.current = true;
       if (deepLinkData?.orderId || selectedOrderIdInitially) {
         const targetId = deepLinkData?.orderId || selectedOrderIdInitially;
         const orderToEdit = orders.find(o => o.id === targetId);
@@ -883,19 +882,14 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       } else {
         handleOpenAddModal();
       }
-      if (onClearDeepLink) {
-        onClearDeepLink();
-      }
     } else if (deepLinkData?.orderId) {
+      hasHandledDeepLinkRef.current = true;
       const orderToView = orders.find(o => o.id === deepLinkData.orderId);
       if (orderToView) {
         setViewingInvoiceOrder(orderToView);
       }
-      if (onClearDeepLink) {
-        onClearDeepLink();
-      }
     }
-  }, [deepLinkData, openAddModalInitially, selectedOrderIdInitially]);
+  }, [deepLinkData, openAddModalInitially, selectedOrderIdInitially, orders]);
 
   const handleAddLineItem = () => {
     if (!rowProductId) {

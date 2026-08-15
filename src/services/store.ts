@@ -2986,7 +2986,6 @@ class ERPStorage {
         }).catch(() => {});
       } catch (e) {}
     }
-    this.notify();
   }
 
   // Sales Order Operations

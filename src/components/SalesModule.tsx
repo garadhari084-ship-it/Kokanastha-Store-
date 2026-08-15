@@ -450,13 +450,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const draftSessionIdRef = useRef<string>(crypto.randomUUID());
 
   const getSuggestedInvoiceNumber = (isFestive: boolean, isAdvance: boolean) => {
-    return dbStore.reserveDraftInvoiceNumber(
+    return dbStore.getNextAvailableInvoiceNumber(
       businessId,
-      user.id,
-      user.name,
-      draftSessionIdRef.current,
       isFestive,
-      isAdvance
+      isAdvance,
+      draftSessionIdRef.current
     );
   };
 
@@ -668,18 +666,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
       // Live synchronize invoice number if Create Order modal is actively open
       if (isCreateModalOpen && !editingOrderId) {
-        const liveNum = dbStore.reserveDraftInvoiceNumber(
+        const liveNum = dbStore.getNextAvailableInvoiceNumber(
           businessId,
-          user.id,
-          user.name,
-          draftSessionIdRef.current,
           isFestiveBooking,
-          isAdvanceBooking
+          isAdvanceBooking,
+          draftSessionIdRef.current
         );
         setCustomInvoiceNumber(liveNum);
       }
     });
-  }, [businessId, isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking, user.id, user.name]);
+  }, [businessId, isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking]);
 
   const handleOpenAddModal = () => {
     draftSessionIdRef.current = crypto.randomUUID();

@@ -2037,7 +2037,7 @@ export default function App() {
                 </strong>
                 {currentUser && (
                   <span className="text-[10px] text-slate-500 hidden sm:block font-medium">
-                    Welcome, {currentUser.name} &bull; {dbMode === 'supabase' ? 'Cloud Synced' : 'Local Storage (Not Shared)'} &bull; {dbMode === 'supabase' ? 'Cloud Synced' : 'Local Only'}
+                    Welcome, {currentUser.name}
                   </span>
                 )}
               </div>
@@ -2234,7 +2234,7 @@ export default function App() {
         <main className={`flex-1 w-full min-w-0 min-h-0 ${
           activeView === 'inbox' 
             ? 'overflow-hidden flex flex-col p-2 sm:p-4' 
-            : 'overflow-y-auto overflow-x-hidden px-0 pt-0.5 pb-4 sm:px-0 lg:px-0 sm:pt-1 sm:pb-6 space-y-4'
+            : 'hide-scrollbar overflow-y-auto overflow-x-hidden px-0 pt-0.5 pb-4 sm:px-0 lg:px-0 sm:pt-1 sm:pb-6 space-y-4'
         }`}>
           <Suspense fallback={<div className="flex items-center justify-center p-12 h-[60vh] text-slate-500"><Loader2 className="animate-spin w-8 h-8 text-indigo-500" /></div>}>
             {renderActiveModule()}

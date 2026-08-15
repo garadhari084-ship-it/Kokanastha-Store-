@@ -2680,8 +2680,18 @@ class ERPStorage {
   }
 
   public createPurchaseOrder(po: Omit<PurchaseOrder, 'id' | 'created_at'>): PurchaseOrder {
+    let finalOrderNumber = po.order_number;
+    const existingPOs = this.cache.purchases.filter(p => p.business_id === normalizeBusinessId(po.business_id));
+    
+    // Ensure unique purchase order number
+    while (existingPOs.some(p => p.order_number === finalOrderNumber)) {
+        const prefix = `PO-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2, '0')}-`;
+        finalOrderNumber = `${prefix}${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`;
+    }
+
     const newPO: PurchaseOrder = {
       ...po,
+      order_number: finalOrderNumber,
       business_id: normalizeBusinessId(po.business_id),
       id: crypto.randomUUID(),
       created_at: new Date().toISOString()
@@ -2845,8 +2855,34 @@ class ERPStorage {
     }
 
     const numPaid = typeof so.paid_amount === 'number' ? so.paid_amount : Number(so.paid_amount) || 0;
+    
+    // ENSURE UNIQUE INVOICE NUMBER
+    let finalOrderNumber = so.order_number;
+    const existingOrders = this.cache.sales.filter(o => o.business_id === so.business_id);
+    if (existingOrders.some(o => o.order_number === finalOrderNumber)) {
+        // Collision detected: Generate next sequence
+        const biz = this.cache.businesses.find(b => b.id === so.business_id);
+        const isFestive = so.festive_booking;
+        const isAdvance = so.advance_booking;
+        const standardPrefix = biz?.invoice_prefix ? biz.invoice_prefix.trim() : 'SO-2026-';
+        const festivePrefix = biz?.festive_invoice_prefix ? biz.festive_invoice_prefix.trim() : 'FEST-KF-';
+        const prefix = isFestive ? festivePrefix : standardPrefix;
+
+        let maxSeq = 0;
+        existingOrders.filter(o => o.order_number && o.order_number.startsWith(prefix)).forEach(o => {
+            const numPart = o.order_number.replace(prefix, '').replace('AB-', '');
+            const parsed = parseInt(numPart, 10);
+            if (!isNaN(parsed) && parsed > maxSeq) {
+                maxSeq = parsed;
+            }
+        });
+        const nextSeq = maxSeq + 1;
+        finalOrderNumber = isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`;
+    }
+
     const newSO: SalesOrder = {
       ...so,
+      order_number: finalOrderNumber,
       paid_amount: numPaid,
       id: crypto.randomUUID(),
       created_at: createdAtStr

@@ -425,9 +425,9 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
 
   const executeSavePO = (poData: any) => {
     try {
-      dbStore.createPurchaseOrder(poData);
-      dbStore.logActivity(user.id, user.name, user.role, 'Create PO', `Generated new Purchase Order: ${poData.order_number}`, businessId);
-      triggerToast(`Purchase Order ${poData.order_number} created successfully.`, 'success');
+      const createdPO = dbStore.createPurchaseOrder(poData);
+      dbStore.logActivity(user.id, user.name, user.role, 'Create PO', `Generated new Purchase Order: ${createdPO.order_number}`, businessId);
+      triggerToast(`Purchase Order ${createdPO.order_number} created successfully.`, 'success');
       setIsModalOpen(false);
       setPendingPOToConfirm(null);
       setPurchases(dbStore.getPurchaseOrders(businessId));

@@ -1194,7 +1194,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             businessId
           );
           if (loyaltyResult.pointsEarned > 0) {
-            triggerToast(`Customer earned +${loyaltyResult.pointsEarned} loyalty points on Order #${orderNum}!`, 'info');
+            triggerToast(`Customer earned +${loyaltyResult.pointsEarned} loyalty points on Order #${createdOrder.order_number}!`, 'info');
           }
         }
 
@@ -1210,7 +1210,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           user.name,
           user.role,
           'Create Order',
-          `Placed Sales Order: ${orderNum} totaling ${currencySymbol}${finalAmount.toLocaleString()} (${isAdvanceBooking ? 'Advance Booking' : 'Standard Delivery'})`,
+          `Placed Sales Order: ${createdOrder.order_number} totaling ${currencySymbol}${finalAmount.toLocaleString()} (${isAdvanceBooking ? 'Advance Booking' : 'Standard Delivery'})`,
           businessId
         );
 
@@ -1223,13 +1223,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             dbStore.sendMessage({
               sender_id: user.id,
               receiver_id: staff.id,
-              content: `New Sales Order ${orderNum} has been placed. Please prepare for packing.`,
+              content: `New Sales Order ${createdOrder.order_number} has been placed. Please prepare for packing.`,
               business_id: businessId
             });
           });
         }
 
-        triggerToast(`Order ${orderNum} compiled. Added to pending packing list.`, 'success');
+        triggerToast(`Order ${createdOrder.order_number} compiled. Added to pending packing list.`, 'success');
       }
 
       setOrders(dbStore.getSalesOrders(businessId));

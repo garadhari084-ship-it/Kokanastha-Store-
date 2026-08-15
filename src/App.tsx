@@ -1660,15 +1660,16 @@ export default function App() {
     const defaultLogoUrl = dbStore.getBusinesses()[0]?.logo_url || '/logo.png';
     const defaultCoverUrl = dbStore.getBusinesses()[0]?.login_cover_url;
     return (
-      <div className="min-h-screen bg-slate-50 flex" id="login-screen-root">
+      <div className="min-h-screen w-full bg-slate-50 flex flex-col lg:flex-row overflow-x-hidden overflow-y-auto select-none" id="login-screen-root">
         {/* Left Side: Cover Photo / Graphic Showcase */}
-        <div className="hidden lg:flex lg:w-1/2 bg-slate-900 relative overflow-hidden items-center justify-center">
+        <div className="hidden lg:flex lg:w-1/2 min-h-screen bg-slate-900 relative overflow-hidden items-center justify-center p-8 shrink-0">
           {defaultCoverUrl ? (
-            <div 
-              className="absolute inset-0 z-0 bg-cover bg-center"
-              style={{ backgroundImage: `url(${defaultCoverUrl})` }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-slate-950/30"></div>
+            <div className="absolute inset-0 z-0 flex items-center justify-center p-8 bg-slate-900">
+              <div 
+                className="w-full h-full bg-contain bg-center bg-no-repeat transition-all duration-300"
+                style={{ backgroundImage: `url(${defaultCoverUrl})` }}
+              ></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-slate-950/30 pointer-events-none"></div>
             </div>
           ) : (
             <>
@@ -1682,9 +1683,9 @@ export default function App() {
           )}
 
           {/* Bottom Overlay on Cover Photo */}
-          <div className="relative z-10 flex flex-col items-start justify-end p-12 h-full w-full">
-            <div className="bg-slate-950/60 backdrop-blur-md p-6 rounded-2xl border border-white/10 max-w-lg shadow-2xl">
-              <h2 className="text-2xl font-extrabold text-white tracking-tight mb-1.5">
+          <div className="relative z-10 flex flex-col items-start justify-end p-8 h-full w-full pointer-events-none">
+            <div className="bg-slate-950/70 backdrop-blur-md p-5 rounded-2xl border border-white/10 max-w-lg shadow-2xl pointer-events-auto">
+              <h2 className="text-xl font-extrabold text-white tracking-tight mb-1">
                 Enterprise Store Operations
               </h2>
               <p className="text-slate-300 text-xs font-medium leading-relaxed">
@@ -1700,13 +1701,13 @@ export default function App() {
         </div>
 
         {/* Right Side: Logo & Login Form / Password Reset */}
-        <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-16 xl:px-20 bg-slate-50 z-10 shadow-[-20px_0_40px_-10px_rgba(0,0,0,0.1)] relative overflow-y-auto">
+        <div className="flex-1 flex flex-col justify-center items-center py-10 px-4 sm:px-6 lg:px-12 bg-slate-50 z-10 shadow-[-20px_0_40px_-10px_rgba(0,0,0,0.1)] relative min-h-screen w-full overflow-y-auto">
           
-          <div className="mx-auto w-full max-w-md bg-white p-6 sm:p-10 rounded-3xl border border-slate-200/60 shadow-xl shadow-slate-200/40">
+          <div className="w-full max-w-md bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-xl shadow-slate-200/50 my-auto shrink-0 box-border">
             
-            {/* Logo at top of Right Side (Desktop & Mobile) - Identical across Login and Password Reset screens */}
-            <div className="flex flex-col items-center mb-6">
-              <div className="flex items-center justify-center h-24 sm:h-28 w-full max-w-[260px] mb-2">
+            {/* Logo at top of Right Side (Desktop & Mobile) */}
+            <div className="flex flex-col items-center mb-5">
+              <div className="flex items-center justify-center h-16 sm:h-20 w-full max-w-[200px] mb-2">
                 <img 
                   src={defaultLogoUrl}
                   alt="Company Logo" 
@@ -1716,9 +1717,9 @@ export default function App() {
                     e.currentTarget.nextElementSibling?.classList.remove('hidden');
                   }}
                 />
-                <ClipboardCheck size={56} className="text-indigo-600 hidden" />
+                <ClipboardCheck size={48} className="text-indigo-600 hidden" />
               </div>
-              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 text-center">
+              <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 text-center">
                 Kokanastha Store Operations
               </h1>
             </div>

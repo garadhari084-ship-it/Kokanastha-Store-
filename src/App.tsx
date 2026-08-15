@@ -480,40 +480,6 @@ export default function App() {
       setCurrentUser(prevUser => {
         if (!prevUser) return null;
         const freshUser = dbStore.getUserById(prevUser.id);
-        const deviceId = getDeviceId();
-        
-        // Multi-device conflict check: If another device is active for the same user, trigger automatic logout of both
-        const activeSessions = dbStore.getActiveDeviceSessions(prevUser.id);
-        const otherDevices = activeSessions.filter(s => s.deviceId !== deviceId);
-        if (otherDevices.length > 0) {
-          setTimeout(() => {
-            localStorage.removeItem('omnipack_session');
-            triggerToast('Multiple active sessions detected. For security, both devices have been logged out.', 'error');
-            setCurrentUser(null);
-            setCurrentBusiness(null);
-          }, 50);
-          return null;
-        }
-
-        // Single device login check
-        try {
-          const sessionDataStr = localStorage.getItem('omnipack_session');
-          if (sessionDataStr && freshUser) {
-             const parsed = JSON.parse(sessionDataStr);
-             // If db token exists and doesn't match our local token or token was wiped, logout!
-             if (!freshUser.session_token || (parsed.sessionToken && freshUser.session_token !== parsed.sessionToken)) {
-               // Logout to enforce one device login
-               setTimeout(() => {
-                 localStorage.removeItem('omnipack_session');
-                 triggerToast('You have been logged out because your account was accessed from another device.', 'error');
-                 setCurrentUser(null);
-                 setCurrentBusiness(null);
-               }, 100);
-               return null;
-             }
-          }
-        } catch(e) {}
-
         if (freshUser && JSON.stringify(freshUser) !== JSON.stringify(prevUser)) {
           return freshUser;
         }
@@ -918,9 +884,9 @@ export default function App() {
 
              await dbStore.syncFromSupabase(fallbackResult.business.id);
              dbStore.registerDeviceSession(fallbackResult.user.id, deviceId, newSessionToken, fallbackResult.business.id);
+             localStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
              setCurrentUser(fallbackResult.user);
              setCurrentBusiness(fallbackResult.business);
-             localStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
              
              dbStore.broadcastForceLogout(fallbackResult.user.id, newSessionToken, deviceId);
              
@@ -1012,9 +978,9 @@ export default function App() {
 
             await dbStore.syncFromSupabase(profile.business_id);
             const biz = dbStore.getBusiness(profile.business_id) || dbStore.getBusinesses()[0];
+            localStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
             setCurrentUser(profile);
             setCurrentBusiness(biz);
-            localStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
             
             dbStore.broadcastForceLogout(profile.id, newSessionToken, deviceId);
             
@@ -1037,9 +1003,9 @@ export default function App() {
 
       if (result.success && result.user && result.business) {
         const newSessionToken = result.user.session_token || ('st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11));
+        localStorage.setItem('omnipack_session', JSON.stringify({ userId: result.user.id, businessId: result.business.id, mode: 'local', sessionToken: newSessionToken, deviceId }));
         setCurrentUser(result.user);
         setCurrentBusiness(result.business);
-        localStorage.setItem('omnipack_session', JSON.stringify({ userId: result.user.id, businessId: result.business.id, mode: 'local', sessionToken: newSessionToken, deviceId }));
         
         dbStore.broadcastForceLogout(result.user.id, newSessionToken, deviceId);
         

@@ -276,11 +276,22 @@ export interface SalesOrder {
   rack_location?: string;
   rack_section?: string;
   total_bags?: number;
+  ready_for_dispatch?: boolean;
   is_partially_packed?: boolean;
   points_earned?: number;
   points_redeemed?: number;
   loyalty_discount?: number;
   subscription_id?: string;
+  return_type?: 'Refund' | 'Damage';
+  return_reason?: string;
+  return_notes?: string;
+  returned_at?: string;
+  inventory_restocked?: boolean;
+  delivered_to?: string;
+  delivery_notes?: string;
+  cod_collected?: boolean;
+  cod_collected_amount?: number;
+  delivered_at?: string;
 }
 
 export interface AuditLogEntry {

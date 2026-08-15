@@ -2977,15 +2977,40 @@ class ERPStorage {
       });
     } else if (wasAffecting && !nowAffecting) {
       // Stock IN: Order became inactive (cancelled or returned)
-      const logType: StockLog['type'] = order.status === 'Returned' ? 'Return' : 'In';
-      const logNote = order.status === 'Returned' ? `Order ${order.order_number} returned` : `Order ${order.order_number} cancelled`;
-      
-      order.items.forEach(item => {
-        const prod = this.cache.products.find(p => p.id === item.product_id);
-        if (prod) {
-          this.addStockLog(item.product_id, item.qty, logType, logNote, 'System', order.business_id);
-        }
-      });
+      // Check if it's a damaged item return (Damage => DO NOT add to inventory)
+      if (order.status === 'Returned' && order.return_type === 'Damage') {
+        // Damaged goods are written off - DO NOT increase stock!
+        order.items.forEach(item => {
+          const prod = this.cache.products.find(p => p.id === item.product_id);
+          if (prod) {
+            const newLog: StockLog = {
+              id: crypto.randomUUID(),
+              product_id: item.product_id,
+              change_qty: 0,
+              type: 'Out',
+              notes: `Order ${order.order_number} returned as DAMAGED (${order.return_reason || 'Damage in Transit'}) - Inventory NOT restocked (Scrap Write-off)`,
+              created_by: 'Delivery System',
+              created_at: new Date().toISOString(),
+              business_id: order.business_id
+            };
+            this.cache.stockLogs.push(newLog);
+            this.save('stockLogs', newLog);
+          }
+        });
+      } else {
+        // Regular return or refund => ADD BACK TO INVENTORY
+        const logType: StockLog['type'] = order.status === 'Returned' ? 'Return' : 'In';
+        const logNote = order.status === 'Returned' 
+          ? `Order ${order.order_number} refunded/returned (${order.return_reason || 'Customer Return'}) - Restocked to Inventory` 
+          : `Order ${order.order_number} cancelled - Restocked to Inventory`;
+        
+        order.items.forEach(item => {
+          const prod = this.cache.products.find(p => p.id === item.product_id);
+          if (prod) {
+            this.addStockLog(item.product_id, item.qty, logType, logNote, 'System', order.business_id);
+          }
+        });
+      }
     }
   }
 

@@ -634,10 +634,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setIsSubmitDropdownOpen(false);
   };
   useEffect(() => {
-    if (isCreateModalOpen && !editingOrderId && !customInvoiceNumber) {
+    if (isCreateModalOpen && !editingOrderId) {
       setCustomInvoiceNumber(getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking));
     }
-  }, [isCreateModalOpen, editingOrderId, customInvoiceNumber, isFestiveBooking, isAdvanceBooking]);
+  }, [isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking, orders]);
 
   useEffect(() => {
     return dbStore.subscribe(() => {

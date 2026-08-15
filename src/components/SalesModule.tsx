@@ -447,7 +447,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [isSubmitDropdownOpen, setIsSubmitDropdownOpen] = useState(false);
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState<string>('');
-  const draftSessionIdRef = useRef<string>(crypto.randomUUID());
+  const draftSessionIdRef = useRef<string>(openAddModalInitially && !selectedOrderIdInitially ? crypto.randomUUID() : '');
+  const isCreateModalOpenRef = useRef<boolean>(openAddModalInitially && !selectedOrderIdInitially);
 
   const getSuggestedInvoiceNumber = (isFestive: boolean, isAdvance: boolean) => {
     return dbStore.getNextAvailableInvoiceNumber(
@@ -491,7 +492,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   const handleToggleAdvanceBooking = (val: boolean) => {
     setIsAdvanceBooking(val);
-    if (!editingOrderId && isCreateModalOpen) {
+    if (!editingOrderId && isCreateModalOpenRef.current && draftSessionIdRef.current) {
       const allocated = dbStore.reserveDraftInvoiceNumber(
         businessId,
         user.id,
@@ -508,7 +509,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   const handleToggleFestiveBooking = (val: boolean) => {
     setIsFestiveBooking(val);
-    if (!editingOrderId && isCreateModalOpen) {
+    if (!editingOrderId && isCreateModalOpenRef.current && draftSessionIdRef.current) {
       const allocated = dbStore.reserveDraftInvoiceNumber(
         businessId,
         user.id,
@@ -643,29 +644,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   };
 
   useEffect(() => {
-    if (isCreateModalOpen && !editingOrderId) {
-      const allocatedNum = dbStore.reserveDraftInvoiceNumber(
-        businessId,
-        user.id,
-        user.name,
-        draftSessionIdRef.current,
-        isFestiveBooking,
-        isAdvanceBooking
-      );
-      setCustomInvoiceNumber(allocatedNum);
-
-      // Keep reservation fresh while modal stays open
+    isCreateModalOpenRef.current = isCreateModalOpen;
+    if (isCreateModalOpen && !editingOrderId && draftSessionIdRef.current) {
+      // Keep reservation fresh while modal stays open (heartbeat every 3 seconds)
       const interval = setInterval(() => {
-        dbStore.renewDraftReservation(draftSessionIdRef.current);
-      }, 5000);
+        if (draftSessionIdRef.current && isCreateModalOpenRef.current) {
+          dbStore.renewDraftReservation(draftSessionIdRef.current);
+        }
+      }, 3000);
 
       return () => {
         clearInterval(interval);
       };
-    } else if (!isCreateModalOpen) {
-      dbStore.releaseDraftReservation(draftSessionIdRef.current);
     }
-  }, [isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking, businessId, user.id, user.name]);
+  }, [isCreateModalOpen, editingOrderId]);
 
   // Clean up any held reservation when module unmounts or browser tab closes
   useEffect(() => {
@@ -677,7 +669,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      dbStore.releaseDraftReservation(draftSessionIdRef.current);
+      if (draftSessionIdRef.current) {
+        dbStore.releaseDraftReservation(draftSessionIdRef.current);
+      }
     };
   }, []);
 
@@ -688,28 +682,19 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       setProducts(dbStore.getProducts(businessId));
 
       // Live synchronize invoice number if Create Order modal is actively open
-      if (isCreateModalOpen && !editingOrderId) {
+      if (isCreateModalOpenRef.current && !editingOrderId && draftSessionIdRef.current) {
         const activeRes = dbStore.getActiveDraftReservations(businessId).find(r => r.id === draftSessionIdRef.current);
         if (activeRes && activeRes.invoiceNumber) {
           setCustomInvoiceNumber(activeRes.invoiceNumber);
-        } else {
-          const liveNum = dbStore.reserveDraftInvoiceNumber(
-            businessId,
-            user.id,
-            user.name,
-            draftSessionIdRef.current,
-            isFestiveBooking,
-            isAdvanceBooking
-          );
-          setCustomInvoiceNumber(liveNum);
         }
       }
     });
-  }, [businessId, isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking, user.id, user.name]);
+  }, [businessId, editingOrderId]);
 
   const handleOpenAddModal = () => {
     const newDraftId = crypto.randomUUID();
     draftSessionIdRef.current = newDraftId;
+    isCreateModalOpenRef.current = true;
     resetForm();
     const allocatedNum = dbStore.reserveDraftInvoiceNumber(
       businessId,
@@ -724,7 +709,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   };
 
   const handleCloseCreateModal = () => {
-    dbStore.releaseDraftReservation(draftSessionIdRef.current);
+    isCreateModalOpenRef.current = false;
+    const activeDraftId = draftSessionIdRef.current;
+    draftSessionIdRef.current = '';
+    if (activeDraftId) {
+      dbStore.releaseDraftReservation(activeDraftId);
+    }
     setIsCreateModalOpen(false);
     resetForm();
     if (onClearDeepLink) {
@@ -1313,22 +1303,29 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       setSelectedOrderForPayment(null);
       
       // Release draft lock
-      dbStore.releaseDraftReservation(draftSessionIdRef.current);
+      const curDraftId = draftSessionIdRef.current;
+      if (curDraftId) {
+        dbStore.releaseDraftReservation(curDraftId);
+      }
 
       // Post-save actions
       if (postAction === 'save_new') {
-        draftSessionIdRef.current = crypto.randomUUID();
+        const nextDraftId = crypto.randomUUID();
+        draftSessionIdRef.current = nextDraftId;
+        isCreateModalOpenRef.current = true;
         resetForm();
         const nextNum = dbStore.reserveDraftInvoiceNumber(
           businessId,
           user.id,
           user.name,
-          draftSessionIdRef.current,
+          nextDraftId,
           false,
           false
         );
         setCustomInvoiceNumber(nextNum);
       } else if (postAction === 'print' && finalCreatedOrder) {
+        isCreateModalOpenRef.current = false;
+        draftSessionIdRef.current = '';
         resetForm();
         setIsCreateModalOpen(false);
         setViewingInvoiceOrder(finalCreatedOrder);
@@ -1337,6 +1334,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           if (btn) btn.click();
         }, 300);
       } else if (postAction === 'share' && finalCreatedOrder) {
+        isCreateModalOpenRef.current = false;
+        draftSessionIdRef.current = '';
         resetForm();
         setIsCreateModalOpen(false);
         setViewingInvoiceOrder(finalCreatedOrder);
@@ -1345,6 +1344,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           if (btn) btn.click();
         }, 300);
       } else {
+        isCreateModalOpenRef.current = false;
+        draftSessionIdRef.current = '';
         setIsCreateModalOpen(false);
         resetForm();
       }

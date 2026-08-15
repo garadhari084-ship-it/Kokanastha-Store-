@@ -2814,34 +2814,15 @@ class ERPStorage {
   // ==================== CONCURRENT DRAFT INVOICE RESERVATION ====================
   public getActiveDraftReservations(businessId?: string): DraftInvoiceReservation[] {
     const now = Date.now();
-    const EXPIRY_MS = 15 * 60 * 1000; // 15 minutes auto-expiry for stale drafts
+    const EXPIRY_MS = 2 * 60 * 1000; // 2 minutes auto-expiry for stale drafts (renewed every 3-5s by active popups)
 
     // Dynamically load freshest draft reservations from localStorage
     const localDrafts = this.load<DraftInvoiceReservation[]>('draftReservations', []);
-    const reservationMap = new Map<string, DraftInvoiceReservation>();
+    const validDrafts = (Array.isArray(localDrafts) ? localDrafts : []).filter(
+      r => r && r.id && r.invoiceNumber && (now - r.timestamp) < EXPIRY_MS
+    );
 
-    // Add local storage drafts first
-    if (Array.isArray(localDrafts)) {
-      localDrafts.forEach(r => {
-        if (r && r.id && (now - r.timestamp) < EXPIRY_MS) {
-          reservationMap.set(r.id, r);
-        }
-      });
-    }
-
-    // Merge in-memory drafts (keep whichever timestamp is newer)
-    if (Array.isArray(this.draftReservations)) {
-      this.draftReservations.forEach(r => {
-        if (r && r.id && (now - r.timestamp) < EXPIRY_MS) {
-          const existing = reservationMap.get(r.id);
-          if (!existing || r.timestamp >= existing.timestamp) {
-            reservationMap.set(r.id, r);
-          }
-        }
-      });
-    }
-
-    this.draftReservations = Array.from(reservationMap.values());
+    this.draftReservations = validDrafts;
 
     if (businessId) {
       return this.draftReservations.filter(r => isSameBusiness(r.businessId, businessId));
@@ -2852,27 +2833,13 @@ class ERPStorage {
   public syncIncomingDraftReservations(incoming: DraftInvoiceReservation[]): void {
     if (!Array.isArray(incoming)) return;
     const now = Date.now();
-    const EXPIRY_MS = 15 * 60 * 1000;
-    const reservationMap = new Map<string, DraftInvoiceReservation>();
+    const EXPIRY_MS = 2 * 60 * 1000;
 
-    // Current in-memory drafts
-    (this.draftReservations || []).forEach(r => {
-      if (r && r.id && (now - r.timestamp) < EXPIRY_MS) {
-        reservationMap.set(r.id, r);
-      }
-    });
+    const validDrafts = incoming.filter(
+      r => r && r.id && r.invoiceNumber && (now - r.timestamp) < EXPIRY_MS
+    );
 
-    // Merge incoming drafts
-    incoming.forEach(r => {
-      if (r && r.id && (now - r.timestamp) < EXPIRY_MS) {
-        const existing = reservationMap.get(r.id);
-        if (!existing || r.timestamp >= existing.timestamp) {
-          reservationMap.set(r.id, r);
-        }
-      }
-    });
-
-    this.draftReservations = Array.from(reservationMap.values());
+    this.draftReservations = validDrafts;
     this.saveDraftReservations();
     this.notify();
   }
@@ -2885,8 +2852,9 @@ class ERPStorage {
     isFestive: boolean,
     isAdvance: boolean
   ): string {
+    if (!draftId) return '';
     const normBiz = normalizeBusinessId(businessId);
-    this.getActiveDraftReservations(); // purge expired & merge latest storage
+    this.getActiveDraftReservations(); // purge expired & reload latest storage
 
     // Check if this draft already has an active reservation of the same type
     const existing = this.draftReservations.find(r => r.id === draftId);
@@ -2929,6 +2897,7 @@ class ERPStorage {
   }
 
   public renewDraftReservation(draftId: string): void {
+    if (!draftId) return;
     this.getActiveDraftReservations();
     const res = this.draftReservations.find(r => r.id === draftId);
     if (res) {
@@ -2938,25 +2907,33 @@ class ERPStorage {
   }
 
   public releaseDraftReservation(draftId: string): void {
-    this.getActiveDraftReservations();
-    const initialLen = this.draftReservations.length;
-    this.draftReservations = this.draftReservations.filter(r => r.id !== draftId);
-    if (this.draftReservations.length !== initialLen) {
-      this.saveDraftReservations();
-      this.broadcastDraftReservations();
-      this.notify();
-    }
+    if (!draftId) return;
+    const now = Date.now();
+    const EXPIRY_MS = 2 * 60 * 1000;
+    const localDrafts = this.load<DraftInvoiceReservation[]>('draftReservations', []);
+    
+    this.draftReservations = (Array.isArray(localDrafts) ? localDrafts : []).filter(
+      r => r && r.id !== draftId && (now - r.timestamp) < EXPIRY_MS
+    );
+    
+    this.saveDraftReservations();
+    this.broadcastDraftReservations();
+    this.notify();
   }
 
   public releaseDraftReservationByInvoice(invoiceNumber: string): void {
-    this.getActiveDraftReservations();
-    const initialLen = this.draftReservations.length;
-    this.draftReservations = this.draftReservations.filter(r => r.invoiceNumber !== invoiceNumber);
-    if (this.draftReservations.length !== initialLen) {
-      this.saveDraftReservations();
-      this.broadcastDraftReservations();
-      this.notify();
-    }
+    if (!invoiceNumber) return;
+    const now = Date.now();
+    const EXPIRY_MS = 2 * 60 * 1000;
+    const localDrafts = this.load<DraftInvoiceReservation[]>('draftReservations', []);
+    
+    this.draftReservations = (Array.isArray(localDrafts) ? localDrafts : []).filter(
+      r => r && r.invoiceNumber !== invoiceNumber && (now - r.timestamp) < EXPIRY_MS
+    );
+    
+    this.saveDraftReservations();
+    this.broadcastDraftReservations();
+    this.notify();
   }
 
   public getNextAvailableInvoiceNumber(
@@ -2975,67 +2952,119 @@ class ERPStorage {
     const allOrders = this.getSalesOrders(normBiz);
     const activeDrafts = this.getActiveDraftReservations(normBiz).filter(d => d.id !== excludeDraftId);
 
-    const usedSequences = new Set<number>();
+    // Sort orders by creation date (newest first) to accurately locate the last created order
+    const sortedOrders = [...allOrders].sort((a, b) => {
+      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tB - tA;
+    });
 
-    // Helper to safely extract integer sequence from an invoice number
-    const extractSeq = (invNum: string | undefined | null) => {
+    const usedSequences = new Set<number>();
+    const orderSequences: number[] = [];
+    let detectedDigitPadding = 0;
+    let detectedPrefix = targetPrefix;
+
+    // Helper to safely extract integer sequence and pattern from an invoice number
+    const extractSeq = (invNum: string | undefined | null, isFromOrder = false) => {
       if (!invNum) return;
       const clean = invNum.trim();
       
       // Match exact prefix for this series (e.g. KF- or KF-AB- or FEST-KF- or INV-2026-)
       if (clean.startsWith(targetPrefix)) {
         const numPart = clean.slice(targetPrefix.length);
-        const match = numPart.match(/(\d+)$/);
+        const match = numPart.match(/^(\d+)$/);
         if (match) {
           const parsed = parseInt(match[1], 10);
           if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
             usedSequences.add(parsed);
+            if (isFromOrder) {
+              orderSequences.push(parsed);
+              if (match[1].length > 1 && match[1].startsWith('0')) {
+                detectedDigitPadding = Math.max(detectedDigitPadding, match[1].length);
+              }
+            }
             return;
           }
         }
       }
 
-      // Check if matches series prefix
+      // Check if matches series prefix with AB / FEST variants
       if (clean.startsWith(prefix)) {
         const remaining = clean.slice(prefix.length);
         const hasAB = remaining.startsWith('AB-');
         if (hasAB === isAdvance) {
           const numPart = remaining.replace(/^AB-/, '').replace(/^SUB-/, '');
-          const match = numPart.match(/(\d+)$/);
+          const match = numPart.match(/^(\d+)$/);
           if (match) {
             const parsed = parseInt(match[1], 10);
             if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
               usedSequences.add(parsed);
+              if (isFromOrder) {
+                orderSequences.push(parsed);
+                if (match[1].length > 1 && match[1].startsWith('0')) {
+                  detectedDigitPadding = Math.max(detectedDigitPadding, match[1].length);
+                }
+              }
               return;
             }
           }
         }
       }
 
-      // Fallback: extract trailing digits from invoice number
-      const trailingMatch = clean.match(/(\d+)$/);
+      // Fallback: extract trailing digits and prefix from invoice number
+      const trailingMatch = clean.match(/^(.*?)(\d+)$/);
       if (trailingMatch) {
-        const parsed = parseInt(trailingMatch[1], 10);
+        const parsed = parseInt(trailingMatch[2], 10);
         if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
           usedSequences.add(parsed);
+          if (isFromOrder) {
+            orderSequences.push(parsed);
+            if (trailingMatch[2].length > 1 && trailingMatch[2].startsWith('0')) {
+              detectedDigitPadding = Math.max(detectedDigitPadding, trailingMatch[2].length);
+            }
+            // If the latest order used a custom prefix like INV-2026-, adopt it if default prefix was unused
+            if (!isFestive && !isAdvance && trailingMatch[1] && orderSequences.length === 1 && !clean.startsWith(targetPrefix)) {
+              detectedPrefix = trailingMatch[1];
+            }
+          }
         }
       }
     };
 
-    allOrders.forEach(o => extractSeq(o.order_number));
-    activeDrafts.forEach(d => extractSeq(d.invoiceNumber));
+    // Extract sequences from all orders (most recent first) and active drafts
+    sortedOrders.forEach(o => extractSeq(o.order_number, true));
+    activeDrafts.forEach(d => extractSeq(d.invoiceNumber, false));
 
-    // Find the smallest positive integer (1, 2, 3, 4, 5...) that is NOT used
-    let nextSeq = 1;
+    const finalPrefix = detectedPrefix || targetPrefix;
+
+    // Determine the base starting sequence:
+    // If existing orders exist, start from the minimum sequence of the series or 1 if min <= 1
+    let startSeq = 1;
+    if (orderSequences.length > 0) {
+      const minOrderSeq = Math.min(...orderSequences);
+      const maxOrderSeq = Math.max(...orderSequences);
+      // If minOrderSeq is higher than 1 (e.g. business started sequence at 90 or 1001), start from minOrderSeq
+      if (minOrderSeq > 1 && maxOrderSeq >= minOrderSeq) {
+        startSeq = minOrderSeq;
+      }
+    }
+
+    // Find the next available unused sequence (filling any gaps or incrementing past max)
+    let nextSeq = startSeq;
+    const formatNumber = (num: number) => {
+      const numStr = detectedDigitPadding > 1 ? String(num).padStart(detectedDigitPadding, '0') : String(num);
+      return `${finalPrefix}${numStr}`;
+    };
+
     while (
       usedSequences.has(nextSeq) ||
-      allOrders.some(o => o.order_number === `${targetPrefix}${nextSeq}`) ||
-      activeDrafts.some(d => d.invoiceNumber === `${targetPrefix}${nextSeq}`)
+      allOrders.some(o => o.order_number === formatNumber(nextSeq)) ||
+      activeDrafts.some(d => d.invoiceNumber === formatNumber(nextSeq))
     ) {
       nextSeq++;
     }
 
-    return `${targetPrefix}${nextSeq}`;
+    return formatNumber(nextSeq);
   }
 
   private saveDraftReservations() {

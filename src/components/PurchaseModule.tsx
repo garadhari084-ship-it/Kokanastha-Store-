@@ -377,7 +377,7 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
     });
 
     
-    const poNumber = `PO-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2, '0')}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+    const poNumber = dbStore.getNextAvailablePONumber(businessId);
 
     let calcPaidAmount = 0;
     let finalPayStatus = initialPaymentStatus;

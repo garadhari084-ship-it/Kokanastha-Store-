@@ -1118,7 +1118,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         // Edit flow
         const existingOrder = orders.find(o => o.id === editingOrderId);
         const oldUnpaidBalance = existingOrder ? (Number(existingOrder.total_amount) - Number(existingOrder.paid_amount || 0)) : 0;
-        const orderNum = customInvoiceNumber.trim() || (existingOrder ? existingOrder.order_number : `${currentBiz?.invoice_prefix || 'SO-'}${Math.floor(1000 + Math.random() * 9000)}`);
+        const orderNum = customInvoiceNumber.trim() || (existingOrder ? existingOrder.order_number : dbStore.getNextAvailableInvoiceNumber(businessId, isFestiveBooking, isAdvanceBooking));
         
         dbStore.updateSalesOrder(editingOrderId, {
           order_number: orderNum,

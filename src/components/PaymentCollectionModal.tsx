@@ -119,7 +119,8 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
       newPaymentStatus = 'Partial';
     }
 
-    const receiptNo = `${type === 'Sales' ? 'RCT' : 'PAY'}-${business?.invoice_prefix || 'KF-'}${Date.now().toString().slice(-6)}`;
+    const receiptSeq = (order.payment_history && order.payment_history.length > 0) ? `-${order.payment_history.length + 1}` : '';
+    const receiptNo = `${type === 'Sales' ? 'RCT' : 'PAY'}-${order.order_number}${receiptSeq}`;
 
     const newRecord: PaymentRecord = {
       id: crypto.randomUUID(),

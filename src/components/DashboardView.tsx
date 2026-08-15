@@ -570,18 +570,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const now = new Date();
     const localTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-    const currentBiz = dbStore.getBusiness(businessId);
-    const standardPrefix = currentBiz?.invoice_prefix ? currentBiz.invoice_prefix.trim() : 'SO-2026-';
-    const existingPrefixOrders = allOrders.filter(o => o.order_number && o.order_number.startsWith(standardPrefix));
-    let maxSeq = 0;
-    existingPrefixOrders.forEach(o => {
-      const numPart = o.order_number.replace(standardPrefix, '').replace('AB-', '');
-      const parsed = parseInt(numPart, 10);
-      if (!isNaN(parsed) && parsed > maxSeq) {
-        maxSeq = parsed;
-      }
-    });
-    const nextNumber = `${standardPrefix}${maxSeq + 1}`;
+    const nextNumber = dbStore.getNextAvailableInvoiceNumber(businessId, false, false);
 
     const selectedProdObj = products.find(p => p.id === newOrderProduct) || products[0];
     const totalCalc = selectedProdObj ? selectedProdObj.selling_price * newOrderQty : 750;

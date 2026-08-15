@@ -2545,7 +2545,27 @@ class ERPStorage {
   public createSubscription(
     subData: Omit<CustomerSubscription, 'id' | 'subscription_number' | 'created_at'>
   ): CustomerSubscription {
-    const num = `SUB-${Math.floor(1000 + Math.random() * 9000)}`;
+    const existingSubs = this.cache.subscriptions || [];
+    const usedSequences = new Set<number>();
+    existingSubs.forEach(s => {
+      if (s.subscription_number) {
+        const match = s.subscription_number.match(/(\d+)$/);
+        if (match) {
+          const parsed = parseInt(match[1], 10);
+          if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
+            usedSequences.add(parsed);
+          }
+        }
+      }
+    });
+    let nextSeq = 1;
+    if (usedSequences.size > 0) {
+      nextSeq = Math.max(...Array.from(usedSequences)) + 1;
+    }
+    while (existingSubs.some(s => s.subscription_number === `SUB-${nextSeq}`)) {
+      nextSeq++;
+    }
+    const num = `SUB-${nextSeq}`;
     const newSub: CustomerSubscription = {
       ...subData,
       id: crypto.randomUUID(),
@@ -2689,20 +2709,51 @@ class ERPStorage {
     );
   }
 
+  public getNextAvailablePONumber(businessId: string): string {
+    const normBiz = normalizeBusinessId(businessId);
+    const existingPOs = this.cache.purchases.filter(p => isSameBusiness(p.business_id, normBiz));
+    const prefix = 'PO-';
+    const usedSequences = new Set<number>();
+
+    existingPOs.forEach(p => {
+      if (p.order_number) {
+        // Extract sequence number
+        const match = p.order_number.match(/(\d+)$/);
+        if (match) {
+          const parsed = parseInt(match[1], 10);
+          if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
+            usedSequences.add(parsed);
+          }
+        }
+      }
+    });
+
+    let nextSeq = 1;
+    if (usedSequences.size > 0) {
+      nextSeq = Math.max(...Array.from(usedSequences)) + 1;
+    }
+
+    while (existingPOs.some(p => p.order_number === `${prefix}${nextSeq}`)) {
+      nextSeq++;
+    }
+
+    return `${prefix}${nextSeq}`;
+  }
+
   public createPurchaseOrder(po: Omit<PurchaseOrder, 'id' | 'created_at'>): PurchaseOrder {
-    let finalOrderNumber = po.order_number;
-    const existingPOs = this.cache.purchases.filter(p => p.business_id === normalizeBusinessId(po.business_id));
+    const normBiz = normalizeBusinessId(po.business_id);
+    let finalOrderNumber = po.order_number?.trim();
+    const existingPOs = this.cache.purchases.filter(p => isSameBusiness(p.business_id, normBiz));
     
-    // Ensure unique purchase order number
-    while (existingPOs.some(p => p.order_number === finalOrderNumber)) {
-        const prefix = `PO-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2, '0')}-`;
-        finalOrderNumber = `${prefix}${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`;
+    // Ensure unique purchase order number via continuous sequence
+    if (!finalOrderNumber || existingPOs.some(p => p.order_number === finalOrderNumber)) {
+      finalOrderNumber = this.getNextAvailablePONumber(normBiz);
     }
 
     const newPO: PurchaseOrder = {
       ...po,
       order_number: finalOrderNumber,
-      business_id: normalizeBusinessId(po.business_id),
+      business_id: normBiz,
       id: crypto.randomUUID(),
       created_at: new Date().toISOString()
     };
@@ -2852,34 +2903,50 @@ class ERPStorage {
   ): string {
     const normBiz = normalizeBusinessId(businessId);
     const biz = this.getBusiness(normBiz);
-    const standardPrefix = biz?.invoice_prefix ? biz.invoice_prefix.trim() : 'SO-2026-';
-    const festivePrefix = biz?.festive_invoice_prefix ? biz.festive_invoice_prefix.trim() : 'FEST-KF-';
+    const standardPrefix = typeof biz?.invoice_prefix === 'string' ? biz.invoice_prefix.trim() : 'KF-';
+    const festivePrefix = typeof biz?.festive_invoice_prefix === 'string' ? biz.festive_invoice_prefix.trim() : 'FEST-KF-';
     const prefix = isFestive ? festivePrefix : standardPrefix;
 
     const allOrders = this.getSalesOrders(normBiz);
-    const existingPrefixOrders = allOrders.filter(o => o.order_number && o.order_number.startsWith(prefix));
-
-    // Also get all active drafts currently held by other users/sessions
     const activeDrafts = this.getActiveDraftReservations(normBiz).filter(d => d.id !== excludeDraftId);
-    const existingDraftPrefixes = activeDrafts.filter(d => d.invoiceNumber && d.invoiceNumber.startsWith(prefix));
 
     const usedSequences = new Set<number>();
 
-    existingPrefixOrders.forEach(o => {
-      const numPart = o.order_number.replace(prefix, '').replace('AB-', '');
-      const parsed = parseInt(numPart, 10);
-      if (!isNaN(parsed) && parsed > 0) {
-        usedSequences.add(parsed);
+    // Helper to safely extract integer sequence from an invoice number
+    const extractSeq = (invNum: string | undefined | null) => {
+      if (!invNum) return;
+      let clean = invNum.trim();
+      
+      // If starts with active prefix, strip it
+      if (prefix && clean.startsWith(prefix)) {
+        clean = clean.slice(prefix.length);
       }
-    });
+      // Strip advance booking or sub tag
+      if (clean.startsWith('AB-')) {
+        clean = clean.slice(3);
+      } else if (clean.startsWith('SUB-')) {
+        clean = clean.slice(4);
+      }
 
-    existingDraftPrefixes.forEach(d => {
-      const numPart = d.invoiceNumber.replace(prefix, '').replace('AB-', '');
-      const parsed = parseInt(numPart, 10);
-      if (!isNaN(parsed) && parsed > 0) {
+      // Check if remainder is pure integer (e.g. "1", "2", "3")
+      const parsed = parseInt(clean, 10);
+      if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
         usedSequences.add(parsed);
+        return;
       }
-    });
+
+      // Fallback: extract trailing digits (e.g. KF-1 -> 1, INV-002 -> 2, #3 -> 3)
+      const match = invNum.match(/(\d+)$/);
+      if (match) {
+        const trailingNum = parseInt(match[1], 10);
+        if (!isNaN(trailingNum) && trailingNum > 0 && trailingNum < 10000000) {
+          usedSequences.add(trailingNum);
+        }
+      }
+    };
+
+    allOrders.forEach(o => extractSeq(o.order_number));
+    activeDrafts.forEach(d => extractSeq(d.invoiceNumber));
 
     let nextSeq = 1;
     if (usedSequences.size > 0) {
@@ -2887,7 +2954,7 @@ class ERPStorage {
       nextSeq = maxSeq + 1;
     }
 
-    // Ensure candidate isn't taken by checking in a safety loop
+    // Safety loop to ensure no existing order or draft has this exact string
     while (
       allOrders.some(o => o.order_number === (isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`)) ||
       activeDrafts.some(d => d.invoiceNumber === (isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`))
@@ -3060,7 +3127,7 @@ class ERPStorage {
         bank_account: 'Main Cash / Bank Account',
         payment_date: newSO.order_date || new Date().toISOString().split('T')[0],
         notes: 'Advance / Partial Payment Received on Order Creation',
-        receipt_number: `RCT-${newSO.order_number}-${Date.now().toString().slice(-4)}`,
+        receipt_number: `RCT-${newSO.order_number}`,
         collected_by: 'Staff',
         business_id: newSO.business_id,
         created_at: new Date().toISOString()

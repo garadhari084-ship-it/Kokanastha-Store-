@@ -614,6 +614,27 @@ export default function App() {
             setTimeout(() => window.location.reload(), 2000);
           }
         )
+        .on(
+          'broadcast',
+          { event: 'force_logout' },
+          (payload: any) => {
+            console.log('Force logout broadcast received:', payload);
+            const sessionData = localStorage.getItem('omnipack_session');
+            if (sessionData && payload.payload?.userId) {
+              try {
+                const { userId, sessionToken } = JSON.parse(sessionData);
+                // If it's the same user but a DIFFERENT session token, log them out
+                if (userId === payload.payload.userId && sessionToken !== payload.payload.newSessionToken) {
+                  localStorage.removeItem('omnipack_session');
+                  triggerToast('You have been logged out because your account was accessed from another device.', 'error');
+                  setCurrentUser(null);
+                  setCurrentBusiness(null);
+                  setDbMode('local');
+                }
+              } catch(e) {}
+            }
+          }
+        )
         .subscribe();
     }
 
@@ -708,6 +729,11 @@ export default function App() {
              setCurrentUser(fallbackResult.user);
              setCurrentBusiness(fallbackResult.business);
              localStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: fallbackResult.user?.session_token }));
+             
+             if (fallbackResult.user?.session_token) {
+               dbStore.broadcastForceLogout(fallbackResult.user.id, fallbackResult.user.session_token);
+             }
+             
              setActiveView('dashboard');
              triggerToast(`Session Established. Welcome, ${fallbackResult.user.name}!`, 'success');
              return;
@@ -789,6 +815,10 @@ export default function App() {
             setCurrentBusiness(biz);
             localStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase', sessionToken: profile.session_token }));
             
+            if (profile.session_token) {
+              dbStore.broadcastForceLogout(profile.id, profile.session_token);
+            }
+            
             // Save password for offline fallback
             try {
               const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
@@ -809,6 +839,11 @@ export default function App() {
         setCurrentUser(result.user);
         setCurrentBusiness(result.business);
         localStorage.setItem('omnipack_session', JSON.stringify({ userId: result.user.id, businessId: result.business.id, mode: 'local', sessionToken: result.user?.session_token }));
+        
+        if (result.user?.session_token) {
+          dbStore.broadcastForceLogout(result.user.id, result.user.session_token);
+        }
+        
         setActiveView('dashboard');
         triggerToast(`Welcome back, ${result.user.name}!`, 'success');
       } else {

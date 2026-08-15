@@ -441,6 +441,24 @@ class ERPStorage {
     this.realtimeChannel = channel;
   }
 
+  public getRealtimeChannel(): any {
+    return this.realtimeChannel;
+  }
+
+  public broadcastForceLogout(userId: string, newSessionToken: string) {
+    if (this.realtimeChannel) {
+      this.realtimeChannel.send({
+        type: 'broadcast',
+        event: 'force_logout',
+        payload: { userId, newSessionToken }
+      }).catch(() => {});
+    }
+    if (this.bc) {
+      try {
+        this.bc.postMessage({ type: 'FORCE_LOGOUT', payload: { userId, newSessionToken } });
+      } catch (e) {}
+    }
+  }
 
   public subscribe(listener: () => void) {
     this.listeners.push(listener);
@@ -501,8 +519,13 @@ class ERPStorage {
       try {
         this.bc = new BroadcastChannel('omnipack_erp_sync_channel');
         this.bc.onmessage = (event) => {
-          if (event.data && event.data.type === 'SYNC_STATE') {
-            this.reloadFromLocalStorage();
+          if (event.data) {
+            if (event.data.type === 'SYNC_STATE') {
+              this.reloadFromLocalStorage();
+            } else if (event.data.type === 'FORCE_LOGOUT') {
+              // Trigger a state change to app
+              this.notify();
+            }
           }
         };
       } catch (e) {}
@@ -1060,6 +1083,7 @@ class ERPStorage {
            }
            if (tableName === 'users_profiles') {
                // We intentionally preserve password_hash so users created via UI can log in
+               delete clean.session_token;
            }
            if (tableName === 'stock_logs') {
                clean.product_id = sanitizeUUID(clean.product_id, false);

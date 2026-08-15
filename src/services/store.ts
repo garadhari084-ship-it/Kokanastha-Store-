@@ -526,8 +526,12 @@ class ERPStorage {
             if (event.data.type === 'SYNC_STATE') {
               this.reloadFromLocalStorage();
             } else if (event.data.type === 'SYNC_DRAFT_RESERVATIONS') {
-              this.draftReservations = this.load('draftReservations', []);
-              this.notify();
+              if (event.data.reservations && Array.isArray(event.data.reservations)) {
+                this.syncIncomingDraftReservations(event.data.reservations);
+              } else {
+                this.getActiveDraftReservations();
+                this.notify();
+              }
             } else if (event.data.type === 'FORCE_LOGOUT') {
               // Trigger a state change to app
               this.notify();
@@ -2811,11 +2815,66 @@ class ERPStorage {
   public getActiveDraftReservations(businessId?: string): DraftInvoiceReservation[] {
     const now = Date.now();
     const EXPIRY_MS = 15 * 60 * 1000; // 15 minutes auto-expiry for stale drafts
-    this.draftReservations = (this.draftReservations || []).filter(r => (now - r.timestamp) < EXPIRY_MS);
+
+    // Dynamically load freshest draft reservations from localStorage
+    const localDrafts = this.load<DraftInvoiceReservation[]>('draftReservations', []);
+    const reservationMap = new Map<string, DraftInvoiceReservation>();
+
+    // Add local storage drafts first
+    if (Array.isArray(localDrafts)) {
+      localDrafts.forEach(r => {
+        if (r && r.id && (now - r.timestamp) < EXPIRY_MS) {
+          reservationMap.set(r.id, r);
+        }
+      });
+    }
+
+    // Merge in-memory drafts (keep whichever timestamp is newer)
+    if (Array.isArray(this.draftReservations)) {
+      this.draftReservations.forEach(r => {
+        if (r && r.id && (now - r.timestamp) < EXPIRY_MS) {
+          const existing = reservationMap.get(r.id);
+          if (!existing || r.timestamp >= existing.timestamp) {
+            reservationMap.set(r.id, r);
+          }
+        }
+      });
+    }
+
+    this.draftReservations = Array.from(reservationMap.values());
+
     if (businessId) {
       return this.draftReservations.filter(r => isSameBusiness(r.businessId, businessId));
     }
     return this.draftReservations;
+  }
+
+  public syncIncomingDraftReservations(incoming: DraftInvoiceReservation[]): void {
+    if (!Array.isArray(incoming)) return;
+    const now = Date.now();
+    const EXPIRY_MS = 15 * 60 * 1000;
+    const reservationMap = new Map<string, DraftInvoiceReservation>();
+
+    // Current in-memory drafts
+    (this.draftReservations || []).forEach(r => {
+      if (r && r.id && (now - r.timestamp) < EXPIRY_MS) {
+        reservationMap.set(r.id, r);
+      }
+    });
+
+    // Merge incoming drafts
+    incoming.forEach(r => {
+      if (r && r.id && (now - r.timestamp) < EXPIRY_MS) {
+        const existing = reservationMap.get(r.id);
+        if (!existing || r.timestamp >= existing.timestamp) {
+          reservationMap.set(r.id, r);
+        }
+      }
+    });
+
+    this.draftReservations = Array.from(reservationMap.values());
+    this.saveDraftReservations();
+    this.notify();
   }
 
   public reserveDraftInvoiceNumber(
@@ -2827,7 +2886,7 @@ class ERPStorage {
     isAdvance: boolean
   ): string {
     const normBiz = normalizeBusinessId(businessId);
-    this.getActiveDraftReservations(); // purge expired
+    this.getActiveDraftReservations(); // purge expired & merge latest storage
 
     // Check if this draft already has an active reservation of the same type
     const existing = this.draftReservations.find(r => r.id === draftId);
@@ -2838,6 +2897,7 @@ class ERPStorage {
       if (!isTaken) {
         existing.timestamp = Date.now();
         this.saveDraftReservations();
+        this.broadcastDraftReservations();
         return existing.invoiceNumber;
       }
     }
@@ -2869,6 +2929,7 @@ class ERPStorage {
   }
 
   public renewDraftReservation(draftId: string): void {
+    this.getActiveDraftReservations();
     const res = this.draftReservations.find(r => r.id === draftId);
     if (res) {
       res.timestamp = Date.now();
@@ -2877,20 +2938,24 @@ class ERPStorage {
   }
 
   public releaseDraftReservation(draftId: string): void {
+    this.getActiveDraftReservations();
     const initialLen = this.draftReservations.length;
     this.draftReservations = this.draftReservations.filter(r => r.id !== draftId);
     if (this.draftReservations.length !== initialLen) {
       this.saveDraftReservations();
       this.broadcastDraftReservations();
+      this.notify();
     }
   }
 
   public releaseDraftReservationByInvoice(invoiceNumber: string): void {
+    this.getActiveDraftReservations();
     const initialLen = this.draftReservations.length;
     this.draftReservations = this.draftReservations.filter(r => r.invoiceNumber !== invoiceNumber);
     if (this.draftReservations.length !== initialLen) {
       this.saveDraftReservations();
       this.broadcastDraftReservations();
+      this.notify();
     }
   }
 
@@ -2982,7 +3047,7 @@ class ERPStorage {
   private broadcastDraftReservations() {
     if (this.bc) {
       try {
-        this.bc.postMessage({ type: 'SYNC_DRAFT_RESERVATIONS' });
+        this.bc.postMessage({ type: 'SYNC_DRAFT_RESERVATIONS', reservations: this.draftReservations });
       } catch (e) {}
     }
     if (this.realtimeChannel) {

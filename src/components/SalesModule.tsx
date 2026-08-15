@@ -491,8 +491,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   const handleToggleAdvanceBooking = (val: boolean) => {
     setIsAdvanceBooking(val);
-    if (!editingOrderId) {
-      setCustomInvoiceNumber(getSuggestedInvoiceNumber(isFestiveBooking, val));
+    if (!editingOrderId && isCreateModalOpen) {
+      const allocated = dbStore.reserveDraftInvoiceNumber(
+        businessId,
+        user.id,
+        user.name,
+        draftSessionIdRef.current,
+        isFestiveBooking,
+        val
+      );
+      setCustomInvoiceNumber(allocated);
     }
     const cust = customers.find(c => c.id === selectedCustomerId);
     setOrderItems(prev => recalculateOrderPrices(prev, cust, val, isFestiveBooking));
@@ -500,8 +508,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   const handleToggleFestiveBooking = (val: boolean) => {
     setIsFestiveBooking(val);
-    if (!editingOrderId) {
-      setCustomInvoiceNumber(getSuggestedInvoiceNumber(val, isAdvanceBooking));
+    if (!editingOrderId && isCreateModalOpen) {
+      const allocated = dbStore.reserveDraftInvoiceNumber(
+        businessId,
+        user.id,
+        user.name,
+        draftSessionIdRef.current,
+        val,
+        isAdvanceBooking
+      );
+      setCustomInvoiceNumber(allocated);
     }
     const cust = customers.find(c => c.id === selectedCustomerId);
     setOrderItems(prev => recalculateOrderPrices(prev, cust, isAdvanceBooking, val));
@@ -641,7 +657,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       // Keep reservation fresh while modal stays open
       const interval = setInterval(() => {
         dbStore.renewDraftReservation(draftSessionIdRef.current);
-      }, 10000);
+      }, 5000);
 
       return () => {
         clearInterval(interval);
@@ -651,9 +667,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     }
   }, [isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking, businessId, user.id, user.name]);
 
-  // Clean up any held reservation when module unmounts
+  // Clean up any held reservation when module unmounts or browser tab closes
   useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (draftSessionIdRef.current) {
+        dbStore.releaseDraftReservation(draftSessionIdRef.current);
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       dbStore.releaseDraftReservation(draftSessionIdRef.current);
     };
   }, []);
@@ -666,20 +689,37 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
       // Live synchronize invoice number if Create Order modal is actively open
       if (isCreateModalOpen && !editingOrderId) {
-        const liveNum = dbStore.getNextAvailableInvoiceNumber(
-          businessId,
-          isFestiveBooking,
-          isAdvanceBooking,
-          draftSessionIdRef.current
-        );
-        setCustomInvoiceNumber(liveNum);
+        const activeRes = dbStore.getActiveDraftReservations(businessId).find(r => r.id === draftSessionIdRef.current);
+        if (activeRes && activeRes.invoiceNumber) {
+          setCustomInvoiceNumber(activeRes.invoiceNumber);
+        } else {
+          const liveNum = dbStore.reserveDraftInvoiceNumber(
+            businessId,
+            user.id,
+            user.name,
+            draftSessionIdRef.current,
+            isFestiveBooking,
+            isAdvanceBooking
+          );
+          setCustomInvoiceNumber(liveNum);
+        }
       }
     });
-  }, [businessId, isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking]);
+  }, [businessId, isCreateModalOpen, editingOrderId, isFestiveBooking, isAdvanceBooking, user.id, user.name]);
 
   const handleOpenAddModal = () => {
-    draftSessionIdRef.current = crypto.randomUUID();
+    const newDraftId = crypto.randomUUID();
+    draftSessionIdRef.current = newDraftId;
     resetForm();
+    const allocatedNum = dbStore.reserveDraftInvoiceNumber(
+      businessId,
+      user.id,
+      user.name,
+      newDraftId,
+      false,
+      false
+    );
+    setCustomInvoiceNumber(allocatedNum);
     setIsCreateModalOpen(true);
   };
 

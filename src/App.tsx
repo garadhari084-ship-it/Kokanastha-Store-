@@ -611,6 +611,15 @@ export default function App() {
         )
         .on(
           'broadcast',
+          { event: 'draft_reservation_changed' },
+          (payload: any) => {
+            if (payload?.payload?.reservations && Array.isArray(payload.payload.reservations)) {
+              dbStore.syncIncomingDraftReservations(payload.payload.reservations);
+            }
+          }
+        )
+        .on(
+          'broadcast',
           { event: 'factory_reset' },
           (payload: any) => {
             console.log('Factory reset broadcast received:', payload);

@@ -2729,11 +2729,10 @@ class ERPStorage {
     });
 
     let nextSeq = 1;
-    if (usedSequences.size > 0) {
-      nextSeq = Math.max(...Array.from(usedSequences)) + 1;
-    }
-
-    while (existingPOs.some(p => p.order_number === `${prefix}${nextSeq}`)) {
+    while (
+      usedSequences.has(nextSeq) ||
+      existingPOs.some(p => p.order_number === `${prefix}${nextSeq}`)
+    ) {
       nextSeq++;
     }
 
@@ -2906,6 +2905,7 @@ class ERPStorage {
     const standardPrefix = typeof biz?.invoice_prefix === 'string' ? biz.invoice_prefix.trim() : 'KF-';
     const festivePrefix = typeof biz?.festive_invoice_prefix === 'string' ? biz.festive_invoice_prefix.trim() : 'FEST-KF-';
     const prefix = isFestive ? festivePrefix : standardPrefix;
+    const targetPrefix = isAdvance ? `${prefix}AB-` : prefix;
 
     const allOrders = this.getSalesOrders(normBiz);
     const activeDrafts = this.getActiveDraftReservations(normBiz).filter(d => d.id !== excludeDraftId);
@@ -2915,32 +2915,28 @@ class ERPStorage {
     // Helper to safely extract integer sequence from an invoice number
     const extractSeq = (invNum: string | undefined | null) => {
       if (!invNum) return;
-      let clean = invNum.trim();
+      const clean = invNum.trim();
       
-      // If starts with active prefix, strip it
-      if (prefix && clean.startsWith(prefix)) {
-        clean = clean.slice(prefix.length);
-      }
-      // Strip advance booking or sub tag
-      if (clean.startsWith('AB-')) {
-        clean = clean.slice(3);
-      } else if (clean.startsWith('SUB-')) {
-        clean = clean.slice(4);
-      }
-
-      // Check if remainder is pure integer (e.g. "1", "2", "3")
-      const parsed = parseInt(clean, 10);
-      if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
-        usedSequences.add(parsed);
-        return;
+      // Match exact prefix for this series (e.g. KF- or KF-AB- or FEST-KF-)
+      if (clean.startsWith(targetPrefix)) {
+        const numPart = clean.slice(targetPrefix.length);
+        const parsed = parseInt(numPart, 10);
+        if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
+          usedSequences.add(parsed);
+          return;
+        }
       }
 
-      // Fallback: extract trailing digits (e.g. KF-1 -> 1, INV-002 -> 2, #3 -> 3)
-      const match = invNum.match(/(\d+)$/);
-      if (match) {
-        const trailingNum = parseInt(match[1], 10);
-        if (!isNaN(trailingNum) && trailingNum > 0 && trailingNum < 10000000) {
-          usedSequences.add(trailingNum);
+      // Check if matches series prefix
+      if (clean.startsWith(prefix)) {
+        const remaining = clean.slice(prefix.length);
+        const hasAB = remaining.startsWith('AB-');
+        if (hasAB === isAdvance) {
+          const numPart = remaining.replace(/^AB-/, '').replace(/^SUB-/, '');
+          const parsed = parseInt(numPart, 10);
+          if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
+            usedSequences.add(parsed);
+          }
         }
       }
     };
@@ -2948,21 +2944,17 @@ class ERPStorage {
     allOrders.forEach(o => extractSeq(o.order_number));
     activeDrafts.forEach(d => extractSeq(d.invoiceNumber));
 
+    // Find the smallest positive integer (1, 2, 3, 4, 5...) that is NOT used
     let nextSeq = 1;
-    if (usedSequences.size > 0) {
-      const maxSeq = Math.max(...Array.from(usedSequences));
-      nextSeq = maxSeq + 1;
-    }
-
-    // Safety loop to ensure no existing order or draft has this exact string
     while (
-      allOrders.some(o => o.order_number === (isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`)) ||
-      activeDrafts.some(d => d.invoiceNumber === (isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`))
+      usedSequences.has(nextSeq) ||
+      allOrders.some(o => o.order_number === `${targetPrefix}${nextSeq}`) ||
+      activeDrafts.some(d => d.invoiceNumber === `${targetPrefix}${nextSeq}`)
     ) {
       nextSeq++;
     }
 
-    return isAdvance ? `${prefix}AB-${nextSeq}` : `${prefix}${nextSeq}`;
+    return `${targetPrefix}${nextSeq}`;
   }
 
   private saveDraftReservations() {

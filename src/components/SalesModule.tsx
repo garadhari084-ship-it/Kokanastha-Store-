@@ -1279,7 +1279,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       if (postAction === 'save_new') {
         draftSessionIdRef.current = crypto.randomUUID();
         resetForm();
-        setCustomInvoiceNumber(getSuggestedInvoiceNumber(false, false));
+        const nextNum = dbStore.reserveDraftInvoiceNumber(
+          businessId,
+          user.id,
+          user.name,
+          draftSessionIdRef.current,
+          false,
+          false
+        );
+        setCustomInvoiceNumber(nextNum);
       } else if (postAction === 'print' && finalCreatedOrder) {
         resetForm();
         setIsCreateModalOpen(false);

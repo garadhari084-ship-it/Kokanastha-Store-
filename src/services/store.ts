@@ -2917,13 +2917,16 @@ class ERPStorage {
       if (!invNum) return;
       const clean = invNum.trim();
       
-      // Match exact prefix for this series (e.g. KF- or KF-AB- or FEST-KF-)
+      // Match exact prefix for this series (e.g. KF- or KF-AB- or FEST-KF- or INV-2026-)
       if (clean.startsWith(targetPrefix)) {
         const numPart = clean.slice(targetPrefix.length);
-        const parsed = parseInt(numPart, 10);
-        if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
-          usedSequences.add(parsed);
-          return;
+        const match = numPart.match(/(\d+)$/);
+        if (match) {
+          const parsed = parseInt(match[1], 10);
+          if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
+            usedSequences.add(parsed);
+            return;
+          }
         }
       }
 
@@ -2933,10 +2936,23 @@ class ERPStorage {
         const hasAB = remaining.startsWith('AB-');
         if (hasAB === isAdvance) {
           const numPart = remaining.replace(/^AB-/, '').replace(/^SUB-/, '');
-          const parsed = parseInt(numPart, 10);
-          if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
-            usedSequences.add(parsed);
+          const match = numPart.match(/(\d+)$/);
+          if (match) {
+            const parsed = parseInt(match[1], 10);
+            if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
+              usedSequences.add(parsed);
+              return;
+            }
           }
+        }
+      }
+
+      // Fallback: extract trailing digits from invoice number
+      const trailingMatch = clean.match(/(\d+)$/);
+      if (trailingMatch) {
+        const parsed = parseInt(trailingMatch[1], 10);
+        if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
+          usedSequences.add(parsed);
         }
       }
     };

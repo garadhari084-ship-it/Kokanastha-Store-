@@ -67,10 +67,11 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   // Active view & search states
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [isCompactDensity, setIsCompactDensity] = useState<boolean>(false);
   const [dateFilter, setDateFilter] = useState<'All' | 'Overdue' | 'Today' | 'Tomorrow' | 'Upcoming' | 'Next7' | 'Custom'>('Today');
   const [customDateValue, setCustomDateValue] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [bookingFilter, setBookingFilter] = useState<'all' | 'advance' | 'festive'>('all');
 
   // Scanning flow states
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -636,6 +637,9 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       }
     }
     
+    if (bookingFilter === 'advance' && !o.advance_booking) return false;
+    if (bookingFilter === 'festive' && !o.festive_booking) return false;
+
     if (!q) return true;
     return (
       o.order_number.toLowerCase().includes(q) ||
@@ -958,6 +962,25 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                       <CalendarDays size={12} />
                       <span>Select Date</span>
                     </button>
+
+                    {/* Booking Type Filter */}
+                    <div className="flex items-center gap-0.5 border-l border-slate-300 dark:border-slate-700 pl-1.5 ml-1">
+                      <button
+                        onClick={() => setBookingFilter(prev => prev === 'all' ? 'advance' : prev === 'advance' ? 'festive' : 'all')}
+                        className={`inline-flex items-center gap-1.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                          isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
+                        } ${
+                          bookingFilter === 'advance'
+                            ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-400/50'
+                            : bookingFilter === 'festive'
+                            ? 'bg-amber-500 text-slate-950 shadow-sm ring-1 ring-amber-400/50'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <Sparkles size={12} className={bookingFilter === 'festive' ? 'text-slate-950' : bookingFilter === 'advance' ? 'text-white' : 'text-amber-500'} />
+                        <span>{bookingFilter === 'all' ? 'All Bookings' : bookingFilter === 'advance' ? 'Advance' : 'Festive'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   {dateFilter === 'Custom' && (

@@ -422,7 +422,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [isFulfilledImmediately, setIsFulfilledImmediately] = useState(false);
   const [isFestiveBooking, setIsFestiveBooking] = useState(false);
   const [deliveryType, setDeliveryType] = useState<string>('Self delivery');
-  const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partial' | 'Unpaid' | ''>('');
+  const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partial' | 'Unpaid' | ''>('Paid');
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [paidAmount, setPaidAmount] = useState<number | string>('');
   const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
@@ -609,7 +609,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setIsAdvanceBooking(false);
     setIsFulfilledImmediately(false);
     setIsFestiveBooking(false);
-    setPaymentStatus('');
+    setPaymentStatus('Paid');
     setPaymentMode('Cash');
     setPaidAmount('');
     setPointsToRedeem(0);
@@ -669,12 +669,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   }, [invoiceToEdit]);
 
   const handleOpenEditModal = (order: SalesOrder) => {
-    if (order.delivery_status === 'Delivered') {
-      triggerToast('Cannot edit an order that is already delivered.', 'error');
+    if (order.status === 'Dispatched') {
+      triggerToast('Cannot edit an order that is out for delivery (Dispatched).', 'error');
       return;
     }
+    if (order.delivery_status === 'Delivered') {
+      triggerToast('Note: This order is already delivered. Any changes will update the inventory records.', 'info');
+    }
     if (order.status === 'Packed') {
-      triggerToast('Note: Editing a packed order will revert its status to Pending.', 'info');
+      triggerToast('Note: Editing a packed order will revert its status to Packing.', 'info');
     }
     
     setEditingOrderId(order.id);
@@ -1092,8 +1095,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           order_date: orderDate || getLocalTodayDate(),
           delivery_date: deliveryDate || null,
           delivery_type: deliveryType,
-          status: isFulfilledImmediately || isWalkIn ? 'Delivered' : existingOrder?.status === 'Packed' ? 'Pending' : (existingOrder?.status || 'Pending'),
-          delivery_status: isFulfilledImmediately || isWalkIn ? 'Delivered' : existingOrder?.delivery_status || 'Pending',
+          status: isFulfilledImmediately ? 'Delivered' : existingOrder?.status === 'Packed' ? 'Packing' : (existingOrder?.status || 'Pending'),
+          delivery_status: isFulfilledImmediately ? 'Delivered' : existingOrder?.delivery_status || 'Pending',
           payment_status: finalPaymentStatusToSave as any,
           payment_mode: paymentMode,
           paid_amount: actualPaid,
@@ -1163,11 +1166,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           order_date: orderDate || getLocalTodayDate(),
           delivery_date: deliveryDate || null,
           delivery_type: deliveryType,
-          status: isFulfilledImmediately || isWalkIn ? 'Delivered' : 'Pending',
+          status: isFulfilledImmediately ? 'Delivered' : 'Pending',
           payment_status: finalPaymentStatusToSave as any,
           payment_mode: paymentMode,
           paid_amount: actualPaid,
-          delivery_status: isFulfilledImmediately || isWalkIn ? 'Delivered' : 'Pending',
+          delivery_status: isFulfilledImmediately ? 'Delivered' : 'Pending',
           items: cleanItems,
           advance_booking: isAdvanceBooking,
           festive_booking: isFestiveBooking,
@@ -2014,13 +2017,17 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 mt-2">
                 <button
                   onClick={() => {
+                    if (selectedOrderForDetail.status === 'Dispatched') {
+                      triggerToast('Cannot edit an order that is out for delivery (Dispatched).', 'error');
+                      return;
+                    }
                     if (selectedOrderForDetail.delivery_status === 'Delivered') {
                       triggerToast('Note: This order is already delivered. Any changes will update the inventory records.', 'info');
                     }
                     setInvoiceToEdit(selectedOrderForDetail);
                     setSelectedOrderForDetail(null);
                   }}
-                  className={`w-full py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${selectedOrderForDetail.delivery_status === 'Delivered' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/40 dark:hover:bg-sky-900/60 dark:text-sky-300 cursor-pointer'}`}
+                  className={`w-full py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${selectedOrderForDetail.status === 'Dispatched' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/40 dark:hover:bg-sky-900/60 dark:text-sky-300 cursor-pointer'}`}
                 >
                   <Edit size={14} /> Edit / Update
                 </button>
@@ -2119,14 +2126,17 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 <div className="grid grid-cols-4 gap-2">
                   <button 
                     onClick={() => {
-                      if (viewingInvoiceOrder.delivery_status === 'Delivered') {
-                        triggerToast('Cannot edit an order that is already delivered.', 'error');
+                      if (viewingInvoiceOrder.status === 'Dispatched') {
+                        triggerToast('Cannot edit an order that is out for delivery (Dispatched).', 'error');
                         return;
+                      }
+                      if (viewingInvoiceOrder.delivery_status === 'Delivered') {
+                        triggerToast('Note: This order is already delivered. Any changes will update the inventory records.', 'info');
                       }
                       setInvoiceToEdit(viewingInvoiceOrder);
                       setViewingInvoiceOrder(null);
                     }}
-                    className={`py-2 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition ${viewingInvoiceOrder.delivery_status === 'Delivered' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 dark:bg-sky-950/60 hover:bg-sky-200 dark:hover:bg-sky-900/80 text-sky-700 dark:text-sky-300 cursor-pointer'}`}
+                    className={`py-2 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition ${viewingInvoiceOrder.status === 'Dispatched' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 dark:bg-sky-950/60 hover:bg-sky-200 dark:hover:bg-sky-900/80 text-sky-700 dark:text-sky-300 cursor-pointer'}`}
                     title="Edit Invoice"
                   >
                     <Edit size={14} className="shrink-0" />
@@ -2171,7 +2181,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       {/* Sales Order Placement modal dialog */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-0">
-          <div className="bg-white dark:bg-slate-900 w-full h-full flex flex-col animate-in zoom-in duration-150 overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 w-full h-[100dvh] flex flex-col animate-in zoom-in duration-150 overflow-hidden">
             <div className="bg-slate-50 dark:bg-slate-800 px-6 py-3.5 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2 text-slate-900 dark:text-white">
                 <PlusCircle className="text-amber-500" size={18} />
@@ -3235,7 +3245,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         }
                         // Auto-fulfill if Paid and Walk-in
                         if (st === 'Paid' && selectedCustomerId === 'WALK_IN') {
-                          setIsFulfilledImmediately(true);
+                          // We no longer auto-fulfill because it locks the edit button.
+                          // setIsFulfilledImmediately(true);
                         }
                       }}
                       placeholder="-- Select Payment Status --"
@@ -3464,7 +3475,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         <button 
                           type="button" 
                           onClick={handleCloseCreateModal}
-                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs select-none touch-manipulation"
                         >
                           Cancel
                         </button>
@@ -3474,7 +3485,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             type="button" 
                             disabled={isSubmitting}
                             onClick={() => handleCreateSalesOrder('close')}
-                            className={`px-5 py-2 text-xs font-bold transition-all cursor-pointer flex items-center gap-2 rounded-l-xl ${
+                            className={`px-5 py-2 text-xs font-bold transition-all cursor-pointer flex items-center gap-2 rounded-l-xl select-none touch-manipulation ${
                               isSubmitting 
                                 ? 'bg-slate-700 cursor-not-allowed text-slate-400' 
                                 : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white'
@@ -3486,7 +3497,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           <button
                             type="button"
                             onClick={() => setIsSubmitDropdownOpen(!isSubmitDropdownOpen)}
-                            className="px-2.5 py-2 bg-indigo-700 hover:bg-indigo-600 text-white border-l border-indigo-500/50 transition-colors cursor-pointer flex items-center rounded-r-xl"
+                            className="px-2.5 py-2 bg-indigo-700 hover:bg-indigo-600 text-white border-l border-indigo-500/50 transition-colors cursor-pointer flex items-center rounded-r-xl select-none touch-manipulation"
                           >
                             <ChevronDown size={14} className={`transition-transform duration-200 ${isSubmitDropdownOpen ? 'rotate-180' : ''}`} />
                           </button>

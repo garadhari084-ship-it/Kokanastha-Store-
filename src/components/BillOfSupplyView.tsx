@@ -278,16 +278,18 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
             <div className="font-extrabold text-slate-900 uppercase text-[9px] mb-1">Payment QRs & Bank Details</div>
             <div className="flex items-start gap-2 text-[9px] text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200">
               {/* UPI QR */}
-              <div className="text-center bg-white border border-slate-300 rounded-md p-1 shrink-0 w-20 shadow-2xs">
-                <div className="text-[7.5px] font-black uppercase text-slate-900 leading-none mb-0.5">UPI PAY QR</div>
-                {upiQrImgSrc ? (
-                  <img src={upiQrImgSrc} alt="UPI QR" className="w-16 h-16 mx-auto border rounded border-slate-200" />
-                ) : (
-                  <div className="w-16 h-16 mx-auto border rounded border-slate-200 bg-slate-100" />
-                )}
-                <div className="text-[6.5px] font-bold text-emerald-700 mt-0.5">SCAN TO PAY</div>
-                <div className="text-[5.5px] font-mono text-slate-500 truncate max-w-[64px] mx-auto">{upiId}</div>
-              </div>
+              {order.payment_status !== 'Paid' && (
+                <div className="text-center bg-white border border-slate-300 rounded-md p-1 shrink-0 w-20 shadow-2xs">
+                  <div className="text-[7.5px] font-black uppercase text-slate-900 leading-none mb-0.5">UPI PAY QR</div>
+                  {upiQrImgSrc ? (
+                    <img src={upiQrImgSrc} alt="UPI QR" className="w-16 h-16 mx-auto border rounded border-slate-200" />
+                  ) : (
+                    <div className="w-16 h-16 mx-auto border rounded border-slate-200 bg-slate-100" />
+                  )}
+                  <div className="text-[6.5px] font-bold text-emerald-700 mt-0.5">SCAN TO PAY</div>
+                  <div className="text-[5.5px] font-mono text-slate-500 truncate max-w-[64px] mx-auto">{upiId}</div>
+                </div>
+              )}
 
               {/* Bill QR */}
               <div className="text-center bg-white border border-slate-300 rounded-md p-1 shrink-0 w-20 shadow-2xs">

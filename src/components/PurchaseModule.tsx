@@ -50,7 +50,7 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
   
   // Initial Payment Form states on Create PO
   const [initialOrderStatus, setInitialOrderStatus] = useState<'Draft' | 'Ordered' | 'Received'>('Received');
-  const [initialPaymentStatus, setInitialPaymentStatus] = useState<'Unpaid' | 'Partial' | 'Paid'>('Unpaid');
+  const [initialPaymentStatus, setInitialPaymentStatus] = useState<'Unpaid' | 'Partial' | 'Paid'>('Paid');
   const [pendingPOToConfirm, setPendingPOToConfirm] = useState<any>(null);
   const [uploadedInvoice, setUploadedInvoice] = useState<string | null>(null);
   const [initialPaidAmount, setInitialPaidAmount] = useState<number>(0);
@@ -68,7 +68,7 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
     setDeliveryDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
     setItems([]);
     setInitialOrderStatus('Received');
-    setInitialPaymentStatus('Unpaid');
+    setInitialPaymentStatus('Paid');
     setInitialPaidAmount(0);
     setInitialPaymentMode('UPI');
     setInitialPaymentNotes('');

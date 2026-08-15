@@ -73,7 +73,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   }, [selectedTheme]);
 
   return (
-    <div className={`relative rounded-2xl p-2 sm:px-4 sm:py-2 bg-gradient-to-r ${themeStyles.banner} border shadow-xl transition-all duration-300 mb-3 w-full`}>
+    <div className={`relative rounded-2xl p-2 sm:px-4 sm:py-2 bg-gradient-to-r ${themeStyles.banner} border shadow-xl transition-all duration-300 mb-3 w-[calc(100%-0.5rem)] mx-auto`}>
       {/* Glow ambient spots */}
       <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl"></div>

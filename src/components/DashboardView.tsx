@@ -459,16 +459,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       triggerToast(`Order status updated to "${newStatus}".`, 'success');
       
       const allUsers = dbStore.getUsers(businessId);
-      let packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
-      if (packingStaff.length === 0) {
-        packingStaff = allUsers;
-      }
+      const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
       const orderNum = allOrders.find(o => o.id === orderId)?.order_number || orderId;
       
       if (packingStaff.length > 0) {
         packingStaff.forEach(staff => {
           dbStore.sendMessage({
-            sender_id: user?.id || 'sys',
+            sender_id: 'order_system',
             receiver_id: staff.id,
             content: `Sales Order ${orderNum} status has been updated to ${newStatus}.`,
             business_id: businessId
@@ -486,10 +483,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     if (selectedOrderIds.length === 0) return;
     
     const allUsers = dbStore.getUsers(businessId);
-    let packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
-    if (packingStaff.length === 0) {
-      packingStaff = allUsers;
-    }
+    const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
     
     selectedOrderIds.forEach(id => {
       dbStore.updateSalesOrder(id, { status, delivery_status: status });
@@ -498,7 +492,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       if (packingStaff.length > 0) {
         packingStaff.forEach(staff => {
           dbStore.sendMessage({
-            sender_id: user?.id || 'sys',
+            sender_id: 'order_system',
             receiver_id: staff.id,
             content: `Sales Order ${orderNum} status has been updated to ${status}.`,
             business_id: businessId
@@ -619,7 +613,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     if (packingStaff.length > 0) {
       packingStaff.forEach(staff => {
         dbStore.sendMessage({
-          sender_id: user?.id || 'sys',
+          sender_id: 'order_system',
           receiver_id: staff.id,
           content: `New Sales Order ${nextNumber} has been placed. Please prepare for packing.`,
           business_id: businessId

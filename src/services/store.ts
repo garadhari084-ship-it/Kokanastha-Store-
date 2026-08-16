@@ -1242,6 +1242,23 @@ class ERPStorage {
                console.warn(`Supabase sync error on chunk of ${tableName}:`, JSON.stringify(err));
              }
            }
+           if (tableName === 'sales_orders' && salesItems.length > 0) {
+             for (let i = 0; i < salesItems.length; i += CHUNK_SIZE) {
+               const chunk = salesItems.slice(i, i + CHUNK_SIZE);
+               const { error: err2 } = await supabase.from('sales_order_items').upsert(chunk);
+               if (err2 && err2.code !== 'PGRST205') console.warn('Supabase sync error on sales_order_items:', JSON.stringify(err2));
+             }
+           }
+           if (tableName === 'purchase_orders' && purchaseItems.length > 0) {
+             for (let i = 0; i < purchaseItems.length; i += CHUNK_SIZE) {
+               const chunk = purchaseItems.slice(i, i + CHUNK_SIZE);
+               const { error: err3 } = await supabase.from('purchase_order_items').upsert(chunk);
+               if (err3 && err3.code !== 'PGRST205') console.warn('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
+             }
+           }
+           if (dataItem && Array.isArray(dataItem)) {
+             dataItem.forEach((item: any) => { if (item && item.id) this.pendingUploads.delete(item.id) });
+           }
            return;
        } else {
            payload = cleanItem(payload);
@@ -4232,6 +4249,37 @@ class ERPStorage {
     if (updated.length > 0) {
       this.save('messages', updated);
     }
+  }
+
+  public deleteMessage(id: string): boolean {
+    if (!this.cache.messages) return false;
+    const index = this.cache.messages.findIndex(m => m.id === id);
+    if (index !== -1) {
+      this.cache.messages.splice(index, 1);
+      this.save('messages', null, true, id);
+      this.notify();
+      return true;
+    }
+    return false;
+  }
+
+  public deleteConversation(user1Id: string, user2Id: string, businessId: string): boolean {
+    if (!this.cache.messages) return false;
+    const toDelete = this.cache.messages.filter(m => {
+      return isSameBusiness(m.business_id, businessId) && (
+        (m.sender_id === user1Id && m.receiver_id === user2Id) ||
+        (m.sender_id === user2Id && m.receiver_id === user1Id)
+      );
+    });
+
+    if (toDelete.length === 0) return false;
+
+    this.cache.messages = this.cache.messages.filter(m => !toDelete.some(td => td.id === m.id));
+    toDelete.forEach(msg => {
+      this.save('messages', null, true, msg.id);
+    });
+    this.notify();
+    return true;
   }
 }
 

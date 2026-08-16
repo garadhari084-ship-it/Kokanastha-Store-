@@ -303,6 +303,7 @@ interface SalesModuleProps {
   openAddModalInitially?: boolean;
   selectedOrderIdInitially?: string | null;
   deepLinkData?: any;
+  onClearDeepLink?: () => void;
 }
 
 export const SalesModule: React.FC<SalesModuleProps> = ({ 
@@ -311,7 +312,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   triggerToast,
   openAddModalInitially = false,
   selectedOrderIdInitially = null,
-  deepLinkData = null
+  deepLinkData = null,
+  onClearDeepLink
 }) => {
   const [orders, setOrders] = useState<SalesOrder[]>(dbStore.getSalesOrders(businessId));
   const [customers, setCustomers] = useState<Customer[]>(dbStore.getCustomers(businessId));
@@ -358,18 +360,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const handleQuickStatusChange = (orderId: string, newStatus: OrderStatus) => {
     dbStore.updateSalesOrder(orderId, { status: newStatus });
     
-    // Add notification
+    // Add notification to packing staff only
     const orderNum = orders.find(o => o.id === orderId)?.order_number || orderId;
     const allUsers = dbStore.getUsers(businessId);
-    let packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
-    if (packingStaff.length === 0) {
-      packingStaff = allUsers;
-    }
+    const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
     
     if (packingStaff.length > 0) {
       packingStaff.forEach(staff => {
         dbStore.sendMessage({
-          sender_id: user.id,
+          sender_id: 'order_system',
           receiver_id: staff.id,
           content: `Sales Order ${orderNum} status has been updated to ${newStatus}.`,
           business_id: businessId
@@ -582,20 +581,25 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       );
     }
 
-    setOrderItems(prevItems => {
-      const existingItemIndex = prevItems.findIndex(it => it.product_id === prod.id);
-      if (existingItemIndex >= 0) {
-        triggerToast(`Updated qty to ${(Number(prevItems[existingItemIndex].qty) || 0) + finalQty}x ${prod.name}`, 'info');
-        const updatedItems = [...prevItems];
-        updatedItems[existingItemIndex] = {
-          ...updatedItems[existingItemIndex],
-          qty: (Number(updatedItems[existingItemIndex].qty) || 0) + finalQty
-        };
-        return updatedItems;
-      }
+    const existingItem = orderItems.find(it => it.product_id === prod.id);
+    if (existingItem) {
+      triggerToast(`Updated qty to ${(Number(existingItem.qty) || 0) + finalQty}x ${prod.name}`, 'info');
+      setOrderItems(prevItems => {
+        const existingItemIndex = prevItems.findIndex(it => it.product_id === prod.id);
+        if (existingItemIndex >= 0) {
+          const updatedItems = [...prevItems];
+          updatedItems[existingItemIndex] = {
+            ...updatedItems[existingItemIndex],
+            qty: (Number(updatedItems[existingItemIndex].qty) || 0) + finalQty
+          };
+          return updatedItems;
+        }
+        return [...prevItems, newItem];
+      });
+    } else {
       triggerToast(`Added ${finalQty}x "${prod.name}" to order`, 'success');
-      return [...prevItems, newItem];
-    });
+      setOrderItems(prevItems => [...prevItems, newItem]);
+    }
   };
 
   const handleOpenQuickCreateProduct = (searchName: string = '') => {
@@ -1252,7 +1256,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           points_redeemed: actualRedeem,
           items: cleanItems,
           is_updated: true,
-          qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
+          qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${cleanItems.length} items`,
         });
 
         finalCreatedOrder = dbStore.getSalesOrders(businessId).find(o => o.id === editingOrderId) || null;
@@ -1276,7 +1280,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           
           packingStaff.forEach(staff => {
             dbStore.sendMessage({
-              sender_id: user.id,
+              sender_id: 'order_system',
               receiver_id: staff.id,
               content: `Sales Order ${orderNum} has been updated.\n\nCustomer: ${finalCustomerName || 'N/A'}\nDelivery Date: ${deliveryDate || 'N/A'}\nType: ${deliveryType || 'Standard'}\nItems: ${itemsCount} units`,
               business_id: businessId
@@ -1324,7 +1328,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           delivery_charges: Number(deliveryCharges) || 0,
           additional_charges_type: additionalChargeType,
           points_redeemed: actualRedeem,
-          qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${orderItems.length} items`,
+          qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${cleanItems.length} items`,
           business_id: businessId
         });
 
@@ -1369,7 +1373,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           
           packingStaff.forEach(staff => {
             dbStore.sendMessage({
-              sender_id: user.id,
+              sender_id: 'order_system',
               receiver_id: staff.id,
               content: `New Sales Order ${createdOrder.order_number} needs packing.\n\nCustomer: ${finalCustomerName || 'N/A'}\nDelivery Date: ${deliveryDate || 'N/A'}\nType: ${deliveryType || 'Standard'}\nItems: ${itemsCount} units`,
               business_id: businessId
@@ -1927,8 +1931,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
                   <td className="py-2 px-3">
                     <div className="flex flex-col text-[10px] font-semibold text-slate-700 dark:text-slate-300">
-                      <span>{o.items.length} Items</span>
-                      <span className="text-slate-500">Qty: {o.items.reduce((acc, it) => acc + it.qty, 0)}</span>
+                      <span>{(o.items || []).length} Items</span>
+                      <span className="text-slate-500">Qty: {(o.items || []).reduce((acc, it) => acc + (Number(it.qty) || Number(it.quantity) || 0), 0)}</span>
                     </div>
                   </td>
 
@@ -2975,34 +2979,34 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                                 ? defaultTenantTax
                                 : p.gst_rate;
                                 
-                              setOrderItems(prevItems => {
-    const existingItem = prevItems.find(it => it.product_id === p.id);
-    if (existingItem) {
-      triggerToast('Item quantity updated.', 'success');
-      return prevItems.map(it => 
-        it.product_id === p.id 
-          ? { ...it, qty: it.qty + 1 }
-          : it
-      );
-    } else {
-      const newItem = {
-        product_id: p.id,
-        qty: 1,
-        scanned_qty: 0,
-        selling_price: evalRes.appliedPrice,
-        gst_rate: defaultTax,
-        normal_rate: evalRes.normalRate,
-        rate_type: evalRes.rateType,
-        rate_reason: evalRes.rateReason,
-        unit_savings: Math.max(0, evalRes.normalRate - evalRes.appliedPrice),
-        is_overridden: false
-      };
-      triggerToast('Added: ' + p.name, 'success');
-      return [...prevItems, newItem];
-    }
-  });
-  inputElem.value = '';
-  setTimeout(() => fastScanInputRef.current?.focus(), 10);
+                              const existingItem = orderItems.find(it => it.product_id === p.id);
+                              if (existingItem) {
+                                triggerToast('Item quantity updated.', 'success');
+                                setOrderItems(prevItems => prevItems.map(it => 
+                                  it.product_id === p.id 
+                                    ? { ...it, qty: it.qty + 1 }
+                                    : it
+                                ));
+                              } else {
+                                const newItem = {
+                                  id: crypto.randomUUID(),
+                                  product_id: p.id,
+                                  product_name: p.name,
+                                  qty: 1,
+                                  scanned_qty: 0,
+                                  selling_price: evalRes.appliedPrice,
+                                  gst_rate: defaultTax,
+                                  normal_rate: evalRes.normalRate,
+                                  rate_type: evalRes.rateType,
+                                  rate_reason: evalRes.rateReason,
+                                  unit_savings: Math.max(0, evalRes.normalRate - evalRes.appliedPrice),
+                                  is_overridden: false
+                                };
+                                triggerToast('Added: ' + p.name, 'success');
+                                setOrderItems(prevItems => [...prevItems, newItem]);
+                              }
+                              inputElem.value = '';
+                              setTimeout(() => fastScanInputRef.current?.focus(), 10);
                             } else {
                               triggerToast('Product not found for barcode: ' + code, 'error');
   inputElem.value = '';

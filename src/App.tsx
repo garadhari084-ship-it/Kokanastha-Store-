@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -388,12 +388,17 @@ export default function App() {
   });
   const [isAllNotificationsModalOpen, setIsAllNotificationsModalOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState<any[]>([]);
+  const [dismissedAlertMsgIds, setDismissedAlertMsgIds] = useState<string[]>([]);
   const [pendingPackingCount, setPendingPackingCount] = useState(0);
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'order' | 'stock' | 'system'>('all');
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isOverdueAlertDismissed, setIsOverdueAlertDismissed] = useState(false);
   
   const isPackingStaff = Boolean(currentUser?.role && (currentUser.role === 'Packing Staff' || currentUser.role.toLowerCase().includes('pack')));
+
+  const activePackingAlertMessages = useMemo(() => {
+    return unreadMessages.filter(m => !dismissedAlertMsgIds.includes(m.id));
+  }, [unreadMessages, dismissedAlertMsgIds]);
 
   // Calculate overdue sales orders count
   const isOrderOverdue = (deliveryDateStr: string | undefined, orderStatus?: string): boolean => {
@@ -435,15 +440,17 @@ export default function App() {
   }, [activeView]);
 
   // Play notification sound when there are unread messages for packing staff
-  useNotificationSound(unreadMessages.length > 0 && isPackingStaff);
+  useNotificationSound(activePackingAlertMessages.length > 0 && isPackingStaff);
 
-  const triggerToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts(prev => [...prev, { id, message, type }]);
+  const triggerToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
-  };
+      const id = `toast-${Date.now()}-${Math.random()}`;
+      setToasts(prev => [...prev, { id, message, type }]);
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      }, 4000);
+    }, 0);
+  }, []);
 
   // Restore session on mount
   // Handle click outside to close dropdowns
@@ -1087,27 +1094,21 @@ export default function App() {
 
   const handlePackingAlertDismiss = (messageId?: string) => {
     if (messageId) {
-      dbStore.markMessageAsRead(messageId);
+      setDismissedAlertMsgIds(prev => Array.from(new Set([...prev, messageId])));
+    } else {
+      setDismissedAlertMsgIds(prev => Array.from(new Set([...prev, ...unreadMessages.map(m => m.id)])));
     }
-    if (currentUser) {
-      dbStore.markAllMessagesRead(currentUser.id);
-    }
-    dbStore.markAllMessagesRead();
-    setUnreadMessages([]);
-    triggerToast('Notification dismissed & sound muted', 'info');
+    triggerToast('Notification banner muted', 'info');
   };
 
   const handlePackingAlertClick = (message?: any) => {
     if (!currentUser || !currentBusiness) return;
 
-    // Mark specific message as read in store
     if (message?.id) {
-      dbStore.markMessageAsRead(message.id);
+      setDismissedAlertMsgIds(prev => Array.from(new Set([...prev, message.id])));
+    } else {
+      setDismissedAlertMsgIds(prev => Array.from(new Set([...prev, ...unreadMessages.map(m => m.id)])));
     }
-
-    // Mark all unread messages for currentUser as read to guarantee immediate sound off and dismissal
-    dbStore.markAllMessagesRead(currentUser.id);
-    dbStore.markAllMessagesRead();
 
     let targetOrderId: string | null = null;
     let targetOrderNumber: string | null = null;
@@ -1133,8 +1134,6 @@ export default function App() {
       if (matched) {
         targetOrderId = matched.id;
         targetOrderNumber = matched.order_number;
-        dbStore.markMessagesForOrderRead(matched.order_number, currentUser.id);
-        dbStore.markMessagesForOrderRead(matched.id, currentUser.id);
       }
     }
 
@@ -1144,12 +1143,8 @@ export default function App() {
       if (pendingOrPacking.length > 0) {
         targetOrderId = pendingOrPacking[0].id;
         targetOrderNumber = pendingOrPacking[0].order_number;
-        dbStore.markMessagesForOrderRead(pendingOrPacking[0].order_number, currentUser.id);
       }
     }
-
-    // Immediately clear unread messages so sound turns off and banner dismisses
-    setUnreadMessages([]);
 
     if (targetOrderId) {
       handleDeepLinkNavigate('packing', { orderId: targetOrderId, orderNumber: targetOrderNumber });
@@ -2452,9 +2447,9 @@ export default function App() {
 
       </div>
 
-      {unreadMessages.length > 0 && isPackingStaff && (
+      {activePackingAlertMessages.length > 0 && isPackingStaff && (
         <PackingAlertBanner 
-          unreadMessages={unreadMessages} 
+          unreadMessages={activePackingAlertMessages} 
           onViewMessages={handlePackingAlertClick}
           onDismiss={handlePackingAlertDismiss}
         />

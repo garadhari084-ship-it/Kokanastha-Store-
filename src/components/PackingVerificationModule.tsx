@@ -97,11 +97,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
   useEffect(() => {
     selectedOrderRef.current = selectedOrder;
-    if (selectedOrder && user?.id) {
-      dbStore.markMessagesForOrderRead(selectedOrder.order_number, user.id);
-      dbStore.markMessagesForOrderRead(selectedOrder.id, user.id);
-    }
-  }, [selectedOrder, user?.id]);
+  }, [selectedOrder]);
 
   useEffect(() => {
     const targetId = deepLinkData?.orderId || openOrderIdInitially;
@@ -134,8 +130,6 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
       if (orderToOpen) {
         handleOpenPackingStation(orderToOpen);
-        dbStore.markMessagesForOrderRead(orderToOpen.order_number, user.id);
-        dbStore.markMessagesForOrderRead(orderToOpen.id, user.id);
       }
     }
   }, [openOrderIdInitially, deepLinkData, businessId, user?.id]);

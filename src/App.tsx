@@ -479,9 +479,6 @@ export default function App() {
       setUnreadMessages(messages.filter(m => {
         if (m.is_read) return false;
         if (m.receiver_id === currentUser.id) return true;
-        if (m.sender_id === 'order_system' || m.receiver_id === 'order_system') {
-          return isPacking;
-        }
         return false;
       }));
       const orders = dbStore.getSalesOrders(currentBusiness.id);
@@ -516,9 +513,6 @@ export default function App() {
         setUnreadMessages(messages.filter(m => {
           if (m.is_read) return false;
           if (m.receiver_id === currentUser.id) return true;
-          if (m.sender_id === 'order_system' || m.receiver_id === 'order_system') {
-            return isPacking;
-          }
           return false;
         }));
         const orders = dbStore.getSalesOrders(currentBusiness.id);

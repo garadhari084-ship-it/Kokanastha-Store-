@@ -2710,12 +2710,29 @@ class ERPStorage {
 
         generatedOrders.push(newOrder);
 
-        this.sendMessage({
-          sender_id: 'order_system',
-          receiver_id: 'all',
-          content: `📦 New Subscription Order: ${orderNum}\n\nCustomer: ${sub.customer_name}\nTotal Amount: ₹${sub.total_amount.toLocaleString()}\nItems: ${sub.items.length} product(s)\nStatus: Pending Packing`,
-          business_id: businessId
-        });
+        const adminUser = this.cache.users.find(u => u.business_id === businessId && u.role === 'Admin') || this.cache.users.find(u => u.business_id === businessId);
+        
+        if (adminUser) {
+          const packingStaff = this.cache.users.filter(u => u.business_id === businessId && u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
+          
+          if (packingStaff.length > 0) {
+            packingStaff.forEach(staff => {
+              this.sendMessage({
+                sender_id: adminUser.id,
+                receiver_id: staff.id,
+                content: `📦 New Subscription Order: ${orderNum}\n\nCustomer: ${sub.customer_name}\nTotal Amount: ₹${sub.total_amount.toLocaleString()}\nItems: ${sub.items.length} product(s)\nStatus: Pending Packing`,
+                business_id: businessId
+              });
+            });
+          } else {
+            this.sendMessage({
+              sender_id: adminUser.id,
+              receiver_id: 'all',
+              content: `📦 New Subscription Order: ${orderNum}\n\nCustomer: ${sub.customer_name}\nTotal Amount: ₹${sub.total_amount.toLocaleString()}\nItems: ${sub.items.length} product(s)\nStatus: Pending Packing`,
+              business_id: businessId
+            });
+          }
+        }
 
         // Advance next billing date based on frequency
         const nextDate = new Date(sub.next_billing_date || todayStr);
@@ -4226,9 +4243,7 @@ class ERPStorage {
     if (!this.cache.messages) return;
     const updated: ChatMessage[] = [];
     this.cache.messages.forEach(m => {
-      const isMatch = (m.sender_id === senderId && (m.receiver_id === receiverId || m.receiver_id === 'all')) ||
-                      (senderId === 'order_system' && (m.sender_id === 'order_system' || m.receiver_id === 'order_system')) ||
-                      (receiverId === 'order_system' && (m.sender_id === 'order_system' || m.receiver_id === 'order_system'));
+      const isMatch = (m.sender_id === senderId && (m.receiver_id === receiverId || m.receiver_id === 'all'));
       if (isMatch && !m.is_read) {
         m.is_read = true;
         updated.push(m);
@@ -4300,10 +4315,6 @@ class ERPStorage {
     const toDelete = this.cache.messages.filter(m => {
       const bizMatch = !m.business_id || isSameBusiness(m.business_id, businessId);
       if (!bizMatch) return false;
-
-      if (user2Id === 'order_system' || user1Id === 'order_system') {
-        return m.sender_id === 'order_system' || m.receiver_id === 'order_system';
-      }
 
       return (
         (m.sender_id === user1Id && m.receiver_id === user2Id) ||

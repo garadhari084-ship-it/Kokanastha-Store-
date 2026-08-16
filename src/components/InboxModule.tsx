@@ -52,7 +52,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [chatFilter, setChatFilter] = useState<'all' | 'unread' | 'colleagues' | 'system' | 'removed'>('all');
+  const [chatFilter, setChatFilter] = useState<'all' | 'unread' | 'colleagues' | 'removed'>('all');
   const [isMobileListVisible, setIsMobileListVisible] = useState(true);
   
   // Hidden/Removed users in Internal Communications only
@@ -110,40 +110,22 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Virtual user for automated order notifications
-  const orderSystemUser = useMemo<UserProfile>(() => ({
-    id: 'order_system',
-    name: 'Order System',
-    email: 'orders@system.erp',
-    role: 'System Automation',
-    created_at: '2026-01-01T00:00:00.000Z',
-    business_id: businessId
-  }), [businessId]);
-
-  const isPackingStaff = useMemo(() => {
-    return Boolean(
-      currentUser?.role && (
-        currentUser.role === 'Packing Staff' ||
-        currentUser.role.toLowerCase().includes('pack')
-      )
-    );
-  }, [currentUser?.role]);
-
+  // Remove Order System virtual user logic completely
   useEffect(() => {
-    const rawUsers = dbStore.getUsers(businessId).filter(u => u.id !== currentUser.id && u.id !== 'order_system');
-    setUsers(isPackingStaff ? [orderSystemUser, ...rawUsers] : rawUsers);
+    const rawUsers = dbStore.getUsers(businessId).filter(u => u.id !== currentUser.id);
+    setUsers(rawUsers);
     
     const allMessages = dbStore.getMessages(businessId);
     setMessages(allMessages);
 
     const unsubscribe = dbStore.subscribe(() => {
       setMessages(dbStore.getMessages(businessId));
-      const freshUsers = dbStore.getUsers(businessId).filter(u => u.id !== currentUser.id && u.id !== 'order_system');
-      setUsers(isPackingStaff ? [orderSystemUser, ...freshUsers] : freshUsers);
+      const freshUsers = dbStore.getUsers(businessId).filter(u => u.id !== currentUser.id);
+      setUsers(freshUsers);
     });
 
     return () => unsubscribe();
-  }, [businessId, currentUser.id, orderSystemUser, isPackingStaff]);
+  }, [businessId, currentUser.id]);
 
   // Mark conversation as read ONLY when the specific chat is open
   useEffect(() => {
@@ -157,38 +139,26 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   }, [selectedUserId, messages]);
 
   const allAvailableUsers = useMemo(() => {
-    const baseUsers = users.filter(u => u.id !== 'order_system' && u.id !== currentUser.id);
-    if (isPackingStaff) {
-      return [orderSystemUser, ...baseUsers];
-    }
-    return baseUsers;
-  }, [orderSystemUser, users, isPackingStaff, currentUser.id]);
+    return users.filter(u => u.id !== currentUser.id);
+  }, [users, currentUser.id]);
 
   // All human colleagues across the company
   const allHumanColleagues = useMemo(() => {
-    return users.filter(u => u.id !== 'order_system' && u.id !== currentUser.id);
+    return users.filter(u => u.id !== currentUser.id);
   }, [users, currentUser.id]);
 
   // Visible users in Internal Communications (excluding users deleted from communications)
   const visibleUsers = useMemo(() => {
-    return allAvailableUsers.filter(u => u.id === 'order_system' || !hiddenUserIds.includes(u.id));
+    return allAvailableUsers.filter(u => !hiddenUserIds.includes(u.id));
   }, [allAvailableUsers, hiddenUserIds]);
 
   const removedUsers = useMemo(() => {
-    return allAvailableUsers.filter(u => u.id !== 'order_system' && hiddenUserIds.includes(u.id));
+    return allAvailableUsers.filter(u => hiddenUserIds.includes(u.id));
   }, [allAvailableUsers, hiddenUserIds]);
 
   const selectedUser = allAvailableUsers.find(u => u.id === selectedUserId);
   
   const getUnreadCount = (userId: string) => {
-    if (userId === 'order_system') {
-      if (!isPackingStaff) return 0;
-      return messages.filter(m => 
-        (m.sender_id === 'order_system' || m.receiver_id === 'order_system') && 
-        !m.is_read &&
-        (!m.business_id || isSameBusiness(m.business_id, businessId))
-      ).length;
-    }
     return messages.filter(m => 
       m.sender_id === userId && 
       (m.receiver_id === currentUser.id || m.receiver_id === 'all') && 
@@ -211,14 +181,11 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
         return getUnreadCount(u.id) > 0 || (selectedUserId === u.id);
       }
       if (chatFilter === 'colleagues') {
-        return u.id !== 'order_system';
-      }
-      if (chatFilter === 'system') {
-        return isPackingStaff && u.id === 'order_system';
+        return true;
       }
       return true;
     });
-  }, [visibleUsers, removedUsers, searchQuery, chatFilter, messages, isPackingStaff, selectedUserId]);
+  }, [visibleUsers, removedUsers, searchQuery, chatFilter, messages, selectedUserId]);
 
   // When searching in the main search bar, find other colleagues in company directory not currently in visible active list
   const otherMatchingDirectoryUsers = useMemo(() => {
@@ -286,25 +253,11 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
 
   const rawConversationMessages = useMemo(() => {
     if (!selectedUserId) return [];
-    if (selectedUserId === 'order_system') {
-      if (!isPackingStaff) return [];
-      const msgs = messages.filter(m => 
-        (m.sender_id === 'order_system' || m.receiver_id === 'order_system') &&
-        (!m.business_id || isSameBusiness(m.business_id, businessId))
-      ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-      const seen = new Set<string>();
-      return msgs.filter(m => {
-        if (seen.has(m.id)) return false;
-        seen.add(m.id);
-        return true;
-      });
-    }
     return messages.filter(m => 
       (m.sender_id === currentUser.id && m.receiver_id === selectedUserId) ||
       (m.sender_id === selectedUserId && (m.receiver_id === currentUser.id || m.receiver_id === 'all'))
     ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  }, [messages, currentUser.id, selectedUserId, businessId, isPackingStaff]);
+  }, [messages, currentUser.id, selectedUserId, businessId]);
 
   const conversationMessages = useMemo(() => {
     if (!inChatSearchQuery.trim()) return rawConversationMessages;
@@ -459,14 +412,6 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   };
 
   const getLastMessage = (userId: string) => {
-    if (userId === 'order_system') {
-      const systemMessages = messages.filter(m => 
-        (m.sender_id === 'order_system' || m.receiver_id === 'order_system') &&
-        (!m.business_id || isSameBusiness(m.business_id, businessId))
-      ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      return systemMessages[0];
-    }
-
     const userMessages = messages.filter(m => 
       (m.sender_id === currentUser.id && m.receiver_id === userId) ||
       (m.sender_id === userId && (m.receiver_id === currentUser.id || m.receiver_id === 'all'))
@@ -480,12 +425,9 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
       if (m.is_read) return false;
       if (m.business_id && !isSameBusiness(m.business_id, businessId)) return false;
       if (m.receiver_id === currentUser.id) return true;
-      if (m.sender_id === 'order_system' || m.receiver_id === 'order_system') {
-        return isPackingStaff;
-      }
       return false;
     }).length;
-  }, [messages, currentUser.id, businessId, isPackingStaff]);
+  }, [messages, currentUser.id, businessId]);
 
   const quickEmojis = ['👍', '❤️', '✅', '📦', '⚠️', '🎉', '👏', '🙏', '🔥', '🚀'];
 
@@ -618,19 +560,6 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
             >
               Colleagues
             </button>
-            {isPackingStaff && (
-              <button
-                onClick={() => setChatFilter('system')}
-                className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-all flex items-center gap-1 ${
-                  chatFilter === 'system'
-                    ? 'bg-amber-600 text-white font-bold shadow-xs'
-                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
-                }`}
-              >
-                <Bot size={12} />
-                <span>Order System</span>
-              </button>
-            )}
             {removedUsers.length > 0 && (
               <button
                 onClick={() => setChatFilter('removed')}
@@ -672,7 +601,6 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                 const lastMsg = getLastMessage(userItem.id);
                 const unreadCount = getUnreadCount(userItem.id);
                 const isSelected = selectedUserId === userItem.id;
-                const isOrderSystem = userItem.id === 'order_system';
                 const isContactMenuOpen = activeContactMenuId === userItem.id;
                 const isRemoved = hiddenUserIds.includes(userItem.id);
 
@@ -690,15 +618,9 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                       className="flex-1 p-3 flex items-start gap-3 text-left min-w-0 cursor-pointer"
                     >
                       <div className="relative shrink-0">
-                        {isOrderSystem ? (
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-white shadow-xs ring-2 ring-amber-200 dark:ring-amber-900/40">
-                            <Bot size={20} />
-                          </div>
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-slate-700 dark:text-slate-200 font-bold uppercase border border-white dark:border-slate-800 shadow-xs">
-                            {userItem.name.charAt(0)}
-                          </div>
-                        )}
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-slate-700 dark:text-slate-200 font-bold uppercase border border-white dark:border-slate-800 shadow-xs">
+                          {userItem.name.charAt(0)}
+                        </div>
                         
                         {unreadCount > 0 && (
                           <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-emerald-600 text-white text-[9px] font-black rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900 shadow-xs">
@@ -715,11 +637,6 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                               : 'font-semibold text-slate-800 dark:text-slate-200'
                           }`}>
                             {userItem.name}
-                            {isOrderSystem && (
-                              <span className="px-1.5 py-0.2 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[9px] font-bold rounded-md">
-                                Bot
-                              </span>
-                            )}
                             {isRemoved && (
                               <span className="px-1.5 py-0.2 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 text-[9px] font-bold rounded-md">
                                 Removed
@@ -816,7 +733,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                             <Trash2 size={14} /> Delete Chat
                           </button>
                           
-                          {!isOrderSystem && !isRemoved && (
+                          {!isRemoved && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -923,23 +840,12 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                   className="flex items-center gap-3 text-left group cursor-pointer"
                   title="Click to view contact info"
                 >
-                  {selectedUser.id === 'order_system' ? (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform">
-                      <Bot size={20} />
-                    </div>
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold uppercase shadow-xs group-hover:scale-105 transition-transform">
-                      {selectedUser.name.charAt(0)}
-                    </div>
-                  )}
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold uppercase shadow-xs group-hover:scale-105 transition-transform">
+                    {selectedUser.name.charAt(0)}
+                  </div>
                   <div>
                     <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                       {selectedUser.name}
-                      {selectedUser.id === 'order_system' && (
-                        <span className="text-[10px] font-normal px-2 py-0.2 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 rounded-full flex items-center gap-1">
-                          <Sparkles size={10} /> Automated Bot
-                        </span>
-                      )}
                     </h3>
                     <p className="text-[10px] text-slate-500 font-medium flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
@@ -1031,18 +937,16 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                         <Trash2 size={15} /> Delete Conversation
                       </button>
                       
-                      {selectedUser.id !== 'order_system' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeleteCommsUser(selectedUser);
-                            setIsHeaderMenuOpen(false);
-                          }}
-                          className="w-full px-4 py-2.5 text-left text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 border-t border-slate-100 dark:border-slate-700 font-semibold cursor-pointer"
-                        >
-                          <UserX size={15} /> Delete User from Comms
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeleteCommsUser(selectedUser);
+                          setIsHeaderMenuOpen(false);
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 border-t border-slate-100 dark:border-slate-700 font-semibold cursor-pointer"
+                      >
+                        <UserX size={15} /> Delete User from Comms
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1093,23 +997,13 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
               
               {conversationMessages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6">
-                  {selectedUser.id === 'order_system' ? (
-                    <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl max-w-sm">
-                      <Bot size={32} className="text-amber-600 dark:text-amber-400 mx-auto mb-2" />
-                      <h4 className="text-xs font-bold text-slate-900 dark:text-white">Order System Connected</h4>
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        Automated packing notifications and delivery updates will appear here in real time.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-xs shadow-xs">
-                      <MessageSquare size={28} className="text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
-                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200">No messages yet</p>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        Say hello to {selectedUser.name} to begin this conversation.
-                      </p>
-                    </div>
-                  )}
+                  <div className="p-4 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-xs shadow-xs">
+                    <MessageSquare size={28} className="text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">No messages yet</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Say hello to {selectedUser.name} to begin this conversation.
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <AnimatePresence initial={false}>
@@ -1163,124 +1057,22 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                             <div className={`rounded-2xl px-3.5 py-2 shadow-xs text-xs break-words ${
                               isMe 
                                 ? 'bg-emerald-600 text-white rounded-tr-none' 
-                                : selectedUser.id === 'order_system'
-                                  ? 'bg-amber-50/90 dark:bg-amber-950/40 text-slate-900 dark:text-slate-100 border border-amber-200 dark:border-amber-800/80 rounded-tl-none'
-                                  : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200/60 dark:border-slate-700/80 rounded-tl-none'
+                                : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200/60 dark:border-slate-700/80 rounded-tl-none'
                             }`}>
                               
-                              {/* Content & Interactive Order Card */}
-                              {selectedUser.id === 'order_system' ? (
-                                (() => {
-                                  const match = msg.content.match(/(?:INV|ORD|SO|SUB|AB|FEST)-[\d\w-]+/i)
-                                             || msg.content.match(/(?:New\s+Sales\s+Order|Sales\s+Order|Order|Invoice)[\s#:]*([A-Za-z0-9-]+)/i)
-                                             || msg.content.match(/#([A-Za-z0-9-]+)/i);
-                                  const orderNum = match ? (match[1] || match[0]).replace(/^#/, '').trim() : null;
-                                  const allSales = dbStore.getSalesOrders(businessId);
-                                  const clean = orderNum ? orderNum.toLowerCase() : '';
-                                  const matchedOrder = orderNum ? allSales.find(o => {
-                                    const oNum = (o.order_number || '').toLowerCase().replace(/^#/, '');
-                                    return oNum === clean || oNum.includes(clean) || clean.includes(oNum) || o.id === orderNum;
-                                  }) : null;
-
-                                  return (
-                                    <div className="space-y-2">
-                                      {/* Order System Header Tag */}
-                                      <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-amber-200/80 dark:border-amber-800/50 text-[11px]">
-                                        <span className="font-extrabold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
-                                          <Bot size={13} className="text-amber-600 dark:text-amber-400" />
-                                          Order Dispatch Alert
-                                        </span>
-                                        {matchedOrder && (
-                                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                            matchedOrder.status === 'Delivered' 
-                                              ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
-                                              : matchedOrder.status === 'Packed' || matchedOrder.status === 'Dispatched'
-                                                ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300'
-                                                : 'bg-amber-100 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200'
-                                          }`}>
-                                            {matchedOrder.status}
-                                          </span>
-                                        )}
-                                      </div>
-
-                                      {/* Message Raw Summary */}
-                                      <div className="text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
-                                        {msg.content}
-                                      </div>
-
-                                      {/* Structured Order Breakdown Card if matched */}
-                                      {matchedOrder && (
-                                        <div className="mt-2 p-2.5 bg-white/90 dark:bg-slate-900/90 rounded-xl border border-amber-300/60 dark:border-amber-700/50 space-y-1.5 shadow-xs">
-                                          <div className="flex items-center justify-between text-[11px] font-bold">
-                                            <span className="text-slate-600 dark:text-slate-400">Customer:</span>
-                                            <span className="text-slate-900 dark:text-white font-semibold">{matchedOrder.customer_name}</span>
-                                          </div>
-                                          {matchedOrder.area && (
-                                            <div className="flex items-center justify-between text-[10px]">
-                                              <span className="text-slate-500">Delivery Area:</span>
-                                              <span className="text-slate-700 dark:text-slate-300 font-medium">{matchedOrder.area}</span>
-                                            </div>
-                                          )}
-                                          {matchedOrder.items && matchedOrder.items.length > 0 && (
-                                            <div className="pt-1 border-t border-slate-100 dark:border-slate-800">
-                                              <div className="text-[10px] font-bold text-slate-500 mb-1 flex items-center justify-between">
-                                                <span>Items Breakdown:</span>
-                                                <span className="text-amber-700 dark:text-amber-400">{matchedOrder.items.length} item(s)</span>
-                                              </div>
-                                              <ul className="text-[11px] space-y-0.5 max-h-28 overflow-y-auto pr-1">
-                                                {matchedOrder.items.map((it: any, idx: number) => (
-                                                  <li key={idx} className="flex justify-between items-center text-slate-700 dark:text-slate-300 py-0.5">
-                                                    <span className="truncate max-w-[180px]">{it.product_name || 'Product'}</span>
-                                                    <span className="font-black text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded text-[10px]">
-                                                      x{it.qty || it.quantity || 1}
-                                                    </span>
-                                                  </li>
-                                                ))}
-                                              </ul>
-                                            </div>
-                                          )}
-                                          <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] font-extrabold">
-                                            <span className="text-slate-600 dark:text-slate-400">Total Order:</span>
-                                            <span className="text-emerald-600 dark:text-emerald-400">
-                                              ₹{matchedOrder.total_amount?.toLocaleString()}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      )}
-
-                                      {/* Open Packing Station Button */}
-                                      {orderNum && onNavigate && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            onNavigate('packing', { 
-                                              orderId: matchedOrder?.id, 
-                                              orderNumber: matchedOrder?.order_number || orderNum 
-                                            });
-                                          }}
-                                          className="mt-2 w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-3 py-2 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-transform active:scale-95 cursor-pointer"
-                                        >
-                                          <Package size={15} className="text-slate-950" /> 
-                                          <span>Open Packing Station ({orderNum})</span>
-                                        </button>
-                                      )}
+                              {/* Content */}
+                              <div className="whitespace-pre-wrap leading-relaxed">
+                                {msg.content.startsWith('> Replying to:') ? (
+                                  <div>
+                                    <div className="p-1.5 mb-1.5 bg-black/5 dark:bg-white/5 border-l-2 border-emerald-600 rounded text-[11px] text-slate-600 dark:text-slate-300 italic">
+                                      {msg.content.split('\n\n')[0]}
                                     </div>
-                                  );
-                                })()
-                              ) : (
-                                <div className="whitespace-pre-wrap">
-                                  {msg.content.startsWith('> Replying to:') ? (
-                                    <div>
-                                      <div className="p-1.5 mb-1.5 bg-black/5 dark:bg-white/5 border-l-2 border-emerald-600 rounded text-[11px] text-slate-600 dark:text-slate-300 italic">
-                                        {msg.content.split('\n\n')[0]}
-                                      </div>
-                                      <p>{msg.content.split('\n\n').slice(1).join('\n\n')}</p>
-                                    </div>
-                                  ) : (
-                                    <p>{msg.content}</p>
-                                  )}
-                                </div>
-                              )}
+                                    <p>{msg.content.split('\n\n').slice(1).join('\n\n')}</p>
+                                  </div>
+                                ) : (
+                                  <p>{msg.content}</p>
+                                )}
+                              </div>
 
                               {/* Timestamp & Read Receipt */}
                               <div className={`flex items-center justify-end gap-1 mt-1 text-[10px] select-none ${
@@ -1394,7 +1186,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                   <input 
                     ref={messageInputRef}
                     type="text" 
-                    placeholder={selectedUser.id === 'order_system' ? 'Send a reply or system log...' : `Type a message...`}
+                    placeholder="Type a message..."
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     className="flex-1 bg-transparent border-none outline-none text-xs py-2 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
@@ -1460,15 +1252,9 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
             </button>
 
             <div className="text-center mb-6">
-              {contactInfoUser.id === 'order_system' ? (
-                <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-white shadow-md mb-3">
-                  <Bot size={40} />
-                </div>
-              ) : (
-                <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-3xl shadow-md mb-3">
-                  {contactInfoUser.name.charAt(0)}
-                </div>
-              )}
+              <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-3xl shadow-md mb-3">
+                {contactInfoUser.name.charAt(0)}
+              </div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">{contactInfoUser.name}</h3>
               <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">{contactInfoUser.role || 'Colleague'}</p>
             </div>
@@ -1513,19 +1299,17 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                 <Eraser size={14} /> Clear Chat History
               </button>
               
-              {contactInfoUser.id !== 'order_system' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = contactInfoUser;
-                    setContactInfoUser(null);
-                    setDeleteCommsUser(target);
-                  }}
-                  className="w-full py-2.5 px-3 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <UserX size={14} /> Delete User from Communications
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = contactInfoUser;
+                  setContactInfoUser(null);
+                  setDeleteCommsUser(target);
+                }}
+                className="w-full py-2.5 px-3 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <UserX size={14} /> Delete User from Communications
+              </button>
             </div>
           </motion.div>
         </div>

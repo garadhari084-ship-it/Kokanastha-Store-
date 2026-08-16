@@ -537,6 +537,67 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [isQuickCreateProductOpen, setIsQuickCreateProductOpen] = useState(false);
   const [quickCreateInitialName, setQuickCreateInitialName] = useState('');
 
+  const handleDirectAddProduct = (prod: Product, qty: number = 1, customPrice?: number, customTax?: number) => {
+    const finalQty = Math.max(1, qty || 1);
+    const selCust = customers.find(c => c.id === selectedCustomerId);
+    const evalRes = calculateApplicablePrice(prod, {
+      isLoyalMember: isLoyalMember(selCust),
+      isAdvanceBooking,
+      isDiwaliSale: isFestiveBooking,
+      business: currentBiz,
+      orderDate
+    });
+
+    const isCustomPrice = typeof customPrice === 'number' && !isNaN(customPrice) && customPrice !== evalRes.appliedPrice;
+    const finalPrice = typeof customPrice === 'number' && !isNaN(customPrice) ? customPrice : evalRes.appliedPrice;
+    
+    const defaultTax = typeof customTax === 'number' && !isNaN(customTax) && customTax >= 0
+      ? customTax
+      : ((defaultTenantTax === 0 || prod.gst_rate === 18 || typeof prod.gst_rate !== 'number' || isNaN(prod.gst_rate))
+          ? defaultTenantTax
+          : (prod.gst_rate || defaultTenantTax));
+
+    const newItem: SalesItem = {
+      id: crypto.randomUUID(),
+      product_id: prod.id,
+      qty: finalQty,
+      scanned_qty: 0,
+      selling_price: finalPrice,
+      gst_rate: defaultTax,
+      normal_rate: evalRes.normalRate,
+      rate_type: isCustomPrice ? 'OVERRIDE' : evalRes.rateType,
+      rate_reason: isCustomPrice ? 'Admin Price Override' : evalRes.rateReason,
+      unit_savings: Math.max(0, evalRes.normalRate - finalPrice),
+      is_overridden: isCustomPrice
+    };
+
+    if (isCustomPrice) {
+      dbStore.logActivity(
+        user.id,
+        user.name,
+        user.role,
+        'Price Override',
+        `Admin price override for ${prod.name} (SKU: ${prod.sku}): calculated ${evalRes.rateType} ₹${evalRes.appliedPrice} -> overridden to ₹${finalPrice}`,
+        businessId
+      );
+    }
+
+    setOrderItems(prevItems => {
+      const existingItemIndex = prevItems.findIndex(it => it.product_id === prod.id);
+      if (existingItemIndex >= 0) {
+        triggerToast(`Updated qty to ${(Number(prevItems[existingItemIndex].qty) || 0) + finalQty}x ${prod.name}`, 'info');
+        const updatedItems = [...prevItems];
+        updatedItems[existingItemIndex] = {
+          ...updatedItems[existingItemIndex],
+          qty: (Number(updatedItems[existingItemIndex].qty) || 0) + finalQty
+        };
+        return updatedItems;
+      }
+      triggerToast(`Added ${finalQty}x "${prod.name}" to order`, 'success');
+      return [...prevItems, newItem];
+    });
+  };
+
   const handleOpenQuickCreateProduct = (searchName: string = '') => {
     setQuickCreateInitialName(searchName);
     setIsQuickCreateProductOpen(true);
@@ -553,46 +614,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     const freshProd = latestProducts.find(p => p.id === updatedProd.id) || updatedProd;
 
     if (action === 'add_to_order') {
-      const selCust = customers.find(c => c.id === selectedCustomerId);
-      const evalRes = calculateApplicablePrice(freshProd, {
-        isLoyalMember: isLoyalMember(selCust),
-        isAdvanceBooking,
-        isDiwaliSale: isFestiveBooking,
-        business: currentBiz,
-        orderDate
-      });
-      const defaultTax = (defaultTenantTax === 0 || freshProd.gst_rate === 18 || typeof freshProd.gst_rate !== 'number' || isNaN(freshProd.gst_rate)) 
-        ? defaultTenantTax 
-        : freshProd.gst_rate;
-
-      const finalQty = Math.max(1, orderQty || 1);
-      const newItem: SalesItem = {
-        product_id: freshProd.id,
-        qty: finalQty,
-        scanned_qty: 0,
-        selling_price: evalRes.appliedPrice,
-        gst_rate: defaultTax,
-        normal_rate: evalRes.normalRate,
-        rate_type: evalRes.rateType,
-        rate_reason: evalRes.rateReason,
-        unit_savings: Math.max(0, evalRes.normalRate - evalRes.appliedPrice),
-        is_overridden: false
-      };
-
-      setOrderItems(prev => {
-        const idx = prev.findIndex(item => item.product_id === freshProd.id);
-        if (idx >= 0) {
-          const updated = [...prev];
-          updated[idx] = { ...updated[idx], qty: updated[idx].qty + finalQty };
-          return updated;
-        }
-        return [...prev, newItem];
-      });
-
+      handleDirectAddProduct(freshProd, orderQty);
       setRowProductId('');
       setRowQty(1);
       setOutOfStockProduct(null);
-      triggerToast(`Restocked +${addedStock} ${freshProd.unit || 'units'} & added ${finalQty}x "${freshProd.name}" to order!`, 'success');
+      triggerToast(`Restocked +${addedStock} ${freshProd.unit || 'units'} & added ${orderQty}x "${freshProd.name}" to order!`, 'success');
     } else {
       // select_only
       setRowProductId(freshProd.id);
@@ -619,12 +645,21 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     const latestProducts = dbStore.getProducts(businessId);
     setProducts(latestProducts);
 
-    if ((newProd.current_stock ?? 0) <= 0) {
-      setOutOfStockProduct(newProd);
+    if (action === 'add_to_order') {
+      const targetProd = latestProducts.find(p => p.id === newProd.id) || newProd;
+      handleDirectAddProduct(targetProd, initialQty);
+      setRowProductId('');
+      setRowQty(1);
+      setRowPrice(0);
+      setRowTaxRate(defaultTenantTax);
       return;
     }
 
     if (action === 'select') {
+      if ((newProd.current_stock ?? 0) <= 0 && !isAdvanceBooking && !isFestiveBooking) {
+        setOutOfStockProduct(newProd);
+        return;
+      }
       setRowProductId(newProd.id);
       const selCust = customers.find(c => c.id === selectedCustomerId);
       const evalRes = calculateApplicablePrice(newProd, {
@@ -640,46 +675,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         : newProd.gst_rate;
       setRowTaxRate(defaultTax);
       setRowQty(initialQty || 1);
-    } else if (action === 'add_to_order') {
-      const selCust = customers.find(c => c.id === selectedCustomerId);
-      const evalRes = calculateApplicablePrice(newProd, {
-        isLoyalMember: isLoyalMember(selCust),
-        isAdvanceBooking,
-        isDiwaliSale: isFestiveBooking,
-        business: currentBiz,
-        orderDate
-      });
-      const defaultTax = (defaultTenantTax === 0 || newProd.gst_rate === 18 || typeof newProd.gst_rate !== 'number' || isNaN(newProd.gst_rate)) 
-        ? defaultTenantTax 
-        : newProd.gst_rate;
-
-      const finalQty = Math.max(1, initialQty || 1);
-      const newItem: SalesItem = {
-        product_id: newProd.id,
-        qty: finalQty,
-        scanned_qty: 0,
-        selling_price: evalRes.appliedPrice,
-        gst_rate: defaultTax,
-        normal_rate: evalRes.normalRate,
-        rate_type: evalRes.rateType,
-        rate_reason: evalRes.rateReason,
-        unit_savings: Math.max(0, evalRes.normalRate - evalRes.appliedPrice),
-        is_overridden: false
-      };
-
-      setOrderItems(prev => {
-        const idx = prev.findIndex(item => item.product_id === newProd.id);
-        if (idx >= 0) {
-          const updated = [...prev];
-          updated[idx] = { ...updated[idx], qty: updated[idx].qty + finalQty };
-          return updated;
-        }
-        return [...prev, newItem];
-      });
-
-      triggerToast(`Added ${finalQty}x ${newProd.name} directly to order!`, 'success');
-      setRowProductId('');
-      setRowQty(1);
     }
   };
 
@@ -903,75 +898,29 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   const handleAddLineItem = () => {
     if (!rowProductId) {
-      triggerToast('Choose a product SKU to append.', 'error');
+      triggerToast('Choose a product SKU first.', 'error');
       return;
     }
     const finalQty = Math.max(1, Number(rowQty) || 1);
-    if (finalQty <= 0) {
-      triggerToast('Quantity must be greater than zero.', 'error');
+    const latestProds = dbStore.getProducts(businessId);
+    const prod = products.find(p => p.id === rowProductId) || latestProds.find(p => p.id === rowProductId);
+    if (!prod) {
+      triggerToast('Product not found. Please reselect.', 'error');
       return;
     }
-    const prod = products.find(p => p.id === rowProductId);
-    if (!prod) return;
 
-    if ((prod.current_stock ?? 0) <= 0) {
+    if ((prod.current_stock ?? 0) <= 0 && !isAdvanceBooking && !isFestiveBooking) {
       setOutOfStockProduct(prod);
       return;
     }
 
-    setOrderItems(prevItems => {
-    const existingItemIndex = prevItems.findIndex(it => it.product_id === rowProductId);
-    if (existingItemIndex >= 0) {
-      triggerToast('Item quantity updated.', 'success');
-      const updatedItems = [...prevItems];
-      updatedItems[existingItemIndex] = {
-        ...updatedItems[existingItemIndex],
-        qty: updatedItems[existingItemIndex].qty + finalQty
-      };
-      return updatedItems;
-    } else {
-      const selCust = customers.find(c => c.id === selectedCustomerId);
-      const evalRes = calculateApplicablePrice(prod, {
-        isLoyalMember: isLoyalMember(selCust),
-        isAdvanceBooking,
-        isDiwaliSale: isFestiveBooking,
-        business: currentBiz,
-        orderDate
-      });
-      
-      const isCustomPrice = rowPrice !== '' && !isNaN(Number(rowPrice)) && Number(rowPrice) !== evalRes.appliedPrice;
-      const finalPrice = rowPrice !== '' && !isNaN(Number(rowPrice)) ? Number(rowPrice) : evalRes.appliedPrice;
-      const finalTax = rowTaxRate !== '' && !isNaN(Number(rowTaxRate))
-        ? Number(rowTaxRate)
-        : (typeof prod.gst_rate === 'number' && !isNaN(prod.gst_rate) && prod.gst_rate >= 0 ? prod.gst_rate : defaultTenantTax);
-        
-      const newItem = {
-        product_id: rowProductId,
-        qty: finalQty,
-        scanned_qty: 0,
-        selling_price: finalPrice,
-        gst_rate: finalTax,
-        normal_rate: evalRes.normalRate,
-        rate_type: isCustomPrice ? 'OVERRIDE' : evalRes.rateType,
-        rate_reason: isCustomPrice ? 'Admin Price Override' : evalRes.rateReason,
-        unit_savings: Math.max(0, evalRes.normalRate - finalPrice),
-        is_overridden: isCustomPrice
-      };
-      
-      if (isCustomPrice) {
-        dbStore.logActivity(
-          user.id,
-          user.name,
-          user.role,
-          'Price Override',
-          `Admin price override for ${prod.name} (SKU: ${prod.sku}): calculated ${evalRes.rateType} ₹${evalRes.appliedPrice} -> overridden to ₹${finalPrice}`,
-          businessId
-        );
-      }
-      return [...prevItems, newItem];
-    }
-  });
-    
+    const isCustomPrice = rowPrice !== '' && !isNaN(Number(rowPrice));
+    const customPriceNum = isCustomPrice ? Number(rowPrice) : undefined;
+    const isCustomTax = rowTaxRate !== '' && !isNaN(Number(rowTaxRate));
+    const customTaxNum = isCustomTax ? Number(rowTaxRate) : undefined;
+
+    handleDirectAddProduct(prod, finalQty, customPriceNum, customTaxNum);
+
     setRowProductId('');
     setRowQty(1);
     setRowPrice(0);
@@ -3047,14 +2996,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           setRowProductId('');
                           return;
                         }
-                        const p = products.find(prod => prod.id === val);
+                        const latestProds = dbStore.getProducts(businessId);
+                        const p = products.find(prod => prod.id === val) || latestProds.find(prod => prod.id === val);
                         if (p) {
-                          if ((p.current_stock ?? 0) <= 0) {
-                            setRowProductId('');
-                            setOutOfStockProduct(p);
-                            return;
-                          }
-
                           setRowProductId(val);
                           // set price according to selection
                           const selCust = customers.find(c => c.id === selectedCustomerId);
@@ -3069,8 +3013,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                           // Default to tenant default tax unless product has a specific valid GST rate
                           const defaultTax = (defaultTenantTax === 0 || p.gst_rate === 18 || typeof p.gst_rate !== 'number' || isNaN(p.gst_rate)) 
                             ? defaultTenantTax 
-                            : p.gst_rate;
+                            : (p.gst_rate || defaultTenantTax);
                           setRowTaxRate(defaultTax);
+
+                          if ((p.current_stock ?? 0) <= 0 && !isAdvanceBooking && !isFestiveBooking) {
+                            setOutOfStockProduct(p);
+                          }
                         }
                       }}
                       placeholder="-- Choose Product SKU --"
@@ -3119,6 +3067,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                         placeholder="Qty"
                         value={rowQty}
                         onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddLineItem();
+                          }
+                        }}
                         onChange={(e) => {
                           const v = e.target.value;
                           if (v === '') {
@@ -3154,6 +3108,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       placeholder="Unit Price"
                       value={rowPrice}
                       onFocus={(e) => e.target.select()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddLineItem();
+                        }
+                      }}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v === '') {
@@ -3181,6 +3141,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       placeholder="Tax %"
                       value={rowTaxRate}
                       onFocus={(e) => e.target.select()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddLineItem();
+                        }
+                      }}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v === '') {
@@ -3202,7 +3168,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     <button 
                       type="button" 
                       onClick={handleAddLineItem}
-                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer shadow-xs active:scale-98"
                     >
                       + Add Item
                     </button>
@@ -3214,7 +3180,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
               <div className="space-y-2">
                 <h4 className="text-[12px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-widest flex items-center gap-2">
                   <div className="h-1 w-8 bg-emerald-500 rounded-full"></div>
-                  Line Items Billing Grid
+                  Line Items Billing Grid ({orderItems.length} {orderItems.length === 1 ? 'item' : 'items'})
                 </h4>
                 <div className="border border-slate-100 dark:border-slate-800 rounded-xl overflow-x-auto text-[11px]">
                   <table className="w-full text-left">
@@ -3229,46 +3195,53 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                      {orderItems.map((it, idx) => {
-                        const p = products.find(prod => prod.id === it.product_id);
-                        const itemQty = Number(it.qty) || 0;
-                        const itemPrice = Number(it.selling_price) || 0;
-                        const itemTax = Number(it.gst_rate) || 0;
-                        const baseVal = itemQty * itemPrice;
-                        const taxVal = baseVal * (itemTax / 100);
-                        const itemTotal = baseVal + taxVal;
-                        return (
-                          <tr key={idx}>
-                            <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span>{p?.name || 'Unknown Item'}</span>
-                                {it.rate_type === 'LMR' && (
-                                  <span className="text-[9px] px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-extrabold rounded border border-indigo-200 dark:border-indigo-800">
-                                    👑 LMR
-                                  </span>
-                                )}
-                                {it.rate_type === 'ABR' && (
-                                  <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-extrabold rounded border border-blue-200 dark:border-blue-800">
-                                    📅 ABR
-                                  </span>
-                                )}
-                                {it.rate_type === 'DDR' && (
-                                  <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-extrabold rounded border border-amber-200 dark:border-amber-800">
-                                    ✨ DDR
-                                  </span>
-                                )}
-                                {it.is_overridden && (
-                                  <span className="text-[9px] px-1.5 py-0.5 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-extrabold rounded border border-rose-200 dark:border-rose-800">
-                                    ⚙️ OVERRIDE
-                                  </span>
-                                )}
-                              </div>
-                              {it.rate_reason && (
-                                <div className="text-[9.5px] text-slate-500 font-normal">
-                                  {it.rate_reason}
+                      {orderItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="p-6 text-center text-slate-400 dark:text-slate-500 font-sans italic text-xs">
+                            No products added to this order yet. Choose a product SKU above and click "+ Add Item" or scan a barcode.
+                          </td>
+                        </tr>
+                      ) : (
+                        orderItems.map((it, idx) => {
+                          const p = products.find(prod => prod.id === it.product_id) || dbStore.getProducts(businessId).find(prod => prod.id === it.product_id);
+                          const itemQty = Number(it.qty) || 0;
+                          const itemPrice = Number(it.selling_price) || 0;
+                          const itemTax = Number(it.gst_rate) || 0;
+                          const baseVal = itemQty * itemPrice;
+                          const taxVal = baseVal * (itemTax / 100);
+                          const itemTotal = baseVal + taxVal;
+                          return (
+                            <tr key={it.id || idx}>
+                              <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span>{p?.name || (it as any).product_name || 'Product'}</span>
+                                  {it.rate_type === 'LMR' && (
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-extrabold rounded border border-indigo-200 dark:border-indigo-800">
+                                      👑 LMR
+                                    </span>
+                                  )}
+                                  {it.rate_type === 'ABR' && (
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-extrabold rounded border border-blue-200 dark:border-blue-800">
+                                      📅 ABR
+                                    </span>
+                                  )}
+                                  {it.rate_type === 'DDR' && (
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-extrabold rounded border border-amber-200 dark:border-amber-800">
+                                      ✨ DDR
+                                    </span>
+                                  )}
+                                  {it.is_overridden && (
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-extrabold rounded border border-rose-200 dark:border-rose-800">
+                                      ⚙️ OVERRIDE
+                                    </span>
+                                  )}
                                 </div>
-                              )}
-                            </td>
+                                {it.rate_reason && (
+                                  <div className="text-[9.5px] text-slate-500 font-normal">
+                                    {it.rate_reason}
+                                  </div>
+                                )}
+                              </td>
                             <td className="p-3 text-right font-sans font-bold">
                               <div className="flex items-center justify-end">
                                 <button
@@ -3398,12 +3371,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                             </td>
                           </tr>
                         );
-                      })}
-                      {orderItems.length === 0 && (
-                        <tr>
-                          <td colSpan={6} className="text-center py-10 text-slate-400 font-sans">No line items added yet.</td>
-                        </tr>
-                      )}
+                      })
+                    )}
                     </tbody>
                   </table>
                 </div>

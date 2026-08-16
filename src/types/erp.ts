@@ -221,7 +221,9 @@ export interface PurchaseOrder {
 }
 
 export interface SalesItem {
+  id?: string;
   product_id: string;
+  product_name?: string;
   qty: number;
   scanned_qty: number; // for packing verification
   selling_price: number; // Applied selling price

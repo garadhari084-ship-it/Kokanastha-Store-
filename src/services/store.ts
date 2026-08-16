@@ -1570,12 +1570,13 @@ class ERPStorage {
     if (!prod.sku || prod.sku.trim() === '') {
       prod.sku = 'SKU-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
     }
+    const initialStock = prod.opening_stock > 0 ? prod.opening_stock : 0;
     const normBizId = normalizeBusinessId(prod.business_id);
     const newProd: Product = {
       ...prod,
       business_id: normBizId,
       id: crypto.randomUUID(),
-      current_stock: 0, // Initialized to 0, will be updated by addStockLog below
+      current_stock: initialStock,
       is_combo: false,
       created_at: new Date().toISOString()
     };

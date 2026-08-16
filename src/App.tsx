@@ -536,13 +536,30 @@ export default function App() {
           if (dbProfile) {
             // Check if profile session token in database has been superseded by a newer login
             if (dbProfile.session_token && localSessionToken && dbProfile.session_token !== localSessionToken) {
-              localStorage.removeItem('omnipack_session');
-              setAuthError('You were logged out because this account was logged in from another device.');
-              setIsInitializing(false);
-              return;
+              let dbTs = 0;
+              let localTs = 0;
+              if (dbProfile.session_token.startsWith('st_')) {
+                dbTs = parseInt(dbProfile.session_token.split('_')[1] || '0', 10);
+              }
+              if (localSessionToken.startsWith('st_')) {
+                localTs = parseInt(localSessionToken.split('_')[1] || '0', 10);
+              }
+              
+              if (dbTs > localTs) {
+                localStorage.removeItem('omnipack_session');
+                setAuthError('You were logged out because this account was logged in from another device.');
+                setIsInitializing(false);
+                return;
+              } else if (localTs > dbTs) {
+                // Local token is newer. The database update during login probably failed.
+                // We'll heal the database now.
+                try {
+                  await supabase.from('users_profiles').update({ session_token: localSessionToken }).eq('id', dbProfile.id);
+                } catch(e) {}
+              }
             }
 
-            dbStore.registerDeviceSession(dbProfile.id, deviceId, dbProfile.session_token || localSessionToken || '', dbProfile.business_id);
+            dbStore.registerDeviceSession(dbProfile.id, deviceId, localSessionToken || dbProfile.session_token || '', dbProfile.business_id);
             setCurrentUser(dbProfile as UserProfile);
             await dbStore.syncFromSupabase(dbProfile.business_id);
             const biz = dbStore.getBusiness(dbProfile.business_id) || dbStore.getBusinesses()[0];
@@ -564,10 +581,24 @@ export default function App() {
           if (user && biz) {
             // Check if profile session token has been superseded
             if (user.session_token && sessionToken && user.session_token !== sessionToken) {
-              localStorage.removeItem('omnipack_session');
-              setAuthError('You were logged out because this account was logged in from another device.');
-              setIsInitializing(false);
-              return;
+              let dbTs = 0;
+              let localTs = 0;
+              if (user.session_token.startsWith('st_')) {
+                dbTs = parseInt(user.session_token.split('_')[1] || '0', 10);
+              }
+              if (sessionToken.startsWith('st_')) {
+                localTs = parseInt(sessionToken.split('_')[1] || '0', 10);
+              }
+              
+              if (dbTs > localTs) {
+                localStorage.removeItem('omnipack_session');
+                setAuthError('You were logged out because this account was logged in from another device.');
+                setIsInitializing(false);
+                return;
+              } else if (localTs > dbTs) {
+                 dbStore.updateUser(user.id, { session_token: sessionToken });
+                 user.session_token = sessionToken;
+              }
             }
 
             dbStore.registerDeviceSession(user.id, deviceId, sessionToken || user.session_token || '', businessId);

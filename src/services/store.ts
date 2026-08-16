@@ -2964,8 +2964,19 @@ class ERPStorage {
     // Check profile session_token if available
     const profile = this.cache.profiles.find(p => p.id === userId);
     if (profile && profile.session_token && sessionToken && profile.session_token !== sessionToken) {
-      // Newer session was established on another device
-      return { active: false, conflictDetected: false, superseded: true };
+      let dbTs = 0;
+      let localTs = 0;
+      if (profile.session_token.startsWith('st_')) {
+        dbTs = parseInt(profile.session_token.split('_')[1] || '0', 10);
+      }
+      if (sessionToken.startsWith('st_')) {
+        localTs = parseInt(sessionToken.split('_')[1] || '0', 10);
+      }
+      
+      if (dbTs > localTs) {
+        // Newer session was established on another device
+        return { active: false, conflictDetected: false, superseded: true };
+      }
     }
 
     const activeUserSessions = this.getActiveDeviceSessions(userId);

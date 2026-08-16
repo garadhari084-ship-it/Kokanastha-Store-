@@ -606,7 +606,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       businessId
     );
 
-    // Send message to packaging users for new order
+    // Send message from Order System to packaging users only for new order
     const allUsers = dbStore.getUsers(businessId);
     const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
     
@@ -615,7 +615,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         dbStore.sendMessage({
           sender_id: 'order_system',
           receiver_id: staff.id,
-          content: `New Sales Order ${nextNumber} has been placed. Please prepare for packing.`,
+          content: `📦 New Sales Order: ${nextNumber}\n\nCustomer: ${cust.name}\nTotal Amount: ₹${totalCalc.toLocaleString()}\nItems (1 line): ${selectedProdObj ? selectedProdObj.name : 'Standard Item'} (x${newOrderQty})\nArea: ${newOrderArea}\nStatus: Pending Packing`,
           business_id: businessId
         });
       });

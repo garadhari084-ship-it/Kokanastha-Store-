@@ -1364,18 +1364,19 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           businessId
         );
 
-        // Send message to packaging users for new order (unless it skips packing)
+        // Send message from Order System to packing staff only for new order (unless it skips packing)
         const allUsers = dbStore.getUsers(businessId);
         const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
         
         if (packingStaff.length > 0 && !isWalkIn && !isFulfilledImmediately) {
+          const itemsSummary = cleanItems.map((i: any) => `${i.product_name || 'Product'} (x${i.qty || i.quantity || 1})`).join(', ');
           const itemsCount = cleanItems.reduce((acc: number, i: any) => acc + (Number(i.qty) || Number(i.quantity) || 0), 0);
           
           packingStaff.forEach(staff => {
             dbStore.sendMessage({
               sender_id: 'order_system',
               receiver_id: staff.id,
-              content: `New Sales Order ${createdOrder.order_number} needs packing.\n\nCustomer: ${finalCustomerName || 'N/A'}\nDelivery Date: ${deliveryDate || 'N/A'}\nType: ${deliveryType || 'Standard'}\nItems: ${itemsCount} units`,
+              content: `📦 New Sales Order: ${createdOrder.order_number}\n\nCustomer: ${finalCustomerName || 'Walk-in'}\nTotal Amount: ${currencySymbol}${finalAmount.toLocaleString()}\nItems (${itemsCount} units): ${itemsSummary}\nDelivery Date: ${deliveryDate || 'Standard Delivery'}\nDelivery Type: ${deliveryType || 'Standard'}\nStatus: Pending Packing`,
               business_id: businessId
             });
           });

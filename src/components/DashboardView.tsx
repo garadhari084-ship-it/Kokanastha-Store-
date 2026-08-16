@@ -572,7 +572,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
     const nextNumber = dbStore.getNextAvailableInvoiceNumber(businessId, false, false);
 
-    const selectedProdObj = products.find(p => p.id === newOrderProduct) || products[0];
+    const allBizProducts = products.length > 0 ? products : dbStore.getProducts(businessId);
+    const selectedProdObj = allBizProducts.find(p => p.id === newOrderProduct) || allBizProducts[0];
     const totalCalc = selectedProdObj ? selectedProdObj.selling_price * newOrderQty : 750;
 
     const createdOrder = dbStore.createSalesOrder({
@@ -588,7 +589,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       payment_status: 'Unpaid',
       delivery_status: 'Pending',
       items: selectedProdObj ? [{
+        id: crypto.randomUUID(),
         product_id: selectedProdObj.id,
+        product_name: selectedProdObj.name,
         qty: newOrderQty,
         scanned_qty: 0,
         selling_price: selectedProdObj.selling_price,

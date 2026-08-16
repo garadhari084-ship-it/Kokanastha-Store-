@@ -5,6 +5,7 @@ import { numberToWordsIndian } from '../utils/invoiceTemplate';
 import { buildUpiPayString, buildBillVerificationString, generateQRCodeDataUrl } from '../utils/qrCode';
 import { formatOrderTime } from '../utils/formatters';
 import { calculateOrderSavings } from '../utils/pricing';
+import { dbStore } from '../services/store';
 
 interface BillOfSupplyViewProps {
   order: SalesOrder;
@@ -21,6 +22,10 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
 }) => {
   const cur = businessObj?.currency_default;
   const currencySymbol = cur ? (cur.includes(' - ') ? cur.split(' - ')[0].trim() : cur.trim()) : '₹';
+
+  const allAvailableProds = (products && products.length > 0)
+    ? products
+    : dbStore.getProducts(order.business_id || businessObj?.id || '');
 
   const items = order.items || [];
   const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
@@ -202,16 +207,23 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 text-[10.5px]">
-            {items.map((it, idx) => {
-              const p = products.find(prod => prod.id === it.product_id);
-              const itemCode = p?.barcode || p?.sku || p?.hsn_code || '38655039462';
-              const itemName = p?.name || 'Faral / Sweet Item';
-              const price = it.selling_price || 0;
-              const normalRate = typeof it.normal_rate === 'number' && !isNaN(it.normal_rate) && it.normal_rate > 0 
-                ? it.normal_rate 
-                : (p ? (typeof p.selling_price === 'number' ? p.selling_price : price) : price);
-              const qty = it.qty || 1;
-              const amount = qty * price;
+            {items.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="py-6 text-center text-slate-400 font-sans italic text-xs">
+                  No line items found in this order.
+                </td>
+              </tr>
+            ) : (
+              items.map((it, idx) => {
+                const p = allAvailableProds.find(prod => prod.id === it.product_id);
+                const itemCode = p?.barcode || p?.sku || p?.hsn_code || '38655039462';
+                const itemName = (it as any).product_name || p?.name || 'Faral / Sweet Item';
+                const price = it.selling_price || 0;
+                const normalRate = typeof it.normal_rate === 'number' && !isNaN(it.normal_rate) && it.normal_rate > 0 
+                  ? it.normal_rate 
+                  : (p ? (typeof p.selling_price === 'number' ? p.selling_price : price) : price);
+                const qty = it.qty || 1;
+                const amount = qty * price;
 
               return (
                 <tr key={idx} className="hover:bg-slate-50">
@@ -239,7 +251,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
                   <td className="py-1.5 px-2 text-right font-mono font-black text-slate-950">{currencySymbol} {amount.toFixed(2)}</td>
                 </tr>
               );
-            })}
+            }))}
             <tr className="border-t border-b border-slate-950 font-black text-slate-950 text-[11px]">
               <td colSpan={3} className="py-2 px-2">Total</td>
               <td className="py-2 px-2 text-center">{totalQty}</td>

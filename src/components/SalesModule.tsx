@@ -1049,8 +1049,43 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       }
     }
 
-    if (orderItems.length === 0) {
-      triggerToast('Add at least one line item.', 'error');
+    // Auto-capture pending row item if product was selected in row input
+    let itemsToProcess = [...orderItems];
+    if (itemsToProcess.length === 0 && rowProductId) {
+      const selectedProd = products.find(p => p.id === rowProductId) || dbStore.getProducts(businessId).find(p => p.id === rowProductId);
+      if (selectedProd) {
+        const selCust = customers.find(c => c.id === selectedCustomerId);
+        const evalRes = calculateApplicablePrice(selectedProd, {
+          isLoyalMember: isLoyalMember(selCust),
+          isAdvanceBooking,
+          isDiwaliSale: isFestiveBooking,
+          business: currentBiz,
+          orderDate
+        });
+        const finalPrice = rowPrice !== '' && !isNaN(Number(rowPrice)) ? Number(rowPrice) : evalRes.appliedPrice;
+        const finalTax = rowTaxRate !== '' && !isNaN(Number(rowTaxRate)) ? Number(rowTaxRate) : (selectedProd.gst_rate || defaultTenantTax);
+        const finalQuantity = Math.max(1, Number(rowQty) || 1);
+
+        itemsToProcess.push({
+          id: crypto.randomUUID(),
+          product_id: selectedProd.id,
+          product_name: selectedProd.name,
+          qty: finalQuantity,
+          scanned_qty: 0,
+          selling_price: finalPrice,
+          gst_rate: finalTax,
+          normal_rate: evalRes.normalRate,
+          rate_type: evalRes.rateType,
+          rate_reason: evalRes.rateReason,
+          unit_savings: evalRes.unitSavings,
+          is_overridden: Number(rowPrice) !== evalRes.appliedPrice
+        });
+        setOrderItems(itemsToProcess);
+      }
+    }
+
+    if (itemsToProcess.length === 0) {
+      triggerToast('Please select a Product SKU and add at least one line item to the order.', 'error');
       return;
     }
 
@@ -1139,12 +1174,17 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
          }
       }
 
-      const cleanItems: SalesItem[] = orderItems.map(it => ({
-        ...it,
-        qty: Math.max(1, Number(it.qty) || 1),
-        selling_price: Math.max(0, Number(it.selling_price) || 0),
-        gst_rate: Math.max(0, Number(it.gst_rate) || 0),
-      }));
+      const cleanItems: SalesItem[] = itemsToProcess.map(it => {
+        const p = products.find(prod => prod.id === it.product_id) || dbStore.getProducts(businessId).find(prod => prod.id === it.product_id);
+        return {
+          ...it,
+          id: it.id || crypto.randomUUID(),
+          product_name: (it as any).product_name || p?.name || 'Faral / Sweet Item',
+          qty: Math.max(1, Number(it.qty) || 1),
+          selling_price: Math.max(0, Number(it.selling_price) || 0),
+          gst_rate: Math.max(0, Number(it.gst_rate) || 0),
+        };
+      });
 
       // Use pre-calculated values
       const { finalAmount, computedPaid, balance: unpaidBalance, actualRedeem, discountAmount: calculatedDiscount } = calculatedTotals;
@@ -1232,7 +1272,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
         
         if (packingStaff.length > 0 && !isWalkIn && !isFulfilledImmediately) {
-          const itemsCount = cleanItems.reduce((acc: number, i: any) => acc + (Number(i.quantity) || 0), 0);
+          const itemsCount = cleanItems.reduce((acc: number, i: any) => acc + (Number(i.qty) || Number(i.quantity) || 0), 0);
           
           packingStaff.forEach(staff => {
             dbStore.sendMessage({
@@ -1325,7 +1365,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
         
         if (packingStaff.length > 0 && !isWalkIn && !isFulfilledImmediately) {
-          const itemsCount = cleanItems.reduce((acc: number, i: any) => acc + (Number(i.quantity) || 0), 0);
+          const itemsCount = cleanItems.reduce((acc: number, i: any) => acc + (Number(i.qty) || Number(i.quantity) || 0), 0);
           
           packingStaff.forEach(staff => {
             dbStore.sendMessage({

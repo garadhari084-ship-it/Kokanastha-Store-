@@ -3,6 +3,7 @@ import { buildUpiPayString, buildBillVerificationString, generateQRCodeDataUrl }
 import { formatOrderTime } from './formatters';
 import { urlToBase64 } from './imageToBase64';
 import { calculateOrderSavings, isLoyalMember } from './pricing';
+import { dbStore } from '../services/store';
 
 export function numberToWordsIndian(amount: number): string {
   if (!amount || amount <= 0) return 'Zero Rupees only';
@@ -92,6 +93,10 @@ export async function generateBillOfSupplyHTML(
     bAddress += `<br/>FSSAI No: <strong>${businessObj.fssai_number}</strong>`;
   }
 
+  const allAvailableProds = (products && products.length > 0)
+    ? products
+    : dbStore.getProducts(order.business_id || businessObj?.id || '');
+
   // Real UPI QR Code and Bill QR Code parameters
   const upiId = businessObj?.upi_id || '9820769697@okicici';
   const upiString = buildUpiPayString({
@@ -110,9 +115,9 @@ export async function generateBillOfSupplyHTML(
     gstin: businessObj?.gstin,
     upiId,
     items: items.map(it => {
-      const p = products.find(prod => prod.id === it.product_id);
+      const p = allAvailableProds.find(prod => prod.id === it.product_id);
       return {
-        name: p?.name || 'Faral Item',
+        name: (it as any).product_name || p?.name || 'Faral Item',
         qty: it.qty,
         unit_price: it.selling_price || 0,
         total_price: it.qty * (it.selling_price || 0)
@@ -129,10 +134,14 @@ export async function generateBillOfSupplyHTML(
   const ifscCode = businessObj?.ifsc_code || 'NKGS0000092';
   const accountHolder = businessObj?.account_holder || bName;
 
-  const formattedItems = items.map((it, idx) => {
-    const p = products.find(prod => prod.id === it.product_id);
+  const formattedItems = items.length === 0 ? `
+    <tr>
+      <td colspan="7" style="padding: 16px; text-align: center; color: #64748b; font-style: italic;">No line items recorded for this order.</td>
+    </tr>
+  ` : items.map((it, idx) => {
+    const p = allAvailableProds.find(prod => prod.id === it.product_id);
     const itemCode = p?.barcode || p?.sku || p?.hsn_code || '';
-    const itemName = p?.name || 'Faral Item';
+    const itemName = (it as any).product_name || p?.name || 'Faral Item';
     const priceUnit = it.selling_price || 0;
     const finalRate = it.selling_price || 0;
     const itemAmount = (it.qty || 1) * (it.selling_price || 0);

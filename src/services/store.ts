@@ -765,7 +765,10 @@ class ERPStorage {
                if (so.status === 'Cancelled' && so.dispatch_notes?.includes('[SYSTEM_RETURNED]')) {
                  so.status = 'Returned';
                }
-               const rawItems = (itemsByOrder[so.id] && itemsByOrder[so.id].length > 0) ? itemsByOrder[so.id] : (so.items || []);
+               const hasRemoteItems = itemsByOrder[so.id] && itemsByOrder[so.id].length > 0;
+               const rawItems = hasRemoteItems 
+                 ? itemsByOrder[so.id] 
+                 : (existingSO?.items && existingSO.items.length > 0 ? existingSO.items : (so.items || []));
                const mergedItems = rawItems.map((rit: any) => {
                  const existingItem = existingSO?.items?.find((eit: any) => eit.product_id === rit.product_id || eit.id === rit.id);
                  const existingScanned = typeof existingItem?.scanned_qty === 'number' && !isNaN(existingItem.scanned_qty) ? existingItem.scanned_qty : 0;
@@ -822,10 +825,16 @@ class ERPStorage {
                if (!itemsByPO[item.purchase_order_id]) itemsByPO[item.purchase_order_id] = [];
                itemsByPO[item.purchase_order_id].push(item);
              });
-             const mergedPurchases = (data || []).map((po: any) => ({
-               ...po,
-               items: (itemsByPO[po.id] && itemsByPO[po.id].length > 0) ? itemsByPO[po.id] : (po.items || [])
-             }));
+             const mergedPurchases = (data || []).map((po: any) => {
+               const existingPO = (this.cache.purchases || []).find(p => p.id === po.id);
+               return {
+                 ...existingPO,
+                 ...po,
+                 items: (itemsByPO[po.id] && itemsByPO[po.id].length > 0)
+                   ? itemsByPO[po.id]
+                   : (existingPO?.items && existingPO.items.length > 0 ? existingPO.items : (po.items || []))
+               };
+             });
              this.cache.purchases = mergedPurchases;
              localStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
           } else if (key === 'products') {

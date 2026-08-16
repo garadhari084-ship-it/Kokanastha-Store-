@@ -1175,6 +1175,9 @@ export default function App() {
     // Super Admin has total access to everything
     if (role === 'Super Admin' || role === 'Admin') return true;
 
+    // Everyone has access to inbox
+    if (view === 'inbox') return true;
+
     // If explicit allowed_pages are set, they OVERRIDE the default role behavior
     if (currentUser.allowed_pages && currentUser.allowed_pages.length > 0) {
       return currentUser.allowed_pages.includes(view);
@@ -1353,7 +1356,6 @@ export default function App() {
 
   const menuItems = [
     { id: 'dashboard', label: 'Executive Desk', icon: LayoutDashboard },
-    { id: 'inbox', label: 'Internal Communications', icon: MessageSquare },
     { id: 'sales', label: 'Sales & Bookings', icon: FileText },
     { id: 'packing', label: 'Packing Verification', icon: ClipboardCheck, highlight: true },
     { id: 'item_stock_live_report', label: 'Item Stock Live Report', icon: Package },

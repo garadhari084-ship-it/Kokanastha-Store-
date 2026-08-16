@@ -866,12 +866,21 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setRowPrice(0);
   };
 
-  const hasHandledDeepLinkRef = useRef(false);
+  const lastHandledTsRef = useRef<number | string | null>(null);
 
   useEffect(() => {
-    if (hasHandledDeepLinkRef.current) return;
-    if (deepLinkData?.openAddModal || (openAddModalInitially && !deepLinkData)) {
-      hasHandledDeepLinkRef.current = true;
+    const handleGlobalCreateOrder = () => {
+      handleOpenAddModal();
+    };
+    window.addEventListener('open-create-order', handleGlobalCreateOrder);
+    return () => window.removeEventListener('open-create-order', handleGlobalCreateOrder);
+  }, [businessId, user]);
+
+  useEffect(() => {
+    const currentTs = deepLinkData?._ts || (deepLinkData?.openAddModal ? 'add' : (deepLinkData?.orderId ? `order-${deepLinkData.orderId}` : null));
+    if (deepLinkData?.openAddModal || (openAddModalInitially && !deepLinkData && lastHandledTsRef.current === null)) {
+      if (currentTs && lastHandledTsRef.current === currentTs) return;
+      lastHandledTsRef.current = currentTs;
       if (deepLinkData?.orderId || selectedOrderIdInitially) {
         const targetId = deepLinkData?.orderId || selectedOrderIdInitially;
         const orderToEdit = orders.find(o => o.id === targetId);
@@ -883,7 +892,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         handleOpenAddModal();
       }
     } else if (deepLinkData?.orderId) {
-      hasHandledDeepLinkRef.current = true;
+      if (currentTs && lastHandledTsRef.current === currentTs) return;
+      lastHandledTsRef.current = currentTs;
       const orderToView = orders.find(o => o.id === deepLinkData.orderId);
       if (orderToView) {
         setViewingInvoiceOrder(orderToView);

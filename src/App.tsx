@@ -1501,8 +1501,7 @@ export default function App() {
             user={currentUser} 
             triggerToast={triggerToast}
             onCreateOrder={() => {
-              setActiveView('sales');
-              setDeepLinkData({ openAddModal: true });
+              handleDeepLinkNavigate('sales', { openAddModal: true });
             }}
           />
         );

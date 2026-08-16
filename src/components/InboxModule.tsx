@@ -154,6 +154,13 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   const selectedUser = allAvailableUsers.find(u => u.id === selectedUserId);
   
   const getUnreadCount = (userId: string) => {
+    if (userId === 'order_system') {
+      return messages.filter(m => 
+        m.sender_id === 'order_system' && 
+        !m.is_read &&
+        (!m.business_id || m.business_id === businessId)
+      ).length;
+    }
     return messages.filter(m => 
       m.sender_id === userId && 
       m.receiver_id === currentUser.id && 
@@ -186,11 +193,24 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
 
   const rawConversationMessages = useMemo(() => {
     if (!selectedUserId) return [];
+    if (selectedUserId === 'order_system') {
+      const msgs = messages.filter(m => 
+        (m.sender_id === 'order_system' || m.receiver_id === 'order_system') &&
+        (!m.business_id || m.business_id === businessId)
+      ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+      const seen = new Set<string>();
+      return msgs.filter(m => {
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      });
+    }
     return messages.filter(m => 
       (m.sender_id === currentUser.id && m.receiver_id === selectedUserId) ||
       (m.sender_id === selectedUserId && m.receiver_id === currentUser.id)
     ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  }, [messages, currentUser.id, selectedUserId]);
+  }, [messages, currentUser.id, selectedUserId, businessId]);
 
   const conversationMessages = useMemo(() => {
     if (!inChatSearchQuery.trim()) return rawConversationMessages;
@@ -345,6 +365,14 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   };
 
   const getLastMessage = (userId: string) => {
+    if (userId === 'order_system') {
+      const systemMessages = messages.filter(m => 
+        (m.sender_id === 'order_system' || m.receiver_id === 'order_system') &&
+        (!m.business_id || m.business_id === businessId)
+      ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      return systemMessages[0];
+    }
+
     const userMessages = messages.filter(m => 
       (m.sender_id === currentUser.id && m.receiver_id === userId) ||
       (m.sender_id === userId && m.receiver_id === currentUser.id)
@@ -353,7 +381,13 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
     return userMessages[0];
   };
 
-  const totalUnreadCount = messages.filter(m => m.receiver_id === currentUser.id && !m.is_read).length;
+  const totalUnreadCount = useMemo(() => {
+    return messages.filter(m => 
+      (m.receiver_id === currentUser.id || (m.sender_id === 'order_system' && (m.receiver_id === 'all' || m.receiver_id === currentUser.id))) && 
+      !m.is_read &&
+      (!m.business_id || m.business_id === businessId)
+    ).length;
+  }, [messages, currentUser.id, businessId]);
 
   const quickEmojis = ['👍', '❤️', '✅', '📦', '⚠️', '🎉', '👏', '🙏', '🔥', '🚀'];
 
@@ -981,8 +1015,8 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
                               {/* Content & Interactive Order Card */}
                               {selectedUser.id === 'order_system' ? (
                                 (() => {
-                                  const match = msg.content.match(/(?:INV|ORD|SO)-[\d\w-]+/i)
-                                             || msg.content.match(/(?:Sales\s+Order|Order|Invoice)[\s#:]*([A-Za-z0-9-]+)/i)
+                                  const match = msg.content.match(/(?:INV|ORD|SO|SUB|AB|FEST)-[\d\w-]+/i)
+                                             || msg.content.match(/(?:New\s+Sales\s+Order|Sales\s+Order|Order|Invoice)[\s#:]*([A-Za-z0-9-]+)/i)
                                              || msg.content.match(/#([A-Za-z0-9-]+)/i);
                                   const orderNum = match ? (match[1] || match[0]).replace(/^#/, '').trim() : null;
                                   const allSales = dbStore.getSalesOrders(businessId);

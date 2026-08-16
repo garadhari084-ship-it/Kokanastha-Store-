@@ -2710,6 +2710,13 @@ class ERPStorage {
 
         generatedOrders.push(newOrder);
 
+        this.sendMessage({
+          sender_id: 'order_system',
+          receiver_id: 'all',
+          content: `📦 New Subscription Order: ${orderNum}\n\nCustomer: ${sub.customer_name}\nTotal Amount: ₹${sub.total_amount.toLocaleString()}\nItems: ${sub.items.length} product(s)\nStatus: Pending Packing`,
+          business_id: businessId
+        });
+
         // Advance next billing date based on frequency
         const nextDate = new Date(sub.next_billing_date || todayStr);
         if (sub.frequency === 'Weekly') nextDate.setDate(nextDate.getDate() + 7);
@@ -4188,7 +4195,9 @@ class ERPStorage {
     if (!this.cache.messages) return;
     const updated: ChatMessage[] = [];
     this.cache.messages.forEach(m => {
-      if (m.sender_id === senderId && m.receiver_id === receiverId && !m.is_read) {
+      const isMatch = (m.sender_id === senderId && (m.receiver_id === receiverId || m.receiver_id === 'all')) ||
+                      (senderId === 'order_system' && m.sender_id === 'order_system');
+      if (isMatch && !m.is_read) {
         m.is_read = true;
         updated.push(m);
       }

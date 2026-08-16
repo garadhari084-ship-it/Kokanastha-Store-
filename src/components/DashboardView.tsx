@@ -458,21 +458,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       dbStore.updateSalesOrder(orderId, { status: newStatus, delivery_status: newStatus });
       triggerToast(`Order status updated to "${newStatus}".`, 'success');
       
-      const allUsers = dbStore.getUsers(businessId);
-      const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
       const orderNum = allOrders.find(o => o.id === orderId)?.order_number || orderId;
       
-      if (packingStaff.length > 0) {
-        packingStaff.forEach(staff => {
-          dbStore.sendMessage({
-            sender_id: 'order_system',
-            receiver_id: staff.id,
-            content: `Sales Order ${orderNum} status has been updated to ${newStatus}.`,
-            business_id: businessId
-          });
-        });
-        triggerToast(`Notification sent to ${packingStaff.length} packaging staff member(s).`, 'success');
-      }
       dbStore.sendMessage({
         sender_id: 'order_system',
         receiver_id: 'all',
@@ -488,24 +475,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const handleBulkStatusUpdate = (status: OrderStatus) => {
     if (selectedOrderIds.length === 0) return;
     
-    const allUsers = dbStore.getUsers(businessId);
-    const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
-    
     selectedOrderIds.forEach(id => {
       dbStore.updateSalesOrder(id, { status, delivery_status: status });
       const orderNum = allOrders.find(o => o.id === id)?.order_number || id;
       const statusMsg = `Sales Order ${orderNum} status has been updated to ${status}.`;
       
-      if (packingStaff.length > 0) {
-        packingStaff.forEach(staff => {
-          dbStore.sendMessage({
-            sender_id: 'order_system',
-            receiver_id: staff.id,
-            content: statusMsg,
-            business_id: businessId
-          });
-        });
-      }
       dbStore.sendMessage({
         sender_id: 'order_system',
         receiver_id: 'all',
@@ -513,10 +487,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         business_id: businessId
       });
     });
-    
-    if (packingStaff.length > 0) {
-      triggerToast(`Notifications sent to ${packingStaff.length} packaging staff member(s) for ${selectedOrderIds.length} orders.`, 'success');
-    }
     
     triggerToast(`Updated ${selectedOrderIds.length} orders to ${status}.`, 'success');
     setSelectedOrderIds([]);
@@ -619,22 +589,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       businessId
     );
 
-    // Send message from Order System to packaging users only for new order
-    const allUsers = dbStore.getUsers(businessId);
-    const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
-    
+    // Send message from Order System to packaging users for new order
     const orderMsgContent = `📦 New Sales Order: ${nextNumber}\n\nCustomer: ${cust.name}\nTotal Amount: ₹${totalCalc.toLocaleString()}\nItems (1 line): ${selectedProdObj ? selectedProdObj.name : 'Standard Item'} (x${newOrderQty})\nArea: ${newOrderArea}\nStatus: Pending Packing`;
 
-    if (packingStaff.length > 0) {
-      packingStaff.forEach(staff => {
-        dbStore.sendMessage({
-          sender_id: 'order_system',
-          receiver_id: staff.id,
-          content: orderMsgContent,
-          business_id: businessId
-        });
-      });
-    }
     dbStore.sendMessage({
       sender_id: 'order_system',
       receiver_id: 'all',

@@ -34,11 +34,21 @@ import {
   List,
   SlidersHorizontal,
   Minimize2,
-  Maximize2
+  Maximize2,
+  Eye,
+  Package,
+  Minus,
+  Plus,
+  Boxes,
+  CheckSquare,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  CheckCheck
 } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
 import { dbStore } from '../services/store';
-import { SalesOrder, Product, UserProfile, Customer, Category } from '../types/erp';
+import { SalesOrder, Product, UserProfile, Customer, Category, SalesItem } from '../types/erp';
 
 interface PackingVerificationModuleProps {
   businessId: string;
@@ -72,6 +82,10 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const [dateFilter, setDateFilter] = useState<'All' | 'Overdue' | 'Today' | 'Tomorrow' | 'Upcoming' | 'Next7' | 'Custom'>('Today');
   const [customDateValue, setCustomDateValue] = useState<string>(new Date().toISOString().split('T')[0]);
   const [bookingFilter, setBookingFilter] = useState<'all' | 'advance' | 'festive'>('all');
+
+  // Interactive items picklist & expanded cards states
+  const [previewOrderPickList, setPreviewOrderPickList] = useState<SalesOrder | null>(null);
+  const [expandedCardIds, setExpandedCardIds] = useState<Record<string, boolean>>({});
 
   // Scanning flow states
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -288,7 +302,77 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     }
   };
 
-  // Helper to verify a single product completely
+  // Helper to scan/verify 1 unit of an item by index
+  const handleScanOneItem = (itemIdx: number) => {
+    if (!selectedOrder) return;
+    const currentOrder = dbStore.getSalesOrders(businessId).find(o => o.id === selectedOrder.id) || selectedOrder;
+    const items = [...(currentOrder.items || [])];
+    if (itemIdx < 0 || itemIdx >= items.length) return;
+    const item = items[itemIdx];
+    const prod = products.find(p => p.id === item.product_id);
+    const prodName = item.product_name || prod?.name || `Item #${itemIdx + 1}`;
+    const currentScanned = item.scanned_qty || 0;
+    const maxQty = item.qty || 1;
+
+    if (currentScanned >= maxQty) {
+      triggerToast(`"${prodName}" is already 100% verified (${currentScanned}/${maxQty}).`, 'info');
+      return;
+    }
+
+    const newScanned = currentScanned + 1;
+    items[itemIdx] = { ...item, scanned_qty: newScanned };
+    dbStore.updateSalesOrder(selectedOrder.id, { items });
+
+    const remaining = Math.max(0, maxQty - newScanned);
+    const msg = `Verified 1 unit of ${prodName} (${newScanned}/${maxQty})${remaining === 0 ? ' - Item Done!' : ''}`;
+    setRecentScanLog({ msg, success: true });
+    if (audioFeedback) triggerToast(msg, 'success');
+    reloadOrders();
+  };
+
+  // Helper to undo 1 scan for an item by index
+  const handleUndoScanItem = (itemIdx: number) => {
+    if (!selectedOrder) return;
+    const currentOrder = dbStore.getSalesOrders(businessId).find(o => o.id === selectedOrder.id) || selectedOrder;
+    const items = [...(currentOrder.items || [])];
+    if (itemIdx < 0 || itemIdx >= items.length) return;
+    const item = items[itemIdx];
+    const prod = products.find(p => p.id === item.product_id);
+    const prodName = item.product_name || prod?.name || `Item #${itemIdx + 1}`;
+    const currentScanned = item.scanned_qty || 0;
+
+    if (currentScanned <= 0) return;
+
+    const newScanned = currentScanned - 1;
+    items[itemIdx] = { ...item, scanned_qty: newScanned };
+    dbStore.updateSalesOrder(selectedOrder.id, { items });
+
+    const msg = `Reverted 1 scan of ${prodName} (${newScanned}/${item.qty})`;
+    setRecentScanLog({ msg, success: false });
+    if (audioFeedback) triggerToast(msg, 'info');
+    reloadOrders();
+  };
+
+  // Helper to verify all units of an item by index
+  const handleVerifyItemCompletely = (itemIdx: number) => {
+    if (!selectedOrder) return;
+    const currentOrder = dbStore.getSalesOrders(businessId).find(o => o.id === selectedOrder.id) || selectedOrder;
+    const items = [...(currentOrder.items || [])];
+    if (itemIdx < 0 || itemIdx >= items.length) return;
+    const item = items[itemIdx];
+    const prod = products.find(p => p.id === item.product_id);
+    const prodName = item.product_name || prod?.name || `Item #${itemIdx + 1}`;
+
+    items[itemIdx] = { ...item, scanned_qty: item.qty };
+    dbStore.updateSalesOrder(selectedOrder.id, { items });
+
+    const msg = `🎉 Verified all ${item.qty} units of ${prodName}`;
+    setRecentScanLog({ msg, success: true });
+    if (audioFeedback) triggerToast(msg, 'success');
+    reloadOrders();
+  };
+
+  // Helper to verify a single product completely by product ID
   const handleVerifyProductItemCompletely = (productId: string) => {
     if (!selectedOrder) return;
     const currentOrder = dbStore.getSalesOrders(businessId).find(o => o.id === selectedOrder.id) || selectedOrder;
@@ -1202,131 +1286,230 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
           {/* ITEM SCAN CHECKLIST TABLE WITH DETAILED SCANNED VS PENDING QUANTITIES */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
-              <h3 className="text-[11px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                <PackageCheck size={16} className="text-indigo-600" />
-                <span>Order Items Verification List ({selectedItems.length} Products)</span>
-              </h3>
-              <span className="text-[11px] text-slate-500 font-medium">
-                
-              </span>
+            <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-2">
+                <PackageCheck size={18} className="text-indigo-600 dark:text-indigo-400" />
+                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                  Order Items Verification List
+                </h3>
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                  {selectedItems.length} Products • {totalItemsCount} Total Units
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleQuickVerifyAll}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                >
+                  <CheckCheck size={14} />
+                  <span>Verify All Items</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetOrderScans}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <RotateCcw size={13} />
+                  <span>Reset</span>
+                </button>
+              </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-[11px]">
-                <thead>
-                  <tr className="bg-slate-100/70 dark:bg-slate-800/80 text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
-                    <th className="py-3 px-4">Product Details</th>
-                    <th className="py-3 px-4 text-center">Barcode / SKU</th>
-                    <th className="py-3 px-4 text-center">Total Qty</th>
-                    <th className="py-3 px-4 text-center">Scanned Qty</th>
-                    <th className="py-3 px-4 text-center">Pending Qty</th>
-                    <th className="py-3 px-4 text-center">Status / Progress</th>
-                    <th className="py-3 px-4 text-center">Quick Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {selectedItems.map((it, idx) => {
-                    const p = products.find(prod => prod.id === it.product_id);
-                    const totalNeeded = it.qty || 0;
-                    const scanned = it.scanned_qty || 0;
-                    const pending = Math.max(0, totalNeeded - scanned);
-                    const isItemDone = scanned >= totalNeeded;
-                    const pct = totalNeeded > 0 ? Math.min(100, Math.round((scanned / totalNeeded) * 100)) : 0;
+            {selectedItems.length === 0 ? (
+              <div className="p-8 text-center bg-amber-50/40 dark:bg-amber-950/20 border-b border-amber-200 dark:border-amber-800/40">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto mb-2.5 shadow-sm">
+                  <AlertTriangle size={24} />
+                </div>
+                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-1">No Item Lines in Order #{selectedOrder.order_number}</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  This sales order was saved without product line items. You can proceed to pack or verify the order directly using the button below.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px]">
+                  <thead>
+                    <tr className="bg-slate-100/70 dark:bg-slate-800/80 text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 tracking-wider">
+                      <th className="py-3 px-4">Item & Description</th>
+                      <th className="py-3 px-3 text-center">Barcode / SKU</th>
+                      <th className="py-3 px-3 text-center">Required Qty</th>
+                      <th className="py-3 px-3 text-center">Scanned Qty</th>
+                      <th className="py-3 px-3 text-center">Pending Qty</th>
+                      <th className="py-3 px-4 text-center">Scan Progress</th>
+                      <th className="py-3 px-4 text-center">Quick Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {selectedItems.map((it, idx) => {
+                      const p = products.find(prod => prod.id === it.product_id);
+                      const productName = it.product_name || p?.name || `Item #${idx + 1}`;
+                      const barcode = p?.barcode || p?.sku || it.product_id || 'N/A';
+                      const category = p?.category || 'General';
+                      const unit = p?.unit || 'pcs';
+                      const image = p?.image_url;
+                      const totalNeeded = it.qty || 0;
+                      const scanned = it.scanned_qty || 0;
+                      const pending = Math.max(0, totalNeeded - scanned);
+                      const isItemDone = scanned >= totalNeeded;
+                      const pct = totalNeeded > 0 ? Math.min(100, Math.round((scanned / totalNeeded) * 100)) : 0;
 
-                    return (
-                      <tr 
-                        key={idx} 
-                        className={`transition-colors ${
-                          isItemDone 
-                            ? 'bg-emerald-50/40 dark:bg-emerald-950/20' 
-                            : scanned > 0 
-                            ? 'bg-amber-50/30 dark:bg-amber-950/20' 
-                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                        }`}
-                      >
-                        <td className="py-3.5 px-4">
-                          <strong className="text-slate-900 dark:text-slate-100 font-bold block text-[11px]">
-                            {p ? p.name : 'Unknown Product'}
-                          </strong>
-                          <span className="text-[11px] text-slate-400 font-mono">Category: {p?.category || 'General'}</span>
-                        </td>
-                        
-                        <td className="py-3.5 px-4 text-center">
-                          <span className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 rounded-md border border-indigo-100 dark:border-indigo-900">
-                            {p?.barcode || p?.sku || 'N/A'}
-                          </span>
-                        </td>
-
-                        <td className="py-3.5 px-4 text-center font-mono font-extrabold text-[11px] text-slate-900 dark:text-slate-100">
-                          {totalNeeded}
-                        </td>
-
-                        <td className="py-3.5 px-4 text-center font-mono font-extrabold text-[11px] text-emerald-600 dark:text-emerald-400">
-                          {scanned}
-                        </td>
-
-                        <td className={`py-3.5 px-4 text-center font-mono font-extrabold text-[11px] ${pending > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>
-                          {pending}
-                        </td>
-
-                        <td className="py-3.5 px-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            {isItemDone ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                                <Check size={12} /> Verified ({scanned}/{totalNeeded})
-                              </span>
-                            ) : scanned > 0 ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                                {scanned} Scanned • {pending} Pending
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                                0/{totalNeeded} Scanned ({pending} Pending)
-                              </span>
-                            )}
-                            
-                            <div className="w-24 bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full rounded-full ${isItemDone ? 'bg-emerald-500' : 'bg-amber-500'}`} 
-                                style={{ width: `${pct}%` }} 
-                              />
+                      return (
+                        <tr 
+                          key={idx} 
+                          className={`transition-colors ${
+                            isItemDone 
+                              ? 'bg-emerald-50/50 dark:bg-emerald-950/20' 
+                              : scanned > 0 
+                              ? 'bg-amber-50/40 dark:bg-amber-950/20' 
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                          }`}
+                        >
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-3">
+                              {/* Product Thumbnail / Icon */}
+                              <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
+                                {image ? (
+                                  <img 
+                                    src={image} 
+                                    alt={productName} 
+                                    className="w-full h-full object-cover" 
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                      (e.target as HTMLElement).style.display = 'none';
+                                    }}
+                                  />
+                                ) : (
+                                  <Package size={18} className="text-slate-400" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <strong className="text-slate-900 dark:text-slate-100 font-bold block text-xs truncate max-w-xs sm:max-w-sm">
+                                  {productName}
+                                </strong>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                                    {category}
+                                  </span>
+                                  {it.selling_price && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      ₹{it.selling_price} / {unit}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        </td>
+                          </td>
+                          
+                          <td className="py-3.5 px-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (barcode !== 'N/A') {
+                                  processBarcodeScan(barcode);
+                                }
+                              }}
+                              title="Click to simulate scan"
+                              className="font-mono text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 px-2.5 py-1 rounded-md border border-indigo-100 dark:border-indigo-900 transition-colors inline-block cursor-pointer"
+                            >
+                              {barcode}
+                            </button>
+                          </td>
 
-                        <td className="py-3.5 px-4 text-center">
-                          {isItemDone ? (
-                            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1">
-                              <CheckCircle2 size={14} /> Done
-                            </span>
-                          ) : (
+                          <td className="py-3.5 px-3 text-center font-mono font-black text-xs text-slate-900 dark:text-slate-100">
+                            {totalNeeded} <span className="text-[9px] text-slate-400 font-normal">{unit}</span>
+                          </td>
+
+                          <td className="py-3.5 px-3 text-center font-mono font-black text-xs text-emerald-600 dark:text-emerald-400">
+                            {scanned}
+                          </td>
+
+                          <td className={`py-3.5 px-3 text-center font-mono font-black text-xs ${pending > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>
+                            {pending}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-center">
+                            <div className="flex flex-col items-center gap-1 min-w-[120px]">
+                              {isItemDone ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                  <Check size={12} /> Verified ({scanned}/{totalNeeded})
+                                </span>
+                              ) : scanned > 0 ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                  {scanned} Scanned • {pending} Left
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                  0/{totalNeeded} Verified
+                                </span>
+                              )}
+                              
+                              <div className="w-full max-w-[110px] bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full rounded-full transition-all duration-300 ${isItemDone ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                                  style={{ width: `${pct}%` }} 
+                                />
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-center">
                             <div className="flex items-center justify-center gap-1.5">
+                              {/* +1 Scan Button */}
                               <button
                                 type="button"
-                                onClick={() => handleScanOneForProduct(it.product_id)}
-                                title="Scan 1 unit"
-                                className="px-2 py-1 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 text-[10px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                                onClick={() => handleScanOneItem(idx)}
+                                title="Scan +1 unit"
+                                disabled={isItemDone}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-colors flex items-center gap-1 ${
+                                  isItemDone 
+                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed'
+                                    : 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 cursor-pointer active:scale-95'
+                                }`}
                               >
-                                +1 Scan
+                                <Plus size={11} />
+                                <span>+1 Scan</span>
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleVerifyProductItemCompletely(it.product_id)}
-                                title="Verify all units for this item"
-                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
-                              >
-                                Verify Item
-                              </button>
+
+                              {/* -1 Undo Scan Button (if scanned > 0) */}
+                              {scanned > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUndoScanItem(idx)}
+                                  title="Undo 1 scan"
+                                  className="px-2 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/80 text-rose-700 dark:text-rose-300 text-[10px] font-bold rounded-lg border border-rose-200 dark:border-rose-800 transition-colors cursor-pointer active:scale-95"
+                                >
+                                  <Minus size={11} />
+                                </button>
+                              )}
+
+                              {/* Verify Complete Button */}
+                              {!isItemDone && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleVerifyItemCompletely(idx)}
+                                  title="Verify all units for this item"
+                                  className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold rounded-lg border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer active:scale-95 flex items-center gap-1"
+                                >
+                                  <Check size={11} />
+                                  <span>Verify</span>
+                                </button>
+                              )}
+
+                              {isItemDone && (
+                                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                  <CheckCircle2 size={15} /> Done
+                                </span>
+                              )}
                             </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* STORAGE & BAGS (Godown / Storage) */}
@@ -1458,7 +1641,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                 <div className={
                   isCompactDensity 
                     ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2" 
-                    : "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5"
+                    : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4"
                 }>
                   {dateOrders.map((o) => {
                     const customer = customers.find(c => c.id === o.customer_id);
@@ -1468,23 +1651,25 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                     const pct = itemsCount > 0 ? Math.round((packedCount / itemsCount) * 100) : 0;
                     const isDone = itemsCount > 0 && pct === 100;
                     const dStatus = getDeliveryStatus(o.delivery_date);
+                    const isCardExpanded = expandedCardIds[o.id] || false;
+                    const displayItems = isCardExpanded ? items : items.slice(0, 2);
                     
                     return (
                       <div 
                         key={o.id}
                         onClick={() => handleOpenPackingStation(o)}
-                        className={`bg-white dark:bg-slate-900 ${dStatus.cardBg || ''} rounded-xl border ${
-                          isCompactDensity ? 'p-2 space-y-1' : 'p-2.5 sm:p-3 space-y-2'
+                        className={`bg-white dark:bg-slate-900 ${dStatus.cardBg || ''} rounded-2xl border ${
+                          isCompactDensity ? 'p-2 space-y-1.5' : 'p-3.5 space-y-3'
                         } shadow-sm hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer relative overflow-hidden ${dStatus.border} hover:border-indigo-500/50`}
                       >
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-indigo-500/10 via-indigo-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-indigo-500/10 via-indigo-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
                         
                         {/* Top Right Delivery Status Indicator */}
                         <div className="absolute top-2 right-2 flex flex-col items-end gap-1 z-20">
                           <div className={`w-3 h-3 rounded-full ${dStatus.dot} border-2 border-white dark:border-slate-900 shadow-sm animate-pulse`}></div>
                         </div>
                         
-                        <div className="space-y-2 relative z-10">
+                        <div className="space-y-2.5 relative z-10">
                           {/* Header: Order Ref & Status Pill */}
                           <div className="flex justify-between items-start gap-1">
                             <div className="min-w-0">
@@ -1526,7 +1711,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                           </div>
                           
                           {/* Delivery Target & Days Remaining Badge - Prominent Card Element */}
-                          <div className="flex items-center my-1.5">
+                          <div className="flex items-center">
                             <div className={`w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl border shadow-sm ${dStatus.badge}`}>
                               <div className="flex items-center gap-1.5 min-w-0">
                                 <Clock size={13} className={`${dStatus.icon} shrink-0`} />
@@ -1554,7 +1739,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                           </div>
 
                           {/* Customer Info Container */}
-                          <div className="space-y-1 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
+                          <div className="space-y-1 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
                             <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
                               <div className="w-5 h-5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
                                 <User size={11} />
@@ -1574,11 +1759,87 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                               </div>
                             )}
                           </div>
+
+                          {/* ORDER ITEMS PICK LIST (SHOWING PRODUCTS TO PACK) */}
+                          <div className="p-2 bg-indigo-50/40 dark:bg-indigo-950/30 rounded-xl border border-indigo-100/80 dark:border-indigo-900/50 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1">
+                                <Boxes size={12} className="text-indigo-600 dark:text-indigo-400" />
+                                <span>Items to Pack ({items.length})</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPreviewOrderPickList(o);
+                                }}
+                                className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                              >
+                                <Eye size={11} />
+                                <span>Pick List</span>
+                              </button>
+                            </div>
+
+                            {items.length === 0 ? (
+                              <span className="text-[10px] text-slate-400 italic block py-0.5">No products listed</span>
+                            ) : (
+                              <div className="space-y-1">
+                                {displayItems.map((it, itemIdx) => {
+                                  const prod = products.find(p => p.id === it.product_id);
+                                  const name = it.product_name || prod?.name || `Item #${itemIdx + 1}`;
+                                  const itemDone = (it.scanned_qty || 0) >= (it.qty || 1);
+
+                                  return (
+                                    <div 
+                                      key={itemIdx}
+                                      className={`flex items-center justify-between text-[10px] px-2 py-1 rounded-lg border ${
+                                        itemDone 
+                                          ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-300' 
+                                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <Package size={11} className={itemDone ? 'text-emerald-500 shrink-0' : 'text-slate-400 shrink-0'} />
+                                        <span className="truncate font-medium">{name}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0 ml-1">
+                                        <span className="font-bold">x{it.qty}</span>
+                                        <span className={`px-1 rounded text-[9px] font-mono font-bold ${
+                                          itemDone 
+                                            ? 'bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200' 
+                                            : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
+                                        }`}>
+                                          {it.scanned_qty || 0}/{it.qty}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                                {items.length > 2 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedCardIds(prev => ({ ...prev, [o.id]: !isCardExpanded }));
+                                    }}
+                                    className="w-full text-center text-[9px] font-bold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 py-0.5 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    {isCardExpanded ? (
+                                      <><span>Show less</span> <ChevronUp size={11} /></>
+                                    ) : (
+                                      <><span>+{items.length - 2} more items</span> <ChevronDown size={11} /></>
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                           
                           {/* Scan Progress Bar */}
                           <div className="space-y-1">
                             <div className="flex justify-between items-center text-[10px] font-bold">
-                              <span className="text-slate-500">Progress</span>
+                              <span className="text-slate-500">Scan Progress</span>
                               <span className={isDone ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}>{pct}%</span>
                             </div>
                             <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
@@ -1589,32 +1850,46 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                             </div>
                             <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                               <span>{packedCount} Scanned</span>
-                              <span>{itemsCount} Total</span>
+                              <span>{itemsCount} Total Units</span>
                             </div>
                           </div>
                         </div>
                         
-                        {/* Vibrant Action Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenPackingStation(o);
-                          }}
-                          className={`mt-2.5 w-full py-2 px-3 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95 ${
-                            isDone
-                              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/20'
-                              : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-600/20'
-                          }`}
-                        >
-                          <Scan size={13} />
-                          <span>Open Station</span>
-                        </button>
+                        {/* Action Buttons: Pick List & Open Station */}
+                        <div className="grid grid-cols-2 gap-2 mt-3 pt-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewOrderPickList(o);
+                            }}
+                            className="py-2 px-2.5 rounded-xl text-[10px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 border border-slate-200 dark:border-slate-700"
+                          >
+                            <Eye size={12} />
+                            <span>Pick List</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenPackingStation(o);
+                            }}
+                            className={`py-2 px-2.5 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 shadow-sm cursor-pointer active:scale-95 ${
+                              isDone
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
+                            }`}
+                          >
+                            <Scan size={12} />
+                            <span>Pack Now</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               ) : (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
                   <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full text-left border-collapse">
                       <thead>
@@ -1622,8 +1897,9 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                           <th className="p-3">Delivery Status</th>
                           <th className="p-3">Order Info</th>
                           <th className="p-3">Customer Info</th>
+                          <th className="p-3">Items to Pack (Pick List)</th>
                           <th className="p-3">Progress</th>
-                          <th className="p-3 text-right">Action</th>
+                          <th className="p-3 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1640,7 +1916,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                             <tr 
                               key={o.id} 
                               onClick={() => handleOpenPackingStation(o)}
-                              className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer"
+                              className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer text-[11px]"
                             >
                               <td className="p-3">
                                 <div className="flex items-center gap-2">
@@ -1663,7 +1939,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                               </td>
                               <td className="p-3">
                                 <div className="flex flex-col gap-1">
-                                  <span className="text-sm font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                  <span className="text-xs font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                                     #{o.order_number}
                                   </span>
                                   <div className="flex items-center gap-2">
@@ -1676,7 +1952,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                       </span>
                                     )}
                                   </div>
-                                  <span className={`w-fit mt-1 px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider border ${
+                                  <span className={`w-fit mt-0.5 px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider border ${
                                     isDone 
                                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
                                       : o.status === 'Packing' 
@@ -1687,53 +1963,228 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                   </span>
                                 </div>
                               </td>
-                          <td className="p-3">
-                            <div className="flex flex-col gap-0.5 text-[11px]">
-                              <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                                <User size={12} className="text-indigo-500 shrink-0" />
-                                {customer ? customer.name : 'Walk-in Customer'}
-                              </span>
-                              {(customer?.phone || o.area) && (
-                                <span className="text-slate-500 flex items-center gap-2.5 text-[10px]">
-                                  {customer?.phone && <span className="flex items-center gap-1"><Phone size={10} /> {customer.phone}</span>}
-                                  {o.area && <span className="flex items-center gap-1"><MapPin size={10} /> {o.area}</span>}
-                                </span>
-                              )}
+                              <td className="p-3">
+                                <div className="flex flex-col gap-0.5 text-[11px]">
+                                  <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                    <User size={12} className="text-indigo-500 shrink-0" />
+                                    {customer ? customer.name : 'Walk-in Customer'}
+                                  </span>
+                                  {(customer?.phone || o.area) && (
+                                    <span className="text-slate-500 flex items-center gap-2.5 text-[10px]">
+                                      {customer?.phone && <span className="flex items-center gap-1"><Phone size={10} /> {customer.phone}</span>}
+                                      {o.area && <span className="flex items-center gap-1"><MapPin size={10} /> {o.area}</span>}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3 max-w-xs">
+                                <div className="flex flex-wrap gap-1 items-center">
+                                  {items.slice(0, 3).map((it, itemIdx) => {
+                                    const prod = products.find(p => p.id === it.product_id);
+                                    const name = it.product_name || prod?.name || `Item #${itemIdx + 1}`;
+                                    const itemDone = (it.scanned_qty || 0) >= (it.qty || 1);
+
+                                    return (
+                                      <span 
+                                        key={itemIdx}
+                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium border ${
+                                          itemDone
+                                            ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                        }`}
+                                      >
+                                        <span className="truncate max-w-[100px]">{name}</span>
+                                        <strong className="font-bold">x{it.qty}</strong>
+                                      </span>
+                                    );
+                                  })}
+                                  {items.length > 3 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setPreviewOrderPickList(o);
+                                      }}
+                                      className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 hover:underline"
+                                    >
+                                      +{items.length - 3} more
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3 min-w-[160px]">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="flex-1 space-y-1">
+                                    <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                      <div 
+                                        className={`h-full rounded-full ${isDone ? 'bg-emerald-500' : 'bg-gradient-to-r from-indigo-500 to-violet-500'}`} 
+                                        style={{ width: `${pct}%` }} 
+                                      />
+                                    </div>
+                                    <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                      <span>{packedCount} / {itemsCount} units</span>
+                                    </div>
+                                  </div>
+                                  <span className={`text-[11px] font-black w-9 text-right ${isDone ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                                    {pct}%
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPreviewOrderPickList(o);
+                                    }}
+                                    title="View items pick list"
+                                    className="p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    <Eye size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenPackingStation(o);
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all inline-flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95 ${
+                                      isDone
+                                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                                        : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
+                                    }`}
+                                  >
+                                    <Scan size={13} />
+                                    <span>Station</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          
+          {filteredQueue.length === 0 && (
+            <div className="col-span-full bg-slate-50 dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center text-slate-500 space-y-3">
+              <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center mx-auto">
+                <QrCode size={28} className="text-slate-400" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">No Pending Orders</h4>
+                <p className="text-[11px] max-w-sm mx-auto text-slate-500">All sales orders are packed and verified! New pending sales orders will automatically appear in this queue.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* QUICK PICK LIST PREVIEW MODAL */}
+      {previewOrderPickList && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-2xl w-full max-h-[85vh] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Boxes size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    Warehouse Pick List • Order #{previewOrderPickList.order_number}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Review and pick all items from warehouse shelves before verification
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewOrderPickList(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4">
+              {/* Order summary bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Customer</span>
+                  <strong className="text-slate-800 dark:text-slate-200 font-bold truncate block">
+                    {customers.find(c => c.id === previewOrderPickList.customer_id)?.name || 'Walk-in Customer'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Delivery Target</span>
+                  <strong className="text-slate-800 dark:text-slate-200 font-bold block">
+                    {formatDisplayDate(previewOrderPickList.delivery_date) || formatDisplayDate(previewOrderPickList.order_date) || 'No Date'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Total Items</span>
+                  <strong className="text-indigo-600 dark:text-indigo-400 font-bold block">
+                    {(previewOrderPickList.items || []).reduce((acc, it) => acc + (it.qty || 0), 0)} Units in {(previewOrderPickList.items || []).length} Lines
+                  </strong>
+                </div>
+              </div>
+
+              {/* Items Pick Table */}
+              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-100/70 dark:bg-slate-800 text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                      <th className="py-2.5 px-3">Item Name</th>
+                      <th className="py-2.5 px-3 text-center">Barcode / SKU</th>
+                      <th className="py-2.5 px-3 text-center">Category</th>
+                      <th className="py-2.5 px-3 text-center">Qty Needed</th>
+                      <th className="py-2.5 px-3 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {(previewOrderPickList.items || []).map((it, idx) => {
+                      const prod = products.find(p => p.id === it.product_id);
+                      const name = it.product_name || prod?.name || `Item #${idx + 1}`;
+                      const barcode = prod?.barcode || prod?.sku || it.product_id || 'N/A';
+                      const category = prod?.category || 'General';
+                      const unit = prod?.unit || 'pcs';
+                      const isDone = (it.scanned_qty || 0) >= (it.qty || 1);
+
+                      return (
+                        <tr key={idx} className={isDone ? 'bg-emerald-50/40 dark:bg-emerald-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'}>
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2">
+                              <Package size={14} className={isDone ? 'text-emerald-500' : 'text-slate-400'} />
+                              <strong className="text-slate-800 dark:text-slate-200 font-bold">{name}</strong>
                             </div>
                           </td>
-                          <td className="p-3 min-w-[180px]">
-                            <div className="flex items-center gap-2.5">
-                              <div className="flex-1 space-y-1">
-                                <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                                  <div 
-                                    className={`h-full rounded-full ${isDone ? 'bg-emerald-500' : 'bg-gradient-to-r from-indigo-500 to-violet-500'}`} 
-                                    style={{ width: `${pct}%` }} 
-                                  />
-                                </div>
-                                <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                  <span>{packedCount} / {itemsCount} units</span>
-                                </div>
-                              </div>
-                              <span className={`text-[11px] font-black w-9 text-right ${isDone ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
-                                {pct}%
-                              </span>
-                            </div>
+                          <td className="py-2.5 px-3 text-center font-mono text-[11px] text-indigo-600 dark:text-indigo-400 font-bold">
+                            {barcode}
                           </td>
-                          <td className="p-3 text-right">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenPackingStation(o);
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all inline-flex items-center gap-1.5 ml-auto shadow-sm cursor-pointer active:scale-95 ${
-                                isDone
-                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
-                                  : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-600/20'
-                              }`}
-                            >
-                              <Scan size={13} />
-                              <span>Open Station</span>
-                            </button>
+                          <td className="py-2.5 px-3 text-center text-slate-500 text-[11px]">
+                            {category}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-black text-slate-900 dark:text-white">
+                            {it.qty} <span className="text-[10px] text-slate-400 font-normal">{unit}</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            {isDone ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+                                <Check size={11} /> Packed ({it.scanned_qty}/{it.qty})
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200">
+                                {it.scanned_qty || 0}/{it.qty} Scanned
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -1742,23 +2193,32 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                 </table>
               </div>
             </div>
-          )}
-        </div>
-      ))}
-      
-      {filteredQueue.length === 0 && (
-        <div className="col-span-full bg-slate-50 dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center text-slate-500 space-y-3">
-          <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center mx-auto">
-            <QrCode size={28} className="text-slate-400" />
-          </div>
-          <div>
-            <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">No Pending Orders</h4>
-            <p className="text-[11px] max-w-sm mx-auto text-slate-500">All sales orders are packed and verified! New pending sales orders will automatically appear in this queue.</p>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+              <button
+                type="button"
+                onClick={() => setPreviewOrderPickList(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = previewOrderPickList;
+                  setPreviewOrderPickList(null);
+                  handleOpenPackingStation(target);
+                }}
+                className="px-5 py-2 text-xs font-black bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+              >
+                <Scan size={14} />
+                <span>Open Packing Verification Station</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
-      </div>
-    )}
     </div>
     {/* CAMERA SCANNER MODAL */}
       {isScannerOpen && (

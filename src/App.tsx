@@ -475,7 +475,15 @@ export default function App() {
     // Initial fetch
     if (currentBusiness && currentUser) {
       const messages = dbStore.getMessages(currentBusiness.id);
-      setUnreadMessages(messages.filter(m => m.receiver_id === currentUser.id && !m.is_read));
+      const isPacking = Boolean(currentUser.role && (currentUser.role === 'Packing Staff' || currentUser.role.toLowerCase().includes('pack')));
+      setUnreadMessages(messages.filter(m => {
+        if (m.is_read) return false;
+        if (m.receiver_id === currentUser.id) return true;
+        if (m.sender_id === 'order_system' || m.receiver_id === 'order_system') {
+          return isPacking;
+        }
+        return false;
+      }));
       const orders = dbStore.getSalesOrders(currentBusiness.id);
       setPendingPackingCount(orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length);
     }
@@ -504,7 +512,15 @@ export default function App() {
 
       if (currentBusiness && currentUser) {
         const messages = dbStore.getMessages(currentBusiness.id);
-        setUnreadMessages(messages.filter(m => m.receiver_id === currentUser.id && !m.is_read));
+        const isPacking = Boolean(currentUser.role && (currentUser.role === 'Packing Staff' || currentUser.role.toLowerCase().includes('pack')));
+        setUnreadMessages(messages.filter(m => {
+          if (m.is_read) return false;
+          if (m.receiver_id === currentUser.id) return true;
+          if (m.sender_id === 'order_system' || m.receiver_id === 'order_system') {
+            return isPacking;
+          }
+          return false;
+        }));
         const orders = dbStore.getSalesOrders(currentBusiness.id);
         setPendingPackingCount(orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length);
       }

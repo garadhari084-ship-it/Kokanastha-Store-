@@ -6,6 +6,8 @@ import {
   Phone, 
   Video, 
   MessageSquare,
+  MessageSquarePlus,
+  Users,
   Check, 
   CheckCheck, 
   ArrowLeft, 
@@ -30,10 +32,11 @@ import {
   Shield,
   Building,
   ChevronDown,
-  RotateCcw
+  RotateCcw,
+  UserCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { dbStore } from '../services/store';
+import { dbStore, isSameBusiness } from '../services/store';
 import { UserProfile, ChatMessage } from '../types/erp';
 
 interface InboxModuleProps {
@@ -62,6 +65,11 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
     }
   });
 
+  // WhatsApp-style New Chat / Contact Directory Modal
+  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
+  const [directorySearchQuery, setDirectorySearchQuery] = useState('');
+  const [directoryRoleFilter, setDirectoryRoleFilter] = useState<string>('all');
+
   // Dedicated Modal Target States
   const [contactInfoUser, setContactInfoUser] = useState<UserProfile | null>(null);
   const [clearChatUser, setClearChatUser] = useState<UserProfile | null>(null);
@@ -80,6 +88,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -111,9 +120,18 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
     business_id: businessId
   }), [businessId]);
 
+  const isPackingStaff = useMemo(() => {
+    return Boolean(
+      currentUser?.role && (
+        currentUser.role === 'Packing Staff' ||
+        currentUser.role.toLowerCase().includes('pack')
+      )
+    );
+  }, [currentUser?.role]);
+
   useEffect(() => {
     const rawUsers = dbStore.getUsers(businessId).filter(u => u.id !== currentUser.id && u.id !== 'order_system');
-    setUsers([orderSystemUser, ...rawUsers]);
+    setUsers(isPackingStaff ? [orderSystemUser, ...rawUsers] : rawUsers);
     
     const allMessages = dbStore.getMessages(businessId);
     setMessages(allMessages);
@@ -121,11 +139,11 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
     const unsubscribe = dbStore.subscribe(() => {
       setMessages(dbStore.getMessages(businessId));
       const freshUsers = dbStore.getUsers(businessId).filter(u => u.id !== currentUser.id && u.id !== 'order_system');
-      setUsers([orderSystemUser, ...freshUsers]);
+      setUsers(isPackingStaff ? [orderSystemUser, ...freshUsers] : freshUsers);
     });
 
     return () => unsubscribe();
-  }, [businessId, currentUser.id, orderSystemUser]);
+  }, [businessId, currentUser.id, orderSystemUser, isPackingStaff]);
 
   // Mark conversation as read ONLY when the specific chat is open
   useEffect(() => {
@@ -139,8 +157,17 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   }, [selectedUserId, messages]);
 
   const allAvailableUsers = useMemo(() => {
-    return [orderSystemUser, ...users.filter(u => u.id !== 'order_system')];
-  }, [orderSystemUser, users]);
+    const baseUsers = users.filter(u => u.id !== 'order_system' && u.id !== currentUser.id);
+    if (isPackingStaff) {
+      return [orderSystemUser, ...baseUsers];
+    }
+    return baseUsers;
+  }, [orderSystemUser, users, isPackingStaff, currentUser.id]);
+
+  // All human colleagues across the company
+  const allHumanColleagues = useMemo(() => {
+    return users.filter(u => u.id !== 'order_system' && u.id !== currentUser.id);
+  }, [users, currentUser.id]);
 
   // Visible users in Internal Communications (excluding users deleted from communications)
   const visibleUsers = useMemo(() => {
@@ -155,16 +182,18 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   
   const getUnreadCount = (userId: string) => {
     if (userId === 'order_system') {
+      if (!isPackingStaff) return 0;
       return messages.filter(m => 
-        m.sender_id === 'order_system' && 
+        (m.sender_id === 'order_system' || m.receiver_id === 'order_system') && 
         !m.is_read &&
-        (!m.business_id || m.business_id === businessId)
+        (!m.business_id || isSameBusiness(m.business_id, businessId))
       ).length;
     }
     return messages.filter(m => 
       m.sender_id === userId && 
-      m.receiver_id === currentUser.id && 
-      !m.is_read
+      (m.receiver_id === currentUser.id || m.receiver_id === 'all') && 
+      !m.is_read &&
+      (!m.business_id || isSameBusiness(m.business_id, businessId))
     ).length;
   };
 
@@ -179,24 +208,89 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
       if (!matchesSearch) return false;
 
       if (chatFilter === 'unread') {
-        return getUnreadCount(u.id) > 0;
+        return getUnreadCount(u.id) > 0 || (selectedUserId === u.id);
       }
       if (chatFilter === 'colleagues') {
         return u.id !== 'order_system';
       }
       if (chatFilter === 'system') {
-        return u.id === 'order_system';
+        return isPackingStaff && u.id === 'order_system';
       }
       return true;
     });
-  }, [visibleUsers, removedUsers, searchQuery, chatFilter, messages]);
+  }, [visibleUsers, removedUsers, searchQuery, chatFilter, messages, isPackingStaff, selectedUserId]);
+
+  // When searching in the main search bar, find other colleagues in company directory not currently in visible active list
+  const otherMatchingDirectoryUsers = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    const visibleIds = new Set(visibleUsers.map(u => u.id));
+    
+    return allHumanColleagues.filter(u => {
+      if (visibleIds.has(u.id) && chatFilter !== 'removed') return false;
+      return (
+        u.name.toLowerCase().includes(q) ||
+        (u.role && u.role.toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q))
+      );
+    });
+  }, [searchQuery, allHumanColleagues, visibleUsers, chatFilter]);
+
+  // Directory users for the WhatsApp-style New Chat Modal
+  const modalFilteredDirectoryUsers = useMemo(() => {
+    const q = directorySearchQuery.toLowerCase().trim();
+    return allHumanColleagues.filter(u => {
+      const matchesText = !q || 
+        u.name.toLowerCase().includes(q) ||
+        (u.role && u.role.toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q));
+
+      if (!matchesText) return false;
+
+      if (directoryRoleFilter !== 'all') {
+        const userRole = (u.role || '').toLowerCase();
+        if (directoryRoleFilter === 'sales') return userRole.includes('sales');
+        if (directoryRoleFilter === 'packaging') return userRole.includes('pack');
+        if (directoryRoleFilter === 'admin') return userRole.includes('admin') || userRole.includes('manager') || userRole.includes('owner');
+        if (directoryRoleFilter === 'delivery') return userRole.includes('driver') || userRole.includes('deliver') || userRole.includes('logistics');
+        if (directoryRoleFilter === 'removed') return hiddenUserIds.includes(u.id);
+      }
+
+      return true;
+    });
+  }, [allHumanColleagues, directorySearchQuery, directoryRoleFilter, hiddenUserIds]);
+
+  // WhatsApp-style Start / Open Chat handler
+  const handleStartChatWithUser = (user: UserProfile) => {
+    // If user was hidden/deleted from communications, unhide them
+    if (hiddenUserIds.includes(user.id)) {
+      const nextHidden = hiddenUserIds.filter(id => id !== user.id);
+      setHiddenUserIds(nextHidden);
+      try {
+        localStorage.setItem(`omnipack_erp_hidden_comms_${businessId}`, JSON.stringify(nextHidden));
+      } catch (e) {}
+    }
+
+    setSelectedUserId(user.id);
+    setIsMobileListVisible(false);
+    setIsSearchInChatOpen(false);
+    setInChatSearchQuery('');
+    setIsNewChatModalOpen(false);
+    setSearchQuery('');
+    showToast(`Chat opened with ${user.name}`, 'info');
+
+    setTimeout(() => {
+      messageInputRef.current?.focus();
+    }, 100);
+  };
 
   const rawConversationMessages = useMemo(() => {
     if (!selectedUserId) return [];
     if (selectedUserId === 'order_system') {
+      if (!isPackingStaff) return [];
       const msgs = messages.filter(m => 
         (m.sender_id === 'order_system' || m.receiver_id === 'order_system') &&
-        (!m.business_id || m.business_id === businessId)
+        (!m.business_id || isSameBusiness(m.business_id, businessId))
       ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
       const seen = new Set<string>();
@@ -208,9 +302,9 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
     }
     return messages.filter(m => 
       (m.sender_id === currentUser.id && m.receiver_id === selectedUserId) ||
-      (m.sender_id === selectedUserId && m.receiver_id === currentUser.id)
+      (m.sender_id === selectedUserId && (m.receiver_id === currentUser.id || m.receiver_id === 'all'))
     ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  }, [messages, currentUser.id, selectedUserId, businessId]);
+  }, [messages, currentUser.id, selectedUserId, businessId, isPackingStaff]);
 
   const conversationMessages = useMemo(() => {
     if (!inChatSearchQuery.trim()) return rawConversationMessages;
@@ -368,26 +462,30 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
     if (userId === 'order_system') {
       const systemMessages = messages.filter(m => 
         (m.sender_id === 'order_system' || m.receiver_id === 'order_system') &&
-        (!m.business_id || m.business_id === businessId)
+        (!m.business_id || isSameBusiness(m.business_id, businessId))
       ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       return systemMessages[0];
     }
 
     const userMessages = messages.filter(m => 
       (m.sender_id === currentUser.id && m.receiver_id === userId) ||
-      (m.sender_id === userId && m.receiver_id === currentUser.id)
+      (m.sender_id === userId && (m.receiver_id === currentUser.id || m.receiver_id === 'all'))
     ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     
     return userMessages[0];
   };
 
   const totalUnreadCount = useMemo(() => {
-    return messages.filter(m => 
-      (m.receiver_id === currentUser.id || (m.sender_id === 'order_system' && (m.receiver_id === 'all' || m.receiver_id === currentUser.id))) && 
-      !m.is_read &&
-      (!m.business_id || m.business_id === businessId)
-    ).length;
-  }, [messages, currentUser.id, businessId]);
+    return messages.filter(m => {
+      if (m.is_read) return false;
+      if (m.business_id && !isSameBusiness(m.business_id, businessId)) return false;
+      if (m.receiver_id === currentUser.id) return true;
+      if (m.sender_id === 'order_system' || m.receiver_id === 'order_system') {
+        return isPackingStaff;
+      }
+      return false;
+    }).length;
+  }, [messages, currentUser.id, businessId, isPackingStaff]);
 
   const quickEmojis = ['👍', '❤️', '✅', '📦', '⚠️', '🎉', '👏', '🙏', '🔥', '🚀'];
 
@@ -423,7 +521,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
         {/* Sidebar Header */}
         <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900">
           <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
                 {currentUser.name.charAt(0)}
               </div>
@@ -436,6 +534,16 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
             </div>
 
             <div className="flex items-center gap-1.5">
+              {/* WhatsApp-style New Chat Button */}
+              <button
+                type="button"
+                onClick={() => setIsNewChatModalOpen(true)}
+                className="p-1.5 rounded-full text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition-colors relative cursor-pointer"
+                title="New Chat (Search & select colleague like WhatsApp)"
+              >
+                <MessageSquarePlus size={18} />
+              </button>
+
               {totalUnreadCount > 0 && (
                 <span className="bg-emerald-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black min-w-[20px] text-center shadow-xs">
                   {totalUnreadCount} new
@@ -458,15 +566,15 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
             <input 
               type="text" 
-              placeholder="Search or start new chat..."
+              placeholder="Search or start new chat with user..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all placeholder:text-slate-400"
+              className="w-full pl-9 pr-8 py-1.5 bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all placeholder:text-slate-400"
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X size={13} />
               </button>
@@ -510,16 +618,19 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
             >
               Colleagues
             </button>
-            <button
-              onClick={() => setChatFilter('system')}
-              className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-all ${
-                chatFilter === 'system'
-                  ? 'bg-emerald-600 text-white font-bold shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              Bot
-            </button>
+            {isPackingStaff && (
+              <button
+                onClick={() => setChatFilter('system')}
+                className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-all flex items-center gap-1 ${
+                  chatFilter === 'system'
+                    ? 'bg-amber-600 text-white font-bold shadow-xs'
+                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
+                }`}
+              >
+                <Bot size={12} />
+                <span>Order System</span>
+              </button>
+            )}
             {removedUsers.length > 0 && (
               <button
                 onClick={() => setChatFilter('removed')}
@@ -537,211 +648,256 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
 
         {/* Contacts List */}
         <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/40">
-          {filteredUsers.length === 0 ? (
+          {filteredUsers.length === 0 && otherMatchingDirectoryUsers.length === 0 ? (
             <div className="p-8 text-center text-slate-400">
               <User className="mx-auto mb-2 opacity-20" size={32} />
               <p className="text-xs font-medium">
-                {chatFilter === 'removed' ? 'No removed contacts' : 'No chats found'}
+                {chatFilter === 'removed' 
+                  ? 'No removed contacts' 
+                  : searchQuery 
+                    ? `No chats found matching "${searchQuery}"` 
+                    : 'No conversations yet'}
               </p>
-              {chatFilter !== 'all' && (
-                <button 
-                  onClick={() => setChatFilter('all')}
-                  className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
-                >
-                  Show all chats
-                </button>
-              )}
+              <button 
+                onClick={() => setIsNewChatModalOpen(true)}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <MessageSquarePlus size={14} /> Start New Chat
+              </button>
             </div>
           ) : (
-            filteredUsers.map(userItem => {
-              const lastMsg = getLastMessage(userItem.id);
-              const unreadCount = getUnreadCount(userItem.id);
-              const isSelected = selectedUserId === userItem.id;
-              const isOrderSystem = userItem.id === 'order_system';
-              const isContactMenuOpen = activeContactMenuId === userItem.id;
-              const isRemoved = hiddenUserIds.includes(userItem.id);
+            <>
+              {/* Active Conversations */}
+              {filteredUsers.map(userItem => {
+                const lastMsg = getLastMessage(userItem.id);
+                const unreadCount = getUnreadCount(userItem.id);
+                const isSelected = selectedUserId === userItem.id;
+                const isOrderSystem = userItem.id === 'order_system';
+                const isContactMenuOpen = activeContactMenuId === userItem.id;
+                const isRemoved = hiddenUserIds.includes(userItem.id);
 
-              return (
-                <div
-                  key={userItem.id}
-                  className={`relative group flex items-stretch hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition-all ${
-                    isSelected 
-                      ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-l-4 border-emerald-600' 
-                      : 'border-l-4 border-transparent'
-                  }`}
-                >
-                  <button
-                    onClick={() => {
-                      if (isRemoved) {
-                        handleRestoreUserToComms(userItem.id, userItem.name);
-                      }
-                      setSelectedUserId(userItem.id);
-                      setIsMobileListVisible(false);
-                      setIsSearchInChatOpen(false);
-                      setInChatSearchQuery('');
-                    }}
-                    className="flex-1 p-3 flex items-start gap-3 text-left min-w-0"
+                return (
+                  <div
+                    key={userItem.id}
+                    className={`relative group flex items-stretch hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition-all ${
+                      isSelected 
+                        ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-l-4 border-emerald-600' 
+                        : 'border-l-4 border-transparent'
+                    }`}
                   >
-                    <div className="relative shrink-0">
-                      {isOrderSystem ? (
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-white shadow-xs ring-2 ring-amber-200 dark:ring-amber-900/40">
-                          <Bot size={20} />
-                        </div>
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-slate-700 dark:text-slate-200 font-bold uppercase border border-white dark:border-slate-800 shadow-xs">
-                          {userItem.name.charAt(0)}
-                        </div>
-                      )}
-                      
-                      {unreadCount > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-emerald-600 text-white text-[9px] font-black rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900 shadow-xs">
-                          {unreadCount}
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-baseline mb-0.5">
-                        <p className={`text-xs truncate flex items-center gap-1.5 ${
-                          unreadCount > 0 
-                            ? 'font-extrabold text-slate-950 dark:text-white' 
-                            : 'font-semibold text-slate-800 dark:text-slate-200'
-                        }`}>
-                          {userItem.name}
-                          {isOrderSystem && (
-                            <span className="px-1.5 py-0.2 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[9px] font-bold rounded-md">
-                              Bot
-                            </span>
-                          )}
-                          {isRemoved && (
-                            <span className="px-1.5 py-0.2 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 text-[9px] font-bold rounded-md">
-                              Removed
-                            </span>
-                          )}
-                        </p>
-                        {lastMsg && (
-                          <span className={`text-[10px] font-medium shrink-0 ml-1 ${
-                            unreadCount > 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'
-                          }`}>
-                            {new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex justify-between items-center">
-                        <p className={`text-[11px] truncate pr-2 ${
-                          unreadCount > 0 
-                            ? 'text-slate-900 dark:text-slate-100 font-bold' 
-                            : 'text-slate-500 dark:text-slate-400'
-                        }`}>
-                          {isRemoved 
-                            ? 'Click to restore to Communications' 
-                            : lastMsg 
-                              ? lastMsg.content.replace(/\n/g, ' ') 
-                              : (userItem.role || 'Colleague')}
-                        </p>
-                        {lastMsg && lastMsg.sender_id === currentUser.id && (
-                          <span className="shrink-0 ml-1">
-                            {lastMsg.is_read ? (
-                              <CheckCheck size={14} className="text-sky-500" />
-                            ) : (
-                              <Check size={14} className="text-slate-400" />
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Contact Item Options Menu Button */}
-                  <div className="flex items-center pr-2" onMouseDown={(e) => e.stopPropagation()}>
                     <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveContactMenuId(isContactMenuOpen ? null : userItem.id);
-                      }}
-                      className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Chat options"
+                      onClick={() => handleStartChatWithUser(userItem)}
+                      className="flex-1 p-3 flex items-start gap-3 text-left min-w-0 cursor-pointer"
                     >
-                      <ChevronDown size={14} />
+                      <div className="relative shrink-0">
+                        {isOrderSystem ? (
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-white shadow-xs ring-2 ring-amber-200 dark:ring-amber-900/40">
+                            <Bot size={20} />
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-slate-700 dark:text-slate-200 font-bold uppercase border border-white dark:border-slate-800 shadow-xs">
+                            {userItem.name.charAt(0)}
+                          </div>
+                        )}
+                        
+                        {unreadCount > 0 && (
+                          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-emerald-600 text-white text-[9px] font-black rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900 shadow-xs">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-baseline mb-0.5">
+                          <p className={`text-xs truncate flex items-center gap-1.5 ${
+                            unreadCount > 0 
+                              ? 'font-extrabold text-slate-950 dark:text-white' 
+                              : 'font-semibold text-slate-800 dark:text-slate-200'
+                          }`}>
+                            {userItem.name}
+                            {isOrderSystem && (
+                              <span className="px-1.5 py-0.2 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[9px] font-bold rounded-md">
+                                Bot
+                              </span>
+                            )}
+                            {isRemoved && (
+                              <span className="px-1.5 py-0.2 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 text-[9px] font-bold rounded-md">
+                                Removed
+                              </span>
+                            )}
+                          </p>
+                          {lastMsg && (
+                            <span className={`text-[10px] font-medium shrink-0 ml-1 ${
+                              unreadCount > 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'
+                            }`}>
+                              {new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <p className={`text-[11px] truncate pr-2 ${
+                            unreadCount > 0 
+                              ? 'text-slate-900 dark:text-slate-100 font-bold' 
+                              : 'text-slate-500 dark:text-slate-400'
+                          }`}>
+                            {isRemoved 
+                              ? 'Click to restore to Communications' 
+                              : lastMsg 
+                                ? lastMsg.content.replace(/\n/g, ' ') 
+                                : (userItem.role || 'Colleague')}
+                          </p>
+                          {lastMsg && lastMsg.sender_id === currentUser.id && (
+                            <span className="shrink-0 ml-1">
+                              {lastMsg.is_read ? (
+                                <CheckCheck size={14} className="text-sky-500" />
+                              ) : (
+                                <Check size={14} className="text-slate-400" />
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </button>
 
-                    {/* Popover Menu */}
-                    {isContactMenuOpen && (
-                      <div 
-                        onMouseDown={(e) => e.stopPropagation()}
-                        className="absolute right-3 top-10 z-40 w-52 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl py-1 text-xs animate-in fade-in zoom-in-95 duration-100"
+                    {/* Contact Item Options Menu Button */}
+                    <div className="flex items-center pr-2" onMouseDown={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveContactMenuId(isContactMenuOpen ? null : userItem.id);
+                        }}
+                        className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Chat options"
                       >
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setContactInfoUser(userItem);
-                            setActiveContactMenuId(null);
-                          }}
-                          className="w-full px-3.5 py-2 text-left text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 flex items-center gap-2 cursor-pointer"
-                        >
-                          <Info size={14} className="text-slate-400" /> Contact Info
-                        </button>
-                        
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setClearChatUser(userItem);
-                            setActiveContactMenuId(null);
-                          }}
-                          className="w-full px-3.5 py-2 text-left text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 flex items-center gap-2 cursor-pointer"
-                        >
-                          <Eraser size={14} className="text-slate-400" /> Clear Chat
-                        </button>
-                        
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteChatUser(userItem);
-                            setActiveContactMenuId(null);
-                          }}
-                          className="w-full px-3.5 py-2 text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2 cursor-pointer"
-                        >
-                          <Trash2 size={14} /> Delete Chat
-                        </button>
-                        
-                        {!isOrderSystem && !isRemoved && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteCommsUser(userItem);
-                              setActiveContactMenuId(null);
-                            }}
-                            className="w-full px-3.5 py-2 text-left text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700 font-semibold cursor-pointer"
-                          >
-                            <UserX size={14} /> Delete User from Comms
-                          </button>
-                        )}
+                        <ChevronDown size={14} />
+                      </button>
 
-                        {isRemoved && (
+                      {/* Popover Menu */}
+                      {isContactMenuOpen && (
+                        <div 
+                          onMouseDown={(e) => e.stopPropagation()}
+                          className="absolute right-3 top-10 z-40 w-52 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl py-1 text-xs animate-in fade-in zoom-in-95 duration-100"
+                        >
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleRestoreUserToComms(userItem.id, userItem.name);
+                              setContactInfoUser(userItem);
                               setActiveContactMenuId(null);
                             }}
-                            className="w-full px-3.5 py-2 text-left text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700 font-semibold cursor-pointer"
+                            className="w-full px-3.5 py-2 text-left text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 flex items-center gap-2 cursor-pointer"
                           >
-                            <RotateCcw size={14} /> Restore to Comms
+                            <Info size={14} className="text-slate-400" /> Contact Info
                           </button>
-                        )}
-                      </div>
-                    )}
+                          
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setClearChatUser(userItem);
+                              setActiveContactMenuId(null);
+                            }}
+                            className="w-full px-3.5 py-2 text-left text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 flex items-center gap-2 cursor-pointer"
+                          >
+                            <Eraser size={14} className="text-slate-400" /> Clear Chat
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteChatUser(userItem);
+                              setActiveContactMenuId(null);
+                            }}
+                            className="w-full px-3.5 py-2 text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2 cursor-pointer"
+                          >
+                            <Trash2 size={14} /> Delete Chat
+                          </button>
+                          
+                          {!isOrderSystem && !isRemoved && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteCommsUser(userItem);
+                                setActiveContactMenuId(null);
+                              }}
+                              className="w-full px-3.5 py-2 text-left text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700 font-semibold cursor-pointer"
+                            >
+                              <UserX size={14} /> Delete User from Comms
+                            </button>
+                          )}
+
+                          {isRemoved && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRestoreUserToComms(userItem.id, userItem.name);
+                                setActiveContactMenuId(null);
+                              }}
+                              className="w-full px-3.5 py-2 text-left text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700 font-semibold cursor-pointer"
+                            >
+                              <RotateCcw size={14} /> Restore to Comms
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
+                );
+              })}
+
+              {/* WhatsApp-style: Inline Matching Colleagues to start new chat with */}
+              {searchQuery.trim() !== '' && otherMatchingDirectoryUsers.length > 0 && (
+                <div className="pt-2">
+                  <div className="px-3 py-2 bg-slate-100/90 dark:bg-slate-800/70 border-y border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5">
+                      <Users size={12} className="text-emerald-600" />
+                      Start Chat with Colleagues
+                    </span>
+                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.2 rounded font-black">
+                      {otherMatchingDirectoryUsers.length}
+                    </span>
+                  </div>
+
+                  {otherMatchingDirectoryUsers.map(colleague => {
+                    const isRemoved = hiddenUserIds.includes(colleague.id);
+                    return (
+                      <div
+                        key={`dir-${colleague.id}`}
+                        onClick={() => handleStartChatWithUser(colleague)}
+                        className="p-3 flex items-center justify-between gap-3 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 cursor-pointer transition border-b border-slate-100 dark:border-slate-800/40"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+                            {colleague.name.charAt(0)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                              {colleague.name}
+                            </p>
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {colleague.role || 'Colleague'} • {colleague.email || 'No email'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1 shrink-0 cursor-pointer"
+                        >
+                          <MessageSquare size={11} />
+                          {isRemoved ? 'Restore & Chat' : 'Chat'}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1236,6 +1392,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
 
                 <div className="flex-1 flex items-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-transparent px-3 py-1 shadow-xs">
                   <input 
+                    ref={messageInputRef}
                     type="text" 
                     placeholder={selectedUser.id === 'order_system' ? 'Send a reply or system log...' : `Type a message...`}
                     value={newMessage}
@@ -1500,6 +1657,190 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
               >
                 <Trash2 size={13} />
                 Yes, Delete from Communications
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* 5. WhatsApp-Style "New Chat" & Contact Directory Search Modal */}
+      {isNewChatModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4"
+          onClick={() => {
+            setIsNewChatModalOpen(false);
+            setDirectorySearchQuery('');
+          }}
+        >
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+          >
+            {/* Modal Header */}
+            <div className="p-4 bg-emerald-600 dark:bg-emerald-700 text-white shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+                    <MessageSquarePlus size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold leading-tight">New Chat</h3>
+                    <p className="text-[11px] text-emerald-100 font-medium">
+                      {allHumanColleagues.length} colleagues available in company directory
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsNewChatModalOpen(false);
+                    setDirectorySearchQuery('');
+                  }}
+                  className="p-1.5 rounded-full hover:bg-white/20 transition-colors text-white/90 cursor-pointer"
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Search Bar in Modal */}
+              <div className="relative mt-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70" size={14} />
+                <input 
+                  type="text"
+                  autoFocus
+                  placeholder="Search name, role, department, or email..."
+                  value={directorySearchQuery}
+                  onChange={(e) => setDirectorySearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 bg-white/15 focus:bg-white text-white focus:text-slate-900 placeholder:text-white/70 focus:placeholder:text-slate-400 rounded-xl text-xs outline-none transition-all border border-white/20 focus:border-white focus:ring-2 focus:ring-white/40"
+                />
+                {directorySearchQuery && (
+                  <button 
+                    onClick={() => setDirectorySearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/70 hover:text-white cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Department / Role Filter Chips */}
+            <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 flex items-center gap-1.5 overflow-x-auto text-[11px]">
+              {[
+                { id: 'all', label: 'All Contacts' },
+                { id: 'sales', label: 'Sales & Billing' },
+                { id: 'packaging', label: 'Packaging Staff' },
+                { id: 'delivery', label: 'Delivery/Logistics' },
+                { id: 'admin', label: 'Admin & Managers' },
+                ...(hiddenUserIds.length > 0 ? [{ id: 'removed', label: `Removed (${hiddenUserIds.length})` }] : [])
+              ].map(chip => (
+                <button
+                  key={chip.id}
+                  onClick={() => setDirectoryRoleFilter(chip.id)}
+                  className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition cursor-pointer ${
+                    directoryRoleFilter === chip.id
+                      ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Contacts Directory List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/50 p-1">
+              {modalFilteredDirectoryUsers.length === 0 ? (
+                <div className="p-8 text-center text-slate-400">
+                  <User className="mx-auto mb-2 opacity-30" size={32} />
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    No colleagues match your search
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Try searching with another keyword or change the filter.
+                  </p>
+                </div>
+              ) : (
+                modalFilteredDirectoryUsers.map(colleague => {
+                  const isRemoved = hiddenUserIds.includes(colleague.id);
+                  const isCurrentlySelected = selectedUserId === colleague.id;
+                  const hasConversation = messages.some(
+                    m => (m.sender_id === colleague.id && m.receiver_id === currentUser.id) ||
+                         (m.sender_id === currentUser.id && m.receiver_id === colleague.id)
+                  );
+
+                  return (
+                    <div
+                      key={`modal-dir-${colleague.id}`}
+                      onClick={() => handleStartChatWithUser(colleague)}
+                      className={`p-3 rounded-xl flex items-center justify-between gap-3 hover:bg-emerald-50/70 dark:hover:bg-emerald-950/30 transition cursor-pointer ${
+                        isCurrentlySelected ? 'bg-emerald-50 dark:bg-emerald-950/40 ring-1 ring-emerald-500/40' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0 ring-2 ring-white dark:ring-slate-800">
+                          {colleague.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                              {colleague.name}
+                            </p>
+                            {isRemoved && (
+                              <span className="px-1.5 py-0.2 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 text-[9px] font-bold rounded">
+                                Removed
+                              </span>
+                            )}
+                            {hasConversation && !isRemoved && (
+                              <span className="px-1.5 py-0.2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-medium rounded">
+                                Recent
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate flex items-center gap-2">
+                            <span>{colleague.role || 'Staff Member'}</span>
+                            {colleague.email && (
+                              <>
+                                <span className="opacity-40">•</span>
+                                <span className="truncate">{colleague.email}</span>
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <MessageSquare size={13} />
+                          <span>{isRemoved ? 'Restore & Chat' : 'Start Chat'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center text-xs text-slate-500">
+              <span>Showing {modalFilteredDirectoryUsers.length} of {allHumanColleagues.length} team members</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNewChatModalOpen(false);
+                  setDirectorySearchQuery('');
+                }}
+                className="px-3 py-1 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg font-medium cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </motion.div>

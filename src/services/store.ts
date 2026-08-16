@@ -1429,7 +1429,7 @@ class ERPStorage {
     if (!businessId) {
       return dedupeById(this.cache.profiles);
     }
-    return dedupeById(this.cache.profiles.filter(u => u.business_id === businessId));
+    return dedupeById(this.cache.profiles.filter(u => !u.business_id || isSameBusiness(u.business_id, businessId)));
   }
 
   public createUser(user: Omit<UserProfile, 'id' | 'created_at'> & { id?: string; password_hash?: string }): UserProfile {
@@ -3728,27 +3728,55 @@ class ERPStorage {
 
     // 1. Try matching directly among items in this order first
     let product: Product | undefined;
-    for (const item of (order.items || [])) {
+    let matchingItemIndex = -1;
+
+    for (let i = 0; i < (order.items || []).length; i++) {
+      const item = order.items[i];
       const p = this.cache.products.find(prod => prod.id === item.product_id);
       if (p) {
         if (
           String(p.barcode || '').trim().toLowerCase() === cleanCode ||
           String(p.sku || '').trim().toLowerCase() === cleanCode ||
           String(p.name || '').trim().toLowerCase() === cleanCode ||
+          String(p.id || '').trim().toLowerCase() === cleanCode ||
           String(p.id || '').trim() === barcode.trim()
         ) {
           product = p;
+          matchingItemIndex = i;
           break;
         }
       }
+      
+      // Also match directly on item fields (e.g. item.product_name, item.product_id)
+      if (
+        String(item.product_name || '').trim().toLowerCase() === cleanCode ||
+        String(item.product_id || '').trim().toLowerCase() === cleanCode ||
+        (item.id && String(item.id).trim().toLowerCase() === cleanCode)
+      ) {
+        product = p || ({
+          id: item.product_id || `item-${i}`,
+          name: item.product_name || `Item #${i + 1}`,
+          sku: item.product_id || 'SKU-N/A',
+          barcode: item.product_id || '',
+          selling_price: item.selling_price || 0,
+          current_stock: 0,
+          unit: 'pcs',
+          category: 'General',
+          business_id: businessId,
+          created_at: new Date().toISOString()
+        } as unknown as Product);
+        matchingItemIndex = i;
+        break;
+      }
     }
 
-    // 2. If not found in order items, search all products in the database
+    // 2. If not found in order items yet, search all products in the database
     if (!product) {
       product = this.cache.products.find(p => p.business_id === businessId && (
         String(p.barcode || '').trim().toLowerCase() === cleanCode ||
         String(p.sku || '').trim().toLowerCase() === cleanCode ||
         String(p.name || '').trim().toLowerCase() === cleanCode ||
+        String(p.id || '').trim().toLowerCase() === cleanCode ||
         String(p.id || '').trim() === barcode.trim()
       ));
     }
@@ -3757,12 +3785,15 @@ class ERPStorage {
       return {
         success: false,
         error_type: 'wrong_product',
-        error_message: `Unrecognized Barcode/SKU "${barcode}". Product not found in inventory.`
+        error_message: `Unrecognized Barcode/SKU "${barcode}". Product not found in inventory or order.`
       };
     }
 
     // Verify if product belongs to this order
-    const orderItemIndex = (order.items || []).findIndex(item => item.product_id === product!.id);
+    const orderItemIndex = matchingItemIndex !== -1 
+      ? matchingItemIndex 
+      : (order.items || []).findIndex(item => item.product_id === product!.id || (item.product_name && item.product_name.toLowerCase() === product!.name.toLowerCase()));
+      
     if (orderItemIndex === -1) {
       return {
         success: false,
@@ -4196,7 +4227,8 @@ class ERPStorage {
     const updated: ChatMessage[] = [];
     this.cache.messages.forEach(m => {
       const isMatch = (m.sender_id === senderId && (m.receiver_id === receiverId || m.receiver_id === 'all')) ||
-                      (senderId === 'order_system' && m.sender_id === 'order_system');
+                      (senderId === 'order_system' && (m.sender_id === 'order_system' || m.receiver_id === 'order_system')) ||
+                      (receiverId === 'order_system' && (m.sender_id === 'order_system' || m.receiver_id === 'order_system'));
       if (isMatch && !m.is_read) {
         m.is_read = true;
         updated.push(m);
@@ -4266,7 +4298,14 @@ class ERPStorage {
   public deleteConversation(user1Id: string, user2Id: string, businessId: string): boolean {
     if (!this.cache.messages) return false;
     const toDelete = this.cache.messages.filter(m => {
-      return isSameBusiness(m.business_id, businessId) && (
+      const bizMatch = !m.business_id || isSameBusiness(m.business_id, businessId);
+      if (!bizMatch) return false;
+
+      if (user2Id === 'order_system' || user1Id === 'order_system') {
+        return m.sender_id === 'order_system' || m.receiver_id === 'order_system';
+      }
+
+      return (
         (m.sender_id === user1Id && m.receiver_id === user2Id) ||
         (m.sender_id === user2Id && m.receiver_id === user1Id)
       );

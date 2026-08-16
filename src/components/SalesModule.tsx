@@ -362,21 +362,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     
     // Add notification to packing staff only
     const orderNum = orders.find(o => o.id === orderId)?.order_number || orderId;
-    const allUsers = dbStore.getUsers(businessId);
-    const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
     const statusMsg = `Sales Order ${orderNum} status has been updated to ${newStatus}.`;
     
-    if (packingStaff.length > 0) {
-      packingStaff.forEach(staff => {
-        dbStore.sendMessage({
-          sender_id: 'order_system',
-          receiver_id: staff.id,
-          content: statusMsg,
-          business_id: businessId
-        });
-      });
-      triggerToast(`Notification sent to ${packingStaff.length} packaging staff member(s).`, 'success');
-    }
     dbStore.sendMessage({
       sender_id: 'order_system',
       receiver_id: 'all',
@@ -1279,28 +1266,17 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         }
 
         // Send message to packaging users and Order System for any edit
-        const allUsers = dbStore.getUsers(businessId);
-        const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
         const itemsCount = cleanItems.reduce((acc: number, i: any) => acc + (Number(i.qty) || Number(i.quantity) || 0), 0);
         const editOrderMsg = `Sales Order ${orderNum} has been updated.\n\nCustomer: ${finalCustomerName || 'N/A'}\nDelivery Date: ${deliveryDate || 'N/A'}\nType: ${deliveryType || 'Standard'}\nItems: ${itemsCount} units`;
         
-        if (packingStaff.length > 0 && !isWalkIn && !isFulfilledImmediately) {
-          packingStaff.forEach(staff => {
-            dbStore.sendMessage({
-              sender_id: 'order_system',
-              receiver_id: staff.id,
-              content: editOrderMsg,
-              business_id: businessId
-            });
+        if (!isWalkIn && !isFulfilledImmediately) {
+          dbStore.sendMessage({
+            sender_id: 'order_system',
+            receiver_id: 'all',
+            content: editOrderMsg,
+            business_id: businessId
           });
-          triggerToast(`Notification sent to ${packingStaff.length} packaging staff member(s).`, 'success');
         }
-        dbStore.sendMessage({
-          sender_id: 'order_system',
-          receiver_id: 'all',
-          content: editOrderMsg,
-          business_id: businessId
-        });
 
         dbStore.logActivity(
           user.id,
@@ -1378,22 +1354,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         );
 
         // Send message from Order System with order details
-        const allUsers = dbStore.getUsers(businessId);
-        const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
         const itemsSummary = cleanItems.map((i: any) => `${i.product_name || 'Product'} (x${i.qty || i.quantity || 1})`).join(', ');
         const itemsCount = cleanItems.reduce((acc: number, i: any) => acc + (Number(i.qty) || Number(i.quantity) || 0), 0);
         const newOrderMsg = `📦 New Sales Order: ${createdOrder.order_number}\n\nCustomer: ${finalCustomerName || 'Walk-in'}\nTotal Amount: ${currencySymbol}${finalAmount.toLocaleString()}\nItems (${itemsCount} units): ${itemsSummary}\nDelivery Date: ${deliveryDate || 'Standard Delivery'}\nDelivery Type: ${deliveryType || 'Standard'}\nStatus: ${(isFulfilledImmediately || isWalkIn) ? 'Delivered' : 'Pending Packing'}`;
         
-        if (packingStaff.length > 0) {
-          packingStaff.forEach(staff => {
-            dbStore.sendMessage({
-              sender_id: 'order_system',
-              receiver_id: staff.id,
-              content: newOrderMsg,
-              business_id: businessId
-            });
-          });
-        }
         dbStore.sendMessage({
           sender_id: 'order_system',
           receiver_id: 'all',

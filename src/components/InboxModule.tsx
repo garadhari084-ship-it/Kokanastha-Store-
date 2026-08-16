@@ -103,13 +103,22 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
     ).length;
   };
 
+  const totalUnreadCount = messages.filter(m => m.receiver_id === currentUser.id && !m.is_read).length;
+
   return (
     <div className="flex flex-1 h-full min-h-0 w-full bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm">
       {/* Sidebar - User List */}
       <div className={`${isMobileListVisible ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-80 border-r border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50 h-full min-h-0`}>
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Internal Communications</h2>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              Internal Communications
+              {totalUnreadCount > 0 && (
+                <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black min-w-[18px] text-center shadow-sm">
+                  {totalUnreadCount}
+                </span>
+              )}
+            </h2>
             {onClose && (
               <button 
                 onClick={onClose}

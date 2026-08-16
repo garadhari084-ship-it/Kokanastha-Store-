@@ -1278,16 +1278,18 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           }
         }
 
-        // Send message to packaging users for any edit
+        // Send message to packaging users for any edit (unless it skips packing)
         const allUsers = dbStore.getUsers(businessId);
         const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
         
-        if (packingStaff.length > 0) {
+        if (packingStaff.length > 0 && !isWalkIn && !isFulfilledImmediately) {
+          const itemsCount = cleanItems.reduce((acc: number, i: any) => acc + (Number(i.quantity) || 0), 0);
+          
           packingStaff.forEach(staff => {
             dbStore.sendMessage({
               sender_id: user.id,
               receiver_id: staff.id,
-              content: `Sales Order ${orderNum} has been updated. Please check the new details.`,
+              content: `Sales Order ${orderNum} has been updated.\n\nCustomer: ${finalCustomerName || 'N/A'}\nDelivery Date: ${deliveryDate || 'N/A'}\nType: ${deliveryType || 'Standard'}\nItems: ${itemsCount} units`,
               business_id: businessId
             });
           });
@@ -1369,22 +1371,28 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           businessId
         );
 
-        // Send message to packaging users for new order
+        // Send message to packaging users for new order (unless it skips packing)
         const allUsers = dbStore.getUsers(businessId);
         const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
         
-        if (packingStaff.length > 0) {
+        if (packingStaff.length > 0 && !isWalkIn && !isFulfilledImmediately) {
+          const itemsCount = cleanItems.reduce((acc: number, i: any) => acc + (Number(i.quantity) || 0), 0);
+          
           packingStaff.forEach(staff => {
             dbStore.sendMessage({
               sender_id: user.id,
               receiver_id: staff.id,
-              content: `New Sales Order ${createdOrder.order_number} has been placed. Please prepare for packing.`,
+              content: `New Sales Order ${createdOrder.order_number} needs packing.\n\nCustomer: ${finalCustomerName || 'N/A'}\nDelivery Date: ${deliveryDate || 'N/A'}\nType: ${deliveryType || 'Standard'}\nItems: ${itemsCount} units`,
               business_id: businessId
             });
           });
         }
 
-        triggerToast(`Order ${createdOrder.order_number} compiled. Added to pending packing list.`, 'success');
+        if (isWalkIn || isFulfilledImmediately) {
+          triggerToast(`Order ${createdOrder.order_number} created and marked as delivered.`, 'success');
+        } else {
+          triggerToast(`Order ${createdOrder.order_number} compiled. Added to pending packing list.`, 'success');
+        }
       }
 
       setOrders(dbStore.getSalesOrders(businessId));

@@ -1353,6 +1353,7 @@ export default function App() {
 
   const menuItems = [
     { id: 'dashboard', label: 'Executive Desk', icon: LayoutDashboard },
+    { id: 'inbox', label: 'Internal Communications', icon: MessageSquare },
     { id: 'sales', label: 'Sales & Bookings', icon: FileText },
     { id: 'packing', label: 'Packing Verification', icon: ClipboardCheck, highlight: true },
     { id: 'item_stock_live_report', label: 'Item Stock Live Report', icon: Package },

@@ -834,7 +834,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                       return (
                         <div key={idx} className="flex justify-between items-center text-xs bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700">
                           <span className="font-medium text-slate-700 dark:text-slate-300 truncate mr-2">
-                            {p?.name || 'Unknown Product'}
+                            {it.product_name || p?.name || 'Unknown Product'}
                           </span>
                           <span className="font-mono font-bold text-amber-600 dark:text-amber-400 shrink-0">
                             {it.qty - (it.scanned_qty || 0)} Pending

@@ -2710,10 +2710,10 @@ class ERPStorage {
 
         generatedOrders.push(newOrder);
 
-        const adminUser = this.cache.users.find(u => u.business_id === businessId && u.role === 'Admin') || this.cache.users.find(u => u.business_id === businessId);
+        const adminUser = this.cache.profiles.find(u => u.business_id === businessId && u.role === 'Admin') || this.cache.profiles.find(u => u.business_id === businessId);
         
         if (adminUser) {
-          const packingStaff = this.cache.users.filter(u => u.business_id === businessId && u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
+          const packingStaff = this.cache.profiles.filter(u => u.business_id === businessId && u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
           
           if (packingStaff.length > 0) {
             packingStaff.forEach(staff => {
@@ -3750,6 +3750,8 @@ class ERPStorage {
     for (let i = 0; i < (order.items || []).length; i++) {
       const item = order.items[i];
       const p = this.cache.products.find(prod => prod.id === item.product_id);
+      
+      let isMatch = false;
       if (p) {
         if (
           String(p.barcode || '').trim().toLowerCase() === cleanCode ||
@@ -3758,32 +3760,58 @@ class ERPStorage {
           String(p.id || '').trim().toLowerCase() === cleanCode ||
           String(p.id || '').trim() === barcode.trim()
         ) {
-          product = p;
-          matchingItemIndex = i;
-          break;
+          isMatch = true;
         }
       }
       
       // Also match directly on item fields (e.g. item.product_name, item.product_id)
       if (
-        String(item.product_name || '').trim().toLowerCase() === cleanCode ||
-        String(item.product_id || '').trim().toLowerCase() === cleanCode ||
-        (item.id && String(item.id).trim().toLowerCase() === cleanCode)
+        !isMatch &&
+        (String(item.product_name || '').trim().toLowerCase() === cleanCode ||
+         String(item.product_id || '').trim().toLowerCase() === cleanCode ||
+         (item.id && String(item.id).trim().toLowerCase() === cleanCode))
       ) {
-        product = p || ({
-          id: item.product_id || `item-${i}`,
-          name: item.product_name || `Item #${i + 1}`,
-          sku: item.product_id || 'SKU-N/A',
-          barcode: item.product_id || '',
-          selling_price: item.selling_price || 0,
-          current_stock: 0,
-          unit: 'pcs',
-          category: 'General',
-          business_id: businessId,
-          created_at: new Date().toISOString()
-        } as unknown as Product);
-        matchingItemIndex = i;
-        break;
+        isMatch = true;
+      }
+
+      if (isMatch) {
+        const currentScanned = (typeof item.scanned_qty === 'number' && !isNaN(item.scanned_qty)) ? item.scanned_qty : 0;
+        const requiredQty = typeof item.qty === 'number' ? item.qty : 1;
+        
+        if (currentScanned < requiredQty) {
+          // Found an unverified matching item!
+          product = p || ({
+            id: item.product_id || `item-${i}`,
+            name: item.product_name || `Item #${i + 1}`,
+            sku: item.product_id || 'SKU-N/A',
+            barcode: item.product_id || '',
+            selling_price: item.selling_price || 0,
+            current_stock: 0,
+            unit: 'pcs',
+            category: 'General',
+            business_id: businessId,
+            created_at: new Date().toISOString()
+          } as unknown as Product);
+          matchingItemIndex = i;
+          break; // Stop looking, we found an unverified match
+        } else {
+          // It's a match, but already verified. Save it in case we don't find any unverified ones.
+          if (matchingItemIndex === -1) {
+            product = p || ({
+              id: item.product_id || `item-${i}`,
+              name: item.product_name || `Item #${i + 1}`,
+              sku: item.product_id || 'SKU-N/A',
+              barcode: item.product_id || '',
+              selling_price: item.selling_price || 0,
+              current_stock: 0,
+              unit: 'pcs',
+              category: 'General',
+              business_id: businessId,
+              created_at: new Date().toISOString()
+            } as unknown as Product);
+            matchingItemIndex = i;
+          }
+        }
       }
     }
 

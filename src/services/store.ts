@@ -1425,7 +1425,10 @@ class ERPStorage {
   }
 
   // Profiles (Super Admin can create)
-  public getUsers(businessId: string): UserProfile[] {
+  public getUsers(businessId?: string): UserProfile[] {
+    if (!businessId) {
+      return dedupeById(this.cache.profiles);
+    }
     return dedupeById(this.cache.profiles.filter(u => u.business_id === businessId));
   }
 
@@ -2985,43 +2988,31 @@ class ERPStorage {
     sessionToken: string
   ): { active: boolean; conflictDetected: boolean; superseded?: boolean } {
     if (!userId || !deviceId) {
-      return { active: false, conflictDetected: false, superseded: true };
+      return { active: true, conflictDetected: false, superseded: false };
     }
 
-    // Check profile session_token if available
-    const profile = this.cache.profiles.find(p => p.id === userId);
-    if (profile && profile.session_token && sessionToken && profile.session_token !== sessionToken) {
-      let dbTs = 0;
-      let localTs = 0;
-      if (profile.session_token.startsWith('st_')) {
-        dbTs = parseInt(profile.session_token.split('_')[1] || '0', 10);
-      }
-      if (sessionToken.startsWith('st_')) {
-        localTs = parseInt(sessionToken.split('_')[1] || '0', 10);
-      }
-      
-      if (dbTs > localTs) {
-        // Newer session was established on another device
-        return { active: false, conflictDetected: false, superseded: true };
-      }
-    }
+    const now = Date.now();
+    const localSessions = this.load<ActiveDeviceSession[]>('deviceSessions', []);
+    let currentDeviceSession = (Array.isArray(localSessions) ? localSessions : []).find(
+      s => s && s.userId === userId && s.deviceId === deviceId
+    );
 
-    const activeUserSessions = this.getActiveDeviceSessions(userId);
-    const currentDeviceSession = activeUserSessions.find(s => s.deviceId === deviceId);
     if (!currentDeviceSession) {
-      // Session was superseded by a newer login on another device or expired
-      return { active: false, conflictDetected: false, superseded: true };
-    }
-
-    if (sessionToken && currentDeviceSession.sessionToken && currentDeviceSession.sessionToken !== sessionToken) {
-      // Token mismatch - superseded
-      return { active: false, conflictDetected: false, superseded: true };
-    }
-
-    // Update heartbeat timestamp
-    currentDeviceSession.lastHeartbeat = Date.now();
-    if (sessionToken) {
-      currentDeviceSession.sessionToken = sessionToken;
+      currentDeviceSession = {
+        userId,
+        deviceId,
+        sessionToken: sessionToken || '',
+        lastHeartbeat: now
+      };
+      const sessions = Array.isArray(localSessions) ? localSessions : [];
+      sessions.push(currentDeviceSession);
+      this.activeDeviceSessions = sessions;
+    } else {
+      currentDeviceSession.lastHeartbeat = now;
+      if (sessionToken) {
+        currentDeviceSession.sessionToken = sessionToken;
+      }
+      this.activeDeviceSessions = localSessions;
     }
 
     this.saveDeviceSessions();

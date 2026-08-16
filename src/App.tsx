@@ -105,14 +105,14 @@ interface Toast {
 
 const getDeviceId = (): string => {
   try {
-    let devId = sessionStorage.getItem('omnipack_device_id');
+    let devId = localStorage.getItem('omnipack_device_id');
     if (!devId) {
       devId = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
-      sessionStorage.setItem('omnipack_device_id', devId);
+      localStorage.setItem('omnipack_device_id', devId);
     }
     return devId;
   } catch (e) {
-    return 'dev_' + Date.now();
+    return 'dev_default';
   }
 };
 
@@ -532,83 +532,45 @@ export default function App() {
         }
 
         // Try supabase session
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && session.user) {
-          const { data: dbProfile } = await supabase
-            .from('users_profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
-                
-          if (dbProfile) {
-            // Check if profile session token in database has been superseded by a newer login
-            if (dbProfile.session_token && localSessionToken && dbProfile.session_token !== localSessionToken) {
-              let dbTs = 0;
-              let localTs = 0;
-              if (dbProfile.session_token.startsWith('st_')) {
-                dbTs = parseInt(dbProfile.session_token.split('_')[1] || '0', 10);
-              }
-              if (localSessionToken.startsWith('st_')) {
-                localTs = parseInt(localSessionToken.split('_')[1] || '0', 10);
-              }
-              
-              if (dbTs > localTs) {
-                localStorage.removeItem('omnipack_session');
-                setAuthError('You were logged out because this account was logged in from another device.');
-                setIsInitializing(false);
-                return;
-              } else if (localTs > dbTs) {
-                // Local token is newer. The database update during login probably failed.
-                // We'll heal the database now.
-                try {
-                  await supabase.from('users_profiles').update({ session_token: localSessionToken }).eq('id', dbProfile.id);
-                } catch(e) {}
-              }
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session && session.user) {
+            const { data: dbProfile } = await supabase
+              .from('users_profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .maybeSingle();
+                  
+            if (dbProfile) {
+              dbStore.registerDeviceSession(dbProfile.id, deviceId, localSessionToken || dbProfile.session_token || '', dbProfile.business_id);
+              setCurrentUser(dbProfile as UserProfile);
+              await dbStore.syncFromSupabase(dbProfile.business_id);
+              const biz = dbStore.getBusiness(dbProfile.business_id) || dbStore.getBusinesses()[0];
+              setCurrentBusiness(biz);
+              setDbMode('supabase');
+              setIsInitializing(false);
+              return;
             }
-
-            dbStore.registerDeviceSession(dbProfile.id, deviceId, localSessionToken || dbProfile.session_token || '', dbProfile.business_id);
-            setCurrentUser(dbProfile as UserProfile);
-            await dbStore.syncFromSupabase(dbProfile.business_id);
-            const biz = dbStore.getBusiness(dbProfile.business_id) || dbStore.getBusinesses()[0];
-            setCurrentBusiness(biz);
-            setDbMode('supabase');
-            setIsInitializing(false);
-            return;
           }
+        } catch (err) {
+          console.warn("Supabase session restore attempt:", err);
         }
       }
       
-      // Fallback to local session
+      // Fallback to local session (always persistent across refresh & inactivity)
       if (savedSession) {
         try {
           const parsed = JSON.parse(savedSession);
           const { userId, businessId, mode, sessionToken } = parsed;
-          const user = dbStore.getUsers(businessId).find(u => u.id === userId);
-          const biz = dbStore.getBusiness(businessId);
+          let user = dbStore.getUsers(businessId).find(u => u.id === userId);
+          if (!user) {
+            // Also search all profiles in store cache
+            const allProfiles = dbStore.getUsers();
+            user = allProfiles.find(u => u.id === userId);
+          }
+          const biz = dbStore.getBusiness(businessId) || dbStore.getBusinesses()[0];
           if (user && biz) {
-            // Check if profile session token has been superseded
-            if (user.session_token && sessionToken && user.session_token !== sessionToken) {
-              let dbTs = 0;
-              let localTs = 0;
-              if (user.session_token.startsWith('st_')) {
-                dbTs = parseInt(user.session_token.split('_')[1] || '0', 10);
-              }
-              if (sessionToken.startsWith('st_')) {
-                localTs = parseInt(sessionToken.split('_')[1] || '0', 10);
-              }
-              
-              if (dbTs > localTs) {
-                localStorage.removeItem('omnipack_session');
-                setAuthError('You were logged out because this account was logged in from another device.');
-                setIsInitializing(false);
-                return;
-              } else if (localTs > dbTs) {
-                 dbStore.updateUser(user.id, { session_token: sessionToken });
-                 user.session_token = sessionToken;
-              }
-            }
-
-            dbStore.registerDeviceSession(user.id, deviceId, sessionToken || user.session_token || '', businessId);
+            dbStore.registerDeviceSession(user.id, deviceId, sessionToken || user.session_token || '', biz.id);
             setCurrentUser(user);
             setCurrentBusiness(biz);
             setDbMode(mode === 'supabase' ? 'supabase' : 'local');
@@ -805,7 +767,7 @@ export default function App() {
     };
   }, []);
 
-  // Continuous heartbeat to detect concurrent device logins in real-time
+  // Active session heartbeat registration (non-destructive; preserves login across refresh and inactivity)
   useEffect(() => {
     if (!currentUser) return;
     const deviceId = getDeviceId();
@@ -817,36 +779,15 @@ export default function App() {
       } catch (e) {}
     }
 
-    // Immediate check
-    const check = dbStore.heartbeatDeviceSession(currentUser.id, deviceId, sessionToken);
-    if (!check.active || check.superseded) {
-      localStorage.removeItem('omnipack_session');
-      setCurrentUser(null);
-      setCurrentBusiness(null);
-      setAuthError('You have been logged out because your account was logged in from another device.');
-      triggerToast('You have been logged out because your account was logged in from another device.', 'error');
-      return;
-    }
+    // Touch device session heartbeat
+    dbStore.heartbeatDeviceSession(currentUser.id, deviceId, sessionToken);
 
     const interval = setInterval(() => {
-      const result = dbStore.heartbeatDeviceSession(currentUser.id, deviceId, sessionToken);
-      if (!result.active || result.superseded) {
-        localStorage.removeItem('omnipack_session');
-        setCurrentUser(null);
-        setCurrentBusiness(null);
-        setAuthError('You have been logged out because your account was logged in from another device.');
-        triggerToast('You have been logged out because your account was logged in from another device.', 'error');
-      }
-    }, 2500);
-
-    const handleBeforeUnload = () => {
-      dbStore.removeDeviceSession(currentUser.id, deviceId);
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
+      dbStore.heartbeatDeviceSession(currentUser.id, deviceId, sessionToken);
+    }, 10000);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [currentUser?.id]);
 

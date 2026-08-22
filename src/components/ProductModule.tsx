@@ -278,6 +278,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [printerType, setPrinterType] = useState<'thermal' | 'a4'>('thermal');
   const [printLabelSize, setPrintLabelSize] = useState<'50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '100x50' | 'standard'>('50x25');
   const [printLabelsPerRow, setPrintLabelsPerRow] = useState<1 | 2>(2);
+  const [printOrientation, setPrintOrientation] = useState<'landscape' | 'portrait' | 'rotated90'>('landscape');
+  const [showPrintHelp, setShowPrintHelp] = useState(false);
   const [printSalePrice, setPrintSalePrice] = useState<number | string>('');
   const [printMrp, setPrintMrp] = useState<number | string>('');
   const [printPackedOn, setPrintPackedOn] = useState(new Date().toISOString().split('T')[0]);
@@ -1258,11 +1260,21 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
     const count = Math.max(1, Number(printLabelCount) || 1);
     const dims = getThermalDimensions(printLabelSize, printLabelsPerRow);
-    const pageSizeCss = printerType === 'a4' 
-      ? 'A4 portrait' 
-      : `${dims.rollWidthMm} ${dims.rowHeightMm}`;
+    
+    let pageSizeCss = 'A4 portrait';
+    if (printerType === 'thermal') {
+      if (printOrientation === 'landscape') {
+        pageSizeCss = `${dims.rollWidthMm} ${dims.rowHeightMm} landscape`;
+      } else if (printOrientation === 'portrait') {
+        pageSizeCss = `${dims.rollWidthMm} ${dims.rowHeightMm} portrait`;
+      } else if (printOrientation === 'rotated90') {
+        pageSizeCss = `${dims.rowHeightMm} ${dims.rollWidthMm} portrait`;
+      } else {
+        pageSizeCss = `${dims.rollWidthMm} ${dims.rowHeightMm}`;
+      }
+    }
 
-    triggerToast(`Dispatching ${count} barcode label(s) for "${printingBarcodeProduct.name}" (${printerType === 'thermal' ? `${printLabelsPerRow}-Up ${dims.rollWidthMm}x${dims.rowHeightMm}` : 'A4 Grid'})...`, 'info');
+    triggerToast(`Dispatching ${count} barcode label(s) for "${printingBarcodeProduct.name}" (${printerType === 'thermal' ? `${printLabelsPerRow}-Up ${dims.rollWidthMm}x${dims.rowHeightMm} [${printOrientation}]` : 'A4 Grid'})...`, 'info');
     dbStore.logActivity(
       user.id,
       user.name,
@@ -2786,7 +2798,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 size: ${
                   printerType === 'a4' 
                     ? 'A4 portrait' 
-                    : `${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm}`
+                    : printOrientation === 'landscape'
+                      ? `${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} landscape`
+                      : printOrientation === 'portrait'
+                        ? `${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} portrait`
+                        : `${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} portrait`
                 } !important; 
                 margin: 0mm !important; 
               }
@@ -3029,6 +3045,56 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         }`}
                       >
                         <span>☝️ 1-Up Roll (Single Column - 1 Across)</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Orientation Mode */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                        Page Feed Orientation
+                      </label>
+                      <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold">
+                        {printOrientation === 'landscape' ? 'Default 2-Up (Landscape)' : printOrientation === 'portrait' ? 'Vertical Feed (Portrait)' : '90° Swapped'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPrintOrientation('landscape')}
+                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          printOrientation === 'landscape'
+                            ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold">Landscape</span>
+                        <span className={`text-[8px] ${printOrientation === 'landscape' ? 'text-indigo-100' : 'text-slate-400'}`}>Wide Roll (Recommended)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPrintOrientation('portrait')}
+                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          printOrientation === 'portrait'
+                            ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold">Portrait</span>
+                        <span className={`text-[8px] ${printOrientation === 'portrait' ? 'text-indigo-100' : 'text-slate-400'}`}>Portrait Drivers</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPrintOrientation('rotated90')}
+                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          printOrientation === 'rotated90'
+                            ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-500/30'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold">Swap W/H</span>
+                        <span className={`text-[8px] ${printOrientation === 'rotated90' ? 'text-amber-100' : 'text-slate-400'}`}>Sideways Fix</span>
                       </button>
                     </div>
                   </div>
@@ -3583,6 +3649,67 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 </div>,
                 document.body
               )}
+
+              {/* Essential Browser Print Dialog Guidance (Fix for Sideways / Landscape & Headers) */}
+              <div className="no-print bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl p-3 text-[11px] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-amber-900 dark:text-amber-300 font-bold text-[11px]">
+                    <span>⚠️</span>
+                    <span>Fix Sideways / Rotated Printing & Header Dates</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPrintHelp(!showPrintHelp)}
+                    className="text-[10px] text-amber-700 dark:text-amber-400 underline font-semibold cursor-pointer"
+                  >
+                    {showPrintHelp ? 'Hide Details' : 'Why does this happen?'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-amber-200/80 dark:border-amber-800/40">
+                    <div className="font-bold text-slate-800 dark:text-slate-200 text-[10px] flex items-center gap-1">
+                      <span className="w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 inline-flex items-center justify-center text-[9px] font-black">1</span>
+                      <span>Layout / Orientation</span>
+                    </div>
+                    <p className="text-[9.5px] text-slate-600 dark:text-slate-400 mt-0.5 leading-tight">
+                      In the print preview dialog, check <b>Layout</b>. If printed sideways, switch between <b>Landscape</b> and <b>Portrait</b>.
+                    </p>
+                  </div>
+
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-amber-200/80 dark:border-amber-800/40">
+                    <div className="font-bold text-slate-800 dark:text-slate-200 text-[10px] flex items-center gap-1">
+                      <span className="w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 inline-flex items-center justify-center text-[9px] font-black">2</span>
+                      <span>Headers & Footers</span>
+                    </div>
+                    <p className="text-[9.5px] text-slate-600 dark:text-slate-400 mt-0.5 leading-tight">
+                      <b>UNCHECK "Headers & footers"</b> in More Settings to remove <i>about:blank</i> & date stamps from stickers.
+                    </p>
+                  </div>
+
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-amber-200/80 dark:border-amber-800/40">
+                    <div className="font-bold text-slate-800 dark:text-slate-200 text-[10px] flex items-center gap-1">
+                      <span className="w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 inline-flex items-center justify-center text-[9px] font-black">3</span>
+                      <span>Margins = None</span>
+                    </div>
+                    <p className="text-[9.5px] text-slate-600 dark:text-slate-400 mt-0.5 leading-tight">
+                      Set <b>Margins</b> to <b>None</b> (or Minimum) so labels align edge-to-edge on your thermal roll.
+                    </p>
+                  </div>
+                </div>
+
+                {showPrintHelp && (
+                  <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800/60 text-[10px] text-amber-950 dark:text-amber-200 space-y-1">
+                    <p><b>Why it came out landscape/sideways:</b></p>
+                    <p>
+                      A 2-Up roll is <b>104mm wide × 25mm tall</b>. Web browsers see width &gt; height and treat it as Landscape. If your browser or printer driver default is locked to Portrait, the system rotates the page 90° across the roll.
+                    </p>
+                    <p>
+                      👉 <b>Quick Solution:</b> Set the <b>Page Feed Orientation</b> above to <i>Landscape</i> (or <i>Swap W/H</i> if your driver is locked), select your exact roll size in printer preferences, and uncheck Headers & Footers.
+                    </p>
+                  </div>
+                )}
+              </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 no-print">
                 <button 

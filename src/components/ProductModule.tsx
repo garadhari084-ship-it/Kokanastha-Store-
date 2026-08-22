@@ -278,7 +278,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [printerType, setPrinterType] = useState<'thermal' | 'a4'>('thermal');
   const [printLabelSize, setPrintLabelSize] = useState<'50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '100x50' | 'standard'>('50x25');
   const [printLabelsPerRow, setPrintLabelsPerRow] = useState<1 | 2>(2);
-  const [printOrientation, setPrintOrientation] = useState<'landscape' | 'portrait' | 'rotated90'>('landscape');
+  const [printOrientation, setPrintOrientation] = useState<'auto' | 'landscape' | 'portrait' | 'rotated90'>('auto');
   const [showPrintHelp, setShowPrintHelp] = useState(false);
   const [printSalePrice, setPrintSalePrice] = useState<number | string>('');
   const [printMrp, setPrintMrp] = useState<number | string>('');
@@ -1270,7 +1270,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       } else if (printOrientation === 'rotated90') {
         pageSizeCss = `${dims.rowHeightMm} ${dims.rollWidthMm} portrait`;
       } else {
-        pageSizeCss = `${dims.rollWidthMm} ${dims.rowHeightMm}`;
+        pageSizeCss = `${dims.rollWidthMm} ${dims.rowHeightMm}`; // auto / driver managed
       }
     }
 
@@ -1386,6 +1386,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       margin: 0 auto !important;
       max-width: 100% !important;
       background-color: #ffffff !important;
+      shape-rendering: crispEdges !important;
     }
     .barcode-label-sticker svg text {
       font-family: monospace, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto !important;
@@ -2802,7 +2803,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       ? `${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} landscape`
                       : printOrientation === 'portrait'
                         ? `${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} portrait`
-                        : `${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} portrait`
+                        : printOrientation === 'rotated90'
+                          ? `${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} portrait`
+                          : `${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm}`
                 } !important; 
                 margin: 0mm !important; 
               }
@@ -2903,6 +2906,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 margin: 0 auto !important;
                 max-width: 100% !important;
                 background-color: #ffffff !important;
+                shape-rendering: crispEdges !important;
               }
 
               .barcode-label-sticker svg text {
@@ -3056,10 +3060,22 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         Page Feed Orientation
                       </label>
                       <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold">
-                        {printOrientation === 'landscape' ? 'Default 2-Up (Landscape)' : printOrientation === 'portrait' ? 'Vertical Feed (Portrait)' : '90° Swapped'}
+                        {printOrientation === 'auto' ? 'Auto (TSC/Seagull)' : printOrientation === 'landscape' ? 'Default 2-Up (Landscape)' : printOrientation === 'portrait' ? 'Vertical Feed (Portrait)' : '90° Swapped'}
                       </span>
                     </div>
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="grid grid-cols-4 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPrintOrientation('auto')}
+                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          printOrientation === 'auto'
+                            ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold">Auto</span>
+                        <span className={`text-[8px] ${printOrientation === 'auto' ? 'text-indigo-100' : 'text-slate-400'}`}>TSC Default</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => setPrintOrientation('landscape')}
@@ -3070,7 +3086,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         }`}
                       >
                         <span className="text-[10px] font-bold">Landscape</span>
-                        <span className={`text-[8px] ${printOrientation === 'landscape' ? 'text-indigo-100' : 'text-slate-400'}`}>Wide Roll (Recommended)</span>
+                        <span className={`text-[8px] ${printOrientation === 'landscape' ? 'text-indigo-100' : 'text-slate-400'}`}>Forced Wide</span>
                       </button>
                       <button
                         type="button"
@@ -3082,7 +3098,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         }`}
                       >
                         <span className="text-[10px] font-bold">Portrait</span>
-                        <span className={`text-[8px] ${printOrientation === 'portrait' ? 'text-indigo-100' : 'text-slate-400'}`}>Portrait Drivers</span>
+                        <span className={`text-[8px] ${printOrientation === 'portrait' ? 'text-indigo-100' : 'text-slate-400'}`}>Forced Tall</span>
                       </button>
                       <button
                         type="button"
@@ -3474,7 +3490,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                       <ReactBarcode 
                                         value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
                                         height={22} 
-                                        width={1.05}
+                                        width={0.9}
                                         fontSize={8.5}
                                         fontOptions="bold"
                                         margin={0}
@@ -3502,7 +3518,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                       <ReactBarcode 
                                         value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
                                         height={32} 
-                                        width={1.15}
+                                        width={1.0}
                                         fontSize={9.5}
                                         fontOptions="bold"
                                         margin={0}
@@ -3530,7 +3546,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                       <ReactBarcode 
                                         value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
                                         height={25} 
-                                        width={1.1}
+                                        width={0.9}
                                         fontSize={8.5}
                                         fontOptions="bold"
                                         margin={0}
@@ -3559,7 +3575,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                       <ReactBarcode 
                                         value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
                                         height={38} 
-                                        width={1.3}
+                                        width={1.1}
                                         fontSize={10.5}
                                         fontOptions="bold"
                                         margin={0}
@@ -3588,7 +3604,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                       <ReactBarcode 
                                         value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
                                         height={18} 
-                                        width={0.95}
+                                        width={0.8}
                                         fontSize={7}
                                         fontOptions="bold"
                                         margin={0}
@@ -3670,10 +3686,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-amber-200/80 dark:border-amber-800/40">
                     <div className="font-bold text-slate-800 dark:text-slate-200 text-[10px] flex items-center gap-1">
                       <span className="w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 inline-flex items-center justify-center text-[9px] font-black">1</span>
-                      <span>Layout / Orientation</span>
+                      <span>Paper Size / Layout</span>
                     </div>
                     <p className="text-[9.5px] text-slate-600 dark:text-slate-400 mt-0.5 leading-tight">
-                      In the print preview dialog, check <b>Layout</b>. If printed sideways, switch between <b>Landscape</b> and <b>Portrait</b>.
+                      Under <b>More Settings</b>, select your exact <b>Paper Size</b> (e.g. 50x30). If it defaults to A4, the printer shrinks it!
                     </p>
                   </div>
 
@@ -3705,7 +3721,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       A 2-Up roll is <b>104mm wide × 25mm tall</b>. Web browsers see width &gt; height and treat it as Landscape. If your browser or printer driver default is locked to Portrait, the system rotates the page 90° across the roll.
                     </p>
                     <p>
-                      👉 <b>Quick Solution:</b> Set the <b>Page Feed Orientation</b> above to <i>Landscape</i> (or <i>Swap W/H</i> if your driver is locked), select your exact roll size in printer preferences, and uncheck Headers & Footers.
+                      👉 <b>TSC TTP-244 Plus / Seagull Drivers Fix:</b> Click the <b>Auto (TSC Default)</b> feed orientation above. In the print dialog, ensure <b>Headers & Footers</b> is unchecked, and select your exact roll dimensions (e.g. 104mm x 25mm). The driver will natively map the dimensions.
                     </p>
                   </div>
                 )}

@@ -68,7 +68,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   onNavigate
 }) => {
   const [pendingOrders, setPendingOrders] = useState<SalesOrder[]>(
-    dbStore.getSalesOrders(businessId).filter(o => o.status === 'Pending' || o.status === 'Packing')
+    dbStore.getSalesOrders(businessId).filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled')
   );
   const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
   const [categories, setCategories] = useState<Category[]>(dbStore.getCategories(businessId));
@@ -79,9 +79,12 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [isCompactDensity, setIsCompactDensity] = useState<boolean>(false);
-  const [dateFilter, setDateFilter] = useState<'All' | 'Overdue' | 'Today' | 'Tomorrow' | 'Upcoming' | 'Next7' | 'Custom'>('Today');
+  const [dateFilter, setDateFilter] = useState<'All' | 'Overdue' | 'Today' | 'Tomorrow' | 'Upcoming' | 'Next7' | 'Custom'>('All');
   const [customDateValue, setCustomDateValue] = useState<string>(new Date().toISOString().split('T')[0]);
   const [bookingFilter, setBookingFilter] = useState<'all' | 'advance' | 'festive'>('all');
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [selectedProductToAdd, setSelectedProductToAdd] = useState('');
+  const [addQty, setAddQty] = useState(1);
 
   // Interactive items picklist & expanded cards states
   const [previewOrderPickList, setPreviewOrderPickList] = useState<SalesOrder | null>(null);
@@ -161,7 +164,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const reloadOrders = () => {
     const allSales = dbStore.getSalesOrders(businessId);
     setPendingOrders(
-      allSales.filter(o => o.status === 'Pending' || o.status === 'Packing')
+      allSales.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled')
     );
     
     // Refresh current selected order data if it exists in the new list
@@ -169,9 +172,14 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       if (!prev) return null;
       const refreshed = allSales.find(o => o.id === prev.id);
       if (refreshed) {
+        let items = refreshed.items;
+        if (typeof items === 'string') {
+          try { items = JSON.parse(items); } catch (e) { items = []; }
+        }
+        if (!Array.isArray(items)) items = [];
         return {
           ...refreshed,
-          items: refreshed.items ? refreshed.items.map(it => ({ ...it })) : []
+          items: items.map(it => ({ ...it, scanned_qty: typeof it.scanned_qty === 'number' ? it.scanned_qty : 0 }))
         };
       }
       return null;
@@ -188,8 +196,22 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
   // Open specific order packing view
   const handleOpenPackingStation = (order: SalesOrder) => {
+    let safeItems = order.items;
+    if (typeof safeItems === 'string') {
+      try { safeItems = JSON.parse(safeItems); } catch (e) { safeItems = []; }
+    }
+    if (!Array.isArray(safeItems)) safeItems = [];
+
+    const resolvedOrder = {
+      ...order,
+      items: safeItems.map((it: any) => ({
+        ...it,
+        scanned_qty: typeof it.scanned_qty === 'number' && !isNaN(it.scanned_qty) ? it.scanned_qty : 0
+      }))
+    };
+
     // Set selected order first
-    setSelectedOrder(order);
+    setSelectedOrder(resolvedOrder);
     
     setBarcodeInput('');
     setRecentScanLog(null);
@@ -208,7 +230,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     }
 
     // Update status to 'Packing' if it was 'Pending'
-    if (order.status === 'Pending') {
+    if (order.status === 'Pending' || !order.status) {
       dbStore.updateSalesOrder(order.id, { 
         status: 'Packing',
         packing_started_at: new Date().toISOString()
@@ -224,11 +246,9 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     setSelectedOrder(null);
     setIsScannerOpen(false);
     setRecentScanLog(null);
-    // reloadOrders will be called by the subscriber or we can call it manually
-    // but setSelectedOrder(null) is the primary action here
     const allSales = dbStore.getSalesOrders(businessId);
     setPendingOrders(
-      allSales.filter(o => o.status === 'Pending' || o.status === 'Packing')
+      allSales.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled')
     );
   };
 
@@ -416,6 +436,41 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       success: true
     });
     reloadOrders();
+  };
+
+  const handleAddItemToOrder = (productId: string, qty: number) => {
+    if (!selectedOrder) return;
+    const prod = products.find(p => p.id === productId);
+    if (!prod) return;
+
+    const currentOrder = dbStore.getSalesOrders(businessId).find(o => o.id === selectedOrder.id) || selectedOrder;
+    let items = currentOrder.items || [];
+    if (typeof items === 'string') {
+      try { items = JSON.parse(items); } catch (e) { items = []; }
+    }
+    if (!Array.isArray(items)) items = [];
+
+    const existingIdx = items.findIndex(it => it.product_id === productId);
+    if (existingIdx !== -1) {
+      items[existingIdx].qty = (items[existingIdx].qty || 0) + qty;
+    } else {
+      items.push({
+        id: crypto.randomUUID(),
+        product_id: prod.id,
+        product_name: prod.name,
+        qty: qty,
+        selling_price: prod.selling_price || 0,
+        tax_rate: prod.tax_rate || 0,
+        scanned_qty: 0
+      });
+    }
+
+    dbStore.updateSalesOrder(selectedOrder.id, { items });
+    reloadOrders();
+    setShowAddItemModal(false);
+    setSelectedProductToAdd('');
+    setAddQty(1);
+    triggerToast(`Added ${qty}x ${prod.name} to order.`, 'success');
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -852,6 +907,85 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               >
                 Continue Packing
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD ITEM MODAL */}
+      {showAddItemModal && selectedOrder && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                    <Plus size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Add Product to Order</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Attach product items to verify for Order #{selectedOrder.order_number}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddItemModal(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-1">
+                    Select Product
+                  </label>
+                  <select
+                    value={selectedProductToAdd}
+                    onChange={(e) => setSelectedProductToAdd(e.target.value)}
+                    className="w-full h-11 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+                  >
+                    <option value="">-- Choose Product to Add --</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.barcode ? `(${p.barcode})` : p.sku ? `(${p.sku})` : ''} - ₹{p.selling_price || 0}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-1">
+                    Quantity Required
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={addQty}
+                    onChange={(e) => setAddQty(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full h-11 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddItemModal(false)}
+                  className="flex-1 h-11 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedProductToAdd}
+                  onClick={() => handleAddItemToOrder(selectedProductToAdd, addQty)}
+                  className="flex-1 h-11 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+                >
+                  Add Item
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1299,6 +1433,14 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => setShowAddItemModal(true)}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                >
+                  <Plus size={14} />
+                  <span>Add Item</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleQuickVerifyAll}
                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
                 >
@@ -1322,9 +1464,17 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                   <AlertTriangle size={24} />
                 </div>
                 <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-1">No Item Lines in Order #{selectedOrder.order_number}</h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                  This sales order was saved without product line items. You can proceed to pack or verify the order directly using the button below.
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-4">
+                  This sales order does not have product line items attached yet. Click below to quickly add products for barcode verification.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setShowAddItemModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Plus size={16} />
+                  <span>Add Product Items to Order</span>
+                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">

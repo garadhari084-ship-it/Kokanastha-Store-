@@ -3384,11 +3384,24 @@ class ERPStorage {
             : (cust?.area && cust.area !== 'Other') 
             ? cust.area 
             : (cust?.shipping_address && !/Other/i.test(cust.shipping_address) ? cust.shipping_address.replace(/ Resident$/i, '').trim() : undefined) || 'Dahisar';
+          
+          let rawItems = s.items;
+          if (typeof rawItems === 'string') {
+            try {
+              rawItems = JSON.parse(rawItems);
+            } catch (e) {
+              rawItems = [];
+            }
+          }
+          if (!Array.isArray(rawItems)) {
+            rawItems = [];
+          }
+
           return {
             ...s,
             area: resolvedArea,
             customer_name: s.customer_name || cust?.name || 'Walk-in Customer',
-            items: (s.items || []).map(it => ({
+            items: rawItems.map((it: any) => ({
               ...it,
               scanned_qty: typeof it.scanned_qty === 'number' && !isNaN(it.scanned_qty) ? it.scanned_qty : 0
             }))
@@ -3696,7 +3709,7 @@ class ERPStorage {
 
     // Find active order matching in store
     const order = this.cache.sales.find(
-      s => s.business_id === businessId &&
+      s => isSameBusiness(s.business_id, businessId) &&
       (
         s.order_number === rawContent ||
         s.qr_code_data === rawContent ||
@@ -3711,15 +3724,27 @@ class ERPStorage {
       return { success: false, error: `Order "${extractedOrderNum || rawContent}" not found.` };
     }
 
-    if (order.status === 'Packed' || order.status === 'Dispatched' || order.status === 'Delivered') {
-      return { success: false, error: `This order is already marked as ${order.status}.` };
-    }
-
     if (order.status === 'Cancelled') {
       return { success: false, error: 'This order has been cancelled.' };
     }
 
-    return { success: true, order };
+    // Parse items if string
+    let parsedItems = order.items;
+    if (typeof parsedItems === 'string') {
+      try { parsedItems = JSON.parse(parsedItems); } catch (e) { parsedItems = []; }
+    }
+    if (!Array.isArray(parsedItems)) parsedItems = [];
+
+    return { 
+      success: true, 
+      order: {
+        ...order,
+        items: parsedItems.map((it: any) => ({
+          ...it,
+          scanned_qty: typeof it.scanned_qty === 'number' && !isNaN(it.scanned_qty) ? it.scanned_qty : 0
+        }))
+      } 
+    };
   }
 
   public verifyPackingBarcode(
@@ -3735,41 +3760,64 @@ class ERPStorage {
     error_type?: 'wrong_product' | 'extra_product' | 'duplicate_scan' | 'inactive';
     error_message?: string;
   } {
-    const orderIndex = this.cache.sales.findIndex(o => o.id === orderId && o.business_id === businessId);
+    const orderIndex = this.cache.sales.findIndex(o => o.id === orderId && isSameBusiness(o.business_id, businessId));
     if (orderIndex === -1) {
       return { success: false, error_message: 'Sales Order not found' };
     }
 
     const order = this.cache.sales[orderIndex];
+    let orderItems = order.items;
+    if (typeof orderItems === 'string') {
+      try { orderItems = JSON.parse(orderItems); } catch (e) { orderItems = []; }
+    }
+    if (!Array.isArray(orderItems)) orderItems = [];
+
     const cleanCode = barcode.trim().toLowerCase();
+    const cleanCodeNoZeros = cleanCode.replace(/^0+/, '');
 
     // 1. Try matching directly among items in this order first
     let product: Product | undefined;
     let matchingItemIndex = -1;
 
-    for (let i = 0; i < (order.items || []).length; i++) {
-      const item = order.items[i];
-      const p = this.cache.products.find(prod => prod.id === item.product_id);
+    for (let i = 0; i < orderItems.length; i++) {
+      const item = orderItems[i];
+      const p = this.cache.products.find(prod => isSameBusiness(prod.business_id, businessId) && prod.id === item.product_id);
       
       let isMatch = false;
       if (p) {
+        const pBarcode = String(p.barcode || '').trim().toLowerCase();
+        const pSku = String(p.sku || '').trim().toLowerCase();
+        const pName = String(p.name || '').trim().toLowerCase();
+        const pId = String(p.id || '').trim().toLowerCase();
+
         if (
-          String(p.barcode || '').trim().toLowerCase() === cleanCode ||
-          String(p.sku || '').trim().toLowerCase() === cleanCode ||
-          String(p.name || '').trim().toLowerCase() === cleanCode ||
-          String(p.id || '').trim().toLowerCase() === cleanCode ||
+          pBarcode === cleanCode ||
+          pBarcode.replace(/^0+/, '') === cleanCodeNoZeros ||
+          pSku === cleanCode ||
+          pName === cleanCode ||
+          pId === cleanCode ||
+          pName.includes(cleanCode) ||
+          cleanCode.includes(pName) ||
+          pSku.includes(cleanCode) ||
           String(p.id || '').trim() === barcode.trim()
         ) {
           isMatch = true;
         }
       }
       
-      // Also match directly on item fields (e.g. item.product_name, item.product_id)
+      // Also match directly on item fields (e.g. item.product_name, item.product_id, item.id)
+      const itemName = String(item.product_name || '').trim().toLowerCase();
+      const itemId = String(item.product_id || '').trim().toLowerCase();
+      const itemRowId = String(item.id || '').trim().toLowerCase();
+
       if (
         !isMatch &&
-        (String(item.product_name || '').trim().toLowerCase() === cleanCode ||
-         String(item.product_id || '').trim().toLowerCase() === cleanCode ||
-         (item.id && String(item.id).trim().toLowerCase() === cleanCode))
+        (itemName === cleanCode ||
+         itemName.includes(cleanCode) ||
+         cleanCode.includes(itemName) ||
+         itemId === cleanCode ||
+         itemId.replace(/^0+/, '') === cleanCodeNoZeros ||
+         itemRowId === cleanCode)
       ) {
         isMatch = true;
       }
@@ -3817,8 +3865,9 @@ class ERPStorage {
 
     // 2. If not found in order items yet, search all products in the database
     if (!product) {
-      product = this.cache.products.find(p => p.business_id === businessId && (
+      product = this.cache.products.find(p => isSameBusiness(p.business_id, businessId) && (
         String(p.barcode || '').trim().toLowerCase() === cleanCode ||
+        String(p.barcode || '').trim().toLowerCase().replace(/^0+/, '') === cleanCodeNoZeros ||
         String(p.sku || '').trim().toLowerCase() === cleanCode ||
         String(p.name || '').trim().toLowerCase() === cleanCode ||
         String(p.id || '').trim().toLowerCase() === cleanCode ||
@@ -3837,7 +3886,7 @@ class ERPStorage {
     // Verify if product belongs to this order
     const orderItemIndex = matchingItemIndex !== -1 
       ? matchingItemIndex 
-      : (order.items || []).findIndex(item => item.product_id === product!.id || (item.product_name && item.product_name.toLowerCase() === product!.name.toLowerCase()));
+      : orderItems.findIndex(item => item.product_id === product!.id || (item.product_name && item.product_name.toLowerCase() === product!.name.toLowerCase()));
       
     if (orderItemIndex === -1) {
       return {
@@ -3848,7 +3897,7 @@ class ERPStorage {
       };
     }
 
-    const item = order.items[orderItemIndex];
+    const item = orderItems[orderItemIndex];
 
     // Ensure item.scanned_qty and item.qty are valid numbers
     const currentScanned = (typeof item.scanned_qty === 'number' && !isNaN(item.scanned_qty)) ? item.scanned_qty : 0;
@@ -3866,7 +3915,7 @@ class ERPStorage {
 
     // Increment scanned count
     const updatedScanned = currentScanned + 1;
-    const updatedItems = (order.items || []).map((it, idx) => {
+    const updatedItems = orderItems.map((it, idx) => {
       if (idx === orderItemIndex) {
         return {
           ...it,

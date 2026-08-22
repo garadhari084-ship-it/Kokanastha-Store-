@@ -18,7 +18,6 @@ select, select option, option {
 
 @media print {
   @page {
-    size: A4 portrait;
     margin: 8mm;
   }
   

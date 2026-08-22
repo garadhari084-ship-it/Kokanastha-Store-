@@ -1255,6 +1255,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     }
   };
 
+  const handleOpenBarcodeModal = (prod: Product) => {
+    setPrintingBarcodeProduct(prod);
+    setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
+    setPrintSalePrice(prod.selling_price !== undefined && prod.selling_price !== null ? prod.selling_price : '');
+    setPrintMrp(prod.mrp !== undefined && prod.mrp !== null ? prod.mrp : (prod.selling_price || ''));
+    setPrintPackedOn(new Date().toISOString().split('T')[0]);
+    setPrintExpiryOn(prod.expiry_date ? new Date(prod.expiry_date).toISOString().split('T')[0] : '');
+  };
+
   const handlePrintBarcodeSubmit = (targetMode: 'iframe' | 'popup' = 'iframe') => {
     if (!printingBarcodeProduct) return;
 
@@ -1885,10 +1894,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                             
                             <button
                               type="button"
-                              onClick={() => {
-                                setPrintingBarcodeProduct(prod);
-                                setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
-                              }}
+                              onClick={() => handleOpenBarcodeModal(prod)}
                               className="p-2 text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 shadow-xs active:scale-95"
                               title="Print Barcode"
                             >
@@ -1898,10 +1904,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => {
-                              setPrintingBarcodeProduct(prod);
-                              setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
-                            }}
+                            onClick={() => handleOpenBarcodeModal(prod)}
                             className="p-2 text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 shadow-xs active:scale-95"
                             title="Print Barcode"
                           >
@@ -3449,8 +3452,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   {printerType === 'thermal' ? (
                     (() => {
                       const dims = getThermalDimensions(printLabelSize, printLabelsPerRow);
-                      return Array.from({ length: Math.ceil(printLabelCount / printLabelsPerRow) }).map((_, rIdx) => {
+                      const totalRows = Math.ceil(printLabelCount / printLabelsPerRow);
+                      return Array.from({ length: totalRows }).map((_, rIdx) => {
                         const countInThisRow = Math.min(printLabelsPerRow, printLabelCount - rIdx * printLabelsPerRow);
+                        const isLastRow = rIdx === totalRows - 1;
 
                         return (
                           <div 
@@ -3463,8 +3468,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                               flexDirection: 'row',
                               justifyContent: printLabelsPerRow === 2 ? 'space-between' : 'center',
                               alignItems: 'center',
-                              pageBreakAfter: 'always',
-                              breakAfter: 'page'
+                              pageBreakAfter: isLastRow ? 'avoid' : 'always',
+                              pageBreakInside: 'avoid',
+                              breakAfter: isLastRow ? 'avoid' : 'page',
+                              breakInside: 'avoid'
                             }}
                           >
                             {Array.from({ length: countInThisRow }).map((_, cIdx) => (
@@ -3477,8 +3484,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                 }}
                               >
                                 {(printLabelSize === '50x25' || printLabelSize === '40x25') ? (
-                                  <div className="w-full h-full flex flex-col justify-between items-center text-center p-0 bg-white">
-                                    <div className="w-full mt-[0.5mm] px-[1mm]">
+                                  <div className="w-full h-full flex flex-col justify-between items-center text-center px-[0.5mm] py-[0.5mm] bg-white">
+                                    <div className="w-full">
                                       <div className="text-[7.5px] font-black text-black uppercase leading-tight truncate w-full">
                                         {printCompanyName || 'KOKANASTHA'}
                                       </div>
@@ -3486,11 +3493,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                         {printingBarcodeProduct.name}
                                       </div>
                                     </div>
-                                    <div className="my-[0.5mm] flex items-center justify-center">
+                                    <div className="my-[0.3mm] flex items-center justify-center">
                                       <ReactBarcode 
                                         value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
                                         height={22} 
-                                        width={0.9}
+                                        width={0.95}
                                         fontSize={8.5}
                                         fontOptions="bold"
                                         margin={0}
@@ -3499,14 +3506,14 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                         lineColor="#000000"
                                       />
                                     </div>
-                                    <div className="w-full text-[7.5px] font-bold text-black uppercase leading-[9.5px] flex flex-col items-center pb-[0.5mm]">
+                                    <div className="w-full text-[7.5px] font-bold text-black uppercase leading-[9.5px] flex flex-col items-center">
                                       <div>MRP: RS.{printMrp || printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price} | SALE: RS.{printSalePrice || printingBarcodeProduct.selling_price}</div>
                                       <div>PKD: {printPackedOn} {printExpiryOn ? `| EXP: ${printExpiryOn}` : ''}</div>
                                     </div>
                                   </div>
                                 ) : printLabelSize === '50x38' ? (
-                                  <div className="w-full h-full flex flex-col justify-between items-center text-center p-0 bg-white">
-                                    <div className="w-full mt-[1mm] px-[1mm]">
+                                  <div className="w-full h-full flex flex-col justify-between items-center text-center px-[1mm] py-[1mm] bg-white">
+                                    <div className="w-full">
                                       <div className="text-[9px] font-black text-black uppercase leading-tight tracking-wider">
                                         {printCompanyName || 'KOKANASTHA'}
                                       </div>
@@ -3514,11 +3521,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                         {printingBarcodeProduct.name}
                                       </div>
                                     </div>
-                                    <div className="my-[1mm] flex items-center justify-center">
+                                    <div className="my-[0.8mm] flex items-center justify-center">
                                       <ReactBarcode 
                                         value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
                                         height={32} 
-                                        width={1.0}
+                                        width={1.05}
                                         fontSize={9.5}
                                         fontOptions="bold"
                                         margin={0}
@@ -3527,15 +3534,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                         lineColor="#000000"
                                       />
                                     </div>
-                                    <div className="w-full text-[9px] font-bold text-black uppercase leading-[11.5px] flex flex-col items-center pb-[1mm]">
-                                      <div>MRP: RS.{printMrp || printingBarcodeProduct.mrp} | SALE: RS.{printSalePrice || printingBarcodeProduct.selling_price}</div>
+                                    <div className="w-full text-[9px] font-bold text-black uppercase leading-[11.5px] flex flex-col items-center">
+                                      <div>MRP: RS.{printMrp || printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price} | SALE: RS.{printSalePrice || printingBarcodeProduct.selling_price}</div>
                                       <div>PKD: {printPackedOn} {printExpiryOn ? `| EXP: ${printExpiryOn}` : ''}</div>
                                     </div>
                                   </div>
                                 ) : printLabelSize === '50x30' ? (
-                                  <div className="w-full h-full flex flex-col justify-between items-center text-center p-0 bg-white">
-                                    <div className="w-full mt-[0.8mm] px-[1mm]">
-                                      <div className="text-[8px] font-black text-black uppercase leading-tight">
+                                  <div className="w-full h-full flex flex-col justify-between items-center text-center px-[0.8mm] py-[0.8mm] bg-white">
+                                    <div className="w-full">
+                                      <div className="text-[8px] font-black text-black uppercase leading-tight truncate">
                                         {printCompanyName || 'KOKANASTHA'}
                                       </div>
                                       <div className="text-[9.5px] font-black text-black uppercase leading-tight truncate w-full">
@@ -3546,7 +3553,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                       <ReactBarcode 
                                         value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
                                         height={25} 
-                                        width={0.9}
+                                        width={0.95}
                                         fontSize={8.5}
                                         fontOptions="bold"
                                         margin={0}
@@ -3555,8 +3562,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                         lineColor="#000000"
                                       />
                                     </div>
-                                    <div className="w-full space-y-0.5 text-[8px] font-bold text-black uppercase leading-[10px] flex flex-col items-center pb-[0.8mm]">
-                                      <div>MRP: RS.{printMrp || printingBarcodeProduct.mrp} | SALE: RS.{printSalePrice || printingBarcodeProduct.selling_price}</div>
+                                    <div className="w-full space-y-0.5 text-[8px] font-bold text-black uppercase leading-[10px] flex flex-col items-center">
+                                      <div>MRP: RS.{printMrp || printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price} | SALE: RS.{printSalePrice || printingBarcodeProduct.selling_price}</div>
                                       <div>PKD: {printPackedOn} {printExpiryOn ? `| EXP: ${printExpiryOn}` : ''}</div>
                                     </div>
                                   </div>
@@ -3575,7 +3582,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                       <ReactBarcode 
                                         value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
                                         height={38} 
-                                        width={1.1}
+                                        width={1.15}
                                         fontSize={10.5}
                                         fontOptions="bold"
                                         margin={0}
@@ -3585,7 +3592,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                       />
                                     </div>
                                     <div className="w-full text-[10px] font-bold text-black uppercase leading-tight flex justify-between px-2 pt-0.5 border-t border-black">
-                                      <div>MRP: RS.{printMrp || printingBarcodeProduct.mrp} | SALE: RS.{printSalePrice || printingBarcodeProduct.selling_price}</div>
+                                      <div>MRP: RS.{printMrp || printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price} | SALE: RS.{printSalePrice || printingBarcodeProduct.selling_price}</div>
                                       <div>PKD: {printPackedOn} {printExpiryOn ? `| EXP: ${printExpiryOn}` : ''}</div>
                                     </div>
                                   </div>
@@ -3600,11 +3607,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                         {printingBarcodeProduct.name}
                                       </div>
                                     </div>
-                                    <div className="my-[0.5mm] flex items-center justify-center">
+                                    <div className="my-[0.3mm] flex items-center justify-center">
                                       <ReactBarcode 
                                         value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
                                         height={18} 
-                                        width={0.8}
+                                        width={0.85}
                                         fontSize={7}
                                         fontOptions="bold"
                                         margin={0}
@@ -3614,7 +3621,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                       />
                                     </div>
                                     <div className="w-full text-[6.5px] font-bold text-black uppercase leading-[8px] flex flex-col items-center pb-[0.5mm]">
-                                      <div>SALE: RS.{printSalePrice || printingBarcodeProduct.selling_price}</div>
+                                      <div>MRP: RS.{printMrp || printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price} | SALE: RS.{printSalePrice || printingBarcodeProduct.selling_price}</div>
                                       <div>PKD: {printPackedOn}</div>
                                     </div>
                                   </div>
@@ -3654,9 +3661,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                             lineColor="#000000"
                           />
                           <div className="text-[8px] font-bold mt-1 text-center">
-                            <div>Sale Price: ₹{printSalePrice} (MRP: ₹{printMrp})</div>
-                            <div>PKD: {printPackedOn} | EXP: {printExpiryOn}</div>
-                            <div className="font-black mt-0.5">{printCompanyName}</div>
+                            <div>Sale Price: ₹{printSalePrice || printingBarcodeProduct.selling_price} (MRP: ₹{printMrp || printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price})</div>
+                            <div>PKD: {printPackedOn} {printExpiryOn ? `| EXP: ${printExpiryOn}` : ''}</div>
+                            <div className="font-black mt-0.5">{printCompanyName || 'KOKANASTHA'}</div>
                           </div>
                         </div>
                       ))}
@@ -3666,62 +3673,61 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 document.body
               )}
 
-              {/* Essential Browser Print Dialog Guidance (Fix for Sideways / Landscape & Headers) */}
-              <div className="no-print bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl p-3 text-[11px] space-y-2">
+              {/* Essential Browser Print Dialog Guidance (Fix for Blank Page Feed & Sideways) */}
+              <div className="no-print bg-amber-50/90 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/80 rounded-xl p-3.5 text-[11px] space-y-2 shadow-xs">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-amber-900 dark:text-amber-300 font-bold text-[11px]">
-                    <span>⚠️</span>
-                    <span>Fix Sideways / Rotated Printing & Header Dates</span>
+                  <div className="flex items-center gap-1.5 text-amber-950 dark:text-amber-200 font-black text-[12px]">
+                    <span className="text-base">🚨</span>
+                    <span>TSC TTP-244 Plus: Why Extra Blank Stickers Feed Out & How to Fix</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowPrintHelp(!showPrintHelp)}
-                    className="text-[10px] text-amber-700 dark:text-amber-400 underline font-semibold cursor-pointer"
+                    className="text-[10.5px] text-amber-800 dark:text-amber-300 underline font-bold cursor-pointer hover:text-amber-950"
                   >
-                    {showPrintHelp ? 'Hide Details' : 'Why does this happen?'}
+                    {showPrintHelp ? 'Hide Details' : 'Read 2-Step Setup'}
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                  <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-amber-200/80 dark:border-amber-800/40">
-                    <div className="font-bold text-slate-800 dark:text-slate-200 text-[10px] flex items-center gap-1">
-                      <span className="w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 inline-flex items-center justify-center text-[9px] font-black">1</span>
-                      <span>Paper Size / Layout</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200/90 dark:border-amber-800/60 shadow-2xs">
+                    <div className="font-black text-slate-900 dark:text-slate-100 text-[10.5px] flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-amber-500 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">1</span>
+                      <span>Paper Size: Change A4 ➔ Label Size</span>
                     </div>
-                    <p className="text-[9.5px] text-slate-600 dark:text-slate-400 mt-0.5 leading-tight">
-                      Under <b>More Settings</b>, select your exact <b>Paper Size</b> (e.g. 50x30). If it defaults to A4, the printer shrinks it!
+                    <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
+                      In Chrome Print Dialog $\rightarrow$ <b>More settings</b> $\rightarrow$ <b>Paper size</b>: select your thermal label roll size (e.g. <b>50x25</b> or <b>USER</b>). If left as <b>A4</b>, printer rolls 8 blank stickers!
                     </p>
                   </div>
 
-                  <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-amber-200/80 dark:border-amber-800/40">
-                    <div className="font-bold text-slate-800 dark:text-slate-200 text-[10px] flex items-center gap-1">
-                      <span className="w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 inline-flex items-center justify-center text-[9px] font-black">2</span>
-                      <span>Headers & Footers</span>
+                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200/90 dark:border-amber-800/60 shadow-2xs">
+                    <div className="font-black text-slate-900 dark:text-slate-100 text-[10.5px] flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-amber-500 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">2</span>
+                      <span>Uncheck "Headers and Footers"</span>
                     </div>
-                    <p className="text-[9.5px] text-slate-600 dark:text-slate-400 mt-0.5 leading-tight">
-                      <b>UNCHECK "Headers & footers"</b> in More Settings to remove <i>about:blank</i> & date stamps from stickers.
+                    <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
+                      Under <b>More settings</b>, turn <b>OFF</b> "Headers and footers" so URL/dates don't print on the label edges.
                     </p>
                   </div>
 
-                  <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-amber-200/80 dark:border-amber-800/40">
-                    <div className="font-bold text-slate-800 dark:text-slate-200 text-[10px] flex items-center gap-1">
-                      <span className="w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 inline-flex items-center justify-center text-[9px] font-black">3</span>
+                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200/90 dark:border-amber-800/60 shadow-2xs">
+                    <div className="font-black text-slate-900 dark:text-slate-100 text-[10.5px] flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-amber-500 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">3</span>
                       <span>Margins = None</span>
                     </div>
-                    <p className="text-[9.5px] text-slate-600 dark:text-slate-400 mt-0.5 leading-tight">
-                      Set <b>Margins</b> to <b>None</b> (or Minimum) so labels align edge-to-edge on your thermal roll.
+                    <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
+                      Set <b>Margins</b> to <b>None</b> (or Minimum) so the barcode centers perfectly on each sticker.
                     </p>
                   </div>
                 </div>
 
                 {showPrintHelp && (
-                  <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800/60 text-[10px] text-amber-950 dark:text-amber-200 space-y-1">
-                    <p><b>Why it came out landscape/sideways:</b></p>
-                    <p>
-                      A 2-Up roll is <b>104mm wide × 25mm tall</b>. Web browsers see width &gt; height and treat it as Landscape. If your browser or printer driver default is locked to Portrait, the system rotates the page 90° across the roll.
-                    </p>
-                    <p>
-                      👉 <b>TSC TTP-244 Plus / Seagull Drivers Fix:</b> Click the <b>Auto (TSC Default)</b> feed orientation above. In the print dialog, ensure <b>Headers & Footers</b> is unchecked, and select your exact roll dimensions (e.g. 104mm x 25mm). The driver will natively map the dimensions.
+                  <div className="mt-2.5 pt-2.5 border-t border-amber-200 dark:border-amber-800/60 text-[10.5px] text-amber-950 dark:text-amber-200 space-y-1.5 bg-amber-100/50 dark:bg-amber-900/30 p-2.5 rounded-lg">
+                    <p className="font-bold">🔍 Why did the printer roll out blank stickers?</p>
+                    <p className="text-[10px] leading-relaxed">
+                      1. Thermal printers (like TSC TTP-244 Plus) feed paper according to the length received from Windows/Chrome. When Chrome is set to <b>A4 paper (297mm height)</b>, the printer prints 1 label (25mm) and then advances the remaining 272mm of blank stickers to finish the "A4 page".
+                      <br />
+                      2. Setting <b>Paper size to 50x25mm / 104x25mm (or USER)</b> in Chrome tells the printer the page is only 25mm high, stopping instantly after printing each row without feeding any blank labels!
                     </p>
                   </div>
                 )}

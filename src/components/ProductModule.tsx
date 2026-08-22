@@ -3129,14 +3129,89 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               )}
 
               {/* LIVE STICKER PREVIEW */}
-              <div className="flex flex-col items-center justify-center no-print bg-slate-100 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div className="flex flex-col items-center justify-center no-print bg-slate-100 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center justify-between w-full mb-2 px-1">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Live Sticker Preview</span>
-                  <span className="text-[9px] font-mono text-slate-400">1:1 Thermal Output Scale</span>
+                  <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    {printerType === 'thermal' ? `Live Preview: ${printLabelsPerRow}-Up Row (${printLabelsPerRow === 2 ? '2 Stickers Across' : '1 Sticker Across'})` : 'Live A4 Grid Preview'}
+                  </span>
+                  <span className="text-[9px] font-mono text-slate-500 bg-white dark:bg-slate-700 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-600">
+                    {printLabelsPerRow === 2 ? '104mm × 25mm Roll' : '50mm × 25mm Roll'}
+                  </span>
                 </div>
                 
-                {/* 50x25 mm Sticker Preview */}
-                {(printLabelSize === '50x25' || printLabelSize === '40x25') && (
+                {/* 2-Up Dual Sticker Row Preview */}
+                {printerType === 'thermal' && printLabelsPerRow === 2 && (
+                  <div className="flex items-center gap-2 p-2 bg-slate-200 dark:bg-slate-900/60 rounded-lg border border-slate-300 dark:border-slate-700 overflow-x-auto max-w-full">
+                    {/* Left Sticker */}
+                    <div className="w-[165px] h-[85px] p-1.5 bg-white rounded-md border-2 border-indigo-500 shadow-xs flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none shrink-0">
+                      <div className="w-full">
+                        <div className="text-[7.5px] font-black text-slate-900 uppercase leading-none truncate mb-0.5">{printCompanyName || 'KOKANASTHA'}</div>
+                        <div className="text-[8px] font-black text-slate-900 uppercase tracking-tight leading-none truncate w-full px-0.5 border-b border-slate-100 pb-0.5">
+                          {printingBarcodeProduct.name}
+                        </div>
+                      </div>
+                      <div className="my-0 flex items-center justify-center">
+                        <ReactBarcode 
+                          value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
+                          height={20} 
+                          width={0.95}
+                          fontSize={7.5}
+                          margin={0}
+                          displayValue={true}
+                          background="#ffffff"
+                          lineColor="#000000"
+                        />
+                      </div>
+                      <div className="w-full text-[7px] font-black text-slate-900 leading-none pt-0.5 uppercase border-t border-slate-200">
+                        <div className="flex justify-between items-center px-0.5 mb-0.5">
+                          <span>MRP: ₹{printMrp || printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price}</span>
+                          <span className="text-indigo-700 font-black">SALE: ₹{printSalePrice || printingBarcodeProduct.selling_price}</span>
+                        </div>
+                        <div className="flex justify-between items-center px-0.5 text-[6px] text-slate-600">
+                          <span>PKD: {printPackedOn}</span>
+                          <span>{printExpiryOn ? `EXP: ${printExpiryOn}` : ''}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-[9px] text-slate-500 font-bold px-0.5">2-Up</div>
+
+                    {/* Right Sticker */}
+                    <div className="w-[165px] h-[85px] p-1.5 bg-white rounded-md border-2 border-indigo-500 shadow-xs flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none shrink-0">
+                      <div className="w-full">
+                        <div className="text-[7.5px] font-black text-slate-900 uppercase leading-none truncate mb-0.5">{printCompanyName || 'KOKANASTHA'}</div>
+                        <div className="text-[8px] font-black text-slate-900 uppercase tracking-tight leading-none truncate w-full px-0.5 border-b border-slate-100 pb-0.5">
+                          {printingBarcodeProduct.name}
+                        </div>
+                      </div>
+                      <div className="my-0 flex items-center justify-center">
+                        <ReactBarcode 
+                          value={printingBarcodeProduct.barcode || printingBarcodeProduct.sku || '12345678'} 
+                          height={20} 
+                          width={0.95}
+                          fontSize={7.5}
+                          margin={0}
+                          displayValue={true}
+                          background="#ffffff"
+                          lineColor="#000000"
+                        />
+                      </div>
+                      <div className="w-full text-[7px] font-black text-slate-900 leading-none pt-0.5 uppercase border-t border-slate-200">
+                        <div className="flex justify-between items-center px-0.5 mb-0.5">
+                          <span>MRP: ₹{printMrp || printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price}</span>
+                          <span className="text-indigo-700 font-black">SALE: ₹{printSalePrice || printingBarcodeProduct.selling_price}</span>
+                        </div>
+                        <div className="flex justify-between items-center px-0.5 text-[6px] text-slate-600">
+                          <span>PKD: {printPackedOn}</span>
+                          <span>{printExpiryOn ? `EXP: ${printExpiryOn}` : ''}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 1-Up 50x25 mm Sticker Preview */}
+                {(printLabelsPerRow === 1 || printerType === 'a4') && (printLabelSize === '50x25' || printLabelSize === '40x25') && (
                   <div className="w-[189px] h-[95px] p-1.5 bg-white rounded-md border-2 border-indigo-400 shadow-md flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none relative">
                     <div className="w-full">
                       <div className="text-[7.5px] font-black text-slate-900 uppercase leading-none truncate mb-0.5">{printCompanyName || 'KOKANASTHA'}</div>

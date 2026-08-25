@@ -1261,7 +1261,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setPrintSalePrice(prod.selling_price !== undefined && prod.selling_price !== null ? prod.selling_price : '');
     setPrintMrp(prod.mrp !== undefined && prod.mrp !== null ? prod.mrp : (prod.selling_price || ''));
     setPrintPackedOn(new Date().toISOString().split('T')[0]);
-    setPrintExpiryOn(prod.expiry_date ? new Date(prod.expiry_date).toISOString().split('T')[0] : '');
+    setPrintExpiryOn((prod as any).expiry_date ? new Date((prod as any).expiry_date).toISOString().split('T')[0] : '');
   };
 
   const handlePrintBarcodeSubmit = (targetMode: 'iframe' | 'popup' = 'iframe') => {

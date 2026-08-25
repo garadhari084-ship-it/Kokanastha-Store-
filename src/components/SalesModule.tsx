@@ -2,7 +2,9 @@ import { PaymentCollectionModal } from './PaymentCollectionModal';
 import { WhatsAppNotifyModal } from './WhatsAppNotifyModal';
 import { PageHeader } from './PageHeader';
 import { QuickCreateProductModal } from './QuickCreateProductModal';
+import { QuickCreateCustomerModal } from './QuickCreateCustomerModal';
 import { OutOfStockRestockModal } from './OutOfStockRestockModal';
+import { CreateInvoiceView } from './CreateInvoiceView';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { formatOrderTime } from '../utils/formatters';
 import { 
@@ -47,7 +49,8 @@ import {
   UserPlus,
   Save,
   Phone,
-  Building2
+  Building2,
+  ChevronLeft
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
@@ -533,6 +536,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   // Out of Stock Restock Modal state
   const [outOfStockProduct, setOutOfStockProduct] = useState<Product | null>(null);
 
+  // Quick Create Customer Modal state
+  const [isQuickCreateCustomerOpen, setIsQuickCreateCustomerOpen] = useState(false);
+  const [quickCreateCustomerInitialName, setQuickCreateCustomerInitialName] = useState('');
+
   // Quick Create Product Modal state
   const [isQuickCreateProductOpen, setIsQuickCreateProductOpen] = useState(false);
   const [quickCreateInitialName, setQuickCreateInitialName] = useState('');
@@ -601,6 +608,28 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       triggerToast(`Added ${finalQty}x "${prod.name}" to order`, 'success');
       setOrderItems(prevItems => [...prevItems, newItem]);
     }
+  };
+
+  const handleOpenQuickCreateCustomer = (searchName: string = '') => {
+    setQuickCreateCustomerInitialName(searchName);
+    setIsQuickCreateCustomerOpen(true);
+  };
+
+  const handleCustomerCreatedFromModal = (newCust: Customer) => {
+    const latestCustomers = dbStore.getCustomers(businessId);
+    setCustomers(latestCustomers);
+    setSelectedCustomerId(newCust.id);
+    setSelectedCustomerPhone(newCust.phone || '');
+    setSelectedCustomerAddress(newCust.billing_address || '');
+    setSelectedCustomerShippingAddress(newCust.shipping_address || newCust.billing_address || '');
+    setIsSameShippingAddress(!newCust.shipping_address || newCust.shipping_address === newCust.billing_address);
+    setPointsToRedeem(0);
+    if (newCust.area && newCust.area !== 'Other') {
+      setSelectedArea(newCust.area);
+    } else {
+      setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
+    }
+    setOrderItems(prev => recalculateOrderPrices(prev, newCust, isAdvanceBooking, isFestiveBooking));
   };
 
   const handleOpenQuickCreateProduct = (searchName: string = '') => {
@@ -1638,7 +1667,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   return (
     <div className="space-y-4 max-w-full pb-8 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="sales-module-root">
-      <PageHeader
+      {!isCreateModalOpen && (
+        <>
+          <PageHeader
         title="Sales & Bookings Master"
         subtitle="Manage B2B/B2C pipelines, bulk orders, and corporate billing cycles"
         icon={FileText}
@@ -2356,1410 +2387,93 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       })()}
 
       </div>
+      </>
+      )}
 
-      {/* Sales Order Placement modal dialog */}
+      {/* Sales Order Placement view */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-0">
-          <div className="bg-white dark:bg-slate-900 w-full h-[100dvh] flex flex-col animate-in zoom-in duration-150 overflow-hidden">
-            <div className="bg-slate-50 dark:bg-slate-800 px-6 py-3.5 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-              <h2 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2 text-slate-900 dark:text-white">
-                <PlusCircle className="text-amber-500" size={18} />
-                <span>{editingOrderId ? 'Update Sales Order' : 'Create Sales Order'}</span>
-              </h2>
-              <button onClick={handleCloseCreateModal} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition"><X size={18} /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                <div className="space-y-1 flex flex-col justify-end">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
-                      <span>Invoice Number *</span>
-                    </label>
-                    <span 
-                      title="Real-time multi-user concurrency lock active. Guaranteed unique invoice number."
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800/60 shadow-2xs select-none"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Live Synced
-                    </span>
-                  </div>
-                  <input 
-                    type="text"
-                    value={customInvoiceNumber || getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking)}
-                    readOnly
-                    placeholder="Auto-Generated Invoice #"
-                    className="w-full px-3 py-2 bg-amber-50/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-[11px] rounded-lg border border-amber-300 dark:border-amber-800/80 focus:outline-hidden font-black cursor-not-allowed select-none"
-                  />
-                </div>
-                <div className="md:col-span-3 space-y-1 flex flex-col justify-end">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Select Customer Party</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const nextState = !isNewCustomerSelected;
-                        setIsNewCustomerSelected(nextState);
-                        if (nextState) {
-                          setSelectedCustomerId('');
-                          setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
-                          setOrderItems(prev => recalculateOrderPrices(prev, undefined, isAdvanceBooking, isFestiveBooking));
-                        } else {
-                          setSelectedCustomerId('WALK_IN');
-                          setOrderItems(prev => recalculateOrderPrices(prev, undefined, isAdvanceBooking, isFestiveBooking));
-                        }
-                      }}
-                      className={`text-[11px] font-bold px-3 py-1 rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
-                        isNewCustomerSelected 
-                          ? 'bg-rose-600 border-rose-500 text-white shadow-sm' 
-                          : 'bg-white dark:bg-slate-800 border-indigo-200 dark:border-indigo-800 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-700 shadow-sm'
-                      }`}
-                    >
-                      {isNewCustomerSelected ? <RotateCcw size={12} /> : <UserPlus size={12} />}
-                      {isNewCustomerSelected ? 'Cancel' : 'Add New Customer'}
-                    </button>
-                  </div>
-
-                  {!isNewCustomerSelected ? (
-                    <CustomDropdown 
-                      value={selectedCustomerId}
-                      onChange={(val) => {
-                        setSelectedCustomerId(val);
-                        const c = customers.find(cust => cust.id === val);
-                        if (c) {
-                          setSelectedCustomerPhone(c.phone || '');
-                          setSelectedCustomerAddress(c.billing_address || c.address || '');
-                          setSelectedCustomerShippingAddress(c.shipping_address || c.billing_address || c.address || '');
-                          setIsSameShippingAddress(!c.shipping_address || c.shipping_address === c.billing_address);
-                          setPointsToRedeem(0);
-                          if (c.area && c.area !== 'Other') {
-                            setSelectedArea(c.area);
-                          } else {
-                            setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
-                          }
-                          setOrderItems(prev => recalculateOrderPrices(prev, c, isAdvanceBooking, isFestiveBooking));
-                        } else {
-                          setSelectedCustomerPhone('');
-                          setSelectedCustomerAddress('');
-                          setSelectedCustomerShippingAddress('');
-                          setIsSameShippingAddress(true);
-                          setPointsToRedeem(0);
-                          setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
-                          setOrderItems(prev => recalculateOrderPrices(prev, undefined, isAdvanceBooking, isFestiveBooking));
-                        }
-                      }}
-                      placeholder="-- Select Customer --"
-                      searchable={true}
-                      options={[
-                        { value: 'WALK_IN', label: 'Walk-in Customer (Instant POS)' },
-                        ...customers.map(c => ({
-                          value: c.id,
-                          label: `${c.name} (Credit outstanding: ${currencySymbol}${c.outstanding_amount.toLocaleString()} | Points: ${c.loyalty_points || 0})`
-                        }))
-                      ]}
-                    />
-                  ) : (
-                    <div className="h-10 px-3 flex items-center bg-indigo-50/50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl text-indigo-600 dark:text-indigo-400 text-xs font-bold italic">
-                      <Sparkles size={14} className="mr-2 animate-pulse" />
-                      Creating New Customer Profile...
-                    </div>
-                  )}
-                </div>
-
-                {isNewCustomerSelected && (
-                  <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-4 gap-4 bg-indigo-50/30 dark:bg-indigo-950/20 p-4 rounded-xl border border-indigo-200/50 dark:border-indigo-800/50 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">Customer Name *</label>
-                      <input 
-                        type="text"
-                        value={newCustomerName}
-                        onChange={(e) => setNewCustomerName(e.target.value)}
-                        placeholder="Full Name"
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-indigo-200 dark:border-indigo-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">Mobile Number *</label>
-                      <input 
-                        type="text"
-                        value={newCustomerPhone}
-                        onChange={(e) => setNewCustomerPhone(e.target.value)}
-                        placeholder="10-digit Mobile"
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-indigo-200 dark:border-indigo-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">Address / Street *</label>
-                      <input 
-                        type="text"
-                        value={newCustomerAddress}
-                        onChange={(e) => setNewCustomerAddress(e.target.value)}
-                        placeholder="Billing Address"
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-indigo-200 dark:border-indigo-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!newCustomerName.trim() || !newCustomerPhone.trim() || !newCustomerAddress.trim()) {
-                            triggerToast('Name, Phone and Address are required.', 'error');
-                            return;
-                          }
-                          const newCust = dbStore.createCustomer({
-                            name: newCustomerName.trim(),
-                            group: 'Retail',
-                            area: selectedArea || 'Dahisar',
-                            gstin: '',
-                            pan: '',
-                            billing_address: newCustomerAddress.trim(),
-                            shipping_address: newCustomerAddress.trim(),
-                            email: '',
-                            phone: newCustomerPhone.trim(),
-                            credit_limit: 0,
-                            business_id: businessId,
-                            active: true
-                          });
-                          setSelectedCustomerId(newCust.id);
-                          setPointsToRedeem(0);
-                          setIsNewCustomerSelected(false);
-                          setOrderItems(prev => recalculateOrderPrices(prev, newCust, isAdvanceBooking, isFestiveBooking));
-                          triggerToast(`New customer "${newCust.name}" saved and selected.`, 'success');
-                        }}
-                        className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer"
-                      >
-                        <Save size={14} />
-                        <span>Save Customer</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Inline Editable Customer Details Card in ONE ROW */}
-                {!isNewCustomerSelected && (
-                  <div className="md:col-span-4 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5 animate-in fade-in duration-200">
-                    <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700/80 pb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <User size={13} className="text-indigo-600 dark:text-indigo-400" />
-                        <span className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">
-                          Customer Contact & Delivery Information
-                        </span>
-                      </div>
-                      <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                        Inline Details
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
-                      {/* 1. Contact Number * */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
-                          <Phone size={10} />
-                          <span>Contact Number *</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={selectedCustomerPhone}
-                          onChange={(e) => setSelectedCustomerPhone(e.target.value)}
-                          placeholder="10-digit Mobile"
-                          className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        />
-                      </div>
-
-                      {/* 2. Customer Address */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
-                          <MapPin size={10} />
-                          <span>Customer Address</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={selectedCustomerAddress}
-                          onChange={(e) => {
-                            setSelectedCustomerAddress(e.target.value);
-                            if (isSameShippingAddress) {
-                              setSelectedCustomerShippingAddress(e.target.value);
-                            }
-                          }}
-                          placeholder="Street / Billing Address"
-                          className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-[11px] font-medium rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        />
-                      </div>
-
-                      {/* 3. Shipping Address */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
-                            <Building2 size={10} />
-                            <span>Shipping Address</span>
-                          </label>
-                          <label className="inline-flex items-center gap-1 text-[9px] text-slate-500 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={isSameShippingAddress}
-                              onChange={(e) => {
-                                setIsSameShippingAddress(e.target.checked);
-                                if (e.target.checked) {
-                                  setSelectedCustomerShippingAddress(selectedCustomerAddress);
-                                }
-                              }}
-                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <span>Same</span>
-                          </label>
-                        </div>
-                        <input
-                          type="text"
-                          disabled={isSameShippingAddress}
-                          value={isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress}
-                          onChange={(e) => setSelectedCustomerShippingAddress(e.target.value)}
-                          placeholder="Shipping / Delivery Address"
-                          className={`w-full h-8 px-2.5 text-[11px] font-medium rounded-lg border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
-                            isSameShippingAddress
-                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed'
-                              : 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700'
-                          }`}
-                        />
-                      </div>
-
-                      {/* 4. Area Zone Location */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
-                          <MapPin size={10} className="text-indigo-500" />
-                          <span>Area Zone Location</span>
-                        </label>
-                        {(() => {
-                          const areaZoneList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
-                            ? currentBiz.area_zones 
-                            : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
-                          return (
-                            <CustomDropdown 
-                              value={selectedArea}
-                              onChange={(val) => setSelectedArea(val)}
-                              options={areaZoneList.map(aZone => ({ value: aZone, label: aZone }))}
-                              className="font-bold text-slate-700 dark:text-slate-200 h-8 text-[11px]"
-                            />
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Loyalty Account Banner */}
-                {selectedCustomerId && selectedCustomerId !== 'WALK_IN' && (() => {
-                  const selCust = customers.find(c => c.id === selectedCustomerId);
-                  if (!selCust) return null;
-                  const pts = selCust.loyalty_points || 0;
-                  const tier = selCust.loyalty_tier || 'Silver';
-                  const config = dbStore.getLoyaltyConfig(businessId);
-                  const pointVal = config?.point_value || 1;
-                  const isLoyal = selCust.is_loyal_member || tier === 'Gold' || tier === 'Platinum';
-
-                  // Calculate estimated points earned for current order
-                  const taxableVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price), 0);
-                  const taxVal = orderItems.reduce((sum, item) => sum + (item.qty * item.selling_price * (item.gst_rate / 100)), 0);
-                  const totalOrderAmount = Math.round(taxableVal + taxVal);
-                  
-                  const actualRedeem = Math.min(pts, pointsToRedeem);
-                  const discountAmount = actualRedeem * pointVal;
-                  const netSpend = Math.max(0, totalOrderAmount - discountAmount);
-                  
-                  const basePoints = Math.floor(netSpend / (config.spend_per_point || 100));
-                  const newLifetimeSpend = (selCust.lifetime_spend || 0) + totalOrderAmount;
-                  const newTier = dbStore.calculateCustomerTier(newLifetimeSpend, config, selCust.loyalty_tier);
-                  
-                  let multiplier = 1.0;
-                  if (newTier === 'Gold') multiplier = config.gold_multiplier || 1.25;
-                  if (newTier === 'Platinum') multiplier = config.platinum_multiplier || 1.5;
-                  const pointsEarned = Math.floor(basePoints * multiplier);
-
-                  return (
-                    <div className={`md:col-span-4 p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm transition-all duration-300 ${isLoyal ? 'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-amber-300 dark:border-amber-700 ring-2 ring-amber-500/20' : 'bg-gradient-to-r from-slate-50 to-indigo-50 dark:from-slate-900/40 dark:to-indigo-900/40 border-slate-200 dark:border-slate-700'}`}>
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-xl flex flex-col items-center justify-center min-w-[80px] ${tier === 'Platinum' ? 'bg-indigo-600 text-white' : tier === 'Gold' ? 'bg-amber-500 text-white' : 'bg-slate-500 text-white'}`}>
-                          <span className="font-black text-[10px] tracking-tighter">{tier.toUpperCase()}</span>
-                          <span className="text-[9px] opacity-90 font-bold">{isLoyal ? 'MEMBER' : 'TIER'}</span>
-                        </div>
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-black text-slate-900 dark:text-white text-[12px]">
-                              {selCust.name}
-                            </span>
-                            {isLoyal && (
-                              <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded text-[9px] font-black uppercase tracking-widest">LOYAL</span>
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-bold text-amber-600 dark:text-amber-400 text-[11px]">
-                              {pts.toLocaleString()} Loyalty Points Available
-                            </span>
-                            <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                              <span>Value: {currencySymbol}{(pts * pointVal).toLocaleString()}</span>
-                              {selCust.loyalty_end_date && (
-                                <span className="flex items-center gap-1 before:content-['•'] before:mr-1">
-                                  Expiry: <strong className={new Date(selCust.loyalty_end_date) < new Date() ? 'text-rose-500' : 'text-emerald-500'}>{new Date(selCust.loyalty_end_date).toLocaleDateString()}</strong>
-                                </span>
-                              )}
-                            </div>
-                            {Number(pointsToRedeem) > 0 && (
-                              <div className="flex items-center gap-1.5 mt-1 text-[10px] font-mono">
-                                <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 font-extrabold border border-amber-300 dark:border-amber-700 flex items-center gap-1">
-                                  <span>Redeemed:</span>
-                                  <strong className="font-black text-amber-950 dark:text-amber-100">-{Math.min(pts, Number(pointsToRedeem))} Pts</strong>
-                                  <span className="text-amber-700 dark:text-amber-300">(-{currencySymbol}{(Math.min(pts, Number(pointsToRedeem)) * pointVal).toLocaleString()})</span>
-                                </span>
-                                <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 font-extrabold border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
-                                  <span>Remaining:</span>
-                                  <strong className="font-black text-emerald-950 dark:text-emerald-100">{Math.max(0, pts - Math.min(pts, Number(pointsToRedeem))).toLocaleString()} Pts</strong>
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4 ml-auto">
-                        {pointsEarned > 0 && (
-                          <div className="flex flex-col items-end px-4 border-r border-slate-200 dark:border-slate-700">
-                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                              Earnings
-                            </span>
-                            <span className="font-black text-indigo-700 dark:text-indigo-300 text-sm">
-                              +{pointsEarned} Pts
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="flex flex-col gap-1">
-                          <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                            Redeem Points
-                          </label>
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              min={0}
-                              max={pts > 0 ? pts : undefined}
-                              value={pointsToRedeem === 0 ? '' : pointsToRedeem}
-                              onFocus={e => e.target.select()}
-                              onChange={e => {
-                                const valStr = e.target.value;
-                                if (valStr === '') {
-                                  setPointsToRedeem(0);
-                                } else {
-                                  const num = parseInt(valStr, 10);
-                                  if (!isNaN(num)) {
-                                    const clamped = Math.max(0, pts > 0 ? Math.min(pts, num) : num);
-                                    setPointsToRedeem(clamped);
-                                  }
-                                }
-                              }}
-                              className="w-20 px-2 py-1.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-center text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs transition-all"
-                              placeholder="0"
-                            />
-                            {pts > 0 && (
-                              <button 
-                                type="button"
-                                onClick={() => {
-                                  if (pointsToRedeem === pts) {
-                                    setPointsToRedeem(0);
-                                  } else {
-                                    setPointsToRedeem(pts);
-                                  }
-                                }}
-                                className="px-2 py-1 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/60 dark:hover:bg-amber-800 text-amber-800 dark:text-amber-200 text-[10px] font-extrabold rounded-lg transition-colors border border-amber-300 dark:border-amber-700 cursor-pointer shrink-0"
-                                title={pointsToRedeem === pts ? 'Reset to 0 points' : `Redeem maximum ${pts} points`}
-                              >
-                                {pointsToRedeem === pts ? 'Clear' : 'Use Max'}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-                
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Invoice / Order Date *</label>
-                    <input 
-                      type="date"
-                      value={orderDate}
-                      onChange={(e) => setOrderDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none font-medium cursor-pointer"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-                        Delivery Date
-                      </label>
-                      {deliveryDate && (
-                        <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full ${
-                          scheduledCountForSelectedDate === 0
-                            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800'
-                            : scheduledCountForSelectedDate <= 4
-                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800'
-                            : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800 animate-pulse'
-                        }`}>
-                          {scheduledCountForSelectedDate} Scheduled
-                        </span>
-                      )}
-                    </div>
-                    <input 
-                      type="date"
-                      value={deliveryDate}
-                      onChange={(e) => setDeliveryDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none font-medium cursor-pointer"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">Delivery Type</label>
-                    <CustomDropdown 
-                      value={deliveryType}
-                      onChange={(val) => setDeliveryType(val)}
-                      options={[
-                        { value: 'Self delivery', label: 'Self delivery' },
-                        { value: 'Out of india courier', label: 'Out of india courier' },
-                        { value: 'Domestic courier', label: 'Domestic courier' },
-                        { value: 'Third party app delivery', label: 'Third party app delivery' },
-                        { value: 'Self pickup', label: 'Self pickup' }
-                      ]}
-                      placeholder="Select delivery type"
-                    />
-                  </div>
-                </div>
-
-                {/* 7-Day Live Delivery Load Tracker Chip Bar */}
-                <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider flex items-center gap-1">
-                      <Clock size={11} className="text-amber-500" />
-                      <span>Delivery Load Tracker (Upcoming 7 Days)</span>
-                    </span>
-                    <span className="text-[9px] text-slate-400 italic">Click date chip to select</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                    {upcoming7DaysLoad.map((item) => {
-                      const isSelected = deliveryDate === item.date;
-                      return (
-                        <button
-                          key={item.date}
-                          type="button"
-                          onClick={() => setDeliveryDate(item.date)}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 border cursor-pointer ${
-                            isSelected
-                              ? 'bg-amber-500 text-slate-950 border-amber-600 shadow-sm ring-1 ring-amber-400 font-black'
-                              : item.count === 0
-                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100'
-                              : item.count <= 4
-                              ? 'bg-amber-50/80 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/60 hover:bg-amber-100'
-                              : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800/60 hover:bg-rose-100'
-                          }`}
-                        >
-                          <span>{item.label}:</span>
-                          <span className={`px-1 rounded text-[9px] font-black ${
-                            isSelected ? 'bg-slate-950 text-amber-400' : 'bg-slate-200 dark:bg-slate-700'
-                          }`}>
-                            {item.count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-              <div className="pt-1 flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="advance-chk-sub"
-                    checked={isAdvanceBooking}
-                    onChange={(e) => handleToggleAdvanceBooking(e.target.checked)}
-                    className="h-4 w-4 text-indigo-600 cursor-pointer rounded"
-                  />
-                  <label htmlFor="advance-chk-sub" className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
-                    <Sparkles size={14} className="text-indigo-500" />
-                    <span>Flag as Advance Booking</span>
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="fulfilled-chk-sub"
-                    checked={isFulfilledImmediately}
-                    onChange={(e) => {
-                      setIsFulfilledImmediately(e.target.checked);
-                      if (e.target.checked) setPaymentStatus('Paid');
-                    }}
-                    className="h-4 w-4 text-emerald-600 cursor-pointer rounded"
-                  />
-                  <label htmlFor="fulfilled-chk-sub" className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
-                    <CheckCircle2 size={14} className="text-emerald-500" />
-                    <span>Delivered / Handed Over</span>
-                  </label>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="festive-chk-sub"
-                    checked={isFestiveBooking}
-                    onChange={(e) => handleToggleFestiveBooking(e.target.checked)}
-                    className="h-4 w-4 text-amber-600 cursor-pointer rounded"
-                  />
-                  <label htmlFor="festive-chk-sub" className="text-[11px] font-black text-amber-800 dark:text-amber-300 uppercase flex items-center gap-1 cursor-pointer tracking-wider">
-                    <Sparkles size={14} className="text-amber-500" />
-                    <span>Festive Booking</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Add item rows */}
-              <div className="bg-slate-50 dark:bg-slate-850 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-[12px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest flex items-center gap-2">
-                    <div className="h-1 w-8 bg-indigo-500 rounded-full"></div>
-                    Add Product Line
-                  </h4>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
-                      Default Tax Rate: {defaultTenantTax}%
-                    </span>
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded">
-                      Currency: {currencySymbol}
-                    </span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                  <div className="md:col-span-12 flex items-end mb-2">
-                    <div className="w-full">
-                      <label className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1 mb-1">
-                        <ScanLine size={14} /> Fast Barcode Scan
-                      </label>
-                      <input 
-                        ref={fastScanInputRef}
-                        type="text" 
-                        defaultValue=""
-                        placeholder="Scan or type barcode here and press Enter..."
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            const inputElem = e.currentTarget as HTMLInputElement;
-                            const code = inputElem.value.trim();
-                            if (!code) return;
-                            
-                            // Find product by SKU or exact name match from latest store data
-                            const latestProducts = dbStore.getProducts(businessId);
-                            const searchCode = code.toLowerCase();
-                            const p = latestProducts.find(prod => 
-                              String(prod.sku || '').trim().toLowerCase() === searchCode || 
-                              String(prod.name || '').trim().toLowerCase() === searchCode || 
-                              String(prod.id || '').trim() === code || 
-                              String(prod.barcode || '').trim().toLowerCase() === searchCode
-                            );
-                            
-                            if (p) {
-                              if ((p.current_stock ?? 0) <= 0) {
-                                setOutOfStockProduct(p);
-                                inputElem.value = '';
-                                setTimeout(() => fastScanInputRef.current?.focus(), 10);
-                                return;
-                              }
-
-                              const selCust = customers.find(c => c.id === selectedCustomerId);
-                              const evalRes = calculateApplicablePrice(p, {
-                                isLoyalMember: isLoyalMember(selCust),
-                                isAdvanceBooking,
-                                isDiwaliSale: isFestiveBooking,
-                                business: currentBiz,
-                                orderDate
-                              });
-                              
-                              const defaultTax = (defaultTenantTax === 0 || p.gst_rate === 18 || typeof p.gst_rate !== 'number' || isNaN(p.gst_rate))
-                                ? defaultTenantTax
-                                : p.gst_rate;
-                                
-                              const existingItem = orderItems.find(it => it.product_id === p.id);
-                              if (existingItem) {
-                                triggerToast('Item quantity updated.', 'success');
-                                setOrderItems(prevItems => prevItems.map(it => 
-                                  it.product_id === p.id 
-                                    ? { ...it, qty: it.qty + 1 }
-                                    : it
-                                ));
-                              } else {
-                                const newItem = {
-                                  id: crypto.randomUUID(),
-                                  product_id: p.id,
-                                  product_name: p.name,
-                                  qty: 1,
-                                  scanned_qty: 0,
-                                  selling_price: evalRes.appliedPrice,
-                                  gst_rate: defaultTax,
-                                  normal_rate: evalRes.normalRate,
-                                  rate_type: evalRes.rateType,
-                                  rate_reason: evalRes.rateReason,
-                                  unit_savings: Math.max(0, evalRes.normalRate - evalRes.appliedPrice),
-                                  is_overridden: false
-                                };
-                                triggerToast('Added: ' + p.name, 'success');
-                                setOrderItems(prevItems => [...prevItems, newItem]);
-                              }
-                              inputElem.value = '';
-                              setTimeout(() => fastScanInputRef.current?.focus(), 10);
-                            } else {
-                              triggerToast('Product not found for barcode: ' + code, 'error');
-  inputElem.value = '';
-  setTimeout(() => fastScanInputRef.current?.focus(), 10);
-                            }
-                          }
-                        }}
-                        autoFocus
-                        className="w-full px-4 py-2.5 bg-indigo-50/50 dark:bg-indigo-950/20 border-2 border-indigo-200 dark:border-indigo-800 rounded-xl text-sm font-black focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 text-slate-900 dark:text-slate-100 placeholder:text-indigo-300 dark:placeholder:text-indigo-700/50 transition-all"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="md:col-span-4">
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">Product SKU *</label>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenQuickCreateProduct('')}
-                        className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 transition-all flex items-center gap-1 cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
-                        title="Create new product and save directly to product catalogue"
-                      >
-                        <Plus size={11} className="stroke-[3]" />
-                        <span>New Product</span>
-                      </button>
-                    </div>
-                    <CustomDropdown 
-                      value={rowProductId}
-                      onChange={(val) => {
-                        if (!val) {
-                          setRowProductId('');
-                          return;
-                        }
-                        const latestProds = dbStore.getProducts(businessId);
-                        const p = products.find(prod => prod.id === val) || latestProds.find(prod => prod.id === val);
-                        if (p) {
-                          setRowProductId(val);
-                          // set price according to selection
-                          const selCust = customers.find(c => c.id === selectedCustomerId);
-                          const evalRes = calculateApplicablePrice(p, {
-                            isLoyalMember: isLoyalMember(selCust),
-                            isAdvanceBooking,
-                            isDiwaliSale: isFestiveBooking,
-                            business: currentBiz,
-                            orderDate
-                          });
-                          setRowPrice(evalRes.appliedPrice);
-                          // Default to tenant default tax unless product has a specific valid GST rate
-                          const defaultTax = (defaultTenantTax === 0 || p.gst_rate === 18 || typeof p.gst_rate !== 'number' || isNaN(p.gst_rate)) 
-                            ? defaultTenantTax 
-                            : (p.gst_rate || defaultTenantTax);
-                          setRowTaxRate(defaultTax);
-
-                          if ((p.current_stock ?? 0) <= 0 && !isAdvanceBooking && !isFestiveBooking) {
-                            setOutOfStockProduct(p);
-                          }
-                        }
-                      }}
-                      placeholder="-- Choose Product SKU --"
-                      searchable={true}
-                      onAddNew={(searchVal) => handleOpenQuickCreateProduct(searchVal || '')}
-                      addNewLabel="Create & Add New Product"
-                      options={[
-                        { value: '', label: '-- Choose Product SKU --' },
-                        ...products.map(p => {
-                          const isOut = (p.current_stock ?? 0) <= 0;
-                          const selCust = customers.find(c => c.id === selectedCustomerId);
-                          const evalRes = calculateApplicablePrice(p, {
-                            isLoyalMember: isLoyalMember(selCust),
-                            isAdvanceBooking,
-                            isDiwaliSale: isFestiveBooking,
-                            business: currentBiz,
-                            orderDate
-                          });
-                          const stockBadge = isOut 
-                            ? ` [⚠️ OUT OF STOCK - 0 ${p.unit || 'units'}]` 
-                            : ` [Stock: ${p.current_stock ?? 0} ${p.unit || ''}]`;
-                          return {
-                            value: p.id,
-                            label: `${p.name} (SKU: ${p.sku} | ${evalRes.rateType}: ${currencySymbol}${evalRes.appliedPrice.toLocaleString()})${stockBadge}`,
-                            searchKeywords: `${p.barcode} ${p.sku} ${isOut ? 'out of stock 0' : ''}`
-                          };
-                        })
-                      ]}
-                      className="bg-white dark:bg-slate-800 font-medium"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block mb-1">Qty</label>
-                    <div className="flex items-center">
-                      <button
-                        type="button"
-                        onClick={() => setRowQty(Math.max(1, (Number(rowQty) || 1) - 1))}
-                        className="px-2 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-l-lg border border-r-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
-                        title="Decrease Quantity"
-                      >
-                        <Minus size={12} />
-                      </button>
-                      <input 
-                        type="number" 
-                        min={1}
-                        placeholder="Qty"
-                        value={rowQty}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddLineItem();
-                          }
-                        }}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === '') {
-                            setRowQty('');
-                          } else {
-                            const num = parseInt(v, 10);
-                            setRowQty(isNaN(num) ? '' : Math.max(1, num));
-                          }
-                        }}
-                        onBlur={() => {
-                          if (rowQty === '' || Number(rowQty) < 1) {
-                            setRowQty(1);
-                          }
-                        }}
-                        className="w-full px-2 py-2 bg-white dark:bg-slate-800 text-[11px] text-center border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono text-slate-900 dark:text-slate-100 font-bold"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setRowQty((Number(rowQty) || 0) + 1)}
-                        className="px-2 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-r-lg border border-l-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
-                        title="Increase Quantity"
-                      >
-                        <Plus size={12} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block mb-1">Price ({currencySymbol})</label>
-                    <input 
-                      type="number" 
-                      min={0}
-                      step="any"
-                      placeholder="Unit Price"
-                      value={rowPrice}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddLineItem();
-                        }
-                      }}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === '') {
-                          setRowPrice('');
-                        } else {
-                          const num = parseFloat(v);
-                          setRowPrice(isNaN(num) ? '' : num);
-                        }
-                      }}
-                      onBlur={() => {
-                        if (rowPrice === '') {
-                          setRowPrice(0);
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block mb-1">Tax Rate (%)</label>
-                    <input 
-                      type="number" 
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      placeholder="Tax %"
-                      value={rowTaxRate}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddLineItem();
-                        }
-                      }}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === '') {
-                          setRowTaxRate('');
-                        } else {
-                          const num = parseFloat(v);
-                          setRowTaxRate(isNaN(num) ? '' : num);
-                        }
-                      }}
-                      onBlur={() => {
-                        if (rowTaxRate === '') {
-                          setRowTaxRate(defaultTenantTax);
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono text-slate-900 dark:text-slate-100 font-bold text-indigo-600 dark:text-indigo-400"
-                    />
-                  </div>
-                  <div className="md:col-span-2 flex items-end">
-                    <button 
-                      type="button" 
-                      onClick={handleAddLineItem}
-                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer shadow-xs active:scale-98"
-                    >
-                      + Add Item
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Lines Grid Table */}
-              <div className="space-y-2">
-                <h4 className="text-[12px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-widest flex items-center gap-2">
-                  <div className="h-1 w-8 bg-emerald-500 rounded-full"></div>
-                  Line Items Billing Grid ({orderItems.length} {orderItems.length === 1 ? 'item' : 'items'})
-                </h4>
-                <div className="border border-slate-100 dark:border-slate-800 rounded-xl overflow-x-auto text-[11px]">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] font-black uppercase text-slate-900 dark:text-slate-100 tracking-wider">
-                        <th className="p-3">Product Name</th>
-                        <th className="p-3 text-right font-mono">Qty</th>
-                        <th className="p-3 text-right font-mono">Selling Price ({currencySymbol})</th>
-                        <th className="p-3 text-right font-mono">Tax Rate (%)</th>
-                        <th className="p-3 text-right font-mono">Subtotal (Incl. Tax)</th>
-                        <th className="p-3 text-center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                      {orderItems.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="p-6 text-center text-slate-400 dark:text-slate-500 font-sans italic text-xs">
-                            No products added to this order yet. Choose a product SKU above and click "+ Add Item" or scan a barcode.
-                          </td>
-                        </tr>
-                      ) : (
-                        orderItems.map((it, idx) => {
-                          const p = products.find(prod => prod.id === it.product_id) || dbStore.getProducts(businessId).find(prod => prod.id === it.product_id);
-                          const itemQty = Number(it.qty) || 0;
-                          const itemPrice = Number(it.selling_price) || 0;
-                          const itemTax = Number(it.gst_rate) || 0;
-                          const baseVal = itemQty * itemPrice;
-                          const taxVal = baseVal * (itemTax / 100);
-                          const itemTotal = baseVal + taxVal;
-                          return (
-                            <tr key={it.id || idx}>
-                              <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span>{p?.name || (it as any).product_name || 'Product'}</span>
-                                  {it.rate_type === 'LMR' && (
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-extrabold rounded border border-indigo-200 dark:border-indigo-800">
-                                      👑 LMR
-                                    </span>
-                                  )}
-                                  {it.rate_type === 'ABR' && (
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-extrabold rounded border border-blue-200 dark:border-blue-800">
-                                      📅 ABR
-                                    </span>
-                                  )}
-                                  {it.rate_type === 'DDR' && (
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-extrabold rounded border border-amber-200 dark:border-amber-800">
-                                      ✨ DDR
-                                    </span>
-                                  )}
-                                  {it.is_overridden && (
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-extrabold rounded border border-rose-200 dark:border-rose-800">
-                                      ⚙️ OVERRIDE
-                                    </span>
-                                  )}
-                                </div>
-                                {it.rate_reason && (
-                                  <div className="text-[9.5px] text-slate-500 font-normal">
-                                    {it.rate_reason}
-                                  </div>
-                                )}
-                              </td>
-                            <td className="p-3 text-right font-sans font-bold">
-                              <div className="flex items-center justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const updated = [...orderItems];
-                                    const curQty = Number(updated[idx].qty) || 1;
-                                    updated[idx].qty = Math.max(1, curQty - 1);
-                                    setOrderItems(updated);
-                                  }}
-                                  className="px-1.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-l border border-r-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
-                                  title="Decrease Quantity"
-                                >
-                                  <Minus size={10} />
-                                </button>
-                                <input 
-                                  type="number" 
-                                  min={1}
-                                  value={it.qty}
-                                  onFocus={(e) => e.target.select()}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    const updated = [...orderItems];
-                                    if (val === '') {
-                                      (updated[idx] as any).qty = '';
-                                    } else {
-                                      const num = parseInt(val, 10);
-                                      (updated[idx] as any).qty = isNaN(num) ? '' : Math.max(1, num);
-                                    }
-                                    setOrderItems(updated);
-                                  }}
-                                  onBlur={() => {
-                                    if (it.qty === ('' as any) || Number(it.qty) < 1) {
-                                      const updated = [...orderItems];
-                                      updated[idx].qty = 1;
-                                      setOrderItems(updated);
-                                    }
-                                  }}
-                                  className="w-12 px-1 py-1 text-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] focus:outline-hidden text-slate-900 dark:text-slate-100 font-bold"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const updated = [...orderItems];
-                                    const curQty = Number(updated[idx].qty) || 0;
-                                    updated[idx].qty = curQty + 1;
-                                    setOrderItems(updated);
-                                  }}
-                                  className="px-1.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-r border border-l-0 border-slate-200 dark:border-slate-700 font-bold cursor-pointer transition-colors"
-                                  title="Increase Quantity"
-                                >
-                                  <Plus size={10} />
-                                </button>
-                              </div>
-                            </td>
-                            <td className="p-3 text-right">
-                              <input 
-                                type="number" 
-                                min={0}
-                                step="any"
-                                value={it.selling_price}
-                                onFocus={(e) => e.target.select()}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  const updated = [...orderItems];
-                                  if (val === '') {
-                                    (updated[idx] as any).selling_price = '';
-                                  } else {
-                                    const num = parseFloat(val);
-                                    (updated[idx] as any).selling_price = isNaN(num) ? '' : num;
-                                    updated[idx].is_overridden = true;
-                                    updated[idx].rate_type = 'OVERRIDE';
-                                    updated[idx].rate_reason = 'Admin Price Override';
-                                  }
-                                  setOrderItems(updated);
-                                }}
-                                onBlur={() => {
-                                  if (it.selling_price === ('' as any) || isNaN(Number(it.selling_price))) {
-                                    const updated = [...orderItems];
-                                    updated[idx].selling_price = 0;
-                                    setOrderItems(updated);
-                                  }
-                                }}
-                                className="w-24 px-2 py-1 text-right bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[11px] focus:outline-hidden text-slate-900 dark:text-slate-100"
-                              />
-                            </td>
-                            <td className="p-3 text-right">
-                              <input 
-                                type="number" 
-                                min={0}
-                                max={100}
-                                step={0.1}
-                                value={it.gst_rate}
-                                onFocus={(e) => e.target.select()}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  const updated = [...orderItems];
-                                  if (val === '') {
-                                    (updated[idx] as any).gst_rate = '';
-                                  } else {
-                                    const num = parseFloat(val);
-                                    (updated[idx] as any).gst_rate = isNaN(num) ? '' : num;
-                                  }
-                                  setOrderItems(updated);
-                                }}
-                                onBlur={() => {
-                                  if (it.gst_rate === ('' as any) || isNaN(Number(it.gst_rate))) {
-                                    const updated = [...orderItems];
-                                    updated[idx].gst_rate = 0;
-                                    setOrderItems(updated);
-                                  }
-                                }}
-                                className="w-16 px-2 py-1 text-right bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[11px] focus:outline-hidden text-slate-900 dark:text-slate-100"
-                              />
-                            </td>
-                            <td className="p-3 text-right font-bold text-indigo-600 dark:text-indigo-400">
-                              {currencySymbol}{itemTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-3 text-center">
-                              <button 
-                                type="button"
-                                onClick={() => handleRemoveLineItem(idx)}
-                                className="text-rose-500 hover:underline font-sans font-semibold cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Payment Settlement Options */}
-              <div className="bg-slate-50 dark:bg-slate-850 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-800 pb-2">
-                  <h4 className="text-[12px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest flex items-center gap-2">
-                    <div className="h-1 w-8 bg-indigo-500 rounded-full"></div>
-                    Payment & Settlement Options
-                  </h4>
-                  {(() => {
-                    const { finalAmount, computedPaid, balance } = calculatedTotals;
-
-                    return (
-                      <div className="flex items-center gap-3 text-[11px] font-bold">
-                        <span className="text-slate-500 dark:text-slate-400">
-                          Total: <span className="font-mono text-slate-800 dark:text-slate-100">{currencySymbol}{finalAmount.toLocaleString()}</span>
-                        </span>
-                        <span className="text-slate-500 dark:text-slate-400">
-                          Paid: <span className="font-mono text-emerald-600 dark:text-emerald-400">{currencySymbol}{computedPaid.toLocaleString()}</span>
-                        </span>
-                        <span className="text-slate-500 dark:text-slate-400">
-                          Balance: <span className={`font-mono ${balance > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400'}`}>{currencySymbol}{balance.toLocaleString()}</span>
-                        </span>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">
-                      Payment Status <span className="text-rose-500">*</span>
-                    </label>
-                    <CustomDropdown 
-                      value={paymentStatus}
-                      onChange={(val) => {
-                        const st = val as 'Paid' | 'Partial' | 'Unpaid' | '';
-                        setPaymentStatus(st);
-                        if (st === 'Unpaid') {
-                          setPaymentMode('Credit / On Account');
-                          setPaidAmount('');
-                        } else if (st === 'Paid') {
-                          setPaymentMode('Cash');
-                          setPaidAmount('');
-                        } else if (st === 'Partial') {
-                          if (paymentMode === 'Credit / On Account') {
-                            setPaymentMode('Cash');
-                          }
-                        }
-                        // Auto-fulfill if Paid and Walk-in
-                        if (st === 'Paid' && selectedCustomerId === 'WALK_IN') {
-                          // We no longer auto-fulfill because it locks the edit button.
-                          // setIsFulfilledImmediately(true);
-                        }
-                      }}
-                      placeholder="-- Select Payment Status --"
-                      options={[
-                        { value: '', label: '-- Select Payment Status --' },
-                        { value: 'Paid', label: 'Fully Paid (Settled)' },
-                        { value: 'Partial', label: 'Partial / Advance Received' },
-                        { value: 'Unpaid', label: 'Unpaid / On Credit' }
-                      ]}
-                      className={`bg-white dark:bg-slate-800 font-bold ${!paymentStatus ? 'border-amber-300 dark:border-amber-700' : ''}`}
-                    />
-                  </div>
-
-                  {(paymentStatus === 'Paid' || paymentStatus === 'Partial') && (
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">Payment Method / Mode</label>
-                      <CustomDropdown 
-                        value={paymentMode}
-                        onChange={(val) => setPaymentMode(val)}
-                        options={[
-                          { value: 'Cash', label: 'Cash' },
-                          { value: 'UPI / QR', label: 'UPI / QR Code' },
-                          { value: 'Card', label: 'Card (Credit/Debit)' },
-                          { value: 'Bank Transfer', label: 'Bank Transfer / NEFT' },
-                          { value: 'Credit / On Account', label: 'Credit / On Account' }
-                        ]}
-                        className="bg-white dark:bg-slate-800"
-                      />
-                    </div>
-                  )}
-
-                  {paymentStatus === 'Partial' && (
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider block">Advance / Received Amount ({currencySymbol})</label>
-                      <input 
-                        type="number"
-                        min={0}
-                        placeholder="Enter advance/received amount"
-                        value={paidAmount}
-                        onChange={(e) => setPaidAmount(e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden font-mono font-bold text-emerald-600 dark:text-emerald-400"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Actions Footer */}
-            {(() => {
-              const {
-                taxableVal,
-                taxVal,
-                subtotalBeforeDiscount,
-                discountAmount,
-                displayDiscountPerc,
-                displayDiscountAmt,
-                finalAmount,
-                actualRedeem
-              } = calculatedTotals;
-              const totalVal = finalAmount;
-              const savingsInfo = calculateOrderSavings(orderItems, products);
-              const selectedCust = customers.find(c => c.id === selectedCustomerId);
-              const pointVal = dbStore.getLoyaltyConfig(businessId)?.point_value || 1;
-
-              return (
-                <div className="p-4 bg-slate-900 text-white border-t border-slate-800 flex flex-col gap-3 rounded-b-2xl shadow-xl">
-                  {savingsInfo.totalSavings > 0 && (
-                    <div className="px-3 py-2 bg-gradient-to-r from-emerald-900/80 to-teal-900/80 border border-emerald-500/50 rounded-xl text-emerald-100 text-xs font-bold flex items-center justify-between gap-2 shadow-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">🎉</span>
-                        <span className="font-extrabold">{savingsInfo.bannerMessage}</span>
-                      </div>
-                      <span className="text-[10px] font-mono font-black text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-700">
-                        Total Member Savings: {currencySymbol}{savingsInfo.totalSavings.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-
-                  {actualRedeem > 0 && selectedCust && (
-                    <div className="bg-amber-950/60 px-3 py-2 rounded-xl border border-amber-600/50 flex items-center justify-between gap-3 text-[11px] font-mono">
-                      <span className="text-amber-300 font-extrabold uppercase tracking-wider text-[10px]">Loyalty Points Status</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-amber-300 font-bold">
-                          Redeemed: -{actualRedeem} Pts (-{currencySymbol}{(actualRedeem * pointVal).toLocaleString()})
-                        </span>
-                        <span className="text-emerald-400 font-bold border-l border-amber-800/80 pl-3">
-                          Remaining: {Math.max(0, (selectedCust.loyalty_points || 0) - actualRedeem).toLocaleString()} Pts
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center pt-1">
-                    {/* Left 7 Columns: Adjustment Controls Grid */}
-                    <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-4 bg-slate-800/80 p-3 rounded-xl border border-slate-700/80">
-                      <div>
-                        <span className="text-[10px] text-rose-400 uppercase block font-black tracking-wider mb-1">
-                          Discount (%)
-                        </span>
-                        <div className="flex items-stretch rounded-lg overflow-hidden border border-rose-500/50 bg-slate-900 focus-within:ring-2 focus-within:ring-rose-500">
-                          <div className="px-2 bg-rose-950/80 text-rose-400 text-xs font-bold font-mono flex items-center justify-center border-r border-rose-800">
-                            %
-                          </div>
-                          <input 
-                            type="number"
-                            min={0}
-                            step="any"
-                            placeholder="0"
-                            value={customDiscountPercentage}
-                            onFocus={(e) => {
-                              e.target.select();
-                              setDiscountType('Percentage');
-                            }}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setDiscountType('Percentage');
-                              setCustomDiscountPercentage(val);
-                              setCustomDiscountAmount('');
-                            }}
-                            className="w-full pl-2 py-1.5 always-show-spinners bg-transparent text-xs font-mono font-bold text-rose-300 focus:outline-none text-right min-w-0"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="text-[10px] text-rose-400 uppercase block font-black tracking-wider mb-1">
-                          Discount ({currencySymbol})
-                        </span>
-                        <div className="flex items-stretch rounded-lg overflow-hidden border border-rose-500/50 bg-slate-900 focus-within:ring-2 focus-within:ring-rose-500">
-                          <div className="px-2 bg-rose-950/80 text-rose-400 text-xs font-bold font-mono flex items-center justify-center border-r border-rose-800">
-                            {currencySymbol}
-                          </div>
-                          <input 
-                            type="number"
-                            min={0}
-                            step="any"
-                            placeholder="0.00"
-                            value={customDiscountAmount}
-                            onFocus={(e) => {
-                              e.target.select();
-                              setDiscountType('Value');
-                            }}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setDiscountType('Value');
-                              setCustomDiscountAmount(val);
-                              setCustomDiscountPercentage('');
-                            }}
-                            className="w-full pl-2 py-1.5 always-show-spinners bg-transparent text-xs font-mono font-bold text-rose-300 focus:outline-none text-right min-w-0"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="text-[10px] text-amber-400 uppercase block font-black tracking-wider mb-1">
-                          Addl. Chg ({currencySymbol})
-                        </span>
-                        <input 
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="0"
-                          value={additionalCharges}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/[^0-9.]/g, '');
-                            if (val === '') {
-                              setAdditionalCharges('');
-                            } else {
-                              const num = parseFloat(val);
-                              setAdditionalCharges(isNaN(num) ? '' : Math.max(0, num));
-                            }
-                          }}
-                          className="w-full pl-2.5 py-1.5 always-show-spinners bg-slate-900 border border-amber-500/50 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
-                        />
-                      </div>
-
-                      <div>
-                        <span className="text-[10px] text-amber-400 uppercase block font-black tracking-wider mb-1">
-                          Del. Chg ({currencySymbol})
-                        </span>
-                        <input 
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="0"
-                          value={deliveryCharges}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/[^0-9.]/g, '');
-                            if (val === '') {
-                              setDeliveryCharges('');
-                            } else {
-                              const num = parseFloat(val);
-                              setDeliveryCharges(isNaN(num) ? '' : Math.max(0, num));
-                            }
-                          }}
-                          className="w-full pl-2.5 py-1.5 always-show-spinners bg-slate-900 border border-amber-500/50 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Right 5 Columns: Totals & Action Buttons */}
-                    <div className="lg:col-span-5 flex flex-col justify-between items-end gap-3 pl-2">
-                      <div className="flex items-center justify-end gap-4 text-right w-full">
-                        <div>
-                          <span className="text-[9.5px] text-slate-400 uppercase font-black tracking-wider block">Base Subtotal</span>
-                          <span className="font-mono text-xs font-bold text-slate-200">
-                            {currencySymbol}{taxableVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[9.5px] text-emerald-400 uppercase font-black tracking-wider block">Tax (GST)</span>
-                          <span className="font-mono text-xs font-bold text-emerald-400">
-                            +{currencySymbol}{taxVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div className="pl-3 border-l border-slate-700">
-                          <span className="text-[10.5px] text-indigo-300 uppercase font-black tracking-widest block">Grand Total Value</span>
-                          <span className="text-xl font-mono font-black text-emerald-400">
-                            {currencySymbol}{totalVal.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2.5 justify-end w-full pt-1">
-                        <button 
-                          type="button" 
-                          onClick={handleCloseCreateModal}
-                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs select-none touch-manipulation"
-                        >
-                          Cancel
-                        </button>
-                        
-                        <div className="relative flex shadow-md shadow-indigo-950/60 rounded-xl">
-                          <button 
-                            type="button" 
-                            disabled={isSubmitting}
-                            onClick={() => handleCreateSalesOrder('close')}
-                            className={`px-5 py-2 text-xs font-bold transition-all cursor-pointer flex items-center gap-2 rounded-l-xl select-none touch-manipulation ${
-                              isSubmitting 
-                                ? 'bg-slate-700 cursor-not-allowed text-slate-400' 
-                                : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white'
-                            }`}
-                          >
-                            {isSubmitting ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
-                            {editingOrderId ? 'Update Order' : 'Save Order'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIsSubmitDropdownOpen(!isSubmitDropdownOpen)}
-                            className="px-2.5 py-2 bg-indigo-700 hover:bg-indigo-600 text-white border-l border-indigo-500/50 transition-colors cursor-pointer flex items-center rounded-r-xl select-none touch-manipulation"
-                          >
-                            <ChevronDown size={14} className={`transition-transform duration-200 ${isSubmitDropdownOpen ? 'rotate-180' : ''}`} />
-                          </button>
-                          
-                          {isSubmitDropdownOpen && (
-                            <div className="absolute bottom-full right-0 mb-2 w-48 bg-slate-800 text-slate-100 rounded-xl shadow-2xl border border-slate-700 overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-150">
-                               <button 
-                                 type="button"
-                                 onClick={() => handleCreateSalesOrder('print')}
-                                 className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-slate-700 flex items-center justify-between transition-colors cursor-pointer group"
-                               >
-                                 <span className="group-hover:text-indigo-400 transition-colors">Save & Print</span>
-                                 <Printer size={14} className="text-slate-400 group-hover:text-indigo-400" />
-                               </button>
-                               <button 
-                                 type="button"
-                                 onClick={() => handleCreateSalesOrder('share')}
-                                 className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-slate-700 flex items-center justify-between border-t border-slate-700/60 transition-colors cursor-pointer group"
-                               >
-                                 <span className="group-hover:text-indigo-400 transition-colors">Save & Share</span>
-                                 <Share2 size={14} className="text-slate-400 group-hover:text-indigo-400" />
-                               </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
+        <CreateInvoiceView
+          businessId={businessId}
+          user={user}
+          currentBiz={currentBiz}
+          editingOrderId={editingOrderId}
+          customInvoiceNumber={customInvoiceNumber}
+          isFestiveBooking={isFestiveBooking}
+          isAdvanceBooking={isAdvanceBooking}
+          isFulfilledImmediately={isFulfilledImmediately}
+          orderDate={orderDate}
+          orderTime={orderTime}
+          deliveryDate={deliveryDate}
+          deliveryType={deliveryType}
+          selectedCustomerId={selectedCustomerId}
+          selectedCustomerPhone={selectedCustomerPhone}
+          selectedCustomerAddress={selectedCustomerAddress}
+          selectedCustomerShippingAddress={selectedCustomerShippingAddress}
+          isSameShippingAddress={isSameShippingAddress}
+          selectedArea={selectedArea}
+          pointsToRedeem={pointsToRedeem}
+          paymentStatus={paymentStatus}
+          paymentMode={paymentMode}
+          paidAmount={paidAmount}
+          customDiscountPercentage={customDiscountPercentage}
+          customDiscountAmount={customDiscountAmount}
+          discountType={discountType}
+          additionalCharges={additionalCharges}
+          deliveryCharges={deliveryCharges}
+          additionalChargeType={additionalChargeType}
+          orderItems={orderItems}
+          customers={customers}
+          products={products}
+          defaultTenantTax={defaultTenantTax}
+          currencySymbol={currencySymbol}
+          isSubmitting={isSubmitting}
+          isSubmitDropdownOpen={isSubmitDropdownOpen}
+          fastScanInputRef={fastScanInputRef}
+          rowProductId={rowProductId}
+          rowQty={rowQty}
+          rowPrice={rowPrice}
+          rowTaxRate={rowTaxRate}
+          calculatedTotals={calculatedTotals}
+          upcoming7DaysLoad={upcoming7DaysLoad}
+          scheduledCountForSelectedDate={scheduledCountForSelectedDate}
+          onClose={handleCloseCreateModal}
+          onSaveOrder={handleCreateSalesOrder}
+          onOpenQuickCreateCustomer={handleOpenQuickCreateCustomer}
+          onOpenQuickCreateProduct={handleOpenQuickCreateProduct}
+          onToggleAdvanceBooking={handleToggleAdvanceBooking}
+          onToggleFestiveBooking={handleToggleFestiveBooking}
+          setIsFulfilledImmediately={setIsFulfilledImmediately}
+          setOrderDate={setOrderDate}
+          setDeliveryDate={setDeliveryDate}
+          setDeliveryType={setDeliveryType}
+          setSelectedCustomerId={setSelectedCustomerId}
+          setSelectedCustomerPhone={setSelectedCustomerPhone}
+          setSelectedCustomerAddress={setSelectedCustomerAddress}
+          setSelectedCustomerShippingAddress={setSelectedCustomerShippingAddress}
+          setIsSameShippingAddress={setIsSameShippingAddress}
+          setSelectedArea={setSelectedArea}
+          setPointsToRedeem={setPointsToRedeem}
+          setPaymentStatus={setPaymentStatus}
+          setPaymentMode={setPaymentMode}
+          setPaidAmount={setPaidAmount}
+          setCustomDiscountPercentage={setCustomDiscountPercentage}
+          setCustomDiscountAmount={setCustomDiscountAmount}
+          setDiscountType={setDiscountType}
+          setAdditionalCharges={setAdditionalCharges}
+          setDeliveryCharges={setDeliveryCharges}
+          setOrderItems={setOrderItems}
+          setRowProductId={setRowProductId}
+          setRowQty={setRowQty}
+          setRowPrice={setRowPrice}
+          setRowTaxRate={setRowTaxRate}
+          setIsSubmitDropdownOpen={setIsSubmitDropdownOpen}
+          onAddLineItem={handleAddLineItem}
+          onRemoveLineItem={handleRemoveLineItem}
+          setOutOfStockProduct={setOutOfStockProduct}
+          triggerToast={triggerToast}
+          getSuggestedInvoiceNumber={getSuggestedInvoiceNumber}
+          recalculateOrderPrices={recalculateOrderPrices}
+        />
       )}
       {/* Delete Confirmation Modal */}
       {invoiceToDelete && (
@@ -3829,6 +2543,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           onClose={() => setSelectedOrderForNotify(null)}
           customers={customers}
           business={dbStore.getBusiness(businessId)}
+          triggerToast={triggerToast}
+        />
+      )}
+
+      {/* Quick Create Customer Modal */}
+      {isQuickCreateCustomerOpen && (
+        <QuickCreateCustomerModal
+          isOpen={isQuickCreateCustomerOpen}
+          onClose={() => setIsQuickCreateCustomerOpen(false)}
+          businessId={businessId}
+          user={user}
+          initialName={quickCreateCustomerInitialName}
+          currencySymbol={currencySymbol}
+          onCustomerCreated={handleCustomerCreatedFromModal}
           triggerToast={triggerToast}
         />
       )}

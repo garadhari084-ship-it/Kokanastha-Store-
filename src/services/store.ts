@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import { safeStorage } from '../utils/safeStorage';
 import {
   Business,
   UserProfile,
@@ -43,8 +44,10 @@ const PRE_SEEDED_BUSINESSES: Business[] = [
     shipping_address: 'Godown 3, Industrial Estate, Dahisar East, Mumbai, MH 400068',
     email: 'ops@kokanasthafaral.com',
     phone: '+91 98200 12345',
-    invoice_prefix: 'KF-',
-    festive_invoice_prefix: 'FEST-KF-',
+    invoice_prefix: 'INV-',
+    advance_invoice_prefix: 'ADV-',
+    festive_invoice_prefix: 'FEST-',
+    festive_advance_invoice_prefix: 'FEST-ADV-',
     tax_rate_default: 5.00,
     currency_symbol: '₹',
     auto_backup: true,
@@ -190,7 +193,35 @@ const PRE_SEEDED_PRODUCTS: Product[] = [
     description: 'Crispy crunchy traditional Maharashtrian Bhajani Chakli.',
     active: true,
     business_id: BIZ_ID,
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
+    nutrition_facts: {
+      serving_size: '30g',
+      servings_per_container: '33',
+      energy_kcal: 495,
+      protein_g: 9.8,
+      carbohydrates_g: 58.4,
+      total_sugars_g: 1.2,
+      added_sugars_g: 0,
+      total_fat_g: 25.6,
+      saturated_fat_g: 8.2,
+      trans_fat_g: 0,
+      cholesterol_mg: 0,
+      sodium_mg: 480,
+      dietary_fiber_g: 4.5
+    },
+    food_packaging: {
+      dietary_type: 'veg',
+      ingredients: 'Roasted Rice Flour, Bengal Gram, Urad Dal, Coriander Seeds, Cumin, Sesame Seeds, Ajwain, Edible Vegetable Oil, Iodized Salt, Red Chilli Powder',
+      allergen_info: 'Contains Sesame. Processed on equipment that also processes Wheat and Nuts.',
+      fssai_license: '11521018000123',
+      net_weight: '1 Kg',
+      batch_no: 'CHK-2026-B1',
+      shelf_life_days: 90,
+      best_before_text: 'Best Before 90 Days from packaging',
+      storage_instructions: 'Store in an airtight container in a cool, dry place away from moisture.',
+      mfg_by: 'Kokanastha Special Foods, Pune - 411030',
+      customer_care: 'care@kokanastha.com | +91 9876543210'
+    }
   },
   {
     id: PROD_2_ID,
@@ -214,7 +245,35 @@ const PRE_SEEDED_PRODUCTS: Product[] = [
     description: 'Thin poha chivda fried with cashews and roasted peanuts.',
     active: true,
     business_id: BIZ_ID,
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
+    nutrition_facts: {
+      serving_size: '30g',
+      servings_per_container: '16',
+      energy_kcal: 460,
+      protein_g: 8.2,
+      carbohydrates_g: 62.0,
+      total_sugars_g: 4.5,
+      added_sugars_g: 3.0,
+      total_fat_g: 20.5,
+      saturated_fat_g: 5.1,
+      trans_fat_g: 0,
+      cholesterol_mg: 0,
+      sodium_mg: 390,
+      dietary_fiber_g: 3.8
+    },
+    food_packaging: {
+      dietary_type: 'veg',
+      ingredients: 'Thin Flattened Rice (Poha), Roasted Peanuts, Fried Cashews, Curry Leaves, Mustard Seeds, Turmeric, Powdered Sugar, Iodized Salt, Green Chillies, Edible Oil',
+      allergen_info: 'Contains Peanuts & Tree Nuts (Cashews).',
+      fssai_license: '11521018000123',
+      net_weight: '500g',
+      batch_no: 'CHV-2026-A2',
+      shelf_life_days: 90,
+      best_before_text: 'Best Before 3 Months from packaging',
+      storage_instructions: 'Keep in an airtight container after opening.',
+      mfg_by: 'Kokanastha Special Foods, Pune - 411030',
+      customer_care: 'care@kokanastha.com | +91 9876543210'
+    }
   },
   {
     id: PROD_3_ID,
@@ -238,7 +297,35 @@ const PRE_SEEDED_PRODUCTS: Product[] = [
     description: 'Pure ghee roasted besan laddu with cardamom and pistachios.',
     active: true,
     business_id: BIZ_ID,
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
+    nutrition_facts: {
+      serving_size: '40g',
+      servings_per_container: '12',
+      energy_kcal: 520,
+      protein_g: 11.4,
+      carbohydrates_g: 54.0,
+      total_sugars_g: 34.0,
+      added_sugars_g: 32.0,
+      total_fat_g: 29.0,
+      saturated_fat_g: 16.5,
+      trans_fat_g: 0.2,
+      cholesterol_mg: 35,
+      sodium_mg: 85,
+      dietary_fiber_g: 3.0
+    },
+    food_packaging: {
+      dietary_type: 'veg',
+      ingredients: 'Gram Flour (Besan), Pure Cow Ghee, Bura Cane Sugar, Cardamom Powder, Nutmeg, Pistachios, Almonds, Saffron',
+      allergen_info: 'Contains Milk / Dairy (Ghee) and Tree Nuts (Pistachios, Almonds).',
+      fssai_license: '11521018000123',
+      net_weight: '500g',
+      batch_no: 'LAD-2026-C1',
+      shelf_life_days: 60,
+      best_before_text: 'Best Before 60 Days from packaging',
+      storage_instructions: 'Store in a cool and dry place. Do not refrigerate.',
+      mfg_by: 'Kokanastha Special Foods, Pune - 411030',
+      customer_care: 'care@kokanastha.com | +91 9876543210'
+    }
   },
   {
     id: PROD_4_COMBO_ID,
@@ -268,7 +355,33 @@ const PRE_SEEDED_PRODUCTS: Product[] = [
       { product_id: PROD_1_ID, qty: 1 },
       { product_id: PROD_2_ID, qty: 1 },
       { product_id: PROD_3_ID, qty: 1 }
-    ]
+    ],
+    nutrition_facts: {
+      serving_size: '100g',
+      energy_kcal: 490,
+      protein_g: 9.5,
+      carbohydrates_g: 58.0,
+      total_sugars_g: 14.0,
+      added_sugars_g: 12.0,
+      total_fat_g: 25.0,
+      saturated_fat_g: 10.0,
+      trans_fat_g: 0,
+      sodium_mg: 320,
+      dietary_fiber_g: 3.8
+    },
+    food_packaging: {
+      dietary_type: 'veg',
+      ingredients: 'Assorted festive box: Chakli (Rice, Urad, Spices), Chivda (Poha, Peanuts, Cashews), Besan Laddu (Gram Flour, Pure Ghee, Sugar, Nuts)',
+      allergen_info: 'Contains Wheat, Nuts, Peanuts, Sesame, Milk (Ghee).',
+      fssai_license: '11521018000123',
+      net_weight: '2 Kg (Assorted)',
+      batch_no: 'CMB-2026-FST1',
+      shelf_life_days: 60,
+      best_before_text: 'Best Before 60 Days from packaging',
+      storage_instructions: 'Store in cool and dry conditions.',
+      mfg_by: 'Kokanastha Special Foods, Pune - 411030',
+      customer_care: 'care@kokanastha.com | +91 9876543210'
+    }
   }
 ];
 
@@ -511,10 +624,10 @@ class ERPStorage {
   private bc: BroadcastChannel | null = null;
 
   constructor() {
-    const catStr = localStorage.getItem('omnipack_erp_categories');
+    const catStr = safeStorage.getItem('omnipack_erp_categories');
     if (catStr && catStr.includes('"cat-')) {
        console.log('Clearing old invalid local storage with non-UUIDs...');
-       localStorage.clear();
+       safeStorage.pruneNonEssential();
     }
     this.cache = {
       businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),
@@ -609,7 +722,7 @@ class ERPStorage {
 
   private load<T>(key: string, defaultValue: T): T {
     try {
-      const data = localStorage.getItem(`omnipack_erp_${key}`);
+      const data = safeStorage.getItem(`omnipack_erp_${key}`);
       return data ? JSON.parse(data) : defaultValue;
     } catch (e) {
       console.warn(`Error loading state for key ${key}`, e);
@@ -725,7 +838,7 @@ class ERPStorage {
                 // Only clear if local cache is also empty or missing
                 if (!this.cache[key as keyof typeof this.cache] || (this.cache[key as keyof typeof this.cache] as any[]).length === 0) {
                   (this.cache as any)[key] = [];
-                  localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify([]));
+                  safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify([]));
                 }
              }
              return;
@@ -738,7 +851,7 @@ class ERPStorage {
                }
              });
              try {
-               const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+               const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
                Object.assign(existingPasswords, saved);
              } catch(e) {}
              const mergedProfiles = data.map((p: any) => {
@@ -750,7 +863,7 @@ class ERPStorage {
                };
              });
              this.cache.profiles = mergedProfiles;
-             localStorage.setItem(`omnipack_erp_profiles`, JSON.stringify(mergedProfiles));
+             safeStorage.setItem(`omnipack_erp_profiles`, JSON.stringify(mergedProfiles));
           } else if (key === 'sales') {
              const itemsData = await fetchAllFromTable('sales_order_items');
              const itemsByOrder: Record<string, any[]> = {};
@@ -788,7 +901,7 @@ class ERPStorage {
                };
              });
              this.cache.sales = mergedSales;
-             localStorage.setItem('omnipack_erp_sales', JSON.stringify(mergedSales));
+             safeStorage.setItem('omnipack_erp_sales', JSON.stringify(mergedSales));
           } else if (key === 'customers') {
              const remoteMap = new Map((data || []).map((cust: any) => [cust.id, cust]));
              const mergedMap = new Map<string, any>();
@@ -817,7 +930,7 @@ class ERPStorage {
 
              const mergedCustomers = Array.from(mergedMap.values());
              this.cache.customers = mergedCustomers;
-             localStorage.setItem('omnipack_erp_customers', JSON.stringify(mergedCustomers));
+             safeStorage.setItem('omnipack_erp_customers', JSON.stringify(mergedCustomers));
           } else if (key === 'purchases') {
              const itemsData = await fetchAllFromTable('purchase_order_items');
              const itemsByPO: Record<string, any[]> = {};
@@ -836,7 +949,7 @@ class ERPStorage {
                };
              });
              this.cache.purchases = mergedPurchases;
-             localStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
+             safeStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
           } else if (key === 'products') {
              const remoteMap = new Map((data || []).map((prod: any) => [prod.id, prod]));
              const mergedMap = new Map<string, any>();
@@ -878,7 +991,7 @@ class ERPStorage {
 
              const mergedProducts = Array.from(mergedMap.values());
              this.cache.products = mergedProducts;
-             localStorage.setItem('omnipack_erp_products', JSON.stringify(mergedProducts));
+             safeStorage.setItem('omnipack_erp_products', JSON.stringify(mergedProducts));
           } else if (key === 'categories') {
              const remoteMap = new Map((data || []).map((cat: any) => [cat.id, cat]));
              const mergedMap = new Map<string, any>();
@@ -900,7 +1013,7 @@ class ERPStorage {
 
              const mergedCategories = Array.from(mergedMap.values());
              this.cache.categories = mergedCategories;
-             localStorage.setItem('omnipack_erp_categories', JSON.stringify(mergedCategories));
+             safeStorage.setItem('omnipack_erp_categories', JSON.stringify(mergedCategories));
           } else if (key === 'suppliers') {
              const remoteMap = new Map((data || []).map((sup: any) => [sup.id, sup]));
              const mergedMap = new Map<string, any>();
@@ -922,7 +1035,7 @@ class ERPStorage {
 
              const mergedSuppliers = Array.from(mergedMap.values());
              this.cache.suppliers = mergedSuppliers;
-             localStorage.setItem('omnipack_erp_suppliers', JSON.stringify(mergedSuppliers));
+             safeStorage.setItem('omnipack_erp_suppliers', JSON.stringify(mergedSuppliers));
           } else if (key === 'businesses') {
              const mergedBusinesses = (data || []).map((b: any) => {
                 const existing = (this.cache.businesses || []).find(eb => eb.id === b.id);
@@ -930,10 +1043,10 @@ class ERPStorage {
                 return { ...existing, ...b };
              });
              this.cache.businesses = mergedBusinesses.length > 0 ? mergedBusinesses : this.cache.businesses;
-             localStorage.setItem('omnipack_erp_businesses', JSON.stringify(this.cache.businesses));
+             safeStorage.setItem('omnipack_erp_businesses', JSON.stringify(this.cache.businesses));
           } else {
              (this.cache as any)[key] = data;
-             localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
+             safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
           }
        }
        } catch (tableErr) {
@@ -1052,7 +1165,7 @@ class ERPStorage {
        
        let activeBusinessId: string | null = null;
        try {
-           const sess = JSON.parse(localStorage.getItem('omnipack_session') || '{}');
+           const sess = JSON.parse(safeStorage.getItem('omnipack_session') || '{}');
            if (sess.businessId) activeBusinessId = sess.businessId;
        } catch (e) {}
        
@@ -1156,8 +1269,10 @@ class ERPStorage {
            if (tableName === 'businesses') {
                delete clean.last_supabase_sync;
                delete clean.loyalty_config;
-               if (clean.invoice_prefix) clean.invoice_prefix = String(clean.invoice_prefix).substring(0, 10);
+               if (clean.invoice_prefix) clean.invoice_prefix = String(clean.invoice_prefix).substring(0, 50);
+               if (clean.advance_invoice_prefix) clean.advance_invoice_prefix = String(clean.advance_invoice_prefix).substring(0, 50);
                if (clean.festive_invoice_prefix) clean.festive_invoice_prefix = String(clean.festive_invoice_prefix).substring(0, 50);
+               if (clean.festive_advance_invoice_prefix) clean.festive_advance_invoice_prefix = String(clean.festive_advance_invoice_prefix).substring(0, 50);
                if (clean.currency_symbol) clean.currency_symbol = String(clean.currency_symbol).substring(0, 10);
                if (clean.pan) clean.pan = String(clean.pan).substring(0, 10);
                if (clean.gstin) clean.gstin = String(clean.gstin).substring(0, 15);
@@ -1349,7 +1464,11 @@ class ERPStorage {
   private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string) {
     this.syncToSupabase(key, dataItem, isDelete, deleteId);
     try {
-      localStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(this.cache[key]));
+      const cacheVal = this.cache[key];
+      const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
+        ? cacheVal.slice(0, 50)
+        : cacheVal;
+      safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
     } catch (e) {
       console.warn(`Error saving state for key ${key}`, e);
     }
@@ -1388,9 +1507,9 @@ class ERPStorage {
     }
 
     try {
-      const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+      const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
       saved[cleanEmail] = password_raw;
-      localStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+      safeStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
     } catch (e) {}
 
     const business = this.cache.businesses.find(b => b.id === profile.business_id) || this.cache.businesses[0];
@@ -1435,9 +1554,9 @@ class ERPStorage {
   public createUser(user: Omit<UserProfile, 'id' | 'created_at'> & { id?: string; password_hash?: string }): UserProfile {
     if (user.email && user.password_hash) {
       try {
-        const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+        const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
         saved[user.email.toLowerCase().trim()] = user.password_hash;
-        localStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+        safeStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
       } catch (e) {}
     }
 
@@ -1467,9 +1586,9 @@ class ERPStorage {
       this.cache.profiles[index] = { ...this.cache.profiles[index], ...updates };
       if (this.cache.profiles[index].email && updates.password_hash) {
         try {
-          const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+          const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
           saved[this.cache.profiles[index].email.toLowerCase().trim()] = updates.password_hash;
-          localStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+          safeStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
         } catch (e) {}
       }
       this.save('profiles', this.cache.profiles[index]);
@@ -1486,9 +1605,9 @@ class ERPStorage {
     }
     (profile as any).password_hash = newPassword_hash;
     try {
-      const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+      const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
       saved[cleanEmail] = newPassword_hash;
-      localStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+      safeStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
     } catch (e) {}
     this.save('profiles', profile);
     return { success: true, user: profile };
@@ -1529,7 +1648,7 @@ class ERPStorage {
         this.cache.categories.push(newCat);
       });
       try {
-        localStorage.setItem('omnipack_erp_categories', JSON.stringify(this.cache.categories));
+        safeStorage.setItem('omnipack_erp_categories', JSON.stringify(this.cache.categories));
       } catch (e) {}
       cats = this.cache.categories.filter(c => !c.business_id || isSameBusiness(c.business_id, businessId));
     }
@@ -1750,12 +1869,12 @@ class ERPStorage {
       this.cache.stockLogs = this.cache.stockLogs.filter(log => 
         log.product_id !== lookupId && (!legacyId || log.product_id !== legacyId)
       );
-      localStorage.setItem('omnipack_erp_stockLogs', JSON.stringify(this.cache.stockLogs));
+      safeStorage.setItem('omnipack_erp_stockLogs', JSON.stringify(this.cache.stockLogs));
       
       this.cache.comboLogs = (this.cache.comboLogs || []).filter((log: any) => 
         log.combo_id !== lookupId && (!legacyId || log.combo_id !== legacyId)
       );
-      localStorage.setItem('omnipack_erp_comboLogs', JSON.stringify(this.cache.comboLogs));
+      safeStorage.setItem('omnipack_erp_comboLogs', JSON.stringify(this.cache.comboLogs));
       
       this.save('products', null, true, lookupId);
       this.notify();
@@ -2946,7 +3065,7 @@ class ERPStorage {
 
   private saveDeviceSessions() {
     try {
-      localStorage.setItem('omnipack_erp_deviceSessions', JSON.stringify(this.activeDeviceSessions));
+      safeStorage.setItem('omnipack_erp_deviceSessions', JSON.stringify(this.activeDeviceSessions));
     } catch (e) {}
   }
 
@@ -3223,10 +3342,19 @@ class ERPStorage {
   ): string {
     const normBiz = normalizeBusinessId(businessId);
     const biz = this.getBusiness(normBiz);
-    const standardPrefix = typeof biz?.invoice_prefix === 'string' ? biz.invoice_prefix.trim() : 'KF-';
-    const festivePrefix = typeof biz?.festive_invoice_prefix === 'string' ? biz.festive_invoice_prefix.trim() : 'FEST-KF-';
-    const prefix = isFestive ? festivePrefix : standardPrefix;
-    const targetPrefix = isAdvance ? `${prefix}AB-` : prefix;
+    const standardPrefix = typeof biz?.invoice_prefix === 'string' && biz.invoice_prefix.trim() ? biz.invoice_prefix.trim() : 'INV-';
+    const advancePrefix = typeof biz?.advance_invoice_prefix === 'string' && biz.advance_invoice_prefix.trim() ? biz.advance_invoice_prefix.trim() : (biz?.invoice_prefix ? `${biz.invoice_prefix.trim()}AB-` : 'ADV-');
+    const festivePrefix = typeof biz?.festive_invoice_prefix === 'string' && biz.festive_invoice_prefix.trim() ? biz.festive_invoice_prefix.trim() : 'FEST-';
+    const festiveAdvancePrefix = typeof biz?.festive_advance_invoice_prefix === 'string' && biz.festive_advance_invoice_prefix.trim() ? biz.festive_advance_invoice_prefix.trim() : (biz?.festive_invoice_prefix ? `${biz.festive_invoice_prefix.trim()}AB-` : 'FEST-ADV-');
+
+    let targetPrefix = standardPrefix;
+    if (isFestive && isAdvance) {
+      targetPrefix = festiveAdvancePrefix;
+    } else if (isFestive) {
+      targetPrefix = festivePrefix;
+    } else if (isAdvance) {
+      targetPrefix = advancePrefix;
+    }
 
     const allOrders = this.getSalesOrders(normBiz);
     const activeDrafts = this.getActiveDraftReservations(normBiz).filter(d => d.id !== excludeDraftId);
@@ -3248,7 +3376,7 @@ class ERPStorage {
       if (!invNum) return;
       const clean = invNum.trim();
       
-      // Match exact prefix for this series (e.g. KF- or KF-AB- or FEST-KF- or INV-2026-)
+      // Match exact prefix for this series
       if (clean.startsWith(targetPrefix)) {
         const numPart = clean.slice(targetPrefix.length);
         const match = numPart.match(/^(\d+)$/);
@@ -3268,12 +3396,11 @@ class ERPStorage {
       }
 
       // Check if matches series prefix with AB / FEST variants
-      if (clean.startsWith(prefix)) {
-        const remaining = clean.slice(prefix.length);
-        const hasAB = remaining.startsWith('AB-');
-        if (hasAB === isAdvance) {
-          const numPart = remaining.replace(/^AB-/, '').replace(/^SUB-/, '');
-          const match = numPart.match(/^(\d+)$/);
+      const fallbackPrefixes = [standardPrefix, advancePrefix, festivePrefix, festiveAdvancePrefix];
+      for (const p of fallbackPrefixes) {
+        if (clean.startsWith(p)) {
+          const remaining = clean.slice(p.length);
+          const match = remaining.match(/^(\d+)$/);
           if (match) {
             const parsed = parseInt(match[1], 10);
             if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
@@ -3348,7 +3475,7 @@ class ERPStorage {
 
   private saveDraftReservations() {
     try {
-      localStorage.setItem('omnipack_erp_draftReservations', JSON.stringify(this.draftReservations));
+      safeStorage.setItem('omnipack_erp_draftReservations', JSON.stringify(this.draftReservations));
     } catch (e) {}
   }
 
@@ -4071,7 +4198,7 @@ class ERPStorage {
       };
       this.cache.settings.push(setting);
       try {
-        localStorage.setItem('omnipack_erp_settings', JSON.stringify(this.cache.settings));
+        safeStorage.setItem('omnipack_erp_settings', JSON.stringify(this.cache.settings));
       } catch (e) {}
     }
     return setting;
@@ -4111,22 +4238,22 @@ class ERPStorage {
       }
     }
 
-    localStorage.removeItem('omnipack_erp_businesses');
-    localStorage.removeItem('omnipack_erp_profiles');
-    localStorage.removeItem('omnipack_erp_categories');
-    localStorage.removeItem('omnipack_erp_products');
-    localStorage.removeItem('omnipack_erp_customers');
-    localStorage.removeItem('omnipack_erp_suppliers');
-    localStorage.removeItem('omnipack_erp_purchases');
-    localStorage.removeItem('omnipack_erp_sales');
-    localStorage.removeItem('omnipack_erp_settings');
-    localStorage.removeItem('omnipack_erp_stockLogs');
-    localStorage.removeItem('omnipack_erp_auditLogs');
-    localStorage.removeItem('omnipack_erp_packingSessions');
-    localStorage.removeItem('omnipack_erp_messages');
-    localStorage.removeItem('omnipack_erp_loyaltyLogs');
-    localStorage.removeItem('omnipack_erp_subscriptions');
-    localStorage.removeItem('omnipack_erp_comboLogs');
+    safeStorage.removeItem('omnipack_erp_businesses');
+    safeStorage.removeItem('omnipack_erp_profiles');
+    safeStorage.removeItem('omnipack_erp_categories');
+    safeStorage.removeItem('omnipack_erp_products');
+    safeStorage.removeItem('omnipack_erp_customers');
+    safeStorage.removeItem('omnipack_erp_suppliers');
+    safeStorage.removeItem('omnipack_erp_purchases');
+    safeStorage.removeItem('omnipack_erp_sales');
+    safeStorage.removeItem('omnipack_erp_settings');
+    safeStorage.removeItem('omnipack_erp_stockLogs');
+    safeStorage.removeItem('omnipack_erp_auditLogs');
+    safeStorage.removeItem('omnipack_erp_packingSessions');
+    safeStorage.removeItem('omnipack_erp_messages');
+    safeStorage.removeItem('omnipack_erp_loyaltyLogs');
+    safeStorage.removeItem('omnipack_erp_subscriptions');
+    safeStorage.removeItem('omnipack_erp_comboLogs');
 
     this.cache = {
       businesses: PRE_SEEDED_BUSINESSES,

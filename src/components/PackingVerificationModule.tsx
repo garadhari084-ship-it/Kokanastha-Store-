@@ -1068,131 +1068,49 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                   {/* Filter Pill Tabs Strip */}
                   <div className="flex items-center overflow-x-auto no-scrollbar bg-slate-100/90 dark:bg-slate-800/90 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 gap-0.5 w-full sm:w-auto">
                     
-                    {/* 1. OVERDUE TAB */}
+                    {/* ALL ORDERS TAB */}
                     <button
-                      onClick={() => setDateFilter('Overdue')}
-                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
-                      } ${
-                        dateFilter === 'Overdue'
-                          ? 'bg-rose-600 text-white shadow-sm ring-1 ring-rose-400/50'
-                          : 'text-rose-700 dark:text-rose-300 bg-rose-50/80 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200/80 dark:border-rose-800/80'
-                      }`}
-                    >
-                      <AlertTriangle size={12} className={dateFilter === 'Overdue' ? 'animate-bounce text-white' : 'text-rose-600 dark:text-rose-400'} />
-                      <span>Overdue</span>
-                      <span className={`px-1.5 py-0.2 rounded-full text-[8.5px] font-black ${
-                        dateFilter === 'Overdue' ? 'bg-white text-rose-700' : 'bg-rose-600 text-white'
-                      }`}>
-                        {overdueCount}
-                      </span>
-                    </button>
-
-                    {/* 2. TODAY TAB */}
-                    <button
-                      onClick={() => setDateFilter('Today')}
-                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
-                      } ${
-                        dateFilter === 'Today'
+                      onClick={() => { setBookingFilter('all'); setDateFilter('All'); }}
+                      className={`flex items-center gap-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap px-3 py-1.5 ${
+                        bookingFilter === 'all'
                           ? 'bg-indigo-600 text-white shadow-sm'
                           : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'
                       }`}
                     >
-                      <Calendar size={12} />
-                      <span>Today</span>
-                      {todayCount > 0 && (
-                        <span className={`px-1 py-0.2 rounded-full text-[8.5px] font-black ${
-                          dateFilter === 'Today' ? 'bg-white text-indigo-700' : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                        }`}>
-                          {todayCount}
-                        </span>
-                      )}
-                    </button>
-
-                    {/* 3. TOMORROW TAB */}
-                    <button
-                      onClick={() => setDateFilter('Tomorrow')}
-                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
-                      } ${
-                        dateFilter === 'Tomorrow'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      <Clock size={12} />
-                      <span>Tomorrow</span>
-                    </button>
-
-                    {/* 4. NEXT 7 DAYS TAB */}
-                    <button
-                      onClick={() => setDateFilter('Next7')}
-                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
-                      } ${
-                        dateFilter === 'Next7'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      <Sparkles size={12} />
-                      <span>Next 7 Days</span>
-                    </button>
-
-                    {/* 5. ALL ORDERS TAB */}
-                    <button
-                      onClick={() => setDateFilter('All')}
-                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
-                      } ${
-                        dateFilter === 'All'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      <LayoutGrid size={12} />
+                      <LayoutGrid size={13} />
                       <span>All Orders</span>
-                      <span className={`px-1 py-0.2 rounded-full text-[8.5px] font-black ${
-                        dateFilter === 'All' ? 'bg-white text-indigo-700' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                      <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
+                        bookingFilter === 'all' ? 'bg-white text-indigo-700' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
                       }`}>
                         {pendingOrders.length}
                       </span>
                     </button>
 
-                    {/* 6. SELECT DATE TAB */}
+                    {/* ADVANCE BOOKING TAB */}
                     <button
-                      onClick={() => setDateFilter('Custom')}
-                      className={`flex items-center gap-1 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                        isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
-                      } ${
-                        dateFilter === 'Custom'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'
+                      onClick={() => { setBookingFilter('advance'); setDateFilter('All'); }}
+                      className={`flex items-center gap-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap px-3 py-1.5 ${
+                        bookingFilter === 'advance'
+                          ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-400/50'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-white dark:hover:bg-slate-700'
                       }`}
                     >
-                      <CalendarDays size={12} />
-                      <span>Select Date</span>
+                      <CalendarDays size={13} />
+                      <span>Advance Bookings</span>
                     </button>
 
-                    {/* Booking Type Filter */}
-                    <div className="flex items-center gap-0.5 border-l border-slate-300 dark:border-slate-700 pl-1.5 ml-1">
-                      <button
-                        onClick={() => setBookingFilter(prev => prev === 'all' ? 'advance' : prev === 'advance' ? 'festive' : 'all')}
-                        className={`inline-flex items-center gap-1.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                          isCompactDensity ? 'px-1.5 py-0.5' : 'px-2 py-1'
-                        } ${
-                          bookingFilter === 'advance'
-                            ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-400/50'
-                            : bookingFilter === 'festive'
-                            ? 'bg-amber-500 text-slate-950 shadow-sm ring-1 ring-amber-400/50'
-                            : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        <Sparkles size={12} className={bookingFilter === 'festive' ? 'text-slate-950' : bookingFilter === 'advance' ? 'text-white' : 'text-amber-500'} />
-                        <span>{bookingFilter === 'all' ? 'All Bookings' : bookingFilter === 'advance' ? 'Advance' : 'Festive'}</span>
-                      </button>
-                    </div>
+                    {/* FESTIVE BOOKING TAB */}
+                    <button
+                      onClick={() => { setBookingFilter('festive'); setDateFilter('All'); }}
+                      className={`flex items-center gap-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap px-3 py-1.5 ${
+                        bookingFilter === 'festive'
+                          ? 'bg-amber-500 text-slate-950 shadow-sm ring-1 ring-amber-400/50'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-white dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <Sparkles size={13} />
+                      <span>Festive Bookings</span>
+                    </button>
                   </div>
 
                   {dateFilter === 'Custom' && (

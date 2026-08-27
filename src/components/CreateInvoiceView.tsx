@@ -106,18 +106,18 @@ const DropdownField: React.FC<CustomDropdownProps> = ({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full min-h-[38px] px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 flex items-center justify-between gap-2 text-left transition-all ${
+        className={`w-full min-h-[38px] px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-xl border-2 border-slate-300 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 flex items-center justify-between gap-2 text-left transition-all ${
           disabled ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-900' : 'cursor-pointer shadow-2xs'
         } ${className}`}
       >
-        <span className={`truncate font-medium ${!selectedOption ? 'text-slate-400 dark:text-slate-500' : ''}`}>
+        <span className={`truncate font-extrabold ${!selectedOption ? 'text-slate-600 dark:text-slate-300' : ''}`}>
           {selectedOption ? selectedOption.label : placeholder}
         </span>
         <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-indigo-500' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full min-w-[260px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 max-h-72 flex flex-col">
+        <div className="absolute z-50 mt-1 w-full min-w-[260px] bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 max-h-72 flex flex-col">
           {searchable && (
             <div className="p-2 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-900/40">
               <input
@@ -126,7 +126,7 @@ const DropdownField: React.FC<CustomDropdownProps> = ({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Type to search..."
-                className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-900 dark:text-slate-100"
+                className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded-lg text-xs focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-900 dark:text-slate-100"
               />
             </div>
           )}
@@ -185,6 +185,7 @@ export interface CreateInvoiceViewProps {
   currentBiz?: Business;
   editingOrderId: string | null;
   customInvoiceNumber: string;
+  setCustomInvoiceNumber?: (val: string) => void;
   isFestiveBooking: boolean;
   isAdvanceBooking: boolean;
   isFulfilledImmediately: boolean;
@@ -242,6 +243,7 @@ export interface CreateInvoiceViewProps {
   onOpenQuickCreateProduct: (name?: string) => void;
   onToggleAdvanceBooking: (checked: boolean) => void;
   onToggleFestiveBooking: (checked: boolean) => void;
+  onSetBookingType?: (isAdvance: boolean, isFestive: boolean, isDelivered?: boolean) => void;
   setIsFulfilledImmediately: (val: boolean) => void;
   setOrderDate: (val: string) => void;
   setDeliveryDate: (val: string) => void;
@@ -281,6 +283,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   currentBiz,
   editingOrderId,
   customInvoiceNumber,
+  setCustomInvoiceNumber,
   isFestiveBooking,
   isAdvanceBooking,
   isFulfilledImmediately,
@@ -324,6 +327,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   onOpenQuickCreateProduct,
   onToggleAdvanceBooking,
   onToggleFestiveBooking,
+  onSetBookingType,
   setIsFulfilledImmediately,
   setOrderDate,
   setDeliveryDate,
@@ -372,164 +376,45 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
   return (
     <div className="w-full space-y-4 animate-in fade-in duration-150 pb-12">
-      {/* 1. TOP COMMAND BAR */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        {/* Left Side: Title & Invoice Meta */}
-        <div className="flex items-center gap-3 flex-wrap">
+      {/* 1. TOP COMMAND BAR WITH INVOICE #, CUSTOMER & BOOKING TYPE */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs p-3">
+        <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-2.5">
+          {/* Back Button */}
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs shrink-0 self-start xl:self-center"
             title="Return to Sales Orders List"
           >
             <ChevronLeft size={16} />
             <span>Back</span>
           </button>
 
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 rounded-xl border border-indigo-200/60 dark:border-indigo-800/60">
-              <Receipt size={20} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-black text-slate-900 dark:text-white tracking-tight">
-                  {editingOrderId ? 'Edit Sales Invoice' : 'New Sales Invoice'}
-                </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
-                  {customInvoiceNumber || getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking)}
-                </span>
-                <span 
-                  title="Real-time multi-user concurrency lock active."
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800 shadow-2xs"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Live Synced
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                {editingOrderId ? 'Update invoice items, discounts and customer delivery schedule.' : 'Fast POS checkout & customer order placement ledger.'}
-              </p>
-            </div>
-          </div>
-        </div>
+          <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 hidden xl:block shrink-0" />
 
-        {/* Right Side: Quick Classification Tags & Header CTA */}
-        <div className="flex items-center gap-2.5 flex-wrap w-full md:w-auto justify-start md:justify-end">
-          {/* Quick Filter Tags */}
-          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/70 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={() => onToggleAdvanceBooking(!isAdvanceBooking)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                isAdvanceBooking
-                  ? 'bg-indigo-600 text-white shadow-2xs'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              <Calendar size={13} />
-              <span>Advance</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onToggleFestiveBooking(!isFestiveBooking)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                isFestiveBooking
-                  ? 'bg-amber-500 text-slate-950 shadow-2xs font-black'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              <Sparkles size={13} />
-              <span>Festive</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                const next = !isFulfilledImmediately;
-                setIsFulfilledImmediately(next);
-                if (next) setPaymentStatus('Paid');
-              }}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                isFulfilledImmediately
-                  ? 'bg-emerald-600 text-white shadow-2xs'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              <CheckCircle2 size={13} />
-              <span>Delivered</span>
-            </button>
-          </div>
-
-          {/* Quick Save in Header */}
-          <button
-            type="button"
-            disabled={isSubmitting}
-            onClick={() => onSaveOrder('close')}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
-          >
-            {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            <span>{editingOrderId ? 'Update' : 'Save Invoice'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. MAIN 2-COLUMN WORKSPACE */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        
-        {/* ========================================================= */}
-        {/* LEFT COLUMN: Customer, Dates & Product Lines (8 Columns) */}
-        {/* ========================================================= */}
-        <div className="lg:col-span-8 space-y-4">
-          
-          {/* Card A: Customer & Delivery Details */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
-            <div className="px-4 py-3 bg-slate-50/80 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <User size={15} className="text-indigo-600 dark:text-indigo-400" />
-                <h2 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">
-                  Customer & Delivery Details
-                </h2>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onOpenQuickCreateCustomer('')}
-                  className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
-                >
-                  <UserPlus size={12} />
-                  <span>+ New Customer</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCustomerId('WALK_IN');
-                    setSelectedCustomerPhone('');
-                    setSelectedCustomerAddress('');
-                    setSelectedCustomerShippingAddress('');
-                    setIsSameShippingAddress(true);
-                    setPointsToRedeem(0);
-                    setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
-                    setOrderItems(prev => recalculateOrderPrices(prev, undefined, isAdvanceBooking, isFestiveBooking));
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                    selectedCustomerId === 'WALK_IN'
-                      ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900'
-                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  Walk-In
-                </button>
-              </div>
+          {/* Form Fields: Invoice #, Customer Party & Booking / Order Type */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center flex-1">
+            
+            {/* 1. Invoice Number (3 cols) */}
+            <div className="md:col-span-3 flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border-2 border-slate-300 dark:border-slate-600">
+              <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase whitespace-nowrap">
+                Inv #
+              </span>
+              <input
+                type="text"
+                value={customInvoiceNumber}
+                onChange={(e) => setCustomInvoiceNumber ? setCustomInvoiceNumber(e.target.value) : undefined}
+                placeholder={getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking)}
+                className="w-full bg-transparent text-slate-900 dark:text-slate-100 text-xs font-black focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
+              />
+              <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 shrink-0">
+                Auto
+              </span>
             </div>
 
-            <div className="p-4 space-y-4">
-              {/* Customer Selector Dropdown */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
-                  Select Customer Party *
-                </label>
+            {/* 2. Customer Selector Dropdown (6 cols) */}
+            <div className="md:col-span-6 flex items-center gap-1.5">
+              <div className="flex-1 min-w-0">
                 <DropdownField 
                   value={selectedCustomerId}
                   onChange={(val) => {
@@ -557,10 +442,11 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       setOrderItems(prev => recalculateOrderPrices(prev, undefined, isAdvanceBooking, isFestiveBooking));
                     }
                   }}
-                  placeholder="-- Search or Choose Customer --"
+                  placeholder="-- Select Customer Party * --"
                   searchable={true}
                   onAddNew={(searchVal) => onOpenQuickCreateCustomer(searchVal || '')}
                   addNewLabel="Create & Add New Customer"
+                  className="h-9"
                   options={[
                     { value: 'WALK_IN', label: 'Walk-in Customer (Instant POS Counter)' },
                     ...customers.map(c => ({
@@ -570,12 +456,109 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   ]}
                 />
               </div>
+              <button
+                type="button"
+                onClick={() => onOpenQuickCreateCustomer('')}
+                className="h-9 px-2.5 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-xl text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs shrink-0"
+                title="Create New Customer"
+              >
+                <UserPlus size={12} />
+                <span>+ New</span>
+              </button>
+            </div>
 
-              {/* 4-Column Quick Contact & Logistics Details */}
-              <div className="bg-slate-50/70 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            {/* 3. Booking / Order Type Dropdown (3 cols) */}
+            <div className="md:col-span-3">
+              <DropdownField 
+                value={
+                  isFulfilledImmediately 
+                    ? 'delivered' 
+                    : (isFestiveBooking && isAdvanceBooking) 
+                    ? 'festive_advance' 
+                    : isFestiveBooking 
+                    ? 'festive' 
+                    : isAdvanceBooking 
+                    ? 'advance' 
+                    : 'regular'
+                }
+                onChange={(val) => {
+                  if (onSetBookingType) {
+                    if (val === 'advance') {
+                      onSetBookingType(true, false, false);
+                    } else if (val === 'festive') {
+                      onSetBookingType(false, true, false);
+                    } else if (val === 'festive_advance') {
+                      onSetBookingType(true, true, false);
+                    } else if (val === 'delivered') {
+                      onSetBookingType(false, false, true);
+                    } else {
+                      onSetBookingType(false, false, false);
+                    }
+                  } else {
+                    if (val === 'advance') {
+                      onToggleAdvanceBooking(true);
+                      onToggleFestiveBooking(false);
+                      setIsFulfilledImmediately(false);
+                    } else if (val === 'festive') {
+                      onToggleAdvanceBooking(false);
+                      onToggleFestiveBooking(true);
+                      setIsFulfilledImmediately(false);
+                    } else if (val === 'festive_advance') {
+                      onToggleAdvanceBooking(true);
+                      onToggleFestiveBooking(true);
+                      setIsFulfilledImmediately(false);
+                    } else if (val === 'delivered') {
+                      onToggleAdvanceBooking(false);
+                      onToggleFestiveBooking(false);
+                      setIsFulfilledImmediately(true);
+                      setPaymentStatus('Paid');
+                    } else {
+                      onToggleAdvanceBooking(false);
+                      onToggleFestiveBooking(false);
+                      setIsFulfilledImmediately(false);
+                    }
+                  }
+                }}
+                options={[
+                  { value: 'regular', label: 'Standard / Regular Order' },
+                  { value: 'advance', label: 'Advance Booking' },
+                  { value: 'festive', label: 'Festive Booking' },
+                  { value: 'festive_advance', label: 'Festive Advance Booking' },
+                  { value: 'delivered', label: 'Delivered (Direct POS)' }
+                ]}
+                className="h-9 font-bold"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. MAIN 2-COLUMN WORKSPACE */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        
+        {/* ========================================================= */}
+        {/* LEFT COLUMN: Customer, Dates & Product Lines (8 Columns) */}
+        {/* ========================================================= */}
+        <div className="lg:col-span-8 space-y-4">
+          
+          {/* Card A: Customer Contact & Delivery Logistics */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50/80 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <User size={15} className="text-indigo-600 dark:text-indigo-400" />
+                <h2 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">
+                  Contact & Delivery Logistics
+                </h2>
+              </div>
+            </div>
+
+            <div className="p-4 space-y-4">
+
+              {/* 2-Column Quick Contact & Logistics Details */}
+              <div className="bg-slate-50/70 dark:bg-slate-800/40 p-3.5 rounded-xl border-2 border-slate-300 dark:border-slate-600/80 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* 1. Mobile */}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
                     <Phone size={11} className="text-indigo-500" />
                     <span>Mobile Number</span>
                   </label>
@@ -584,15 +567,15 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     value={selectedCustomerPhone}
                     onChange={(e) => setSelectedCustomerPhone(e.target.value)}
                     placeholder="10-digit Mobile"
-                    className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs font-extrabold rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
 
-                {/* 2. Billing Address */}
+                {/* 2. Customer Address */}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
                     <Building2 size={11} className="text-indigo-500" />
-                    <span>Billing Address</span>
+                    <span>Customer Address</span>
                   </label>
                   <input
                     type="text"
@@ -603,86 +586,29 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                         setSelectedCustomerShippingAddress(e.target.value);
                       }
                     }}
-                    placeholder="Street / City"
-                    className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    placeholder="Full Address"
+                    className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs font-extrabold rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500"
                   />
-                </div>
-
-                {/* 3. Shipping Address */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
-                      <Truck size={11} className="text-indigo-500" />
-                      <span>Shipping Address</span>
-                    </label>
-                    <label className="inline-flex items-center gap-1 text-[9px] text-slate-500 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isSameShippingAddress}
-                        onChange={(e) => {
-                          setIsSameShippingAddress(e.target.checked);
-                          if (e.target.checked) {
-                            setSelectedCustomerShippingAddress(selectedCustomerAddress);
-                          }
-                        }}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span>Same</span>
-                    </label>
-                  </div>
-                  <input
-                    type="text"
-                    disabled={isSameShippingAddress}
-                    value={isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress}
-                    onChange={(e) => setSelectedCustomerShippingAddress(e.target.value)}
-                    placeholder="Delivery Location"
-                    className={`w-full h-8 px-2.5 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
-                      isSameShippingAddress
-                        ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed'
-                        : 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700'
-                    }`}
-                  />
-                </div>
-
-                {/* 4. Area Zone */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
-                    <Tag size={11} className="text-indigo-500" />
-                    <span>Dispatch Zone</span>
-                  </label>
-                  {(() => {
-                    const areaZoneList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
-                      ? currentBiz.area_zones 
-                      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
-                    return (
-                      <DropdownField 
-                        value={selectedArea}
-                        onChange={(val) => setSelectedArea(val)}
-                        options={areaZoneList.map(aZone => ({ value: aZone, label: aZone }))}
-                        className="h-8 text-xs font-bold"
-                      />
-                    );
-                  })()}
                 </div>
               </div>
 
               {/* Order Date, Delivery Date & Mode */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                  <label className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                     Invoice / Order Date *
                   </label>
                   <input 
                     type="date"
                     value={orderDate}
                     onChange={(e) => setOrderDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none font-medium cursor-pointer"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-xl border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400 font-medium cursor-pointer"
                   />
                 </div>
 
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                    <label className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                       Target Delivery Date
                     </label>
                     {deliveryDate && (
@@ -701,12 +627,12 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     type="date"
                     value={deliveryDate}
                     onChange={(e) => setDeliveryDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none font-medium cursor-pointer"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-xl border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400 font-medium cursor-pointer"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                  <label className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                     Delivery / Pickup Mode
                   </label>
                   <DropdownField 
@@ -725,7 +651,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
               </div>
 
               {/* 7-Day Live Delivery Load Tracker Chip Bar */}
-              <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-1.5">
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-600/80 space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider flex items-center gap-1">
                     <Clock size={11} className="text-amber-500" />
@@ -800,7 +726,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                           setPointsToRedeem(isNaN(num) ? 0 : Math.min(selectedCust.loyalty_points || 0, Math.max(0, num)));
                         }
                       }}
-                      className="w-16 h-8 px-2 bg-white dark:bg-slate-800 text-center font-mono font-bold text-xs rounded-lg border border-amber-300 dark:border-amber-700 focus:outline-none"
+                      className="w-16 h-8 px-2 bg-white dark:bg-slate-800 text-center font-mono font-bold text-xs rounded-lg border border-amber-300 dark:border-amber-700 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                     />
                     {(selectedCust.loyalty_points || 0) > 0 && (
                       <button
@@ -819,122 +745,122 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
           {/* Card B: Product Line Items & Scan Bar */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
-            <div className="px-4 py-3 bg-slate-50/80 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-indigo-500"></div>
+            <div className="px-4 py-3 bg-slate-50/80 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2 min-w-[200px]">
+                <div className="h-2 w-2 rounded-full bg-indigo-500 shrink-0"></div>
                 <h2 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">
-                  Product Line Items ({orderItems.length} items, {totalItemQty} units)
+                  Product Line Items <span className="text-[10px] text-slate-500 font-bold ml-1">({orderItems.length} items, {totalItemQty} units)</span>
                 </h2>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-                  Tenant Tax Default: {defaultTenantTax}%
+              <div className="flex items-center gap-2 flex-1 justify-end min-w-[300px]">
+                {/* Fast Barcode Scanner Input */}
+                <div className="relative w-full max-w-[280px]">
+                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-indigo-500">
+                    <ScanLine size={14} />
+                  </div>
+                  <input 
+                    ref={fastScanInputRef}
+                    type="text" 
+                    defaultValue=""
+                    placeholder="Scan barcode / SKU..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const inputElem = e.currentTarget as HTMLInputElement;
+                        const code = inputElem.value.trim();
+                        if (!code) return;
+                        
+                        const latestProducts = dbStore.getProducts(businessId);
+                        const searchCode = code.toLowerCase();
+                        const p = latestProducts.find(prod => 
+                          String(prod.sku || '').trim().toLowerCase() === searchCode || 
+                          String(prod.name || '').trim().toLowerCase() === searchCode || 
+                          String(prod.id || '').trim() === code || 
+                          String(prod.barcode || '').trim().toLowerCase() === searchCode
+                        );
+                        
+                        if (p) {
+                          if ((p.current_stock ?? 0) <= 0 && !isAdvanceBooking && !isFestiveBooking) {
+                            setOutOfStockProduct(p);
+                            inputElem.value = '';
+                            setTimeout(() => fastScanInputRef.current?.focus(), 10);
+                            return;
+                          }
+
+                          const selCust = customers.find(c => c.id === selectedCustomerId);
+                          const evalRes = calculateApplicablePrice(p, {
+                            isLoyalMember: isLoyalMember(selCust),
+                            isAdvanceBooking,
+                            isDiwaliSale: isFestiveBooking,
+                            business: currentBiz,
+                            orderDate
+                          });
+                          
+                          const defaultTax = (defaultTenantTax === 0 || p.gst_rate === 18 || typeof p.gst_rate !== 'number' || isNaN(p.gst_rate))
+                            ? defaultTenantTax
+                            : p.gst_rate;
+                            
+                          const existingItem = orderItems.find(it => it.product_id === p.id);
+                          if (existingItem) {
+                            triggerToast('Item quantity updated.', 'success');
+                            setOrderItems(prevItems => prevItems.map(it => 
+                              it.product_id === p.id 
+                                ? { ...it, qty: it.qty + 1 }
+                                : it
+                            ));
+                          } else {
+                            const newItem = {
+                              id: crypto.randomUUID(),
+                              product_id: p.id,
+                              product_name: p.name,
+                              qty: 1,
+                              scanned_qty: 0,
+                              selling_price: evalRes.appliedPrice,
+                              gst_rate: defaultTax,
+                              normal_rate: evalRes.normalRate,
+                              rate_type: evalRes.rateType,
+                              rate_reason: evalRes.rateReason,
+                              unit_savings: Math.max(0, evalRes.normalRate - evalRes.appliedPrice),
+                              is_overridden: false
+                            };
+                            triggerToast('Added: ' + p.name, 'success');
+                            setOrderItems(prevItems => [...prevItems, newItem]);
+                          }
+                          inputElem.value = '';
+                          setTimeout(() => fastScanInputRef.current?.focus(), 10);
+                        } else {
+                          triggerToast('Product not found for barcode: ' + code, 'error');
+                          inputElem.value = '';
+                          setTimeout(() => fastScanInputRef.current?.focus(), 10);
+                        }
+                      }
+                    }}
+                    autoFocus
+                    className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 rounded-lg text-xs font-extrabold focus:outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-slate-100 transition-all shadow-sm"
+                  />
+                </div>
+
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1.5 rounded hidden xl:inline-block whitespace-nowrap">
+                  Tax: {defaultTenantTax}%
                 </span>
                 <button
                   type="button"
                   onClick={() => onOpenQuickCreateProduct('')}
-                  className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                  className="px-2.5 py-1.5 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-200 dark:border-indigo-800 rounded-lg text-[10px] font-extrabold transition flex items-center gap-1 cursor-pointer shadow-2xs shrink-0 whitespace-nowrap"
                 >
                   <PackagePlus size={12} />
-                  <span>+ New Product SKU</span>
+                  <span className="hidden sm:inline">+ New</span>
                 </button>
               </div>
             </div>
 
             <div className="p-4 space-y-3">
-              {/* Fast Barcode Scanner Input */}
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-indigo-500">
-                  <ScanLine size={16} />
-                </div>
-                <input 
-                  ref={fastScanInputRef}
-                  type="text" 
-                  defaultValue=""
-                  placeholder="⚡ Fast Barcode Scanner: Scan or type product SKU/barcode and press Enter to instantly add..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const inputElem = e.currentTarget as HTMLInputElement;
-                      const code = inputElem.value.trim();
-                      if (!code) return;
-                      
-                      const latestProducts = dbStore.getProducts(businessId);
-                      const searchCode = code.toLowerCase();
-                      const p = latestProducts.find(prod => 
-                        String(prod.sku || '').trim().toLowerCase() === searchCode || 
-                        String(prod.name || '').trim().toLowerCase() === searchCode || 
-                        String(prod.id || '').trim() === code || 
-                        String(prod.barcode || '').trim().toLowerCase() === searchCode
-                      );
-                      
-                      if (p) {
-                        if ((p.current_stock ?? 0) <= 0 && !isAdvanceBooking && !isFestiveBooking) {
-                          setOutOfStockProduct(p);
-                          inputElem.value = '';
-                          setTimeout(() => fastScanInputRef.current?.focus(), 10);
-                          return;
-                        }
-
-                        const selCust = customers.find(c => c.id === selectedCustomerId);
-                        const evalRes = calculateApplicablePrice(p, {
-                          isLoyalMember: isLoyalMember(selCust),
-                          isAdvanceBooking,
-                          isDiwaliSale: isFestiveBooking,
-                          business: currentBiz,
-                          orderDate
-                        });
-                        
-                        const defaultTax = (defaultTenantTax === 0 || p.gst_rate === 18 || typeof p.gst_rate !== 'number' || isNaN(p.gst_rate))
-                          ? defaultTenantTax
-                          : p.gst_rate;
-                          
-                        const existingItem = orderItems.find(it => it.product_id === p.id);
-                        if (existingItem) {
-                          triggerToast('Item quantity updated.', 'success');
-                          setOrderItems(prevItems => prevItems.map(it => 
-                            it.product_id === p.id 
-                              ? { ...it, qty: it.qty + 1 }
-                              : it
-                          ));
-                        } else {
-                          const newItem = {
-                            id: crypto.randomUUID(),
-                            product_id: p.id,
-                            product_name: p.name,
-                            qty: 1,
-                            scanned_qty: 0,
-                            selling_price: evalRes.appliedPrice,
-                            gst_rate: defaultTax,
-                            normal_rate: evalRes.normalRate,
-                            rate_type: evalRes.rateType,
-                            rate_reason: evalRes.rateReason,
-                            unit_savings: Math.max(0, evalRes.normalRate - evalRes.appliedPrice),
-                            is_overridden: false
-                          };
-                          triggerToast('Added: ' + p.name, 'success');
-                          setOrderItems(prevItems => [...prevItems, newItem]);
-                        }
-                        inputElem.value = '';
-                        setTimeout(() => fastScanInputRef.current?.focus(), 10);
-                      } else {
-                        triggerToast('Product not found for barcode: ' + code, 'error');
-                        inputElem.value = '';
-                        setTimeout(() => fastScanInputRef.current?.focus(), 10);
-                      }
-                    }
-                  }}
-                  autoFocus
-                  className="w-full pl-9 pr-4 py-2 bg-indigo-50/40 dark:bg-indigo-950/20 border-2 border-indigo-200/80 dark:border-indigo-800/80 rounded-xl text-xs font-semibold focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 text-slate-900 dark:text-slate-100 placeholder:text-indigo-400/80 dark:placeholder:text-indigo-600 transition-all"
-                />
-              </div>
-
               {/* Manual Row Picker Bar */}
-              <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border-2 border-slate-300 dark:border-slate-600/80 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
                 {/* SKU Dropdown */}
                 <div className="sm:col-span-5 space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                     Choose Product SKU
                   </label>
                   <DropdownField 
@@ -998,14 +924,14 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
                 {/* Qty Spinner */}
                 <div className="sm:col-span-2 space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                     Qty
                   </label>
                   <div className="flex items-center">
                     <button
                       type="button"
                       onClick={() => setRowQty(Math.max(1, (Number(rowQty) || 1) - 1))}
-                      className="h-[38px] px-2 bg-white dark:bg-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-200 rounded-l-lg border border-r-0 border-slate-200 dark:border-slate-700 cursor-pointer"
+                      className="h-[38px] px-2 bg-white dark:bg-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-200 rounded-l-lg border-2 border-r-0 border-slate-300 dark:border-slate-600 cursor-pointer"
                     >
                       <Minus size={11} />
                     </button>
@@ -1014,12 +940,12 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       min={1}
                       value={rowQty}
                       onChange={(e) => setRowQty(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1))}
-                      className="w-full h-[38px] px-1 text-center bg-white dark:bg-slate-800 text-xs font-mono font-bold border border-slate-200 dark:border-slate-700 focus:outline-none"
+                      className="w-full h-[38px] px-1 text-center bg-white dark:bg-slate-800 text-xs font-mono font-bold border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                     />
                     <button
                       type="button"
                       onClick={() => setRowQty((Number(rowQty) || 0) + 1)}
-                      className="h-[38px] px-2 bg-white dark:bg-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-200 rounded-r-lg border border-l-0 border-slate-200 dark:border-slate-700 cursor-pointer"
+                      className="h-[38px] px-2 bg-white dark:bg-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-200 rounded-r-lg border-2 border-l-0 border-slate-300 dark:border-slate-600 cursor-pointer"
                     >
                       <Plus size={11} />
                     </button>
@@ -1028,7 +954,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
                 {/* Unit Price */}
                 <div className="sm:col-span-2 space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                     Price ({currencySymbol})
                   </label>
                   <input 
@@ -1037,13 +963,13 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     step="any"
                     value={rowPrice}
                     onChange={(e) => setRowPrice(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                    className="w-full h-[38px] px-2.5 bg-white dark:bg-slate-800 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none"
+                    className="w-full h-[38px] px-2.5 bg-white dark:bg-slate-800 text-xs font-mono rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                   />
                 </div>
 
                 {/* Tax Rate % */}
                 <div className="sm:col-span-1 space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                     GST%
                   </label>
                   <input 
@@ -1052,7 +978,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     max={100}
                     value={rowTaxRate}
                     onChange={(e) => setRowTaxRate(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                    className="w-full h-[38px] px-1 text-center bg-white dark:bg-slate-800 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none"
+                    className="w-full h-[38px] px-1 text-center bg-white dark:bg-slate-800 text-xs font-mono rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                   />
                 </div>
 
@@ -1073,7 +999,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
               <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-800/80 text-[10px] font-black uppercase text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                    <tr className="bg-slate-50 dark:bg-slate-800/80 text-[10px] font-black uppercase text-slate-900 dark:text-slate-100 border-b-2 border-slate-300 dark:border-slate-800">
                       <th className="p-3">#</th>
                       <th className="p-3">Product Description</th>
                       <th className="p-3 text-center">Qty</th>
@@ -1194,7 +1120,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                                   }
                                   setOrderItems(updated);
                                 }}
-                                className="w-20 px-1.5 py-1 text-right bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                                className="w-20 px-1.5 py-1 text-right bg-slate-50 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded text-xs"
                               />
                             </td>
 
@@ -1213,7 +1139,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                                   else updated[idx].gst_rate = parseFloat(val) || 0;
                                   setOrderItems(updated);
                                 }}
-                                className="w-14 px-1 py-1 text-right bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                                className="w-14 px-1 py-1 text-right bg-slate-50 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded text-xs"
                               />
                             </td>
 
@@ -1344,7 +1270,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                           setCustomDiscountPercentage(e.target.value);
                           setCustomDiscountAmount('');
                         }}
-                        className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none"
+                        className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                       />
                       <span className="absolute left-2 top-2 text-[10px] text-slate-400 font-bold">%</span>
                     </div>
@@ -1362,7 +1288,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                           setCustomDiscountAmount(e.target.value);
                           setCustomDiscountPercentage('');
                         }}
-                        className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none"
+                        className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                       />
                       <span className="absolute left-2 top-2 text-[10px] text-slate-400 font-bold">{currencySymbol}</span>
                     </div>
@@ -1372,7 +1298,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                 {/* Additional & Delivery Charges */}
                 <div className="pt-2 grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                       Delivery ({currencySymbol})
                     </label>
                     <input 
@@ -1381,12 +1307,12 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       placeholder="0"
                       value={deliveryCharges}
                       onChange={(e) => setDeliveryCharges(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                      className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none"
+                      className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                       Addl. Fee ({currencySymbol})
                     </label>
                     <input 
@@ -1395,7 +1321,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       placeholder="0"
                       value={additionalCharges}
                       onChange={(e) => setAdditionalCharges(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                      className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none"
+                      className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                     />
                   </div>
                 </div>
@@ -1419,7 +1345,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
               {/* Settlement Section */}
               <div className="space-y-2.5 pt-1">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                     Payment Status *
                   </label>
                   <DropdownField 
@@ -1450,7 +1376,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
                 {(paymentStatus === 'Paid' || paymentStatus === 'Partial') && (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                    <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                       Payment Mode
                     </label>
                     <DropdownField 
@@ -1469,7 +1395,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
                 {paymentStatus === 'Partial' && (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                    <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                       Advance / Received ({currencySymbol})
                     </label>
                     <input 
@@ -1478,13 +1404,13 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       placeholder="Enter advance amount"
                       value={paidAmount}
                       onChange={(e) => setPaidAmount(e.target.value)}
-                      className="w-full h-8 px-2.5 bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold text-emerald-600 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none"
+                      className="w-full h-8 px-2.5 bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold text-emerald-600 rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                     />
                   </div>
                 )}
 
                 {/* Balance Due / Status Indicator */}
-                <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs font-bold">
+                <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border-2 border-slate-300 dark:border-slate-600 flex items-center justify-between text-xs font-bold">
                   <span className="text-slate-500">Balance Due:</span>
                   <span className={`font-mono ${balance > 0 ? 'text-rose-600 dark:text-rose-400 font-black' : 'text-emerald-600 dark:text-emerald-400'}`}>
                     {currencySymbol}{balance.toLocaleString()}

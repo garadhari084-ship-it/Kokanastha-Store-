@@ -1,3 +1,4 @@
+import { safeStorage } from "../utils/safeStorage";
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Send, 
@@ -58,7 +59,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
   // Hidden/Removed users in Internal Communications only
   const [hiddenUserIds, setHiddenUserIds] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem(`omnipack_erp_hidden_comms_${businessId}`);
+      const saved = safeStorage.getItem(`omnipack_erp_hidden_comms_${businessId}`);
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
       return [];
@@ -234,7 +235,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
       const nextHidden = hiddenUserIds.filter(id => id !== user.id);
       setHiddenUserIds(nextHidden);
       try {
-        localStorage.setItem(`omnipack_erp_hidden_comms_${businessId}`, JSON.stringify(nextHidden));
+        safeStorage.setItem(`omnipack_erp_hidden_comms_${businessId}`, JSON.stringify(nextHidden));
       } catch (e) {}
     }
 
@@ -335,7 +336,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
     const nextHidden = Array.from(new Set([...hiddenUserIds, targetId]));
     setHiddenUserIds(nextHidden);
     try {
-      localStorage.setItem(`omnipack_erp_hidden_comms_${businessId}`, JSON.stringify(nextHidden));
+      safeStorage.setItem(`omnipack_erp_hidden_comms_${businessId}`, JSON.stringify(nextHidden));
     } catch (e) {}
 
     // C. If currently selected, clear active chat
@@ -365,7 +366,7 @@ export const InboxModule: React.FC<InboxModuleProps> = ({ currentUser, businessI
     const nextHidden = hiddenUserIds.filter(id => id !== userId);
     setHiddenUserIds(nextHidden);
     try {
-      localStorage.setItem(`omnipack_erp_hidden_comms_${businessId}`, JSON.stringify(nextHidden));
+      safeStorage.setItem(`omnipack_erp_hidden_comms_${businessId}`, JSON.stringify(nextHidden));
     } catch (e) {}
     showToast(`"${userName}" restored to Internal Communications.`, 'success');
   };

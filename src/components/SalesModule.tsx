@@ -526,6 +526,28 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setOrderItems(prev => recalculateOrderPrices(prev, cust, isAdvanceBooking, val));
   };
 
+  const handleSetBookingType = (isAdvance: boolean, isFestive: boolean, isDelivered: boolean = false) => {
+    setIsAdvanceBooking(isAdvance);
+    setIsFestiveBooking(isFestive);
+    setIsFulfilledImmediately(isDelivered);
+    if (isDelivered) {
+      setPaymentStatus('Paid');
+    }
+    if (!editingOrderId && isCreateModalOpenRef.current && draftSessionIdRef.current) {
+      const allocated = dbStore.reserveDraftInvoiceNumber(
+        businessId,
+        user.id,
+        user.name,
+        draftSessionIdRef.current,
+        isFestive,
+        isAdvance
+      );
+      setCustomInvoiceNumber(allocated);
+    }
+    const cust = customers.find(c => c.id === selectedCustomerId);
+    setOrderItems(prev => recalculateOrderPrices(prev, cust, isAdvance, isFestive));
+  };
+
   // Quick line-item row helper
   const [rowProductId, setRowProductId] = useState('');
   const fastScanInputRef = useRef<HTMLInputElement>(null);
@@ -1138,10 +1160,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     // Safety return if Walk-in Unpaid without confirmation
     // Only warn for actual walk-ins, not for new customers being registered
     if (finalPaymentStatusToSave === 'Unpaid' && selectedCustomerId === 'WALK_IN' && !isNewCustomerSelected) {
-      const confirmUnpaidWalkin = window.confirm(
-        "You are creating an UNPAID order for a Walk-in Customer.\nDebt tracking is not available for walk-ins. Are you sure you want to proceed?"
-      );
-      if (!confirmUnpaidWalkin) return;
+      triggerToast('Warning: UNPAID order for Walk-in Customer. Debt tracking not available.', 'info');
     }
 
     setIsSubmitting(true);
@@ -1240,17 +1259,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         const currentDebt = Number(customerObj.outstanding_amount) || 0;
         const limit = Number(customerObj.credit_limit) || 0;
         if (limit > 0 && currentDebt + actualBalance > limit) {
-           const confirmed = window.confirm(
-             `CREDIT LIMIT WARNING!\n\n` +
-             `This transaction will increase debt by ${currencySymbol}${actualBalance.toLocaleString()} and breach authorized limit of ${currencySymbol}${limit.toLocaleString()}.\n\n` +
-             `Current Outstanding: ${currencySymbol}${currentDebt.toLocaleString()}\n` +
-             `New Total: ${currencySymbol}${(currentDebt + actualBalance).toLocaleString()}\n\n` +
-             `Do you want to override and bypass credit check?`
-           );
-           if (!confirmed) {
-             setIsSubmitting(false);
-             return;
-           }
+           triggerToast(`CREDIT LIMIT WARNING! Transaction overrides authorized limit.`, 'info');
         }
       }
 
@@ -2398,6 +2407,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           currentBiz={currentBiz}
           editingOrderId={editingOrderId}
           customInvoiceNumber={customInvoiceNumber}
+          setCustomInvoiceNumber={setCustomInvoiceNumber}
           isFestiveBooking={isFestiveBooking}
           isAdvanceBooking={isAdvanceBooking}
           isFulfilledImmediately={isFulfilledImmediately}
@@ -2442,6 +2452,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           onOpenQuickCreateProduct={handleOpenQuickCreateProduct}
           onToggleAdvanceBooking={handleToggleAdvanceBooking}
           onToggleFestiveBooking={handleToggleFestiveBooking}
+          onSetBookingType={handleSetBookingType}
           setIsFulfilledImmediately={setIsFulfilledImmediately}
           setOrderDate={setOrderDate}
           setDeliveryDate={setDeliveryDate}

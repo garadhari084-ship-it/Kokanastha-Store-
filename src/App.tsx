@@ -45,6 +45,7 @@ import {
   User,
 } from 'lucide-react';
 import { dbStore } from './services/store';
+import { safeStorage } from './utils/safeStorage';
 import { useNotificationSound } from './utils/useNotificationSound';
 import { UserProfile, Business, UserRole } from './types/erp';
 import { supabase, isSupabaseConfigured } from './services/supabase';
@@ -105,10 +106,10 @@ interface Toast {
 
 const getDeviceId = (): string => {
   try {
-    let devId = localStorage.getItem('omnipack_device_id');
+    let devId = safeStorage.getItem('omnipack_device_id');
     if (!devId) {
       devId = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
-      localStorage.setItem('omnipack_device_id', devId);
+      safeStorage.setItem('omnipack_device_id', devId);
     }
     return devId;
   } catch (e) {
@@ -121,15 +122,15 @@ export default function App() {
   useEffect(() => {
     // Sanitize old localStorage data that violates UUID schema
     
-    const profiles = localStorage.getItem('omnipack_erp_profiles');
-    const cats = localStorage.getItem('omnipack_erp_categories');
+    const profiles = safeStorage.getItem('omnipack_erp_profiles');
+    const cats = safeStorage.getItem('omnipack_erp_categories');
     
     if (
         (cats && cats.includes('"cat-')) || 
         (profiles && profiles.includes('"admin_user"'))
     ) {
        console.log('Clearing old non-UUID local storage...');
-       localStorage.clear();
+       safeStorage.pruneNonEssential();
        window.location.reload();
     }
 
@@ -380,7 +381,7 @@ export default function App() {
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('omnipack_read_notifications');
+      const saved = safeStorage.getItem('omnipack_read_notifications');
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -524,7 +525,7 @@ export default function App() {
   // Restore session on mount
   useEffect(() => {
     const restoreSession = async () => {
-      const savedSession = localStorage.getItem('omnipack_session');
+      const savedSession = safeStorage.getItem('omnipack_session');
       const deviceId = getDeviceId();
       let localSessionToken = '';
       if (savedSession) {
@@ -606,7 +607,7 @@ export default function App() {
           { event: '*', schema: 'public' },
           async (payload: any) => {
             console.log('Realtime update received:', payload);
-            const sessionData = localStorage.getItem('omnipack_session');
+            const sessionData = safeStorage.getItem('omnipack_session');
             if (sessionData) {
               try {
                 const { businessId } = JSON.parse(sessionData);
@@ -624,7 +625,7 @@ export default function App() {
           { event: 'sync_update' },
           async (payload: any) => {
             console.log('Sync update broadcast received:', payload);
-            const sessionData = localStorage.getItem('omnipack_session');
+            const sessionData = safeStorage.getItem('omnipack_session');
             if (sessionData) {
               try {
                 const { businessId } = JSON.parse(sessionData);
@@ -668,12 +669,12 @@ export default function App() {
           { event: 'force_logout_all' },
           (payload: any) => {
             console.log('Force logout all broadcast received:', payload);
-            const sessionData = localStorage.getItem('omnipack_session');
+            const sessionData = safeStorage.getItem('omnipack_session');
             if (sessionData && payload.payload?.userId) {
               try {
                 const { userId } = JSON.parse(sessionData);
                 if (userId === payload.payload.userId) {
-                  localStorage.removeItem('omnipack_session');
+                  safeStorage.removeItem('omnipack_session');
                   setAuthError('You have been logged out because your account was logged in from another device.');
                   triggerToast('You have been logged out because your account was accessed from another device.', 'error');
                   setCurrentUser(null);
@@ -689,7 +690,7 @@ export default function App() {
           { event: 'force_logout' },
           (payload: any) => {
             console.log('Force logout broadcast received:', payload);
-            const sessionData = localStorage.getItem('omnipack_session');
+            const sessionData = safeStorage.getItem('omnipack_session');
             if (sessionData && payload.payload?.userId) {
               try {
                 const { userId, sessionToken } = JSON.parse(sessionData);
@@ -702,7 +703,7 @@ export default function App() {
                 if (userId === targetUserId) {
                   const isCurrent = (activeDeviceId && activeDeviceId === currentDeviceId) || (newSessionToken && sessionToken === newSessionToken);
                   if (!isCurrent) {
-                    localStorage.removeItem('omnipack_session');
+                    safeStorage.removeItem('omnipack_session');
                     setAuthError('You have been logged out because your account was logged in from another device.');
                     triggerToast('You have been logged out because this account was logged in from another device.', 'error');
                     setCurrentUser(null);
@@ -725,7 +726,7 @@ export default function App() {
         if (!event || !event.data) return;
         const { type, payload } = event.data;
         if (type === 'FORCE_LOGOUT' || type === 'FORCE_LOGOUT_ALL') {
-          const sessionData = localStorage.getItem('omnipack_session');
+          const sessionData = safeStorage.getItem('omnipack_session');
           if (sessionData && payload?.userId) {
             try {
               const { userId, sessionToken } = JSON.parse(sessionData);
@@ -733,7 +734,7 @@ export default function App() {
               if (userId === payload.userId) {
                 const isCurrent = (payload.activeDeviceId && payload.activeDeviceId === currentDeviceId) || (payload.newSessionToken && sessionToken === payload.newSessionToken);
                 if (!isCurrent) {
-                  localStorage.removeItem('omnipack_session');
+                  safeStorage.removeItem('omnipack_session');
                   setAuthError('You have been logged out because your account was logged in from another device.');
                   triggerToast('You have been logged out because this account was logged in from another device.', 'error');
                   setCurrentUser(null);
@@ -755,7 +756,7 @@ export default function App() {
         if (event === 'SIGNED_OUT' && dbMode === 'supabase') {
            setCurrentUser(null);
            setCurrentBusiness(null);
-           localStorage.removeItem('omnipack_session');
+           safeStorage.removeItem('omnipack_session');
         }
       });
       return () => {
@@ -781,7 +782,7 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     const deviceId = getDeviceId();
-    const sessionData = localStorage.getItem('omnipack_session');
+    const sessionData = safeStorage.getItem('omnipack_session');
     let sessionToken = '';
     if (sessionData) {
       try {
@@ -873,7 +874,7 @@ export default function App() {
 
              await dbStore.syncFromSupabase(fallbackResult.business.id);
              dbStore.registerDeviceSession(fallbackResult.user.id, deviceId, newSessionToken, fallbackResult.business.id);
-             localStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
+             safeStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
              setCurrentUser(fallbackResult.user);
              setCurrentBusiness(fallbackResult.business);
              
@@ -900,7 +901,7 @@ export default function App() {
                 .maybeSingle();
               if (dbProfile) {
                 // Polyfill for allowed_pages if Supabase column is missing but local cache has it
-                const localUsers = JSON.parse(localStorage.getItem('omnipack_erp_db') || '{}')?.profiles || [];
+                const localUsers = JSON.parse(safeStorage.getItem('omnipack_erp_db') || '{}')?.profiles || [];
                 const localUser = localUsers.find(u => u.id === dbProfile.id);
                 if (localUser && localUser.allowed_pages && !dbProfile.allowed_pages) {
                     dbProfile.allowed_pages = localUser.allowed_pages;
@@ -967,7 +968,7 @@ export default function App() {
 
             await dbStore.syncFromSupabase(profile.business_id);
             const biz = dbStore.getBusiness(profile.business_id) || dbStore.getBusinesses()[0];
-            localStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
+            safeStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
             setCurrentUser(profile);
             setCurrentBusiness(biz);
             
@@ -975,9 +976,9 @@ export default function App() {
             
             // Save password for offline fallback
             try {
-              const saved = JSON.parse(localStorage.getItem('omnipack_erp_passwords') || '{}');
+              const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
               saved[profile.email.toLowerCase().trim()] = passwordInput;
-              localStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+              safeStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
             } catch(e) {}
             
             setActiveView('dashboard');
@@ -992,7 +993,7 @@ export default function App() {
 
       if (result.success && result.user && result.business) {
         const newSessionToken = result.user.session_token || ('st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11));
-        localStorage.setItem('omnipack_session', JSON.stringify({ userId: result.user.id, businessId: result.business.id, mode: 'local', sessionToken: newSessionToken, deviceId }));
+        safeStorage.setItem('omnipack_session', JSON.stringify({ userId: result.user.id, businessId: result.business.id, mode: 'local', sessionToken: newSessionToken, deviceId }));
         setCurrentUser(result.user);
         setCurrentBusiness(result.business);
         
@@ -1029,7 +1030,7 @@ export default function App() {
     setDeepLinkData(null);
     setEmailInput('');
     setPasswordInput('');
-    localStorage.removeItem('omnipack_session');
+    safeStorage.removeItem('omnipack_session');
     if (dbMode === 'supabase' && supabase) {
       supabase.auth.signOut();
     }
@@ -1256,7 +1257,7 @@ export default function App() {
     const allIds = notifications.map(n => n.id);
     const updatedRead = Array.from(new Set([...readNotificationIds, ...allIds]));
     setReadNotificationIds(updatedRead);
-    localStorage.setItem('omnipack_read_notifications', JSON.stringify(updatedRead));
+    safeStorage.setItem('omnipack_read_notifications', JSON.stringify(updatedRead));
     triggerToast('All notifications marked as read', 'success');
   };
 
@@ -1264,7 +1265,7 @@ export default function App() {
     if (!readNotificationIds.includes(notification.id)) {
       const updated = [...readNotificationIds, notification.id];
       setReadNotificationIds(updated);
-      localStorage.setItem('omnipack_read_notifications', JSON.stringify(updated));
+      safeStorage.setItem('omnipack_read_notifications', JSON.stringify(updated));
     }
     setIsNotificationMenuOpen(false);
     setIsAllNotificationsModalOpen(false);
@@ -1286,7 +1287,7 @@ export default function App() {
 
   const handleClearReadNotifications = () => {
     setReadNotificationIds([]);
-    localStorage.removeItem('omnipack_read_notifications');
+    safeStorage.removeItem('omnipack_read_notifications');
     triggerToast('Cleared notification read memory', 'info');
   };
 
@@ -1730,9 +1731,24 @@ export default function App() {
                   )}
 
                   {authError && (
-                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2.5 shadow-sm">
-                      <ShieldAlert size={18} className="mt-0.5 shrink-0 text-rose-500" />
-                      <span className="font-medium text-rose-800 leading-snug">{authError}</span>
+                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex flex-col gap-2 shadow-sm">
+                      <div className="flex items-start gap-2.5">
+                        <ShieldAlert size={18} className="mt-0.5 shrink-0 text-rose-500" />
+                        <span className="font-medium text-rose-800 leading-snug">{authError}</span>
+                      </div>
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            safeStorage.pruneNonEssential();
+                            try { window.localStorage.clear(); } catch (_) {}
+                            window.location.reload();
+                          }}
+                          className="text-[11px] font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer"
+                        >
+                          Clear Local Cache & Retry
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -2569,7 +2585,7 @@ export default function App() {
                                 onClick={() => {
                                   const updated = [...readNotificationIds, n.id];
                                   setReadNotificationIds(updated);
-                                  localStorage.setItem('omnipack_read_notifications', JSON.stringify(updated));
+                                  safeStorage.setItem('omnipack_read_notifications', JSON.stringify(updated));
                                 }}
                                 className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-medium flex items-center gap-1 cursor-pointer"
                               >

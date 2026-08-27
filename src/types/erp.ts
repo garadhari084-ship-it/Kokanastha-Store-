@@ -10,7 +10,9 @@ export interface Business {
   email: string;
   phone: string;
   invoice_prefix: string;
+  advance_invoice_prefix?: string;
   festive_invoice_prefix?: string;
+  festive_advance_invoice_prefix?: string;
   tax_rate_default: number;
   created_at: string;
   logo_url?: string;
@@ -78,6 +80,39 @@ export interface ComboItem {
   qty: number;
 }
 
+export interface NutritionFacts {
+  serving_size?: string; // e.g. "100g" or "30g"
+  servings_per_container?: string; // e.g. "5" or "10"
+  energy_kcal?: number; // Energy (kcal)
+  protein_g?: number; // Protein (g)
+  carbohydrates_g?: number; // Carbohydrates (g)
+  total_sugars_g?: number; // Total Sugars (g)
+  added_sugars_g?: number; // Added Sugars (g)
+  total_fat_g?: number; // Total Fat (g)
+  saturated_fat_g?: number; // Saturated Fat (g)
+  trans_fat_g?: number; // Trans Fat (g)
+  cholesterol_mg?: number; // Cholesterol (mg)
+  sodium_mg?: number; // Sodium (mg)
+  dietary_fiber_g?: number; // Dietary Fiber (g)
+  calcium_mg?: number; // Calcium (mg)
+  iron_mg?: number; // Iron (mg)
+}
+
+export interface FoodPackagingInfo {
+  dietary_type?: 'veg' | 'non_veg' | 'vegan' | 'egg'; // Default 'veg'
+  ingredients?: string; // e.g. "Whole Wheat Flour, Pure Ghee, Sugar, Cardamom"
+  allergen_info?: string; // e.g. "Contains Wheat (Gluten), Tree Nuts"
+  fssai_license?: string; // e.g. "11521018000123"
+  net_weight?: string; // e.g. "250g", "500g", "1 Kg"
+  batch_no?: string; // e.g. "BAT-2026-08"
+  shelf_life_days?: number; // e.g. 180
+  best_before_text?: string; // e.g. "Best Before 6 Months from packaging"
+  storage_instructions?: string; // e.g. "Store in a cool & dry place"
+  mfg_by?: string; // Manufacturer name & address
+  mkt_by?: string; // Marketer name & address
+  customer_care?: string; // Customer care helpline / email
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -117,6 +152,10 @@ export interface Product {
   // Combo Box / Product Bundle attributes
   is_combo?: boolean;
   combo_items?: ComboItem[];
+
+  // Nutrition Facts & Food Packaging Info (Kokanastha / FSSAI standard)
+  nutrition_facts?: NutritionFacts;
+  food_packaging?: FoodPackagingInfo;
 }
 
 export interface ComboHistoryLog {

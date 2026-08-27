@@ -87,6 +87,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
   const [activeFilter, setActiveFilter] = useState<'All' | 'Pending Delivery' | 'Ready to Dispatch' | 'In Transit' | 'Delivered' | 'Returned' | 'Overdue'>('Pending Delivery');
   const [dateFilter, setDateFilter] = useState<string>('All');
   const [customDate, setCustomDate] = useState<string>('');
+  const [bookingFilter, setBookingFilter] = useState<'all' | 'advance' | 'festive'>('all');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [activeView, setActiveView] = useState<'Operations' | 'PackingCompleted' | 'ReadyToDispatch' | 'InTransit' | 'Delivered' | 'Returned' | 'Reports'>('PackingCompleted');
   
@@ -533,6 +534,9 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
     // Count orders for a specific date in current view
     const countForDate = (dateKey: string) => {
       return orders.filter(o => {
+        if (bookingFilter === 'advance' && !o.advance_booking) return false;
+        if (bookingFilter === 'festive' && !o.festive_booking) return false;
+
         if (activeView === 'PackingCompleted') {
           if (o.status !== 'Packed' || o.ready_for_dispatch) return false;
         } else if (activeView === 'ReadyToDispatch') {
@@ -570,8 +574,8 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
       { id: 'Today', label: "Today's Delivery", count: countForDate(todayStr) },
     ];
 
-    // Tomorrow (i=1) and Next 5 Days (i=2..6) -> 6 upcoming days total
-    for (let i = 1; i <= 6; i++) {
+    // Tomorrow (i=1) and Next 2 Days (i=2..3) -> 3 upcoming days total
+    for (let i = 1; i <= 3; i++) {
       const futureDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
       const dateStr = formatToYYYYMMDD(futureDate);
       const dayName = futureDate.toLocaleDateString('en-US', { weekday: 'short' });
@@ -590,7 +594,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
     }
 
     return tabs;
-  }, [orders, activeView, activeFilter]);
+  }, [orders, activeView, activeFilter, bookingFilter]);
 
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
@@ -647,13 +651,17 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
       if (searchQuery) {
         const cust = customers.find(c => c.id === o.customer_id);
         const q = searchQuery.toLowerCase();
-        return o.order_number.toLowerCase().includes(q) || 
-               (cust && cust.name.toLowerCase().includes(q));
+        if (!(o.order_number.toLowerCase().includes(q) || (cust && cust.name.toLowerCase().includes(q)))) {
+          return false;
+        }
       }
+
+      if (bookingFilter === 'advance' && !o.advance_booking) return false;
+      if (bookingFilter === 'festive' && !o.festive_booking) return false;
       
       return true;
     }).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-  }, [orders, customers, searchQuery, activeFilter, dateFilter, customDate, activeView]);
+  }, [orders, customers, searchQuery, activeFilter, dateFilter, customDate, activeView, bookingFilter]);
 
   const groupedOrders = useMemo(() => {
     const groups: Record<string, SalesOrder[]> = {};
@@ -1061,7 +1069,44 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
         <div className="flex flex-col gap-2 w-full">
           {/* Date Filter Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
+          <div className="flex flex-wrap items-center gap-1.5 pb-1 sm:pb-0">
+            {/* Booking Filters First */}
+            <button
+              onClick={() => setBookingFilter('all')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black border transition-all shrink-0 cursor-pointer ${
+                bookingFilter === 'all'
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-1 ring-indigo-600/30'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <span>All Bookings</span>
+            </button>
+            <button
+              onClick={() => setBookingFilter('advance')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black border transition-all shrink-0 cursor-pointer ${
+                bookingFilter === 'advance'
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-xs ring-1 ring-purple-600/30'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Calendar size={13} className={bookingFilter === 'advance' ? 'text-white' : 'text-purple-500'} />
+              <span>Advance Bookings</span>
+            </button>
+            <button
+              onClick={() => setBookingFilter('festive')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black border transition-all shrink-0 cursor-pointer ${
+                bookingFilter === 'festive'
+                  ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs ring-1 ring-amber-500/30'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Sparkles size={13} className={bookingFilter === 'festive' ? 'text-slate-950' : 'text-amber-500'} />
+              <span>Festive Bookings</span>
+            </button>
+
+            <div className="h-4 w-px bg-slate-300 dark:bg-slate-700 mx-1 shrink-0 hidden sm:block"></div>
+
+            {/* Date Filters Next */}
             {dateTabs.map((tab) => {
               const isSelected = dateFilter === tab.id;
               return (

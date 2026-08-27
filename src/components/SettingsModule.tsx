@@ -65,8 +65,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [pan, setPan] = useState(business?.pan || 'AAAAA0000A');
   const [fssaiNumber, setFssaiNumber] = useState(business?.fssai_number || '');
   const [mobileNumber, setMobileNumber] = useState(business?.mobile_number || '');
-  const [invoicePrefix, setInvoicePrefix] = useState(business?.invoice_prefix || 'KOK-');
-  const [festiveInvoicePrefix, setFestiveInvoicePrefix] = useState(business?.festive_invoice_prefix || 'FEST-KF-');
+  const [invoicePrefix, setInvoicePrefix] = useState(business?.invoice_prefix || 'INV-');
+  const [advanceInvoicePrefix, setAdvanceInvoicePrefix] = useState(business?.advance_invoice_prefix || 'ADV-');
+  const [festiveInvoicePrefix, setFestiveInvoicePrefix] = useState(business?.festive_invoice_prefix || 'FEST-');
+  const [festiveAdvanceInvoicePrefix, setFestiveAdvanceInvoicePrefix] = useState(business?.festive_advance_invoice_prefix || 'FEST-ADV-');
   const [taxRateDefault, setTaxRateDefault] = useState<number>(business?.tax_rate_default ?? 18);
   const [billingAddress, setBillingAddress] = useState(business?.billing_address || 'Warehouse 4B, Apex Industrial Estate, Dahisar East, Mumbai 400068');
   const [logoUrl, setLogoUrl] = useState(business?.logo_url || '');
@@ -116,8 +118,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       setPan(updated.pan || '');
       setFssaiNumber(updated.fssai_number || '');
       setMobileNumber(updated.mobile_number || '');
-      setInvoicePrefix(updated.invoice_prefix || 'KF-');
-      setFestiveInvoicePrefix(updated.festive_invoice_prefix || 'FEST-KF-');
+      setInvoicePrefix(updated.invoice_prefix || 'INV-');
+      setAdvanceInvoicePrefix(updated.advance_invoice_prefix || 'ADV-');
+      setFestiveInvoicePrefix(updated.festive_invoice_prefix || 'FEST-');
+      setFestiveAdvanceInvoicePrefix(updated.festive_advance_invoice_prefix || 'FEST-ADV-');
       setTaxRateDefault(updated.tax_rate_default ?? 5);
       setBillingAddress(updated.billing_address || '');
       setLogoUrl(updated.logo_url || '');
@@ -344,8 +348,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         pan: pan.toUpperCase().trim().substring(0, 10),
         fssai_number: fssaiNumber.trim().substring(0, 50),
         mobile_number: mobileNumber.trim().substring(0, 20),
-        invoice_prefix: invoicePrefix.toUpperCase().trim().substring(0, 10),
+        invoice_prefix: invoicePrefix.toUpperCase().trim().substring(0, 50),
+        advance_invoice_prefix: advanceInvoicePrefix.toUpperCase().trim().substring(0, 50),
         festive_invoice_prefix: festiveInvoicePrefix.toUpperCase().trim().substring(0, 50),
+        festive_advance_invoice_prefix: festiveAdvanceInvoicePrefix.toUpperCase().trim().substring(0, 50),
         tax_rate_default: Number(taxRateDefault),
         billing_address: billingAddress.trim(),
         logo_url: logoUrl,
@@ -549,91 +555,109 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
           </div>
 
           {/* B. Financials, Invoicing & Tax Controls */}
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-5">
             <h3 className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
               <DollarSign size={16} className="text-amber-500" />
               <span>Financials, Invoicing & Tax Rules</span>
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Standard Invoice Prefix</label>
-                <input 
-                  type="text" 
-                  required
-                  value={invoicePrefix}
-                  onChange={(e) => setInvoicePrefix(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 uppercase"
-                />
+            {/* 1. Invoice Numbering & Prefix Series */}
+            <div className="space-y-3">
+              <div>
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                  Invoice Numbering & Prefix Series
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Customize invoice numbering prefixes for regular orders, advance bookings, festive seasons, and festive advance bookings.
+                </p>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase flex items-center gap-1">
-                  <span>Festive Invoice Prefix</span>
-                </label>
-                <input 
-                  type="text" 
-                  value={festiveInvoicePrefix}
-                  onChange={(e) => setFestiveInvoicePrefix(e.target.value)}
-                  placeholder="FEST-KF-"
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500 uppercase"
-                />
-              </div>
-
-              {/* Diwali Discount Rate (DDR) Auto-Pricing Settings */}
-              <div className="col-span-1 sm:col-span-2 lg:col-span-4 p-4 bg-amber-50/70 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800 space-y-3">
-                <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="text-amber-600 dark:text-amber-400 shrink-0" size={18} />
-                    <div>
-                      <h4 className="text-xs font-black text-amber-950 dark:text-amber-200 uppercase tracking-wide">
-                        Diwali Discount Rate (DDR) Auto-Festival Pricing
-                      </h4>
-                      <p className="text-[10px] text-amber-700 dark:text-amber-300 font-medium">
-                        Automatically applies Diwali Discount Rate (DDR) during your configured festival dates on Create Order
-                      </p>
-                    </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                {/* 1. Standard / Regular Order Prefix */}
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">
+                      Regular / Standard Prefix
+                    </label>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold">
+                      e.g. {(invoicePrefix || 'INV-').trim()}101
+                    </span>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                    <input 
-                      type="checkbox" 
-                      checked={enableDdr} 
-                      onChange={(e) => setEnableDdr(e.target.checked)} 
-                      className="sr-only peer" 
-                    />
-                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
-                  </label>
+                  <input 
+                    type="text" 
+                    required
+                    value={invoicePrefix}
+                    onChange={(e) => setInvoicePrefix(e.target.value)}
+                    placeholder="INV-"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-slate-800 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 uppercase"
+                  />
+                  <p className="text-[10px] text-slate-500">Used for regular walk-in and standard sales orders.</p>
                 </div>
 
-                {enableDdr && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-amber-200/60 dark:border-amber-800/60">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase">
-                        Festive Start Date (e.g. 1st Oct)
-                      </label>
-                      <input 
-                        type="date" 
-                        value={ddrStartDate}
-                        onChange={(e) => setDdrStartDate(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-800 dark:text-slate-200 rounded-xl border border-amber-300 dark:border-amber-700 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase">
-                        Festive End Date (e.g. 20th Oct)
-                      </label>
-                      <input 
-                        type="date" 
-                        value={ddrEndDate}
-                        onChange={(e) => setDdrEndDate(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-800 dark:text-slate-200 rounded-xl border border-amber-300 dark:border-amber-700 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
-                      />
-                    </div>
+                {/* 2. Advance Booking Prefix */}
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-850 rounded-xl border border-sky-200 dark:border-sky-800/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-sky-700 dark:text-sky-400 uppercase">
+                      Advance Booking Prefix
+                    </label>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-sky-100 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 font-bold">
+                      e.g. {(advanceInvoicePrefix || 'ADV-').trim()}101
+                    </span>
                   </div>
-                )}
-              </div>
+                  <input 
+                    type="text" 
+                    value={advanceInvoicePrefix}
+                    onChange={(e) => setAdvanceInvoicePrefix(e.target.value)}
+                    placeholder="ADV-"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-sky-800 dark:text-sky-200 rounded-xl border border-sky-300 dark:border-sky-700 focus:ring-2 focus:ring-sky-500 uppercase"
+                  />
+                  <p className="text-[10px] text-sky-600/80 dark:text-sky-400/80">Used when Advance Booking is toggled on.</p>
+                </div>
 
+                {/* 3. Festive Booking Prefix */}
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-850 rounded-xl border border-amber-200 dark:border-amber-800/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase">
+                      Festive Booking Prefix
+                    </label>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 font-bold">
+                      e.g. {(festiveInvoicePrefix || 'FEST-').trim()}101
+                    </span>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={festiveInvoicePrefix}
+                    onChange={(e) => setFestiveInvoicePrefix(e.target.value)}
+                    placeholder="FEST-"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-amber-800 dark:text-amber-200 rounded-xl border border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500 uppercase"
+                  />
+                  <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80">Used for seasonal festival orders.</p>
+                </div>
+
+                {/* 4. Festive Advance Booking Prefix */}
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-850 rounded-xl border border-purple-200 dark:border-purple-800/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-purple-700 dark:text-purple-400 uppercase">
+                      Festive Advance Prefix
+                    </label>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 font-bold">
+                      e.g. {(festiveAdvanceInvoicePrefix || 'FEST-ADV-').trim()}101
+                    </span>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={festiveAdvanceInvoicePrefix}
+                    onChange={(e) => setFestiveAdvanceInvoicePrefix(e.target.value)}
+                    placeholder="FEST-ADV-"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-purple-800 dark:text-purple-200 rounded-xl border border-purple-300 dark:border-purple-700 focus:ring-2 focus:ring-purple-500 uppercase"
+                  />
+                  <p className="text-[10px] text-purple-600/80 dark:text-purple-400/80">Used for advance pre-orders during festive seasons.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Tax, Currency & Theme Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs pt-3 border-t border-slate-100 dark:border-slate-800">
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-slate-500 uppercase">Default Tax Rate (%)</label>
                 <select 
@@ -664,7 +688,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                 </select>
               </div>
 
-              <div className="space-y-1 sm:col-span-3">
+              <div className="space-y-1 sm:col-span-2">
                 <label className="text-[11px] font-bold text-slate-500 uppercase">System Theme Preset</label>
                 <select 
                   value={defaultTheme}
@@ -678,6 +702,60 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   <option value="slate-light">☀️ Slate Light (Clean Modern White)</option>
                 </select>
               </div>
+            </div>
+
+            {/* 3. Diwali Discount Rate (DDR) Auto-Pricing Settings */}
+            <div className="p-4 bg-amber-50/70 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800 space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="text-amber-600 dark:text-amber-400 shrink-0" size={18} />
+                  <div>
+                    <h4 className="text-xs font-black text-amber-950 dark:text-amber-200 uppercase tracking-wide">
+                      Diwali Discount Rate (DDR) Auto-Festival Pricing
+                    </h4>
+                    <p className="text-[10px] text-amber-700 dark:text-amber-300 font-medium">
+                      Automatically applies Diwali Discount Rate (DDR) during your configured festival dates on Create Order
+                    </p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input 
+                    type="checkbox" 
+                    checked={enableDdr} 
+                    onChange={(e) => setEnableDdr(e.target.checked)} 
+                    className="sr-only peer" 
+                  />
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                </label>
+              </div>
+
+              {enableDdr && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-amber-200/60 dark:border-amber-800/60">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase">
+                      Festive Start Date (e.g. 1st Oct)
+                    </label>
+                    <input 
+                      type="date" 
+                      value={ddrStartDate}
+                      onChange={(e) => setDdrStartDate(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-800 dark:text-slate-200 rounded-xl border border-amber-300 dark:border-amber-700 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase">
+                      Festive End Date (e.g. 20th Oct)
+                    </label>
+                    <input 
+                      type="date" 
+                      value={ddrEndDate}
+                      onChange={(e) => setDdrEndDate(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-800 dark:text-slate-200 rounded-xl border border-amber-300 dark:border-amber-700 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* UPI Payment & QR Code Configurations */}

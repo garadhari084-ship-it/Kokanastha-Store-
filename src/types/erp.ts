@@ -180,6 +180,7 @@ export interface Customer {
   pan: string;
   billing_address: string;
   shipping_address: string;
+  pin_code?: string;
   email: string;
   phone: string;
   credit_limit: number;
@@ -193,6 +194,7 @@ export interface Customer {
   loyalty_start_date?: string;
   loyalty_end_date?: string;
   loyalty_auto_renew?: boolean;
+  loyalty_discount_percentage?: number; // Added discount percentage
   birthday?: string;
   anniversary?: string;
   business_id: string;

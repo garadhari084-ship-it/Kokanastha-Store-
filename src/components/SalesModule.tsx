@@ -444,6 +444,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [selectedCustomerPhone, setSelectedCustomerPhone] = useState('');
   const [selectedCustomerAddress, setSelectedCustomerAddress] = useState('');
   const [selectedCustomerShippingAddress, setSelectedCustomerShippingAddress] = useState('');
+  const [selectedPincode, setSelectedPincode] = useState('');
   const [isSameShippingAddress, setIsSameShippingAddress] = useState(true);
 
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -644,6 +645,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setSelectedCustomerPhone(newCust.phone || '');
     setSelectedCustomerAddress(newCust.billing_address || '');
     setSelectedCustomerShippingAddress(newCust.shipping_address || newCust.billing_address || '');
+    setSelectedPincode(newCust.pin_code || '');
     setIsSameShippingAddress(!newCust.shipping_address || newCust.shipping_address === newCust.billing_address);
     setPointsToRedeem(0);
     if (newCust.area && newCust.area !== 'Other') {
@@ -766,6 +768,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setSelectedCustomerPhone('');
     setSelectedCustomerAddress('');
     setSelectedCustomerShippingAddress('');
+    setSelectedPincode('');
     setIsSameShippingAddress(true);
     setRowProductId('');
     setRowQty(1);
@@ -878,6 +881,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       setSelectedCustomerPhone(c.phone || '');
       setSelectedCustomerAddress(c.billing_address || c.address || '');
       setSelectedCustomerShippingAddress(c.shipping_address || c.billing_address || c.address || '');
+      setSelectedPincode(c.pin_code || '');
       setIsSameShippingAddress(!c.shipping_address || c.shipping_address === c.billing_address);
     }
     setPointsToRedeem(order.points_redeemed || 0);
@@ -1217,11 +1221,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             finalCustomerName = cObj.name;
             finalCustomerArea = selectedArea || (cObj.area && cObj.area !== 'Other' ? cObj.area : 'Dahisar');
             // Save updated customer contact & addresses if changed inline
-            if (selectedCustomerPhone.trim() || selectedCustomerAddress.trim() || selectedCustomerShippingAddress.trim()) {
+            if (selectedCustomerPhone.trim() || selectedCustomerAddress.trim() || selectedCustomerShippingAddress.trim() || selectedPincode.trim()) {
               dbStore.updateCustomer(cObj.id, {
                 phone: selectedCustomerPhone.trim() || cObj.phone,
                 billing_address: selectedCustomerAddress.trim() || cObj.billing_address,
-                shipping_address: isSameShippingAddress ? (selectedCustomerAddress.trim() || cObj.billing_address) : (selectedCustomerShippingAddress.trim() || cObj.shipping_address)
+                shipping_address: isSameShippingAddress ? (selectedCustomerAddress.trim() || cObj.billing_address) : (selectedCustomerShippingAddress.trim() || cObj.shipping_address),
+                pin_code: selectedPincode.trim() || cObj.pin_code
               });
             }
          }
@@ -2419,6 +2424,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           selectedCustomerPhone={selectedCustomerPhone}
           selectedCustomerAddress={selectedCustomerAddress}
           selectedCustomerShippingAddress={selectedCustomerShippingAddress}
+          selectedPincode={selectedPincode}
           isSameShippingAddress={isSameShippingAddress}
           selectedArea={selectedArea}
           pointsToRedeem={pointsToRedeem}
@@ -2461,6 +2467,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           setSelectedCustomerPhone={setSelectedCustomerPhone}
           setSelectedCustomerAddress={setSelectedCustomerAddress}
           setSelectedCustomerShippingAddress={setSelectedCustomerShippingAddress}
+          setSelectedPincode={setSelectedPincode}
           setIsSameShippingAddress={setIsSameShippingAddress}
           setSelectedArea={setSelectedArea}
           setPointsToRedeem={setPointsToRedeem}

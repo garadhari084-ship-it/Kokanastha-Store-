@@ -1,4 +1,5 @@
 import { PageHeader } from './PageHeader';
+import { WhatsAppIcon } from './WhatsAppIcon';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
   Users, Search, Filter, UserPlus, Edit, Trash2, FileSpreadsheet, FileText, DollarSign, History, X, Plus, MapPin, Phone, Mail, CheckCircle, ExternalLink, ShieldAlert, Building, SearchX, Upload, FileDown, AlertCircle, Check
@@ -6,6 +7,7 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { generateLoyaltyCertificate, sendCertificateOnWhatsApp } from '../utils/certificateUtils';
 import { dbStore } from '../services/store';
 import { Customer, SalesOrder, UserProfile } from '../types/erp';
 
@@ -53,6 +55,9 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   const [formImageUrl, setFormImageUrl] = useState('');
   const [formIsLoyalMember, setFormIsLoyalMember] = useState<boolean>(false);
   const [formLoyaltyTier, setFormLoyaltyTier] = useState<string>('');
+  const [formLoyaltyPlan, setFormLoyaltyPlan] = useState<string>('');
+  const [formLoyaltyStartDate, setFormLoyaltyStartDate] = useState<string>('');
+  const [formLoyaltyEndDate, setFormLoyaltyEndDate] = useState<string>('');
   
   // Custom Area additions
   const [isAddingArea, setIsAddingArea] = useState(false);
@@ -395,6 +400,9 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormImageUrl('');
     setFormIsLoyalMember(false);
     setFormLoyaltyTier('');
+    setFormLoyaltyPlan('');
+    setFormLoyaltyStartDate('');
+    setFormLoyaltyEndDate('');
     
     setEditingCustomer(null);
     setIsModalOpen(true);
@@ -415,8 +423,12 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormImageUrl(cust.image_url || '');
     setFormIsLoyalMember(cust.is_loyal_member || false);
     setFormLoyaltyTier(cust.loyalty_tier || '');
+    setFormLoyaltyPlan(cust.loyalty_plan || '');
+    setFormLoyaltyStartDate(cust.loyalty_start_date || '');
+    setFormLoyaltyEndDate(cust.loyalty_end_date || '');
     setIsModalOpen(true);
   };
+
 
   const handleSaveCustomer = (e: React.FormEvent) => {
     e.preventDefault();
@@ -443,6 +455,9 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           credit_limit: formCreditLimit,
           is_loyal_member: formIsLoyalMember,
           loyalty_tier: formLoyaltyTier || undefined,
+          loyalty_plan: formLoyaltyPlan || undefined,
+          loyalty_start_date: formLoyaltyStartDate || undefined,
+          loyalty_end_date: formLoyaltyEndDate || undefined,
           image_url: formImageUrl
         });
         dbStore.logActivity(user.id, user.name, user.role, 'Update Customer', `Updated customer profile: ${formName}`, businessId);
@@ -461,6 +476,9 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           credit_limit: formCreditLimit,
           is_loyal_member: formIsLoyalMember,
           loyalty_tier: formLoyaltyTier || undefined,
+          loyalty_plan: formLoyaltyPlan || undefined,
+          loyalty_start_date: formLoyaltyStartDate || undefined,
+          loyalty_end_date: formLoyaltyEndDate || undefined,
           business_id: businessId,
           active: true,
           
@@ -1139,6 +1157,60 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                     <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
                   </label>
                 </div>
+
+                {formIsLoyalMember && (
+                  <div className="col-span-full p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase">Loyalty Plan</label>
+                        <input 
+                          type="text"
+                          value={formLoyaltyPlan}
+                          onChange={(e) => setFormLoyaltyPlan(e.target.value)}
+                          placeholder="e.g. Premium Annual"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase">Start Date</label>
+                        <input 
+                          type="date"
+                          value={formLoyaltyStartDate}
+                          onChange={(e) => setFormLoyaltyStartDate(e.target.value)}
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase">End Date</label>
+                        <input 
+                          type="date"
+                          value={formLoyaltyEndDate}
+                          onChange={(e) => setFormLoyaltyEndDate(e.target.value)}
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-nowrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-700 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => generateLoyaltyCertificate(formName, formLoyaltyPlan, formLoyaltyStartDate, formLoyaltyEndDate, triggerToast)}
+                        className="flex-1 flex justify-center items-center gap-1.5 px-3 py-2 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-lg text-[11px] font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-100 dark:border-indigo-800 transition-colors"
+                      >
+                        <FileDown size={14} />
+                        PDF Certificate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => sendCertificateOnWhatsApp(formName, formPhone, formLoyaltyPlan, formLoyaltyStartDate, formLoyaltyEndDate, triggerToast)}
+                        className="flex-1 flex justify-center items-center gap-1.5 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-lg text-[11px] font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-100 dark:border-emerald-800 transition-colors"
+                      >
+                        <WhatsAppIcon size={14} />
+                        WhatsApp
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-1">
                   <div className="flex justify-between items-center">

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { PageHeader } from './PageHeader';
+import { WhatsAppIcon } from './WhatsAppIcon';
 import { dbStore } from '../services/store';
+import { generateLoyaltyCertificate, sendCertificateOnWhatsApp, sendRenewalReminderOnWhatsApp } from '../utils/certificateUtils';
 import { 
   Customer, 
   LoyaltyConfig, 
@@ -32,6 +34,7 @@ import {
   ShieldCheck, 
   DollarSign, 
   ChevronRight,
+  ChevronLeft,
   UserPlus,
   Trash2,
   Edit,
@@ -39,8 +42,12 @@ import {
   Layers,
   PhoneCall,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  FileDown,
+  Phone,
+  BellRing
 } from 'lucide-react';
+import jsPDF from 'jspdf';
 
 interface LoyaltySubscriptionModuleProps {
   businessId: string;
@@ -57,6 +64,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
 }) => {
   const [activeTab, setActiveTab] = useState<'loyalty' | 'subscriptions'>(initialTab);
   const [syncTick, setSyncTick] = useState(0);
+
 
   // Search & Filter States
   const [loyaltySearch, setLoyaltySearch] = useState('');
@@ -95,6 +103,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
   const [membershipEndDate, setMembershipEndDate] = useState('');
   const [membershipAutoRenew, setMembershipAutoRenew] = useState(false);
   const [membershipTier, setMembershipTier] = useState<string>('');
+  const [membershipDiscount, setMembershipDiscount] = useState<number | ''>('');
   const [membershipIsActive, setMembershipIsActive] = useState(false);
   const [membershipPlan, setMembershipPlan] = useState<string>('');
 
@@ -239,7 +248,8 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
       loyalty_auto_renew: membershipIsActive ? membershipAutoRenew : false,
       is_loyal_member: membershipIsActive,
       loyalty_plan: membershipIsActive ? membershipPlan : undefined,
-      loyalty_tier: newTier
+      loyalty_tier: newTier,
+      loyalty_discount_percentage: membershipIsActive && membershipDiscount !== '' ? Number(membershipDiscount) : undefined
     });
 
     if (tierChanged && newTier) {
@@ -278,6 +288,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
     setMembershipEndDate('');
     setMembershipAutoRenew(false);
     setMembershipTier('');
+    setMembershipDiscount('');
     setSelectedCustomerForMembership(null);
     setSyncTick(prev => prev + 1); 
     setIsMembershipModalOpen(false);
@@ -496,12 +507,24 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
     }, 800);
   };
 
+  const todayDate = new Date();
+  const fifteenDaysFromNow = new Date();
+  fifteenDaysFromNow.setDate(fifteenDaysFromNow.getDate() + 15);
+  const todayStrFilter = todayDate.toISOString().split('T')[0];
+  const fifteenDaysStr = fifteenDaysFromNow.toISOString().split('T')[0];
+
   // Filtered Lists
   const filteredCustomers = customers.filter(c => {
     if (!c.is_loyal_member) return false;
     const matchesSearch = c.name.toLowerCase().includes(loyaltySearch.toLowerCase()) ||
                           c.phone.includes(loyaltySearch) ||
                           (c.email && c.email.toLowerCase().includes(loyaltySearch.toLowerCase()));
+    
+    if (tierFilter === 'EXPIRING') {
+      const isExpiring = c.loyalty_end_date && c.loyalty_end_date >= todayStrFilter && c.loyalty_end_date <= fifteenDaysStr;
+      return matchesSearch && isExpiring;
+    }
+
     const tier = dbStore.calculateCustomerTier(c.lifetime_spend || 0, loyaltyConfig, c.loyalty_tier);
     const matchesTier = tierFilter === 'ALL' || tier === tierFilter;
     return matchesSearch && matchesTier;
@@ -516,6 +539,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
   });
 
   // Calculate Loyalty Metrics
+  const expiringMembershipsCount = customers.filter(c => c.is_loyal_member && c.loyalty_end_date && c.loyalty_end_date >= todayStrFilter && c.loyalty_end_date <= fifteenDaysStr).length;
   const totalLoyaltyPointsBalance = customers.reduce((acc, c) => acc + (c.loyalty_points || 0), 0);
   const totalLifetimeCustomerSpend = customers.reduce((acc, c) => acc + (c.lifetime_spend || 0), 0);
   const goldPlatinumMembersCount = customers.filter(c => (c.loyalty_tier === 'Gold' || c.loyalty_tier === 'Platinum')).length;
@@ -578,144 +602,186 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
       {activeTab === 'loyalty' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           
+          {/* Expiring Memberships Banner */}
+          {expiringMembershipsCount > 0 && (
+            <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl shadow-sm">
+              <div className="flex items-center gap-3 text-amber-800 dark:text-amber-300">
+                <div className="p-2 bg-amber-100 dark:bg-amber-900/50 rounded-full">
+                  <Clock size={20} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm">Action Required: {expiringMembershipsCount} Memberships Expiring Soon</h4>
+                  <p className="text-xs opacity-90 mt-0.5">Some customer loyalty plans will expire within the next 15 days. Remind them to renew to avoid losing their privileges.</p>
+                </div>
+              </div>
+              {tierFilter !== 'EXPIRING' ? (
+                <button
+                  onClick={() => setTierFilter('EXPIRING')}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95 whitespace-nowrap"
+                >
+                  View Expiring Members
+                </button>
+              ) : (
+                <button
+                  onClick={() => setTierFilter('ALL')}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl shadow-sm transition active:scale-95 whitespace-nowrap flex items-center gap-1.5"
+                >
+                  <XCircle size={14} className="opacity-70" />
+                  Clear Filter
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Executive Metrics Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                  Active Members
-                </span>
-                <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
-                  {customers.length}
-                </strong>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 mt-1">
-                  <ShieldCheck size={12} /> 100% In-House Profile Link
-                </span>
+          {tierFilter !== 'EXPIRING' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                    Active Members
+                  </span>
+                  <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                    {customers.length}
+                  </strong>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 mt-1">
+                    <ShieldCheck size={12} /> 100% In-House Profile Link
+                  </span>
+                </div>
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                  <Users size={22} />
+                </div>
               </div>
-              <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl">
-                <Users size={22} />
+
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                    Points Reserve Balance
+                  </span>
+                  <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                    {totalLoyaltyPointsBalance.toLocaleString()} pts
+                  </strong>
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Worth {currencySymbol}{(totalLoyaltyPointsBalance * (loyaltyConfig.point_value || 1)).toLocaleString()} discount
+                  </span>
+                </div>
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-xl">
+                  <Sparkles size={22} />
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                    VIP Tiers (Gold/Platinum)
+                  </span>
+                  <strong className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-0.5 block">
+                    {goldPlatinumMembersCount} Members
+                  </strong>
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Earn up to {loyaltyConfig.platinum_multiplier || 1.5}x Points Multiplier
+                  </span>
+                </div>
+                <div className="p-3 bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 rounded-xl">
+                  <Award size={22} />
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                    Lifetime Spend Log
+                  </span>
+                  <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                    {currencySymbol}{totalLifetimeCustomerSpend.toLocaleString()}
+                  </strong>
+                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-1 block">
+                    1 Pt per {currencySymbol}{loyaltyConfig.spend_per_point || 100} Spent
+                  </span>
+                </div>
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                  <TrendingUp size={22} />
+                </div>
               </div>
             </div>
-
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                  Points Reserve Balance
-                </span>
-                <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
-                  {totalLoyaltyPointsBalance.toLocaleString()} pts
-                </strong>
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  Worth {currencySymbol}{(totalLoyaltyPointsBalance * (loyaltyConfig.point_value || 1)).toLocaleString()} discount
-                </span>
-              </div>
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-xl">
-                <Sparkles size={22} />
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                  VIP Tiers (Gold/Platinum)
-                </span>
-                <strong className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-0.5 block">
-                  {goldPlatinumMembersCount} Members
-                </strong>
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  Earn up to {loyaltyConfig.platinum_multiplier || 1.5}x Points Multiplier
-                </span>
-              </div>
-              <div className="p-3 bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 rounded-xl">
-                <Award size={22} />
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                  Lifetime Spend Log
-                </span>
-                <strong className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 block">
-                  {currencySymbol}{totalLifetimeCustomerSpend.toLocaleString()}
-                </strong>
-                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-1 block">
-                  1 Pt per {currencySymbol}{loyaltyConfig.spend_per_point || 100} Spent
-                </span>
-              </div>
-              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
-                <TrendingUp size={22} />
-              </div>
-            </div>
-
-          </div>
+          )}
 
           {/* Action Toolbar */}
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            
-            <div className="flex flex-1 items-center gap-3">
-              <div className="relative flex-1 max-w-md">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search customer name, phone or profile email..."
-                  value={loyaltySearch}
-                  onChange={e => setLoyaltySearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+          {tierFilter !== 'EXPIRING' && (
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              
+              <div className="flex flex-1 items-center gap-3">
+                <div className="relative flex-1 max-w-md">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search customer name, phone or profile email..."
+                    value={loyaltySearch}
+                    onChange={e => setLoyaltySearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <select
+                  value={tierFilter}
+                  onChange={e => setTierFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="ALL">All Tiers</option>
+                  <option value="EXPIRING">Expiring Soon ⏳</option>
+                  <option value="Silver">Silver 🥈</option>
+                  <option value="Gold">Gold 🥇</option>
+                  <option value="Platinum">Platinum 💎</option>
+                </select>
               </div>
 
-              <select
-                value={tierFilter}
-                onChange={e => setTierFilter(e.target.value)}
-                className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="ALL">All Tiers</option>
-                <option value="Silver">Silver 🥈</option>
-                <option value="Gold">Gold 🥇</option>
-                <option value="Platinum">Platinum 💎</option>
-              </select>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsEnrollModalOpen(true)}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <UserPlus size={15} />
+                  Enroll Member
+                </button>
+                <button
+                  onClick={() => setIsBonusDispatchModalOpen(true)}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Gift size={15} />
+                  Distribute Mass Bonus
+                </button>
+                <button
+                  onClick={handleOpenConfigModal}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Settings size={15} />
+                  Configure Rules
+                </button>
+              </div>
             </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsEnrollModalOpen(true)}
-                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-              >
-                <UserPlus size={15} />
-                Enroll Member
-              </button>
-
-              <button
-                onClick={() => setIsBonusDispatchModalOpen(true)}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-              >
-                <Gift size={15} />
-                Distribute Mass Bonus
-              </button>
-
-              <button
-                onClick={handleOpenConfigModal}
-                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-              >
-                <Settings size={15} />
-                Configure Rules
-              </button>
-
-
-            </div>
-
-          </div>
+          )}
 
           {/* Customer Loyalty Directory Table */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-              <div>
-                <h3 className="font-bold text-slate-900 dark:text-white text-sm">Customer Loyalty Accounts</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Showing {filteredCustomers.length} registered profiles
-                </p>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900">
+              <div className="flex items-center gap-3">
+                {tierFilter === 'EXPIRING' && (
+                  <button 
+                    onClick={() => setTierFilter('ALL')}
+                    className="p-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-lg transition cursor-pointer text-slate-700 dark:text-slate-300 mr-1"
+                    title="Back to All Memberships"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                )}
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                    {tierFilter === 'EXPIRING' ? 'Expiring Loyalty Accounts' : 'Customer Loyalty Accounts'}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Showing {filteredCustomers.length} registered profiles
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -744,6 +810,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                       const tier = dbStore.calculateCustomerTier(cust.lifetime_spend || 0, loyaltyConfig, cust.loyalty_tier);
                       const points = cust.loyalty_points || 0;
                       const lifetime = cust.lifetime_spend || 0;
+                      const isExpiringSoon = cust.loyalty_end_date && cust.loyalty_end_date >= todayStrFilter && cust.loyalty_end_date <= fifteenDaysStr;
 
                       return (
                         <tr key={cust.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
@@ -826,50 +893,93 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                           </td>
 
                           <td className="py-3.5 px-4 text-right">
-                            <div className="flex flex-wrap justify-end gap-2 py-1">
-                              <button
-                                onClick={() => {
-                                  setSelectedCustomerForMembership(cust);
-                                  setMembershipStartDate(cust.loyalty_start_date || new Date().toISOString().split('T')[0]);
-                                  setMembershipEndDate(cust.loyalty_end_date || addOneYear(cust.loyalty_start_date || new Date().toISOString().split('T')[0]));
-                                  setMembershipAutoRenew(!!cust.loyalty_auto_renew);
-                                  setMembershipTier(cust.loyalty_tier || '');
-                                  setMembershipPlan(cust.loyalty_plan || '');
-                                  setIsMembershipModalOpen(true);
-                                }}
-                                className="px-3 py-1.5 bg-slate-900 dark:bg-black text-white hover:bg-slate-800 dark:hover:bg-slate-900 rounded-lg text-[11px] font-bold transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
-                                title="Manage Membership Validity"
-                              >
-                                <ShieldCheck size={12} className="text-indigo-400" />
-                                Membership
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedCustomerForAdjust(cust);
-                                  setIsAdjustPointsModalOpen(true);
-                                }}
-                                className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg text-[11px] font-bold transition cursor-pointer border border-indigo-100 dark:border-indigo-800"
-                                title="Adjust Points Balance"
-                              >
-                                Points
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedCustomerForLedger(cust);
-                                  setIsLedgerModalOpen(true);
-                                }}
-                                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-[11px] font-bold transition cursor-pointer border border-slate-200 dark:border-slate-700"
-                                title="View Loyalty Ledger"
-                              >
-                                History
-                              </button>
-                              <button
-                                onClick={() => handleRemoveLoyaltyMember(cust)}
-                                className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 rounded-lg text-[11px] font-bold transition cursor-pointer border border-rose-100 dark:border-rose-800"
-                                title="Remove Customer from Loyalty"
-                              >
-                                Remove
-                              </button>
+                            <div className="flex flex-col items-end gap-2 py-1">
+                              {/* Row 1: Membership & Sharing */}
+                              <div className="flex items-center gap-2">
+                                {/* Primary Action */}
+                                <button
+                                  onClick={() => {
+                                    setSelectedCustomerForMembership(cust);
+                                    setMembershipStartDate(cust.loyalty_start_date || new Date().toISOString().split('T')[0]);
+                                    setMembershipEndDate(cust.loyalty_end_date || addOneYear(cust.loyalty_start_date || new Date().toISOString().split('T')[0]));
+                                    setMembershipAutoRenew(!!cust.loyalty_auto_renew);
+                                    setMembershipTier(cust.loyalty_tier || '');
+                                    setMembershipPlan(cust.loyalty_plan || '');
+                                    setMembershipDiscount(cust.loyalty_discount_percentage || '');
+                                    setIsMembershipModalOpen(true);
+                                  }}
+                                  className="px-3 py-1.5 bg-slate-900 dark:bg-black text-white hover:bg-slate-800 dark:hover:bg-slate-900 rounded-lg text-[11px] font-bold transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
+                                  title="Manage Membership Validity"
+                                >
+                                  <ShieldCheck size={12} className="text-indigo-400" />
+                                  Membership
+                                </button>
+                                
+                                {/* Certificates & Sharing Group */}
+                                <div className="flex items-center gap-1 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                  {cust.loyalty_end_date && (
+                                    <button
+                                      onClick={() => sendRenewalReminderOnWhatsApp(cust.name, cust.phone, cust.loyalty_plan || '', cust.loyalty_end_date || '', triggerToast)}
+                                      className={`p-1.5 rounded-md shadow-sm border transition cursor-pointer flex items-center justify-center ${isExpiringSoon ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-700 hover:bg-amber-200 dark:hover:bg-amber-900/60' : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200/50 dark:border-slate-700 hover:text-amber-600 dark:hover:text-amber-400'}`}
+                                      title={isExpiringSoon ? "Send Urgent Renewal Reminder (Expiring Soon!)" : "Send Renewal Reminder"}
+                                    >
+                                      <BellRing size={14} />
+                                    </button>
+                                  )}
+                                  
+                                  <button
+                                    onClick={() => generateLoyaltyCertificate(cust.name, cust.loyalty_plan || '', cust.loyalty_start_date || '', cust.loyalty_end_date || '', triggerToast)}
+                                    className="p-1.5 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-md shadow-sm border border-slate-200/50 dark:border-slate-700 transition cursor-pointer flex items-center justify-center"
+                                    title="Download PDF Certificate"
+                                  >
+                                    <FileDown size={14} />
+                                  </button>
+                                  
+                                  <button
+                                    onClick={() => sendCertificateOnWhatsApp(cust.name, cust.phone, cust.loyalty_plan || '', cust.loyalty_start_date || '', cust.loyalty_end_date || '', triggerToast)}
+                                    className="p-1.5 bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 rounded-md shadow-sm border border-slate-200/50 dark:border-slate-700 transition cursor-pointer flex items-center justify-center"
+                                    title="Send on WhatsApp"
+                                  >
+                                    <WhatsAppIcon size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                              
+                              {/* Row 2: Ledger & Remove */}
+                              <div className="flex items-center gap-2">
+                                {/* Ledger & Points Group */}
+                                <div className="flex items-center bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedCustomerForAdjust(cust);
+                                      setIsAdjustPointsModalOpen(true);
+                                    }}
+                                    className="px-3 py-1.5 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 text-[11px] font-bold transition cursor-pointer border-r border-slate-200 dark:border-slate-700"
+                                    title="Adjust Points Balance"
+                                  >
+                                    Points
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedCustomerForLedger(cust);
+                                      setIsLedgerModalOpen(true);
+                                    }}
+                                    className="px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 text-[11px] font-bold transition cursor-pointer"
+                                    title="View Loyalty Ledger"
+                                  >
+                                    History
+                                  </button>
+                                </div>
+  
+                                {/* Danger Action */}
+                                <button
+                                  onClick={() => handleRemoveLoyaltyMember(cust)}
+                                  className="px-3 py-1.5 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 rounded-lg text-[11px] font-bold transition cursor-pointer border border-rose-100 dark:border-rose-800 shadow-sm"
+                                  title="Remove Customer from Loyalty"
+                                >
+                                  Remove
+                                </button>
+                              </div>
                             </div>
                           </td>
 
@@ -2133,18 +2243,33 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                       className={`w-full px-2 py-1.5 bg-white dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden text-slate-700 dark:text-slate-300 ${user?.role !== 'Super Admin' ? 'opacity-70 cursor-not-allowed' : ''}`}
                     />
                   </div>
-                  <div className="flex flex-col p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <label className="text-xs font-bold text-slate-900 dark:text-white block mb-1.5">Loyalty Tier (Override)</label>
-                    <select 
-                      value={membershipTier}
-                      onChange={(e) => setMembershipTier(e.target.value)}
-                      className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden text-slate-700 dark:text-slate-300"
-                    >
-                      <option value="">Auto (Spend-based)</option>
-                      <option value="Silver">Silver</option>
-                      <option value="Gold">Gold</option>
-                      <option value="Platinum">Platinum</option>
-                    </select>
+                  <div className="flex gap-2 mb-3">
+                    <div className="flex-1 flex flex-col p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                      <label className="text-xs font-bold text-slate-900 dark:text-white block mb-1.5">Loyalty Tier (Override)</label>
+                      <select 
+                        value={membershipTier}
+                        onChange={(e) => setMembershipTier(e.target.value)}
+                        className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden text-slate-700 dark:text-slate-300"
+                      >
+                        <option value="">Auto (Spend-based)</option>
+                        <option value="Silver">Silver</option>
+                        <option value="Gold">Gold</option>
+                        <option value="Platinum">Platinum</option>
+                      </select>
+                    </div>
+
+                    <div className="flex-1 flex flex-col p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                      <label className="text-xs font-bold text-slate-900 dark:text-white block mb-1.5">Discount (%)</label>
+                      <input 
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={membershipDiscount}
+                        onChange={(e) => setMembershipDiscount(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="e.g. 10"
+                        className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden text-slate-700 dark:text-slate-300"
+                      />
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
@@ -2166,6 +2291,28 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                       />
                     </button>
                   </div>
+                  
+                  {membershipIsActive && (
+                    <div className="flex flex-nowrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-700 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => generateLoyaltyCertificate(selectedCustomerForMembership.name, membershipPlan, membershipStartDate, membershipEndDate, triggerToast)}
+                        className="flex-1 flex justify-center items-center gap-1.5 px-3 py-2 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-lg text-[11px] font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-100 dark:border-indigo-800 transition-colors"
+                      >
+                        <FileDown size={14} />
+                        PDF Certificate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => sendCertificateOnWhatsApp(selectedCustomerForMembership.name, selectedCustomerForMembership.phone, membershipPlan, membershipStartDate, membershipEndDate, triggerToast)}
+                        className="flex-1 flex justify-center items-center gap-1.5 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-lg text-[11px] font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-100 dark:border-emerald-800 transition-colors"
+                      >
+                        <WhatsAppIcon size={14} />
+                        WhatsApp
+                      </button>
+                    </div>
+                  )}
+
                 </div>
               </div>
             </div>
@@ -2261,6 +2408,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                           setMembershipAutoRenew(!!cust.loyalty_auto_renew);
                           setMembershipIsActive(!!cust.is_loyal_member);
                           setMembershipTier(cust.loyalty_tier || '');
+                          setMembershipDiscount(cust.loyalty_discount_percentage || '');
                           setIsEnrollModalOpen(false);
                           setIsMembershipModalOpen(true);
                         }}
@@ -2370,6 +2518,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                       setMembershipEndDate(addOneYear(new Date().toISOString().split('T')[0]));
                       setMembershipAutoRenew(true);
                       setMembershipTier('');
+                      setMembershipDiscount('');
                       
                       setIsManualEnroll(false);
                       setManualName('');

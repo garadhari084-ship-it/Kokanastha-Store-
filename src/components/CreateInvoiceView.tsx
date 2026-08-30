@@ -14,6 +14,7 @@ import {
   UserPlus,
   Save,
   Phone,
+  MapPin,
   Building2,
   ChevronLeft,
   Calendar,
@@ -27,11 +28,28 @@ import {
   ArrowRight,
   ShieldCheck,
   Tag,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle,
+  BellRing
 } from 'lucide-react';
 import { SalesItem, Customer, Product, UserProfile, Business } from '../types/erp';
 import { dbStore } from '../services/store';
+
+const mapPincodeToArea = (pin: string) => {
+  const code = pin.trim();
+  if (['400068'].includes(code)) return 'Dahisar';
+  if (['400091', '400092', '400103', '400066'].includes(code)) return 'Borivali';
+  if (['400067', '400101', '400104'].includes(code)) return 'Kandivali';
+  if (['401107'].includes(code)) return 'Mira Road';
+  if (['401201', '401202', '401208', '401209'].includes(code)) return 'Vasai';
+  if (['401303', '401305'].includes(code)) return 'Virar';
+  if (['400064', '400097'].includes(code)) return 'Malad';
+  if (['400062', '400063', '400065', '400104'].includes(code)) return 'Goregaon';
+  if (['400053', '400058', '400059', '400069', '400099', '400047', '400072'].includes(code)) return 'Andheri';
+  return null;
+};
 import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
+import { sendRenewalReminderOnWhatsApp } from '../utils/certificateUtils';
 
 interface CustomDropdownOption {
   value: string;
@@ -197,6 +215,7 @@ export interface CreateInvoiceViewProps {
   selectedCustomerPhone: string;
   selectedCustomerAddress: string;
   selectedCustomerShippingAddress: string;
+  selectedPincode: string;
   isSameShippingAddress: boolean;
   selectedArea: string;
   pointsToRedeem: number;
@@ -252,6 +271,7 @@ export interface CreateInvoiceViewProps {
   setSelectedCustomerPhone: (val: string) => void;
   setSelectedCustomerAddress: (val: string) => void;
   setSelectedCustomerShippingAddress: (val: string) => void;
+  setSelectedPincode: (val: string) => void;
   setIsSameShippingAddress: (val: boolean) => void;
   setSelectedArea: (val: string) => void;
   setPointsToRedeem: (val: number) => void;
@@ -294,6 +314,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   selectedCustomerPhone,
   selectedCustomerAddress,
   selectedCustomerShippingAddress,
+  selectedPincode,
   isSameShippingAddress,
   selectedArea,
   pointsToRedeem,
@@ -336,6 +357,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   setSelectedCustomerPhone,
   setSelectedCustomerAddress,
   setSelectedCustomerShippingAddress,
+  setSelectedPincode,
   setIsSameShippingAddress,
   setSelectedArea,
   setPointsToRedeem,
@@ -363,6 +385,13 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   const selectedCust = customers.find(c => c.id === selectedCustomerId);
   const savingsInfo = calculateOrderSavings(orderItems, products);
   const totalItemQty = orderItems.reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
+
+  const todayDate = new Date();
+  const fifteenDaysFromNow = new Date();
+  fifteenDaysFromNow.setDate(fifteenDaysFromNow.getDate() + 15);
+  const todayStrFilter = todayDate.toISOString().split('T')[0];
+  const fifteenDaysStr = fifteenDaysFromNow.toISOString().split('T')[0];
+  const isExpiringSoon = selectedCust?.loyalty_end_date && selectedCust.loyalty_end_date >= todayStrFilter && selectedCust.loyalty_end_date <= fifteenDaysStr;
 
   const {
     taxableVal,
@@ -424,6 +453,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       setSelectedCustomerPhone(c.phone || '');
                       setSelectedCustomerAddress(c.billing_address || '');
                       setSelectedCustomerShippingAddress(c.shipping_address || c.billing_address || '');
+                      setSelectedPincode(c.pin_code || '');
                       setIsSameShippingAddress(!c.shipping_address || c.shipping_address === c.billing_address);
                       setPointsToRedeem(0);
                       if (c.area && c.area !== 'Other') {
@@ -436,6 +466,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       setSelectedCustomerPhone('');
                       setSelectedCustomerAddress('');
                       setSelectedCustomerShippingAddress('');
+                      setSelectedPincode('');
                       setIsSameShippingAddress(true);
                       setPointsToRedeem(0);
                       setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
@@ -554,10 +585,10 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
             <div className="p-4 space-y-4">
 
-              {/* 2-Column Quick Contact & Logistics Details */}
-              <div className="bg-slate-50/70 dark:bg-slate-800/40 p-3.5 rounded-xl border-2 border-slate-300 dark:border-slate-600/80 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Comprehensive Contact & Logistics Details */}
+              <div className="bg-slate-50/70 dark:bg-slate-800/40 p-3.5 rounded-xl border-2 border-slate-300 dark:border-slate-600/80 grid grid-cols-1 md:grid-cols-4 gap-3">
                 {/* 1. Mobile */}
-                <div className="space-y-1">
+                <div className="space-y-1 md:col-span-1">
                   <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
                     <Phone size={11} className="text-indigo-500" />
                     <span>Mobile Number</span>
@@ -571,11 +602,11 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   />
                 </div>
 
-                {/* 2. Customer Address */}
-                <div className="space-y-1">
+                {/* 2. Customer / Billing Address */}
+                <div className="space-y-1 md:col-span-3">
                   <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
                     <Building2 size={11} className="text-indigo-500" />
-                    <span>Customer Address</span>
+                    <span>Customer / Billing Address</span>
                   </label>
                   <input
                     type="text"
@@ -589,6 +620,87 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     placeholder="Full Address"
                     className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs font-extrabold rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500"
                   />
+                </div>
+
+                {/* 3. Shipping Address */}
+                <div className="space-y-1 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
+                      <Truck size={11} className="text-indigo-500" />
+                      <span>Shipping Address</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1 text-[9px] text-slate-500 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isSameShippingAddress}
+                        onChange={(e) => {
+                          setIsSameShippingAddress(e.target.checked);
+                          if (e.target.checked) {
+                            setSelectedCustomerShippingAddress(selectedCustomerAddress);
+                          }
+                        }}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span>Same</span>
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    disabled={isSameShippingAddress}
+                    value={isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress}
+                    onChange={(e) => setSelectedCustomerShippingAddress(e.target.value)}
+                    placeholder="Delivery Location"
+                    className={`w-full h-8 px-2.5 text-xs font-extrabold rounded-lg border-2 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500 ${
+                      isSameShippingAddress
+                        ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed'
+                        : 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-600'
+                    }`}
+                  />
+                </div>
+
+                {/* 4. PIN Code */}
+                <div className="space-y-1 md:col-span-1">
+                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
+                    <MapPin size={11} className="text-indigo-500" />
+                    <span>PIN Code</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={selectedPincode}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedPincode(val);
+                      if (val.trim().length === 6) {
+                        const matchedArea = mapPincodeToArea(val);
+                        if (matchedArea) {
+                          setSelectedArea(matchedArea);
+                        }
+                      }
+                    }}
+                    placeholder="6-digit PIN"
+                    className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs font-extrabold rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* 5. Dispatch Zone */}
+                <div className="space-y-1 md:col-span-1">
+                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
+                    <Tag size={11} className="text-indigo-500" />
+                    <span>Dispatch Zone</span>
+                  </label>
+                  {(() => {
+                    const areaZoneList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
+                      ? currentBiz.area_zones 
+                      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
+                    return (
+                      <DropdownField 
+                        value={selectedArea}
+                        onChange={(val) => setSelectedArea(val)}
+                        options={areaZoneList.map(aZone => ({ value: aZone, label: aZone }))}
+                        className="h-8 text-xs font-bold"
+                      />
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -688,6 +800,27 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   })}
                 </div>
               </div>
+
+              {/* Expiry Banner */}
+              {selectedCust && selectedCustomerId !== 'WALK_IN' && isExpiringSoon && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-900/30 rounded-xl border border-rose-200 dark:border-rose-800 flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300">
+                    <AlertTriangle size={18} />
+                    <div>
+                      <strong className="text-xs font-bold block">Membership Expiring Soon!</strong>
+                      <span className="text-[10px]">Their {selectedCust.loyalty_plan || 'Standard'} plan expires on {new Date(selectedCust.loyalty_end_date!).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => sendRenewalReminderOnWhatsApp(selectedCust.name, selectedCust.phone, selectedCust.loyalty_plan || '', selectedCust.loyalty_end_date || '', triggerToast)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition shadow-sm"
+                  >
+                    <BellRing size={13} />
+                    Send Reminder
+                  </button>
+                </div>
+              )}
 
               {/* Customer Loyalty Banner (if registered customer with loyalty) */}
               {selectedCust && selectedCustomerId !== 'WALK_IN' && (

@@ -659,10 +659,10 @@ export default function App() {
           'broadcast',
           { event: 'factory_reset' },
           (payload: any) => {
-            console.log('Factory reset broadcast received:', payload);
-            triggerToast('System was factory reset by administrator. Reloading...', 'error');
+            console.log('Factory reset broadcast received live:', payload);
             dbStore.clearLocalCacheOnly();
-            setTimeout(() => window.location.reload(), 2000);
+            setSyncTick(prev => prev + 1);
+            triggerToast('System data was reset by administrator. Live state updated.', 'info');
           }
         )
         .on(

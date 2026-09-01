@@ -629,23 +629,24 @@ class ERPStorage {
        console.log('Clearing old invalid local storage with non-UUIDs...');
        safeStorage.pruneNonEssential();
     }
+    const isInitialized = safeStorage.getItem('omnipack_erp_initialized') === 'true';
     this.cache = {
       businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),
       profiles: this.load('profiles', PRE_SEEDED_PROFILES),
-      categories: this.load('categories', PRE_SEEDED_CATEGORIES),
-      products: this.load('products', PRE_SEEDED_PRODUCTS),
-      customers: this.load('customers', PRE_SEEDED_CUSTOMERS),
-      suppliers: this.load('suppliers', PRE_SEEDED_SUPPLIERS),
-      purchases: this.load('purchases', PRE_SEEDED_PURCHASES),
-      sales: this.load('sales', PRE_SEEDED_SALES),
+      categories: this.load('categories', isInitialized ? [] : PRE_SEEDED_CATEGORIES),
+      products: this.load('products', isInitialized ? [] : PRE_SEEDED_PRODUCTS),
+      customers: this.load('customers', isInitialized ? [] : PRE_SEEDED_CUSTOMERS),
+      suppliers: this.load('suppliers', isInitialized ? [] : PRE_SEEDED_SUPPLIERS),
+      purchases: this.load('purchases', isInitialized ? [] : PRE_SEEDED_PURCHASES),
+      sales: this.load('sales', isInitialized ? [] : PRE_SEEDED_SALES),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
-      stockLogs: this.load('stockLogs', PRE_SEEDED_STOCK_LOGS),
-      auditLogs: this.load('auditLogs', PRE_SEEDED_SYSTEM_AUDIT_LOGS),
+      stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
+      auditLogs: this.load('auditLogs', isInitialized ? [] : PRE_SEEDED_SYSTEM_AUDIT_LOGS),
       packingSessions: this.load('packingSessions', []),
       messages: this.load('messages', []),
       loyaltyConfigs: this.load('loyaltyConfigs', []),
-      loyaltyLogs: this.load('loyaltyLogs', PRE_SEEDED_LOYALTY_LOGS),
-      subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS),
+      loyaltyLogs: this.load('loyaltyLogs', isInitialized ? [] : PRE_SEEDED_LOYALTY_LOGS),
+      subscriptions: this.load('subscriptions', isInitialized ? [] : PRE_SEEDED_SUBSCRIPTIONS),
       comboLogs: this.load('comboLogs', [])
     };
     this.draftReservations = this.load('draftReservations', []);
@@ -656,7 +657,10 @@ class ERPStorage {
         this.bc = new BroadcastChannel('omnipack_erp_sync_channel');
         this.bc.onmessage = (event) => {
           if (event.data) {
-            if (event.data.type === 'SYNC_STATE') {
+            if (event.data.type === 'FACTORY_RESET') {
+              this.clearLocalCacheOnly();
+              this.notify();
+            } else if (event.data.type === 'SYNC_STATE') {
               this.reloadFromLocalStorage();
             } else if (event.data.type === 'SYNC_DRAFT_RESERVATIONS') {
               if (event.data.reservations && Array.isArray(event.data.reservations)) {
@@ -697,23 +701,24 @@ class ERPStorage {
   }
 
   public reloadFromLocalStorage() {
+    const isInitialized = safeStorage.getItem('omnipack_erp_initialized') === 'true';
     this.cache = {
       businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),
       profiles: this.load('profiles', PRE_SEEDED_PROFILES),
-      categories: this.load('categories', PRE_SEEDED_CATEGORIES),
-      products: this.load('products', PRE_SEEDED_PRODUCTS),
-      customers: this.load('customers', PRE_SEEDED_CUSTOMERS),
-      suppliers: this.load('suppliers', PRE_SEEDED_SUPPLIERS),
-      purchases: this.load('purchases', PRE_SEEDED_PURCHASES),
-      sales: this.load('sales', PRE_SEEDED_SALES),
+      categories: this.load('categories', isInitialized ? [] : PRE_SEEDED_CATEGORIES),
+      products: this.load('products', isInitialized ? [] : PRE_SEEDED_PRODUCTS),
+      customers: this.load('customers', isInitialized ? [] : PRE_SEEDED_CUSTOMERS),
+      suppliers: this.load('suppliers', isInitialized ? [] : PRE_SEEDED_SUPPLIERS),
+      purchases: this.load('purchases', isInitialized ? [] : PRE_SEEDED_PURCHASES),
+      sales: this.load('sales', isInitialized ? [] : PRE_SEEDED_SALES),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
-      stockLogs: this.load('stockLogs', PRE_SEEDED_STOCK_LOGS),
-      auditLogs: this.load('auditLogs', PRE_SEEDED_SYSTEM_AUDIT_LOGS),
+      stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
+      auditLogs: this.load('auditLogs', isInitialized ? [] : PRE_SEEDED_SYSTEM_AUDIT_LOGS),
       packingSessions: this.load('packingSessions', []),
       messages: this.load('messages', []),
       loyaltyConfigs: this.load('loyaltyConfigs', []),
-      loyaltyLogs: this.load('loyaltyLogs', PRE_SEEDED_LOYALTY_LOGS),
-      subscriptions: this.load('subscriptions', PRE_SEEDED_SUBSCRIPTIONS),
+      loyaltyLogs: this.load('loyaltyLogs', isInitialized ? [] : PRE_SEEDED_LOYALTY_LOGS),
+      subscriptions: this.load('subscriptions', isInitialized ? [] : PRE_SEEDED_SUBSCRIPTIONS),
       comboLogs: this.load('comboLogs', [])
     };
     this.draftReservations = this.load('draftReservations', []);
@@ -835,11 +840,8 @@ class ERPStorage {
        if (data) {
           if (data.length === 0) {
              if (key !== 'businesses' && key !== 'profiles' && key !== 'settings' && key !== 'loyaltyConfigs') {
-                // Only clear if local cache is also empty or missing
-                if (!this.cache[key as keyof typeof this.cache] || (this.cache[key as keyof typeof this.cache] as any[]).length === 0) {
-                  (this.cache as any)[key] = [];
-                  safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify([]));
-                }
+                (this.cache as any)[key] = [];
+                safeStorage.setItem(`omnipack_erp_${key}`, '[]');
              }
              return;
           }
@@ -900,35 +902,38 @@ class ERPStorage {
                  items: mergedItems
                };
              });
+
+             // Preserve pending offline sales
+             const pendingOfflineSales = (this.cache.sales || []).filter(s => this.pendingUploads.has(s.id));
+             pendingOfflineSales.forEach(pos => {
+               if (!mergedSales.some(s => s.id === pos.id)) {
+                 mergedSales.push(pos);
+               }
+             });
+
              this.cache.sales = mergedSales;
              safeStorage.setItem('omnipack_erp_sales', JSON.stringify(mergedSales));
           } else if (key === 'customers') {
-             const remoteMap = new Map((data || []).map((cust: any) => [cust.id, cust]));
-             const mergedMap = new Map<string, any>();
+             const mergedCustomers = (data || []).map((remoteCust: any) => {
+               const localCust = (this.cache.customers || []).find(c => c.id === remoteCust.id);
+               return {
+                 ...localCust,
+                 ...remoteCust,
+                 area: remoteCust.area || localCust?.area || undefined,
+                 loyalty_points: typeof remoteCust.loyalty_points === 'number' ? remoteCust.loyalty_points : (localCust?.loyalty_points || 0),
+                 loyalty_tier: remoteCust.loyalty_tier || localCust?.loyalty_tier || 'Silver',
+                 lifetime_spend: typeof remoteCust.lifetime_spend === 'number' ? remoteCust.lifetime_spend : (localCust?.lifetime_spend || 0)
+               };
+             });
 
-             (this.cache.customers || []).forEach((localCust: any) => {
-               const remoteCust = remoteMap.get(localCust.id);
-               if (remoteCust) {
-                 mergedMap.set(localCust.id, {
-                   ...localCust,
-                   ...remoteCust,
-                   area: remoteCust.area || localCust?.area || undefined,
-                   loyalty_points: typeof remoteCust.loyalty_points === 'number' ? remoteCust.loyalty_points : (localCust?.loyalty_points || 0),
-                   loyalty_tier: remoteCust.loyalty_tier || localCust?.loyalty_tier || 'Silver',
-                   lifetime_spend: typeof remoteCust.lifetime_spend === 'number' ? remoteCust.lifetime_spend : (localCust?.lifetime_spend || 0)
-                 });
-               } else {
-                 mergedMap.set(localCust.id, localCust);
+             // Preserve pending offline customers
+             const pendingOfflineCustomers = (this.cache.customers || []).filter(c => this.pendingUploads.has(c.id));
+             pendingOfflineCustomers.forEach(poc => {
+               if (!mergedCustomers.some(c => c.id === poc.id)) {
+                 mergedCustomers.push(poc);
                }
              });
 
-             (data || []).forEach((remoteCust: any) => {
-               if (!mergedMap.has(remoteCust.id)) {
-                 mergedMap.set(remoteCust.id, remoteCust);
-               }
-             });
-
-             const mergedCustomers = Array.from(mergedMap.values());
              this.cache.customers = mergedCustomers;
              safeStorage.setItem('omnipack_erp_customers', JSON.stringify(mergedCustomers));
           } else if (key === 'purchases') {
@@ -948,92 +953,85 @@ class ERPStorage {
                    : (existingPO?.items && existingPO.items.length > 0 ? existingPO.items : (po.items || []))
                };
              });
+
+             // Preserve pending offline purchases
+             const pendingOfflinePurchases = (this.cache.purchases || []).filter(p => this.pendingUploads.has(p.id));
+             pendingOfflinePurchases.forEach(pop => {
+               if (!mergedPurchases.some(p => p.id === pop.id)) {
+                 mergedPurchases.push(pop);
+               }
+             });
+
              this.cache.purchases = mergedPurchases;
              safeStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
           } else if (key === 'products') {
-             const remoteMap = new Map((data || []).map((prod: any) => [prod.id, prod]));
-             const mergedMap = new Map<string, any>();
+             const mergedProducts = (data || []).map((remoteProd: any) => {
+               const localProd = (this.cache.products || []).find(p => p.id === remoteProd.id);
+               return {
+                 ...localProd,
+                 ...remoteProd,
+                 business_id: normalizeBusinessId(remoteProd.business_id || localProd?.business_id || businessId),
+                 purchase_unit: remoteProd.purchase_unit || localProd?.purchase_unit || undefined,
+                 selling_unit: remoteProd.selling_unit || localProd?.selling_unit || undefined,
+                 auto_conversion: remoteProd.auto_conversion ?? localProd?.auto_conversion,
+                 rate_nr: typeof remoteProd.rate_nr === 'number' ? remoteProd.rate_nr : localProd?.rate_nr,
+                 rate_lmr: typeof remoteProd.rate_lmr === 'number' ? remoteProd.rate_lmr : localProd?.rate_lmr,
+                 rate_abr: typeof remoteProd.rate_abr === 'number' ? remoteProd.rate_abr : localProd?.rate_abr,
+                 rate_ddr: typeof remoteProd.rate_ddr === 'number' ? remoteProd.rate_ddr : localProd?.rate_ddr,
+                 is_combo: remoteProd.is_combo ?? (localProd?.is_combo || (remoteProd.combo_items && remoteProd.combo_items.length > 0)),
+                 combo_items: remoteProd.combo_items || localProd?.combo_items,
+                 current_stock: typeof remoteProd.current_stock === 'number' ? remoteProd.current_stock : (localProd?.current_stock || 0)
+               };
+             });
 
-             (this.cache.products || []).forEach((localProd: any) => {
-               const remoteProd = remoteMap.get(localProd.id);
-               if (remoteProd) {
-                 mergedMap.set(localProd.id, {
-                   ...localProd,
-                   ...remoteProd,
-                   business_id: normalizeBusinessId(remoteProd.business_id || localProd.business_id),
-                   purchase_unit: remoteProd.purchase_unit || localProd?.purchase_unit || undefined,
-                   selling_unit: remoteProd.selling_unit || localProd?.selling_unit || undefined,
-                   auto_conversion: remoteProd.auto_conversion ?? localProd?.auto_conversion,
-                   rate_nr: typeof remoteProd.rate_nr === 'number' ? remoteProd.rate_nr : localProd?.rate_nr,
-                   rate_lmr: typeof remoteProd.rate_lmr === 'number' ? remoteProd.rate_lmr : localProd?.rate_lmr,
-                   rate_abr: typeof remoteProd.rate_abr === 'number' ? remoteProd.rate_abr : localProd?.rate_abr,
-                   rate_ddr: typeof remoteProd.rate_ddr === 'number' ? remoteProd.rate_ddr : localProd?.rate_ddr,
-                   is_combo: remoteProd.is_combo ?? localProd?.is_combo,
-                   combo_items: remoteProd.combo_items || localProd?.combo_items,
-                   current_stock: typeof remoteProd.current_stock === 'number' ? remoteProd.current_stock : (localProd?.current_stock || 0)
-                 });
-               } else {
-                 mergedMap.set(localProd.id, {
-                   ...localProd,
-                   business_id: normalizeBusinessId(localProd.business_id)
-                 });
+             // Preserve pending offline products
+             const pendingOfflineProducts = (this.cache.products || []).filter(p => this.pendingUploads.has(p.id));
+             pendingOfflineProducts.forEach(pop => {
+               if (!mergedProducts.some(p => p.id === pop.id)) {
+                 mergedProducts.push(pop);
                }
              });
 
-             (data || []).forEach((remoteProd: any) => {
-               if (!mergedMap.has(remoteProd.id)) {
-                 mergedMap.set(remoteProd.id, {
-                   ...remoteProd,
-                   business_id: normalizeBusinessId(remoteProd.business_id)
-                 });
-               }
-             });
-
-             const mergedProducts = Array.from(mergedMap.values());
              this.cache.products = mergedProducts;
              safeStorage.setItem('omnipack_erp_products', JSON.stringify(mergedProducts));
           } else if (key === 'categories') {
-             const remoteMap = new Map((data || []).map((cat: any) => [cat.id, cat]));
-             const mergedMap = new Map<string, any>();
+             const mergedCategories = (data || []).map((remoteCat: any) => {
+               const localCat = (this.cache.categories || []).find(c => c.id === remoteCat.id);
+               return {
+                 ...localCat,
+                 ...remoteCat,
+                 business_id: normalizeBusinessId(remoteCat.business_id || localCat?.business_id || businessId)
+               };
+             });
 
-             (this.cache.categories || []).forEach((localCat: any) => {
-               const remoteCat = remoteMap.get(localCat.id);
-               if (remoteCat) {
-                 mergedMap.set(localCat.id, { ...localCat, ...remoteCat });
-               } else {
-                 mergedMap.set(localCat.id, localCat);
+             // Preserve pending offline categories
+             const pendingOfflineCategories = (this.cache.categories || []).filter(c => this.pendingUploads.has(c.id));
+             pendingOfflineCategories.forEach(poc => {
+               if (!mergedCategories.some(c => c.id === poc.id)) {
+                 mergedCategories.push(poc);
                }
              });
 
-             (data || []).forEach((remoteCat: any) => {
-               if (!mergedMap.has(remoteCat.id)) {
-                 mergedMap.set(remoteCat.id, remoteCat);
-               }
-             });
-
-             const mergedCategories = Array.from(mergedMap.values());
              this.cache.categories = mergedCategories;
              safeStorage.setItem('omnipack_erp_categories', JSON.stringify(mergedCategories));
           } else if (key === 'suppliers') {
-             const remoteMap = new Map((data || []).map((sup: any) => [sup.id, sup]));
-             const mergedMap = new Map<string, any>();
+             const mergedSuppliers = (data || []).map((remoteSup: any) => {
+               const localSup = (this.cache.suppliers || []).find(s => s.id === remoteSup.id);
+               return {
+                 ...localSup,
+                 ...remoteSup,
+                 business_id: normalizeBusinessId(remoteSup.business_id || localSup?.business_id || businessId)
+               };
+             });
 
-             (this.cache.suppliers || []).forEach((localSup: any) => {
-               const remoteSup = remoteMap.get(localSup.id);
-               if (remoteSup) {
-                 mergedMap.set(localSup.id, { ...localSup, ...remoteSup });
-               } else {
-                 mergedMap.set(localSup.id, localSup);
+             // Preserve pending offline suppliers
+             const pendingOfflineSuppliers = (this.cache.suppliers || []).filter(s => this.pendingUploads.has(s.id));
+             pendingOfflineSuppliers.forEach(pos => {
+               if (!mergedSuppliers.some(s => s.id === pos.id)) {
+                 mergedSuppliers.push(pos);
                }
              });
 
-             (data || []).forEach((remoteSup: any) => {
-               if (!mergedMap.has(remoteSup.id)) {
-                 mergedMap.set(remoteSup.id, remoteSup);
-               }
-             });
-
-             const mergedSuppliers = Array.from(mergedMap.values());
              this.cache.suppliers = mergedSuppliers;
              safeStorage.setItem('omnipack_erp_suppliers', JSON.stringify(mergedSuppliers));
           } else if (key === 'businesses') {
@@ -1625,33 +1623,7 @@ class ERPStorage {
 
   // Category Operations
   public getCategories(businessId: string): Category[] {
-    let cats = this.cache.categories.filter(c => !c.business_id || isSameBusiness(c.business_id, businessId));
-    if (cats.length === 0) {
-      const defaultCatNames = [
-        'Faral & Festive Sweets',
-        'Snacks & Namkeen',
-        'Bakery & Confectionery',
-        'Spices & Masalas',
-        'Dry Fruits & Nuts',
-        'Beverages & Syrups',
-        'General & Grocery'
-      ];
-      defaultCatNames.forEach(name => {
-        const newCat: Category = {
-          id: crypto.randomUUID(),
-          name,
-          parent_id: null,
-          business_id: normalizeBusinessId(businessId),
-          active: true,
-          created_at: new Date().toISOString()
-        };
-        this.cache.categories.push(newCat);
-      });
-      try {
-        safeStorage.setItem('omnipack_erp_categories', JSON.stringify(this.cache.categories));
-      } catch (e) {}
-      cats = this.cache.categories.filter(c => !c.business_id || isSameBusiness(c.business_id, businessId));
-    }
+    const cats = this.cache.categories.filter(c => !c.business_id || isSameBusiness(c.business_id, businessId));
     return dedupeById(cats);
   }
 
@@ -4222,6 +4194,7 @@ class ERPStorage {
   // Reset Storage helper
   
   public clearLocalCacheOnly() {
+    safeStorage.setItem('omnipack_erp_initialized', 'true');
     safeStorage.removeItem('omnipack_erp_businesses');
     safeStorage.removeItem('omnipack_erp_profiles');
     safeStorage.removeItem('omnipack_erp_settings');
@@ -4239,17 +4212,20 @@ class ERPStorage {
     safeStorage.setItem('omnipack_erp_loyaltyLogs', '[]');
     safeStorage.setItem('omnipack_erp_subscriptions', '[]');
     safeStorage.setItem('omnipack_erp_comboLogs', '[]');
+    safeStorage.setItem('omnipack_erp_draftReservations', '[]');
+    safeStorage.setItem('omnipack_erp_deviceSessions', '[]');
+    safeStorage.setItem('omnipack_read_notifications', '[]');
 
     this.cache = {
-      businesses: PRE_SEEDED_BUSINESSES,
-      profiles: PRE_SEEDED_PROFILES,
+      businesses: this.cache.businesses.length > 0 ? this.cache.businesses : PRE_SEEDED_BUSINESSES,
+      profiles: this.cache.profiles.length > 0 ? this.cache.profiles : PRE_SEEDED_PROFILES,
       categories: [],
       products: [],
       customers: [],
       suppliers: [],
       purchases: [],
       sales: [],
-      settings: PRE_SEEDED_SETTINGS,
+      settings: this.cache.settings.length > 0 ? this.cache.settings : PRE_SEEDED_SETTINGS,
       stockLogs: [],
       auditLogs: [],
       packingSessions: [],
@@ -4259,63 +4235,69 @@ class ERPStorage {
       subscriptions: [],
       comboLogs: []
     };
+    this.draftReservations = [];
+    this.pendingUploads.clear();
+    this.notify();
   }
 
   public async clearAllAndReset(businessId?: string) {
-    if (businessId && isSupabaseConfigured && supabase) {
+    const normBId = businessId ? normalizeBusinessId(businessId) : undefined;
+    if (isSupabaseConfigured && supabase) {
       try {
-        const tables = [
-          'chat_messages', 'system_audit_logs', 'packing_sessions', 
-          'loyalty_logs', 'customer_subscriptions', 'stock_logs', 
-          'sales_orders', 'purchase_orders', 'products', 
-          'categories', 'customers', 'suppliers'
+        const childTables = [
+          'sales_order_items', 'purchase_order_items', 'chat_messages', 
+          'system_audit_logs', 'packing_sessions', 'loyalty_logs', 
+          'customer_subscriptions', 'stock_logs', 'combo_history_logs'
         ];
-        for (const table of tables) {
-          await supabase.from(table).delete().eq('business_id', businessId);
+        for (const table of childTables) {
+          try {
+            if (normBId) {
+              await supabase.from(table).delete().eq('business_id', normBId);
+            } else {
+              await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+            }
+          } catch (te) {}
         }
-        await supabase.from('business_settings').update({ updated_at: new Date().toISOString() }).eq('business_id', businessId);
+
+        const parentTables = [
+          'sales_orders', 'purchase_orders', 'products', 
+          'categories', 'customers', 'suppliers', 'loyalty_configs'
+        ];
+        for (const table of parentTables) {
+          try {
+            if (normBId) {
+              await supabase.from(table).delete().eq('business_id', normBId);
+            } else {
+              await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+            }
+          } catch (te) {}
+        }
+
+        if (normBId) {
+          await supabase.from('business_settings').update({ updated_at: new Date().toISOString() }).eq('business_id', normBId);
+        }
       } catch (e) {
-        console.warn('Failed to wipe Supabase on reset', e);
+        console.warn('Supabase reset warning:', e);
       }
     }
 
-    safeStorage.removeItem('omnipack_erp_businesses');
-    safeStorage.removeItem('omnipack_erp_profiles');
-    safeStorage.removeItem('omnipack_erp_settings');
+    this.clearLocalCacheOnly();
 
-    safeStorage.setItem('omnipack_erp_categories', '[]');
-    safeStorage.setItem('omnipack_erp_products', '[]');
-    safeStorage.setItem('omnipack_erp_customers', '[]');
-    safeStorage.setItem('omnipack_erp_suppliers', '[]');
-    safeStorage.setItem('omnipack_erp_purchases', '[]');
-    safeStorage.setItem('omnipack_erp_sales', '[]');
-    safeStorage.setItem('omnipack_erp_stockLogs', '[]');
-    safeStorage.setItem('omnipack_erp_auditLogs', '[]');
-    safeStorage.setItem('omnipack_erp_packingSessions', '[]');
-    safeStorage.setItem('omnipack_erp_messages', '[]');
-    safeStorage.setItem('omnipack_erp_loyaltyLogs', '[]');
-    safeStorage.setItem('omnipack_erp_subscriptions', '[]');
-    safeStorage.setItem('omnipack_erp_comboLogs', '[]');
+    try {
+      if (this.bc) {
+        this.bc.postMessage({ type: 'FACTORY_RESET', businessId: normBId });
+      }
+    } catch (e) {}
 
-    this.cache = {
-      businesses: PRE_SEEDED_BUSINESSES,
-      profiles: PRE_SEEDED_PROFILES,
-      categories: [],
-      products: [],
-      customers: [],
-      suppliers: [],
-      purchases: [],
-      sales: [],
-      settings: PRE_SEEDED_SETTINGS,
-      stockLogs: [],
-      auditLogs: [],
-      packingSessions: [],
-      messages: [],
-      loyaltyConfigs: [],
-      loyaltyLogs: [],
-      subscriptions: [],
-      comboLogs: []
-    };
+    if (this.realtimeChannel) {
+      try {
+        await this.realtimeChannel.send({
+          type: 'broadcast',
+          event: 'factory_reset',
+          payload: { businessId: normBId }
+        });
+      } catch (e) {}
+    }
   }
 
   // Metrics Generator for Dashboard (isolated by business_id)

@@ -325,12 +325,13 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
 
     await new Promise(r => setTimeout(r, 400));
     setResetProgress(100);
-    setResetStep('Factory reset completed successfully! Reloading workspace...');
-    triggerToast('System factory reset complete. Reloading...', 'success');
+    setResetStep('Factory reset completed successfully! Live state updated across all users.');
+    triggerToast('System factory reset complete! All data removed live without reload.', 'success');
 
-    setTimeout(() => {
-      window.location.reload();
-    }, 1200);
+    await new Promise(r => setTimeout(r, 500));
+    setIsResetting(false);
+    setShowResetConfirm(false);
+    setResetPassword('');
   };
 
   const handleSaveSettings = (e: React.FormEvent) => {

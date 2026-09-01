@@ -661,6 +661,7 @@ export default function App() {
           (payload: any) => {
             console.log('Factory reset broadcast received:', payload);
             triggerToast('System was factory reset by administrator. Reloading...', 'error');
+            dbStore.clearLocalCacheOnly();
             setTimeout(() => window.location.reload(), 2000);
           }
         )

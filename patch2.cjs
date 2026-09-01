@@ -1,25 +1,8 @@
 const fs = require('fs');
 let code = fs.readFileSync('src/services/store.ts', 'utf8');
-code = code.replace(
-  /public async clearAllAndReset.*?comboLogs: \[\]\n    };\n  }/s,
-  `public async clearAllAndReset(businessId?: string) {
-    if (businessId && isSupabaseConfigured && supabase) {
-      try {
-        const tables = [
-          'chat_messages', 'system_audit_logs', 'packing_sessions', 
-          'loyalty_logs', 'customer_subscriptions', 'stock_logs', 
-          'sales_orders', 'purchase_orders', 'products', 
-          'categories', 'customers', 'suppliers'
-        ];
-        for (const table of tables) {
-          await supabase.from(table).delete().eq('business_id', businessId);
-        }
-        await supabase.from('business_settings').update({ updated_at: new Date().toISOString() }).eq('business_id', businessId);
-      } catch (e) {
-        console.warn('Failed to wipe Supabase on reset', e);
-      }
-    }
 
+const newMethod = `
+  public clearLocalCacheOnly() {
     safeStorage.removeItem('omnipack_erp_businesses');
     safeStorage.removeItem('omnipack_erp_profiles');
     safeStorage.removeItem('omnipack_erp_settings');
@@ -57,6 +40,12 @@ code = code.replace(
       subscriptions: [],
       comboLogs: []
     };
-  }`
+  }
+`;
+
+code = code.replace(
+  /public async clearAllAndReset.*?\{/s,
+  newMethod + '\n  public async clearAllAndReset(businessId?: string) {'
 );
+
 fs.writeFileSync('src/services/store.ts', code);

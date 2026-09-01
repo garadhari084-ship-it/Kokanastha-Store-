@@ -4220,14 +4220,55 @@ class ERPStorage {
   }
 
   // Reset Storage helper
+  
+  public clearLocalCacheOnly() {
+    safeStorage.removeItem('omnipack_erp_businesses');
+    safeStorage.removeItem('omnipack_erp_profiles');
+    safeStorage.removeItem('omnipack_erp_settings');
+
+    safeStorage.setItem('omnipack_erp_categories', '[]');
+    safeStorage.setItem('omnipack_erp_products', '[]');
+    safeStorage.setItem('omnipack_erp_customers', '[]');
+    safeStorage.setItem('omnipack_erp_suppliers', '[]');
+    safeStorage.setItem('omnipack_erp_purchases', '[]');
+    safeStorage.setItem('omnipack_erp_sales', '[]');
+    safeStorage.setItem('omnipack_erp_stockLogs', '[]');
+    safeStorage.setItem('omnipack_erp_auditLogs', '[]');
+    safeStorage.setItem('omnipack_erp_packingSessions', '[]');
+    safeStorage.setItem('omnipack_erp_messages', '[]');
+    safeStorage.setItem('omnipack_erp_loyaltyLogs', '[]');
+    safeStorage.setItem('omnipack_erp_subscriptions', '[]');
+    safeStorage.setItem('omnipack_erp_comboLogs', '[]');
+
+    this.cache = {
+      businesses: PRE_SEEDED_BUSINESSES,
+      profiles: PRE_SEEDED_PROFILES,
+      categories: [],
+      products: [],
+      customers: [],
+      suppliers: [],
+      purchases: [],
+      sales: [],
+      settings: PRE_SEEDED_SETTINGS,
+      stockLogs: [],
+      auditLogs: [],
+      packingSessions: [],
+      messages: [],
+      loyaltyConfigs: [],
+      loyaltyLogs: [],
+      subscriptions: [],
+      comboLogs: []
+    };
+  }
+
   public async clearAllAndReset(businessId?: string) {
     if (businessId && isSupabaseConfigured && supabase) {
       try {
         const tables = [
-          'categories', 'products', 'customers', 'suppliers', 
-          'purchase_orders', 'sales_orders', 'stock_logs', 
-          'system_audit_logs', 'packing_sessions', 'chat_messages', 
-          'loyalty_logs', 'customer_subscriptions'
+          'chat_messages', 'system_audit_logs', 'packing_sessions', 
+          'loyalty_logs', 'customer_subscriptions', 'stock_logs', 
+          'sales_orders', 'purchase_orders', 'products', 
+          'categories', 'customers', 'suppliers'
         ];
         for (const table of tables) {
           await supabase.from(table).delete().eq('business_id', businessId);
@@ -4240,38 +4281,39 @@ class ERPStorage {
 
     safeStorage.removeItem('omnipack_erp_businesses');
     safeStorage.removeItem('omnipack_erp_profiles');
-    safeStorage.removeItem('omnipack_erp_categories');
-    safeStorage.removeItem('omnipack_erp_products');
-    safeStorage.removeItem('omnipack_erp_customers');
-    safeStorage.removeItem('omnipack_erp_suppliers');
-    safeStorage.removeItem('omnipack_erp_purchases');
-    safeStorage.removeItem('omnipack_erp_sales');
     safeStorage.removeItem('omnipack_erp_settings');
-    safeStorage.removeItem('omnipack_erp_stockLogs');
-    safeStorage.removeItem('omnipack_erp_auditLogs');
-    safeStorage.removeItem('omnipack_erp_packingSessions');
-    safeStorage.removeItem('omnipack_erp_messages');
-    safeStorage.removeItem('omnipack_erp_loyaltyLogs');
-    safeStorage.removeItem('omnipack_erp_subscriptions');
-    safeStorage.removeItem('omnipack_erp_comboLogs');
+
+    safeStorage.setItem('omnipack_erp_categories', '[]');
+    safeStorage.setItem('omnipack_erp_products', '[]');
+    safeStorage.setItem('omnipack_erp_customers', '[]');
+    safeStorage.setItem('omnipack_erp_suppliers', '[]');
+    safeStorage.setItem('omnipack_erp_purchases', '[]');
+    safeStorage.setItem('omnipack_erp_sales', '[]');
+    safeStorage.setItem('omnipack_erp_stockLogs', '[]');
+    safeStorage.setItem('omnipack_erp_auditLogs', '[]');
+    safeStorage.setItem('omnipack_erp_packingSessions', '[]');
+    safeStorage.setItem('omnipack_erp_messages', '[]');
+    safeStorage.setItem('omnipack_erp_loyaltyLogs', '[]');
+    safeStorage.setItem('omnipack_erp_subscriptions', '[]');
+    safeStorage.setItem('omnipack_erp_comboLogs', '[]');
 
     this.cache = {
       businesses: PRE_SEEDED_BUSINESSES,
       profiles: PRE_SEEDED_PROFILES,
-      categories: PRE_SEEDED_CATEGORIES,
-      products: PRE_SEEDED_PRODUCTS,
-      customers: PRE_SEEDED_CUSTOMERS,
-      suppliers: PRE_SEEDED_SUPPLIERS,
-      purchases: PRE_SEEDED_PURCHASES,
-      sales: PRE_SEEDED_SALES,
+      categories: [],
+      products: [],
+      customers: [],
+      suppliers: [],
+      purchases: [],
+      sales: [],
       settings: PRE_SEEDED_SETTINGS,
-      stockLogs: PRE_SEEDED_STOCK_LOGS,
-      auditLogs: PRE_SEEDED_SYSTEM_AUDIT_LOGS,
+      stockLogs: [],
+      auditLogs: [],
       packingSessions: [],
       messages: [],
       loyaltyConfigs: [],
-      loyaltyLogs: PRE_SEEDED_LOYALTY_LOGS,
-      subscriptions: PRE_SEEDED_SUBSCRIPTIONS,
+      loyaltyLogs: [],
+      subscriptions: [],
       comboLogs: []
     };
   }

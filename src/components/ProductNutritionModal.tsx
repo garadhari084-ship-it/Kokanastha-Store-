@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, 
   Sparkles, 
@@ -14,7 +14,8 @@ import {
   FileText,
   Clock,
   MapPin,
-  Phone
+  Phone,
+  ChevronDown
 } from 'lucide-react';
 import ReactBarcode from 'react-barcode';
 import { Product, NutritionFacts, FoodPackagingInfo, UserProfile } from '../types/erp';
@@ -195,21 +196,34 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
 
   // State for Food Packaging Compliance
   const [packaging, setPackaging] = useState<FoodPackagingInfo>({
-    dietary_type: product.food_packaging?.dietary_type || 'veg',
-    ingredients: product.food_packaging?.ingredients || (product.description || 'Wheat Flour, Edible Vegetable Oil, Sugar, Iodized Salt, Spices & Condiments'),
-    allergen_info: product.food_packaging?.allergen_info || 'Manufactured in a facility that processes Wheat, Nuts and Dairy.',
-    fssai_license: product.food_packaging?.fssai_license || '11521018000123',
-    net_weight: product.food_packaging?.net_weight || (product.pack_size ? `${product.pack_size}g` : `${product.unit || '1 Pack'}`),
-    batch_no: product.food_packaging?.batch_no || `BAT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
-    shelf_life_days: product.food_packaging?.shelf_life_days || 90,
-    best_before_text: product.food_packaging?.best_before_text || 'Best Before 90 Days from packaging',
-    storage_instructions: product.food_packaging?.storage_instructions || 'Store in a cool, hygienic and dry place away from moisture and direct sunlight.',
-    mfg_by: product.food_packaging?.mfg_by || `${businessName} Special Foods, Pune - 411030`,
-    mkt_by: product.food_packaging?.mkt_by || `${businessName} Enterprises`,
-    customer_care: product.food_packaging?.customer_care || `care@${businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com | +91 9876543210`
+    dietary_type: product.food_packaging?.dietary_type ?? 'veg',
+    ingredients: product.food_packaging?.ingredients ?? (product.description || 'Wheat Flour, Edible Vegetable Oil, Sugar, Iodized Salt, Spices & Condiments'),
+    allergen_info: product.food_packaging?.allergen_info ?? 'Manufactured in a facility that processes Wheat, Nuts and Dairy.',
+    fssai_license: product.food_packaging?.fssai_license ?? '11521018000123',
+    net_weight: product.food_packaging?.net_weight ?? (product.pack_size ? `${product.pack_size}g` : `${product.unit || '1 Pack'}`),
+    batch_no: product.food_packaging?.batch_no ?? `BAT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+    shelf_life_days: product.food_packaging?.shelf_life_days ?? 90,
+    best_before_text: product.food_packaging?.best_before_text ?? 'Best Before 90 Days from packaging',
+    storage_instructions: product.food_packaging?.storage_instructions ?? 'Store in a cool, hygienic and dry place away from moisture and direct sunlight.',
+    mfg_by: product.food_packaging?.mfg_by ?? `${businessName} Special Foods, Pune - 411030`,
+    mkt_by: product.food_packaging?.mkt_by ?? `${businessName} Enterprises`,
+    customer_care: product.food_packaging?.customer_care ?? `care@${businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com | +91 9876543210`
   });
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [packerMode, setPackerMode] = useState<'mfg' | 'mkt'>('mfg');
+  const [isPackerDropdownOpen, setIsPackerDropdownOpen] = useState(false);
+  const packerDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (packerDropdownRef.current && !packerDropdownRef.current.contains(event.target as Node)) {
+        setIsPackerDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -702,7 +716,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                   </label>
                   <textarea
                     rows={3}
-                    value={packaging.ingredients || ''}
+                    value={packaging.ingredients ?? ''}
                     onChange={(e) => handlePackagingChange('ingredients', e.target.value)}
                     placeholder="List all ingredients in descending order of weight (e.g. Whole Wheat Flour, Pure Cow Ghee, Cane Sugar, Cardamom, Cashews, Almonds...)"
                     className="w-full mt-1 p-2.5 bg-slate-50 dark:bg-slate-800 text-xs font-medium rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:text-white custom-scrollbar"
@@ -716,7 +730,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                   </label>
                   <textarea
                     rows={3}
-                    value={packaging.allergen_info || ''}
+                    value={packaging.allergen_info ?? ''}
                     onChange={(e) => handlePackagingChange('allergen_info', e.target.value)}
                     placeholder="e.g. Contains Wheat (Gluten), Tree Nuts (Cashews, Almonds). Made in a facility that processes Peanuts and Sesame."
                     className="w-full mt-1 p-2.5 bg-slate-50 dark:bg-slate-800 text-xs font-medium rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:text-white custom-scrollbar"
@@ -732,7 +746,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={packaging.fssai_license || ''}
+                    value={packaging.fssai_license ?? ''}
                     onChange={(e) => handlePackagingChange('fssai_license', e.target.value)}
                     placeholder="e.g. 11521018000123"
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden dark:text-white"
@@ -745,7 +759,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={packaging.net_weight || ''}
+                    value={packaging.net_weight ?? ''}
                     onChange={(e) => handlePackagingChange('net_weight', e.target.value)}
                     placeholder="e.g. 250g, 500g, 1 Kg"
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden dark:text-white"
@@ -758,7 +772,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={packaging.batch_no || ''}
+                    value={packaging.batch_no ?? ''}
                     onChange={(e) => handlePackagingChange('batch_no', e.target.value)}
                     placeholder="e.g. BAT-2026-A1"
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden dark:text-white"
@@ -771,7 +785,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                   </label>
                   <input
                     type="number"
-                    value={packaging.shelf_life_days || ''}
+                    value={packaging.shelf_life_days ?? ''}
                     onChange={(e) => {
                       const days = parseInt(e.target.value) || 0;
                       handlePackagingChange('shelf_life_days', days);
@@ -793,7 +807,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={packaging.best_before_text || ''}
+                    value={packaging.best_before_text ?? ''}
                     onChange={(e) => handlePackagingChange('best_before_text', e.target.value)}
                     placeholder="e.g. Best Before 60 Days from packaging"
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden dark:text-white"
@@ -806,7 +820,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={packaging.storage_instructions || ''}
+                    value={packaging.storage_instructions ?? ''}
                     onChange={(e) => handlePackagingChange('storage_instructions', e.target.value)}
                     placeholder="e.g. Store in a cool, hygienic & dry place away from sunlight."
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden dark:text-white"
@@ -816,14 +830,46 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
 
               {/* Manufacturer & Customer Care */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                    Manufactured & Packed By
-                  </label>
+                <div className="flex flex-col relative" ref={packerDropdownRef}>
+                  <div 
+                    onClick={() => setIsPackerDropdownOpen(!isPackerDropdownOpen)}
+                    className="flex items-center gap-1.5 cursor-pointer pb-1 group"
+                  >
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                      {packerMode === 'mfg' ? 'Manufactured & Packed By' : 'Packed & Marketed By'}
+                    </span>
+                    <ChevronDown className="w-3 h-3 text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" />
+                  </div>
+                  
+                  {isPackerDropdownOpen && (
+                    <div className="absolute top-6 left-0 z-10 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                      <button
+                        onClick={() => {
+                          setPackerMode('mfg');
+                          setIsPackerDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-[11px] font-bold uppercase tracking-wider hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between ${packerMode === 'mfg' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' : 'text-slate-700 dark:text-slate-300'}`}
+                      >
+                        Manufactured & Packed By
+                        {packerMode === 'mfg' && <Check className="w-3 h-3" />}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPackerMode('mkt');
+                          setIsPackerDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-[11px] font-bold uppercase tracking-wider hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between ${packerMode === 'mkt' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' : 'text-slate-700 dark:text-slate-300'}`}
+                      >
+                        Packed & Marketed By
+                        {packerMode === 'mkt' && <Check className="w-3 h-3" />}
+                      </button>
+                    </div>
+                  )}
+
                   <input
                     type="text"
-                    value={packaging.mfg_by || ''}
-                    onChange={(e) => handlePackagingChange('mfg_by', e.target.value)}
+                    value={packerMode === 'mfg' ? (packaging.mfg_by ?? '') : (packaging.mkt_by ?? '')}
+                    onChange={(e) => handlePackagingChange(packerMode === 'mfg' ? 'mfg_by' : 'mkt_by', e.target.value)}
                     placeholder="Company Name & Facility Address"
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden dark:text-white"
                   />
@@ -835,7 +881,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={packaging.customer_care || ''}
+                    value={packaging.customer_care ?? ''}
                     onChange={(e) => handlePackagingChange('customer_care', e.target.value)}
                     placeholder="care@company.com | +91 9876543210"
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden dark:text-white"

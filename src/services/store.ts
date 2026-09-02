@@ -1768,6 +1768,20 @@ class ERPStorage {
     throw new Error('Product not found');
   }
 
+  public bulkUpdateProducts(updatesArray: { id: string, updates: Partial<Product> }[]): void {
+    const updatedProducts: any[] = [];
+    updatesArray.forEach(({ id, updates }) => {
+      const index = this.cache.products.findIndex(p => p.id === id);
+      if (index !== -1) {
+        this.cache.products[index] = { ...this.cache.products[index], ...updates };
+        updatedProducts.push(this.cache.products[index]);
+      }
+    });
+    if (updatedProducts.length > 0) {
+      this.save('products', updatedProducts);
+    }
+  }
+
   public deleteProduct(id: string): { success: boolean; error?: string } {
     if (!id) return { success: false, error: 'Product ID is missing.' };
     

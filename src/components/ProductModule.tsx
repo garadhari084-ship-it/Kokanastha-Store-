@@ -1925,10 +1925,43 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
   const handleSaveNutrition = (updatedProduct: Product) => {
     try {
+      const allProducts = dbStore.getProducts(businessId);
+      const originalProduct = allProducts.find(p => p.id === updatedProduct.id);
+
+      const companyInfoChanged = 
+        updatedProduct.food_packaging?.mfg_by !== originalProduct?.food_packaging?.mfg_by ||
+        updatedProduct.food_packaging?.customer_care !== originalProduct?.food_packaging?.customer_care ||
+        updatedProduct.food_packaging?.mkt_by !== originalProduct?.food_packaging?.mkt_by ||
+        updatedProduct.food_packaging?.fssai_license !== originalProduct?.food_packaging?.fssai_license;
+
       dbStore.updateProduct(updatedProduct.id, {
         nutrition_facts: updatedProduct.nutrition_facts,
         food_packaging: updatedProduct.food_packaging
       });
+
+      if (companyInfoChanged && updatedProduct.food_packaging) {
+        const updatesArray: { id: string, updates: Partial<Product> }[] = [];
+        allProducts.forEach(prod => {
+          if (prod.id !== updatedProduct.id) {
+            updatesArray.push({
+              id: prod.id,
+              updates: {
+                food_packaging: {
+                  ...(prod.food_packaging || {}),
+                  fssai_license: updatedProduct.food_packaging!.fssai_license,
+                  mfg_by: updatedProduct.food_packaging!.mfg_by,
+                  mkt_by: updatedProduct.food_packaging!.mkt_by,
+                  customer_care: updatedProduct.food_packaging!.customer_care
+                }
+              }
+            });
+          }
+        });
+        if (updatesArray.length > 0) {
+          dbStore.bulkUpdateProducts(updatesArray);
+        }
+      }
+
       setProducts(dbStore.getProducts(businessId));
       if (editingProduct?.id === updatedProduct.id) {
         setEditingProduct(updatedProduct);

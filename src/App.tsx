@@ -1508,10 +1508,12 @@ export default function App() {
       case 'products':
         return (
           <ProductModule 
+            key={deepLinkData?._ts ? `products-${deepLinkData._ts}` : 'products'}
             businessId={currentBusiness.id} 
             user={currentUser} 
             triggerToast={triggerToast}
             openAddModalInitially={deepLinkData?.openAddModal || false}
+            initialCategoryId={deepLinkData?.categoryId || ''}
           />
         );
       case 'categories':
@@ -1520,6 +1522,7 @@ export default function App() {
             businessId={currentBusiness.id} 
             user={currentUser} 
             triggerToast={triggerToast} 
+            onNavigate={handleDeepLinkNavigate}
           />
         );
       case 'parties':

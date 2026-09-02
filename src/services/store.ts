@@ -3812,6 +3812,29 @@ class ERPStorage {
     return newLog;
   }
 
+  public updateStockLog(id: string, updates: Partial<StockLog>): StockLog {
+    const index = this.cache.stockLogs.findIndex(l => l.id === id);
+    if (index !== -1) {
+      const oldLog = this.cache.stockLogs[index];
+      const newLog = { ...oldLog, ...updates };
+      
+      const diffQty = (newLog.change_qty || 0) - (oldLog.change_qty || 0);
+      
+      this.cache.stockLogs[index] = newLog;
+      this.save('stockLogs', newLog);
+      
+      if (diffQty !== 0) {
+        const productIndex = this.cache.products.findIndex(p => p.id === newLog.product_id);
+        if (productIndex !== -1) {
+          this.cache.products[productIndex].current_stock += diffQty;
+        }
+      }
+      this.notify();
+      return newLog;
+    }
+    throw new Error('Stock log not found');
+  }
+
   // Packing Verification Operations (Mandatory Core Feature)
   public scanOrderQR(businessId: string, qrCodeContent: string): { success: boolean; order?: SalesOrder; error?: string } {
     const rawContent = (qrCodeContent || '').trim();

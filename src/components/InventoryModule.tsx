@@ -11,7 +11,8 @@ import {
   History, 
   X,
   RefreshCw,
-  ClipboardList
+  ClipboardList,
+  Edit
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { Product, StockLog, UserProfile } from '../types/erp';
@@ -35,6 +36,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [stockLogs, setStockLogs] = useState<StockLog[]>(dbStore.getStockLogs(businessId));
   const [searchQuery, setSearchQuery] = useState('');
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(openInwardModalInitially);
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
 
   // Adjustment Form States
   const [selectedProductId, setSelectedProductId] = useState<string>(autoProductId || products[0]?.id || '');
@@ -74,25 +76,44 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     }
 
     try {
-      dbStore.addStockLog(
-        selectedProductId,
-        finalQty,
-        adjustType,
-        adjustNotes.trim() || `Manual inventory movement: ${adjustType}`,
-        user.id,
-        businessId
-      );
+      if (editingLogId) {
+        dbStore.updateStockLog(editingLogId, {
+          product_id: selectedProductId,
+          change_qty: finalQty,
+          type: adjustType,
+          notes: adjustNotes.trim() || `Manual inventory movement: ${adjustType}`
+        });
+        dbStore.logActivity(
+          user.id,
+          user.name,
+          user.role,
+          'Edit Stock Change',
+          `Edited stock log for ${prod.name}: ${finalQty > 0 ? '+' : ''}${finalQty} (${adjustType})`,
+          businessId
+        );
+        triggerToast(`Inventory stock log updated successfully.`, 'success');
+        setEditingLogId(null);
+      } else {
+        dbStore.addStockLog(
+          selectedProductId,
+          finalQty,
+          adjustType,
+          adjustNotes.trim() || `Manual inventory movement: ${adjustType}`,
+          user.id,
+          businessId
+        );
 
-      dbStore.logActivity(
-        user.id,
-        user.name,
-        user.role,
-        'Stock Change',
-        `Adjusted stock for ${prod.name}: ${finalQty > 0 ? '+' : ''}${finalQty} (${adjustType})`,
-        businessId
-      );
+        dbStore.logActivity(
+          user.id,
+          user.name,
+          user.role,
+          'Stock Change',
+          `Adjusted stock for ${prod.name}: ${finalQty > 0 ? '+' : ''}${finalQty} (${adjustType})`,
+          businessId
+        );
 
-      triggerToast(`Inventory stock adjusted successfully.`, 'success');
+        triggerToast(`Inventory stock adjusted successfully.`, 'success');
+      }
       setProducts(dbStore.getProducts(businessId));
       setStockLogs(dbStore.getStockLogs(businessId));
       setIsAdjustModalOpen(false);
@@ -101,6 +122,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     } catch (err: any) {
       triggerToast(err.message || 'Error occurred.', 'error');
     }
+  };
+
+  const handleOpenEditLog = (log: StockLog) => {
+    setEditingLogId(log.id);
+    setSelectedProductId(log.product_id);
+    setAdjustQty(Math.abs(log.change_qty));
+    setAdjustType(log.type);
+    setAdjustNotes(log.notes);
+    setIsAdjustModalOpen(true);
   };
 
   // Stock Valuation Calculation (FIFO standard representation)
@@ -227,12 +257,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 <th className="py-2.5 px-4">Transaction Type</th>
                 <th className="py-2.5 px-4">Change Qty</th>
                 <th className="py-2.5 px-4">Remarks / Audit Note</th>
+                <th className="py-2.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black dark:divide-white bg-white dark:bg-slate-900 text-[11px]">
               {filteredLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-12">
+                  <td colSpan={6} className="text-center py-12">
                     <div className="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400">
                       <History size={24} className="mb-2 opacity-50" />
                       <p className="font-bold text-xs">No transactions found.</p>
@@ -287,6 +318,17 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                           </span>
                         </div>
                       </td>
+                      <td className="py-2.5 px-4 text-right">
+                        {user.role !== 'Viewer' && (
+                          <button
+                            onClick={() => handleOpenEditLog(log)}
+                            className="p-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition cursor-pointer"
+                            title="Edit Stock Log"
+                          >
+                            <Edit size={14} />
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })
@@ -305,9 +347,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             <div className="bg-slate-50 dark:bg-slate-800 px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
               <h2 className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <PlusCircle />
-                <span>Adjust Stock Levels</span>
+                <span>{editingLogId ? 'Edit Stock Adjustment' : 'Adjust Stock Levels'}</span>
               </h2>
-              <button onClick={() => setIsAdjustModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+              <button onClick={() => { setIsAdjustModalOpen(false); setEditingLogId(null); }} className="text-slate-400 hover:text-slate-600 cursor-pointer">
                 <X size={18} />
               </button>
             </div>
@@ -374,7 +416,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button 
                   type="button" 
-                  onClick={() => setIsAdjustModalOpen(false)}
+                  onClick={() => { setIsAdjustModalOpen(false); setEditingLogId(null); }}
                   className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold hover:bg-slate-200 cursor-pointer"
                 >
                   Cancel
@@ -383,7 +425,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   type="submit"
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold hover:bg-indigo-700 cursor-pointer"
                 >
-                  Write Adjustment
+                  {editingLogId ? 'Update Log' : 'Write Adjustment'}
                 </button>
               </div>
             </form>

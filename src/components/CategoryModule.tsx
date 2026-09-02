@@ -1,6 +1,6 @@
 import { PageHeader } from './PageHeader';
 import React, { useEffect, useState } from 'react';
-import { Layers, FolderPlus, Edit, Trash2, Search, X, Network, Database, Hexagon, FolderTree, Package, Filter, SearchX, Eye } from 'lucide-react';
+import { Layers, FolderPlus, PlusCircle, Edit, Trash2, Search, X, Network, Database, Hexagon, FolderTree, Package, Filter, SearchX, Eye } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { Category, UserProfile, Product } from '../types/erp';
 
@@ -8,12 +8,14 @@ interface CategoryModuleProps {
   businessId: string;
   user: UserProfile;
   triggerToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+  onNavigate?: (view: string, data?: any) => void;
 }
 
 export const CategoryModule: React.FC<CategoryModuleProps> = ({ 
   businessId, 
   user, 
-  triggerToast 
+  triggerToast,
+  onNavigate
 }) => {
   const [categories, setCategories] = useState<Category[]>(dbStore.getCategories(businessId));
   const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
@@ -301,6 +303,18 @@ export const CategoryModule: React.FC<CategoryModuleProps> = ({
                           </button>
                           {user.role !== 'Viewer' && (
                             <>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onNavigate?.('products', { openAddModal: true, categoryId: cat.id });
+                                }}
+                                className="p-1.5 text-slate-500 hover:text-emerald-600 bg-slate-50 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-900/30 rounded transition-colors border border-slate-200 dark:border-slate-700 flex items-center gap-1 text-[10px] font-bold"
+                                title="Add Product to Category"
+                              >
+                                <PlusCircle size={14} />
+                                <span className="hidden sm:inline">Add Product</span>
+                              </button>
                               <button
                                 onClick={() => handleOpenEditModal(cat)}
                                 className="p-1.5 text-slate-500 hover:text-sky-600 bg-slate-50 hover:bg-sky-50 dark:bg-slate-800 dark:hover:bg-sky-900/30 rounded transition-colors border border-slate-200 dark:border-slate-700"

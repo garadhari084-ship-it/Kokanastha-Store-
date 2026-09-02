@@ -199,6 +199,7 @@ interface ProductModuleProps {
   user: UserProfile;
   triggerToast: (msg: string, type: 'success' | 'error' | 'info') => void;
   openAddModalInitially?: boolean;
+  initialCategoryId?: string;
 }
 
 export const getThermalDimensions = (
@@ -903,7 +904,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   businessId, 
   user, 
   triggerToast,
-  openAddModalInitially = false
+  openAddModalInitially = false,
+  initialCategoryId = ''
 }) => {
   const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
   const [categories, setCategories] = useState<Category[]>(dbStore.getCategories(businessId));
@@ -1012,7 +1014,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [formSku, setFormSku] = useState('');
   const [formBarcode, setFormBarcode] = useState('');
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [formCategory, setFormCategory] = useState('');
+  const [formCategory, setFormCategory] = useState(initialCategoryId || '');
   const [formBrand, setFormBrand] = useState('');
   const [formUnit, setFormUnit] = useState('Pcs');
   const [formHsn, setFormHsn] = useState('');
@@ -1133,6 +1135,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       setCategories(dbStore.getCategories(businessId));
     });
   }, [businessId]);
+
+  useEffect(() => {
+    if (openAddModalInitially) {
+      resetForm();
+      if (initialCategoryId) {
+        setFormCategory(initialCategoryId);
+      }
+    }
+  }, [openAddModalInitially, initialCategoryId]);
 
   const handleOpenAddModal = () => {
     resetForm();

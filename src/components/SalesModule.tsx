@@ -2045,6 +2045,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
                   <td className="py-2 px-3 text-right">
                     <div className="flex items-center justify-end gap-1">
+                      {/* Edit Order */}
+                      <button 
+                        onClick={() => setInvoiceToEdit(o)}
+                        className="p-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition cursor-pointer"
+                        title="Edit Order"
+                      >
+                        <Edit size={15} />
+                      </button>
+                      
                       {/* View Order Specification / Details */}
                       <button 
                         onClick={() => setSelectedOrderForDetail(o)}

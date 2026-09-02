@@ -9,6 +9,7 @@ import {
   Supplier,
   PurchaseOrder,
   SalesOrder,
+  SalesItem,
   PackingSession,
   StockLog,
   SystemAuditLog,
@@ -3666,17 +3667,15 @@ class ERPStorage {
       };
       this.cache.sales[index] = newSO;
       this.save('sales', newSO);
-
       // Handle stock synchronization
-      this.syncOrderStock(newSO, oldSO.status);
+      this.syncOrderStock(newSO, oldSO.status, oldSO.items);
       this.notify();
-
       return newSO;
     }
     throw new Error('Sales Order not found');
   }
 
-  private syncOrderStock(order: SalesOrder, oldStatus?: OrderStatus) {
+  private syncOrderStock(order: SalesOrder, oldStatus?: OrderStatus, oldItems?: SalesItem[]) {
     const isStockAffecting = (status: OrderStatus) => status !== 'Cancelled' && status !== 'Returned';
     const wasAffecting = oldStatus ? isStockAffecting(oldStatus) : false;
     const nowAffecting = isStockAffecting(order.status);
@@ -3721,7 +3720,7 @@ class ERPStorage {
         // Regular return or refund => ADD BACK TO INVENTORY
         const logType: StockLog['type'] = order.status === 'Returned' ? 'Return' : 'In';
         const logNote = order.status === 'Returned' 
-          ? `Order ${order.order_number} refunded/returned (${order.return_reason || 'Customer Return'}) - Restocked to Inventory` 
+          ? `Order ${order.order_number} refunded/returned (${order.return_reason || 'Customer Return'}) - Restocked to Inventory`
           : `Order ${order.order_number} cancelled - Restocked to Inventory`;
         
         order.items.forEach(item => {
@@ -3731,6 +3730,46 @@ class ERPStorage {
           }
         });
       }
+    } else if (wasAffecting && nowAffecting && oldItems) {
+      // Both affecting, meaning order was updated (e.g. products changed)
+      // We calculate the net difference in quantities for each product.
+      const oldQtyMap = new Map<string, number>();
+      oldItems.forEach(item => {
+        oldQtyMap.set(item.product_id, (oldQtyMap.get(item.product_id) || 0) + item.qty);
+      });
+
+      const newQtyMap = new Map<string, number>();
+      order.items.forEach(item => {
+        newQtyMap.set(item.product_id, (newQtyMap.get(item.product_id) || 0) + item.qty);
+      });
+
+      const allProductIds = new Set([...oldQtyMap.keys(), ...newQtyMap.keys()]);
+      
+      allProductIds.forEach(productId => {
+        const oldQty = oldQtyMap.get(productId) || 0;
+        const newQty = newQtyMap.get(productId) || 0;
+        const diff = newQty - oldQty;
+
+        if (diff > 0) {
+          // Quantity increased (or new item added) => We need to reduce more stock
+          const prod = this.cache.products.find(p => p.id === productId);
+          if (prod && isComboProduct(prod)) {
+            this.processComboSale(order.business_id, productId, diff, 'System');
+          } else if (prod) {
+            if (prod.current_stock < diff) {
+              this.autoBreakComboForMissingItem(order.business_id, productId, diff, 'System');
+            }
+            this.addStockLog(productId, -diff, 'Out', `Order ${order.order_number} updated (Added ${diff})`, 'System', order.business_id);
+          }
+        } else if (diff < 0) {
+          // Quantity decreased (or item removed) => We need to add back stock
+          const absDiff = Math.abs(diff);
+          const prod = this.cache.products.find(p => p.id === productId);
+          if (prod) {
+            this.addStockLog(productId, absDiff, 'In', `Order ${order.order_number} updated (Removed ${absDiff})`, 'System', order.business_id);
+          }
+        }
+      });
     }
   }
 

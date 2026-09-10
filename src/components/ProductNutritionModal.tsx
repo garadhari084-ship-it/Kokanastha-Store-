@@ -202,6 +202,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
     fssai_license: product.food_packaging?.fssai_license ?? '11521018000123',
     net_weight: product.food_packaging?.net_weight ?? (product.pack_size ? `${product.pack_size}g` : `${product.unit || '1 Pack'}`),
     batch_no: product.food_packaging?.batch_no ?? `BAT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+    mfg_date: product.food_packaging?.mfg_date ?? new Date().toISOString().split('T')[0],
     shelf_life_days: product.food_packaging?.shelf_life_days ?? 90,
     best_before_text: product.food_packaging?.best_before_text ?? 'Best Before 90 Days from packaging',
     storage_instructions: product.food_packaging?.storage_instructions ?? 'Store in a cool, hygienic and dry place away from moisture and direct sunlight.',
@@ -738,9 +739,9 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                 </div>
               </div>
 
-              {/* FSSAI, Batch, Net Weight, Shelf Life */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
+              {/* FSSAI, Batch, Net Weight, Shelf Life, Date */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <div className="sm:col-span-2 md:col-span-1">
                   <label className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
                     FSSAI Lic. Number
                   </label>
@@ -775,6 +776,18 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                     value={packaging.batch_no ?? ''}
                     onChange={(e) => handlePackagingChange('batch_no', e.target.value)}
                     placeholder="e.g. BAT-2026-A1"
+                    className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Mfg / Pack Date
+                  </label>
+                  <input
+                    type="date"
+                    value={packaging.mfg_date ?? ''}
+                    onChange={(e) => handlePackagingChange('mfg_date', e.target.value)}
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-hidden dark:text-white"
                   />
                 </div>
@@ -976,7 +989,7 @@ export const ProductNutritionModal: React.FC<ProductNutritionModalProps> = ({
                         <span className="text-black font-black">SALE: <b>₹{product.selling_price}</b></span>
                       </div>
                       <div className="flex justify-between items-center text-[7px] text-slate-800 mt-0.5 font-bold">
-                        <span>PKD: {new Date().toISOString().split('T')[0]}</span>
+                        <span>PKD: {packaging.mfg_date || new Date().toISOString().split('T')[0]}</span>
                         <span>{packaging.best_before_text || 'Best Before 90 Days'}</span>
                       </div>
                     </div>

@@ -946,10 +946,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     if (printingBarcodeProduct) {
       setPrintSalePrice(printingBarcodeProduct.selling_price || '');
       setPrintMrp(printingBarcodeProduct.mrp || printingBarcodeProduct.selling_price || '');
-      setPrintPackedOn(new Date().toISOString().split('T')[0]);
+      setPrintPackedOn(printingBarcodeProduct.food_packaging?.mfg_date || new Date().toISOString().split('T')[0]);
+      
       const expiryDate = new Date();
       expiryDate.setMonth(expiryDate.getMonth() + 6);
       setPrintExpiryOn(expiryDate.toISOString().split('T')[0]);
+      
       const currentBiz = dbStore.getBusiness(businessId);
       setPrintCompanyName(currentBiz?.name || 'KOKANASTHA');
       if (printingBarcodeProduct.nutrition_facts) {

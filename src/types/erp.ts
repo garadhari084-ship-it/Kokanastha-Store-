@@ -105,6 +105,7 @@ export interface FoodPackagingInfo {
   fssai_license?: string; // e.g. "11521018000123"
   net_weight?: string; // e.g. "250g", "500g", "1 Kg"
   batch_no?: string; // e.g. "BAT-2026-08"
+  mfg_date?: string; // Date of manufacturing or packing (e.g. YYYY-MM-DD)
   shelf_life_days?: number; // e.g. 180
   best_before_text?: string; // e.g. "Best Before 6 Months from packaging"
   storage_instructions?: string; // e.g. "Store in a cool & dry place"

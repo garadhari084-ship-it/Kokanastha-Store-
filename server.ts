@@ -16,10 +16,10 @@ async function startServer() {
   // or explicitly bind to the random port passed by the electron main process.
   // Actually, since we're using Express, if we pass port 0, Node will automatically
   // assign an available port. Let's rely on the passed PORT from electron-main.cjs.
-  let PORT = 3000;
+  let PORT: number = 3000;
   if (process.versions.electron || process.env.APP_ROOT) {
-      // In Electron, explicitly use the exact dynamic port passed in by electron-main.cjs
-      PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
+      // In Electron, force Node to pick the first available random port
+      PORT = 0; 
   } else {
       // Running in AI Studio / web preview where port must be 3000
       PORT = 3000;
@@ -124,8 +124,12 @@ Ensure that you only output valid JSON.`;
     });
   }
 
-  app.listen(PORT, "127.0.0.1", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  const server = app.listen(PORT, "127.0.0.1", () => {
+    const address = server.address() as any;
+    const actualPort = address?.port || PORT;
+    console.log(`Server running on http://127.0.0.1:${actualPort}`);
+    // Write port to env so Electron main process can read it if needed
+    process.env.ACTUAL_SERVER_PORT = actualPort.toString();
   });
 }
 

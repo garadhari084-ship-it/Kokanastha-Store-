@@ -7,12 +7,17 @@ let mainWindow;
 function findFreePort(startPort) {
   return new Promise((resolve) => {
     const server = net.createServer();
-    server.listen(startPort, () => {
+    server.listen(startPort, '127.0.0.1', () => {
       const port = server.address().port;
       server.close(() => resolve(port));
     });
     server.on('error', () => {
-      resolve(findFreePort(0));
+      // If startPort is taken, let the OS pick ANY free port (port 0)
+      const fallbackServer = net.createServer();
+      fallbackServer.listen(0, '127.0.0.1', () => {
+        const port = fallbackServer.address().port;
+        fallbackServer.close(() => resolve(port));
+      });
     });
   });
 }
@@ -56,21 +61,24 @@ async function createWindow(port, retries = 5) {
   });
 }
 
-app.on('ready', async () => {
+app.on('ready', () => {
   try {
     process.env.NODE_ENV = 'production';
     process.env.APP_ROOT = __dirname;
     
-    // Instead of hoping port 3000 is open, ask the OS for a free port starting at 8080
-    const port = await findFreePort(8080);
-    process.env.PORT = port.toString();
-    
-    console.log(`Starting backend server on port ${port}...`);
-    require('./dist/server.cjs');
+    console.log(`Starting backend server...`);
+    try {
+      require('./dist/server.cjs');
+    } catch (serverErr) {
+      dialog.showErrorBox('Backend Crash', `The internal server crashed immediately:\n\n${serverErr.message}\n\n${serverErr.stack}`);
+      return;
+    }
 
-    // Give the server time to boot up before the first request
+    // Wait a brief moment for the express server to finish binding to port 0
     setTimeout(() => {
-      createWindow(port);
+      const actualPort = process.env.ACTUAL_SERVER_PORT || '3000';
+      console.log(`Server started. Opening window to port ${actualPort}...`);
+      createWindow(actualPort);
     }, 2000);
   } catch (err) {
     dialog.showErrorBox('Startup Error', err.stack || err.message);

@@ -12,15 +12,16 @@ if (process.env.APP_ROOT) {
 async function startServer() {
   const app = express();
   
-  // In Electron, process.versions.electron is set.
-  // When running inside Electron, we WANT to use the dynamically allocated port passed from electron-main.cjs.
-  // When running in AI Studio (no electron), we want to use 3000.
+  // Let the OS pick a dynamic free port instead of using findFreePort explicitly,
+  // or explicitly bind to the random port passed by the electron main process.
+  // Actually, since we're using Express, if we pass port 0, Node will automatically
+  // assign an available port. Let's rely on the passed PORT from electron-main.cjs.
   let PORT = 3000;
   if (process.versions.electron || process.env.APP_ROOT) {
-      // Running inside Electron desktop app
-      PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+      // In Electron, explicitly use the exact dynamic port passed in by electron-main.cjs
+      PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
   } else {
-      // Running in AI Studio / web preview where port must be 3000 regardless of env
+      // Running in AI Studio / web preview where port must be 3000
       PORT = 3000;
   }
 
@@ -123,7 +124,7 @@ Ensure that you only output valid JSON.`;
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "127.0.0.1", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }

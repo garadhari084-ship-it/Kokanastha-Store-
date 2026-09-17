@@ -61,14 +61,14 @@ app.on('ready', async () => {
     process.env.NODE_ENV = 'production';
     process.env.APP_ROOT = __dirname;
     
-    // Find a free port in case 3000 is occupied
-    const port = await findFreePort(3000);
+    // Instead of hoping port 3000 is open, ask the OS for a free port starting at 8080
+    const port = await findFreePort(8080);
     process.env.PORT = port.toString();
     
     console.log(`Starting backend server on port ${port}...`);
     require('./dist/server.cjs');
 
-    // Give the server more time to boot up before the first request
+    // Give the server time to boot up before the first request
     setTimeout(() => {
       createWindow(port);
     }, 2000);

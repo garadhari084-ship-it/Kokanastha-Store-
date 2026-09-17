@@ -54,7 +54,7 @@ async function createWindow(port, retries = 5) {
     }
   }
 
-  // mainWindow.webContents.openDevTools();
+  mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', function () {
     mainWindow = null;

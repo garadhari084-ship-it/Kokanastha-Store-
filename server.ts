@@ -3,11 +3,15 @@ import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
-dotenv.config();
+if (process.env.APP_ROOT) {
+  dotenv.config({ path: path.join(process.env.APP_ROOT, '.env') });
+} else {
+  dotenv.config();
+}
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   // Middleware
   app.use(express.json({ limit: '50mb' }));

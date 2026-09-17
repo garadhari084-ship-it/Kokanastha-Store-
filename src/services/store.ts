@@ -1224,7 +1224,7 @@ class ERPStorage {
                }
                if (clean.items) {
                    clean.items.forEach((i: any) => {
-                       const si = { ...i, sales_order_id: clean.id };
+                       const si = { ...i, sales_order_id: clean.id, business_id: clean.business_id };
                        si.id = sanitizeUUID(si.id, false);
                        si.product_id = sanitizeUUID(si.product_id, false);
                        delete si.is_overridden; delete si.normal_rate; delete si.rate_type; delete si.rate_reason; delete si.unit_savings; delete si.original_calc_price;
@@ -1237,7 +1237,7 @@ class ERPStorage {
                clean.supplier_id = sanitizeUUID(clean.supplier_id, false);
                if (clean.items) {
                    clean.items.forEach((i: any) => {
-                       const pi = { ...i, purchase_order_id: clean.id };
+                       const pi = { ...i, purchase_order_id: clean.id, business_id: clean.business_id };
                        pi.id = sanitizeUUID(pi.id, false);
                        pi.product_id = sanitizeUUID(pi.product_id, false);
                        delete pi.is_overridden;

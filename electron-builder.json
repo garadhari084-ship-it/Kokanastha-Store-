@@ -1,6 +1,7 @@
 {
   "appId": "com.kokanastha.store",
   "productName": "Kokanastha Store",
+  "asar": false,
   "directories": {
     "output": "release"
   },

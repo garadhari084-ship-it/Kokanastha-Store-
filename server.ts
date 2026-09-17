@@ -11,7 +11,18 @@ if (process.env.APP_ROOT) {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  
+  // In Electron, process.versions.electron is set.
+  // When running inside Electron, we WANT to use the dynamically allocated port passed from electron-main.cjs.
+  // When running in AI Studio (no electron), we want to use 3000.
+  let PORT = 3000;
+  if (process.versions.electron || process.env.APP_ROOT) {
+      // Running inside Electron desktop app
+      PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  } else {
+      // Running in AI Studio / web preview where port must be 3000 regardless of env
+      PORT = 3000;
+  }
 
   // Middleware
   app.use(express.json({ limit: '50mb' }));

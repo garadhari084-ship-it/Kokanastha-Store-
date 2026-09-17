@@ -17,7 +17,7 @@ function findFreePort(startPort) {
   });
 }
 
-async function createWindow(port) {
+async function createWindow(port, retries = 5) {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -30,13 +30,23 @@ async function createWindow(port) {
 
   mainWindow.webContents.on('did-fail-load', (e, code, desc) => {
     console.error('Failed to load:', desc);
-    dialog.showErrorBox('Load Error', `Failed to load application: ${desc}`);
+    if (retries > 0) {
+      console.log(`Retrying... (${retries} attempts left)`);
+      setTimeout(() => {
+        mainWindow.loadURL(`http://localhost:${port}`);
+      }, 1000);
+      retries--;
+    } else {
+      dialog.showErrorBox('Load Error', `Failed to load application after multiple attempts.\nCheck if the internal server crashed.\n\nError: ${desc}`);
+    }
   });
 
   try {
     await mainWindow.loadURL(`http://localhost:${port}`);
   } catch (err) {
-    dialog.showErrorBox('URL Error', err.message);
+    if (retries === 0) {
+       dialog.showErrorBox('URL Error', err.message);
+    }
   }
 
   // mainWindow.webContents.openDevTools();
@@ -55,11 +65,13 @@ app.on('ready', async () => {
     const port = await findFreePort(3000);
     process.env.PORT = port.toString();
     
+    console.log(`Starting backend server on port ${port}...`);
     require('./dist/server.cjs');
 
+    // Give the server more time to boot up before the first request
     setTimeout(() => {
       createWindow(port);
-    }, 1000);
+    }, 2000);
   } catch (err) {
     dialog.showErrorBox('Startup Error', err.stack || err.message);
   }

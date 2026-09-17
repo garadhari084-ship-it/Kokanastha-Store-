@@ -100,7 +100,8 @@ Ensure that you only output valid JSON.`;
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const baseDir = process.env.APP_ROOT || process.cwd();
+    const distPath = path.join(baseDir, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

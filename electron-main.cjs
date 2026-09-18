@@ -1,31 +1,13 @@
 const { app, BrowserWindow, dialog } = require('electron');
 const path = require('path');
-const net = require('net');
 
 let mainWindow;
 
-function findFreePort(startPort) {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.listen(startPort, '127.0.0.1', () => {
-      const port = server.address().port;
-      server.close(() => resolve(port));
-    });
-    server.on('error', () => {
-      // If startPort is taken, let the OS pick ANY free port (port 0)
-      const fallbackServer = net.createServer();
-      fallbackServer.listen(0, '127.0.0.1', () => {
-        const port = fallbackServer.address().port;
-        fallbackServer.close(() => resolve(port));
-      });
-    });
-  });
-}
-
-async function createWindow(port, retries = 5) {
+async function createWindow(port) {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 1280,
+    height: 840,
+    title: 'Kokanastha Store',
     autoHideMenuBar: false,
     webPreferences: {
       nodeIntegration: true,
@@ -33,27 +15,19 @@ async function createWindow(port, retries = 5) {
     }
   });
 
-  mainWindow.webContents.on('did-fail-load', (e, code, desc) => {
-    console.error('Failed to load:', desc);
-    if (retries > 0) {
-      console.log(`Retrying... (${retries} attempts left)`);
-      setTimeout(() => {
-        mainWindow.loadURL(`http://localhost:${port}`);
-      }, 1000);
-      retries--;
-    } else {
-      dialog.showErrorBox('Load Error', `Failed to load application after multiple attempts.\nCheck if the internal server crashed.\n\nError: ${desc}`);
-    }
+  mainWindow.webContents.on('did-fail-load', (e, code, desc, validatedURL) => {
+    console.error('Failed to load:', desc, validatedURL);
+    dialog.showErrorBox('Load Error', `Failed to load application at ${validatedURL}:\n\n${desc}`);
   });
 
+  // Open DevTools for diagnostics
   mainWindow.webContents.openDevTools();
 
   try {
-    await mainWindow.loadURL(`http://localhost:${port}`);
+    // Explicitly use 127.0.0.1 to avoid Windows localhost IPv6 (::1) ERR_CONNECTION_REFUSED
+    await mainWindow.loadURL(`http://127.0.0.1:${port}`);
   } catch (err) {
-    if (retries === 0) {
-       dialog.showErrorBox('URL Error', err.message);
-    }
+    dialog.showErrorBox('Connection Error', `Failed to connect to internal server at http://127.0.0.1:${port}:\n\n${err.message}`);
   }
 
   mainWindow.on('closed', function () {
@@ -61,25 +35,29 @@ async function createWindow(port, retries = 5) {
   });
 }
 
-app.on('ready', () => {
+app.on('ready', async () => {
   try {
     process.env.NODE_ENV = 'production';
     process.env.APP_ROOT = __dirname;
     
     console.log(`Starting backend server...`);
+    let serverModule;
     try {
-      require('./dist/server.cjs');
+      serverModule = require('./dist/server.cjs');
     } catch (serverErr) {
-      dialog.showErrorBox('Backend Crash', `The internal server crashed immediately:\n\n${serverErr.message}\n\n${serverErr.stack}`);
+      dialog.showErrorBox('Backend Crash', `Failed to load internal server module:\n\n${serverErr.message}\n\n${serverErr.stack}`);
       return;
     }
 
-    // Wait a brief moment for the express server to finish binding to port 0
-    setTimeout(() => {
-      const actualPort = process.env.ACTUAL_SERVER_PORT || '3000';
-      console.log(`Server started. Opening window to port ${actualPort}...`);
-      createWindow(actualPort);
-    }, 2000);
+    if (!serverModule || typeof serverModule.startServer !== 'function') {
+      dialog.showErrorBox('Server Error', 'Internal server module did not export startServer function.');
+      return;
+    }
+
+    // Await server port - completely eliminates timing race conditions
+    const actualPort = await serverModule.startServer();
+    console.log(`Server started successfully on port ${actualPort}. Opening window...`);
+    await createWindow(actualPort);
   } catch (err) {
     dialog.showErrorBox('Startup Error', err.stack || err.message);
   }

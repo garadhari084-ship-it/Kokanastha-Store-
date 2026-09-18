@@ -3,27 +3,26 @@ import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
-if (process.env.APP_ROOT) {
-  dotenv.config({ path: path.join(process.env.APP_ROOT, '.env') });
-} else {
-  dotenv.config();
-}
+export async function startServer(): Promise<number> {
+  // Load .env from possible locations
+  const possibleEnvPaths = [
+    process.env.APP_ROOT ? path.join(process.env.APP_ROOT, '.env') : '',
+    process.resourcesPath ? path.join(process.resourcesPath, '.env') : '',
+    process.execPath ? path.join(path.dirname(process.execPath), '.env') : '',
+    path.join(process.cwd(), '.env')
+  ].filter(Boolean);
 
-async function startServer() {
+  for (const envPath of possibleEnvPaths) {
+    try {
+      dotenv.config({ path: envPath });
+    } catch (_) {}
+  }
+
   const app = express();
   
-  // Let the OS pick a dynamic free port instead of using findFreePort explicitly,
-  // or explicitly bind to the random port passed by the electron main process.
-  // Actually, since we're using Express, if we pass port 0, Node will automatically
-  // assign an available port. Let's rely on the passed PORT from electron-main.cjs.
-  let PORT: number = 3000;
-  if (process.versions.electron || process.env.APP_ROOT) {
-      // In Electron, force Node to pick the first available random port
-      PORT = 0; 
-  } else {
-      // Running in AI Studio / web preview where port must be 3000
-      PORT = 3000;
-  }
+  const isElectron = Boolean(process.versions.electron || process.env.APP_ROOT);
+  const PORT: number = isElectron ? 0 : 3000;
+  const HOST: string = isElectron ? "127.0.0.1" : "0.0.0.0";
 
   // Middleware
   app.use(express.json({ limit: '50mb' }));
@@ -33,7 +32,7 @@ async function startServer() {
   const getAi = () => {
     if (!ai) {
       if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is missing. Please set it in the AI Studio Settings/Secrets panel.");
+        throw new Error("GEMINI_API_KEY is missing. Please set it in the .env file.");
       }
       ai = new GoogleGenAI({
         apiKey: process.env.GEMINI_API_KEY,
@@ -124,13 +123,25 @@ Ensure that you only output valid JSON.`;
     });
   }
 
-  const server = app.listen(PORT, "127.0.0.1", () => {
-    const address = server.address() as any;
-    const actualPort = address?.port || PORT;
-    console.log(`Server running on http://127.0.0.1:${actualPort}`);
-    // Write port to env so Electron main process can read it if needed
-    process.env.ACTUAL_SERVER_PORT = actualPort.toString();
+  return new Promise<number>((resolve, reject) => {
+    const server = app.listen(PORT, HOST, () => {
+      const address = server.address() as any;
+      const actualPort = address?.port || PORT;
+      console.log(`Server running on http://${HOST}:${actualPort}`);
+      process.env.ACTUAL_SERVER_PORT = actualPort.toString();
+      resolve(actualPort);
+    });
+
+    server.on('error', (err) => {
+      console.error("Server listen error:", err);
+      reject(err);
+    });
   });
 }
 
-startServer();
+// Automatically start if executed directly as standalone server (e.g., tsx server.ts or node dist/server.cjs)
+if (!process.versions.electron && !process.env.APP_ROOT) {
+  startServer().catch((err) => {
+    console.error("Failed to start server:", err);
+  });
+}

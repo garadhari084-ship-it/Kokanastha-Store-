@@ -1,3 +1,6 @@
+process.env.NODE_ENV = 'production';
+process.env.APP_ROOT = __dirname;
+
 const { app, BrowserWindow, dialog } = require('electron');
 const path = require('path');
 

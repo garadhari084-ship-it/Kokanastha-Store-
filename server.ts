@@ -106,7 +106,7 @@ Ensure that you only output valid JSON.`;
     }
   });
 
-  // Vite middleware for development
+  // Vite middleware for development; static files for production & Electron
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({

@@ -32,7 +32,7 @@ export async function startServer(): Promise<number> {
   const getAi = () => {
     if (!ai) {
       if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is missing. Please set it in the .env file.");
+        throw new Error("AI Invoice scanning is optional and requires a GEMINI_API_KEY to be set.");
       }
       ai = new GoogleGenAI({
         apiKey: process.env.GEMINI_API_KEY,

@@ -1,12 +1,76 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { compressImageFile } from '../utils/imageCompressor';
 
-const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || '';
+export function getSupabaseConfig(): { url: string; key: string } {
+  if (typeof window === 'undefined') {
+    return { url: '', key: '' };
+  }
+  try {
+    const storedUrl = localStorage.getItem('kokanastha_supabase_url') || localStorage.getItem('supabase_project_url') || '';
+    const storedKey = localStorage.getItem('kokanastha_supabase_key') || localStorage.getItem('supabase_anon_key') || '';
+    
+    const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+    const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+
+    return {
+      url: (storedUrl || envUrl || '').trim(),
+      key: (storedKey || envKey || '').trim(),
+    };
+  } catch (_) {
+    return { url: '', key: '' };
+  }
+}
+
+export function saveSupabaseConfig(url: string, key: string): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('kokanastha_supabase_url', url.trim());
+    localStorage.setItem('kokanastha_supabase_key', key.trim());
+  }
+}
+
+export function clearSupabaseConfig(): void {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('kokanastha_supabase_url');
+    localStorage.removeItem('kokanastha_supabase_key');
+    localStorage.removeItem('supabase_project_url');
+    localStorage.removeItem('supabase_anon_key');
+  }
+}
+
+export async function testSupabaseConnection(url: string, key: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!url || !key) {
+      return { success: false, error: 'Project URL and Anon Key are required.' };
+    }
+    const cleanUrl = url.trim().replace(/\/+$/, '');
+    if (!cleanUrl.startsWith('https://')) {
+      return { success: false, error: 'Supabase URL must start with https://' };
+    }
+    const client = createClient(cleanUrl, key.trim(), {
+      auth: { persistSession: false }
+    });
+    
+    // Attempt a lightweight fetch from supabase
+    const { error } = await client.from('businesses').select('id').limit(1);
+    if (error && error.code !== 'PGRST116') {
+      // If table doesn't exist yet, we still check if the key is unauthorized
+      if (error.message?.toLowerCase().includes('jwt') || error.code === '401' || (error as any).status === 401) {
+        return { success: false, error: 'Invalid Supabase Anon/Public Key (Unauthorized).' };
+      }
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Could not connect to Supabase.' };
+  }
+}
+
+const { url: initialUrl, key: initialKey } = getSupabaseConfig();
+export const supabaseUrl = initialUrl;
+export const supabaseAnonKey = initialKey;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-export const supabase = isSupabaseConfigured
+export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 

@@ -35,6 +35,7 @@ import { dbStore } from '../services/store';
 import { Business, UserProfile } from '../types/erp';
 import { compressImageFile } from '../utils/imageCompressor';
 import { uploadFileToSupabaseStorage, supabase, isSupabaseConfigured } from '../services/supabase';
+import { DatabaseConfigModal } from './DatabaseConfigModal';
 
 interface SettingsModuleProps {
   businessId: string;
@@ -50,6 +51,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [business, setBusiness] = useState<Business | null>(dbStore.getBusiness(businessId) || null);
 
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showDbConfigModal, setShowDbConfigModal] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
   const [resetProgress, setResetProgress] = useState(0);
@@ -1084,6 +1086,72 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         </div>
 
       </form>
+
+      {/* Cloud Database & Multi-Device Sync */}
+      <div className="mt-8 bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className={`p-3 rounded-xl ${isSupabaseConfigured ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'}`}>
+              <Database size={24} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  Cloud PostgreSQL Database
+                </h3>
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  isSupabaseConfigured 
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300' 
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${isSupabaseConfigured ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+                  {isSupabaseConfigured ? 'Connected (Cloud Mode)' : 'Disconnected (Local Mode)'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {isSupabaseConfigured 
+                  ? 'All sales, products, inventory, customers, and transactions are saved directly to your Supabase PostgreSQL database.'
+                  : 'Currently running in offline/local storage. Connect your database to save all data to the cloud without needing a .env file.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setShowDbConfigModal(true)}
+              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Sliders size={14} />
+              <span>{isSupabaseConfigured ? 'Change Database' : 'Connect Database'}</span>
+            </button>
+
+            {isSupabaseConfigured && (
+              <button
+                type="button"
+                onClick={handleSyncToSupabase}
+                disabled={isSyncing}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {lastSyncTime && (
+          <div className="pt-2 text-[11px] text-slate-400 flex items-center gap-1.5 border-t border-slate-100 dark:border-slate-800">
+            <Clock size={12} />
+            <span>Last cloud synchronization timestamp: <strong>{lastSyncTime}</strong></span>
+          </div>
+        )}
+      </div>
+
+      <DatabaseConfigModal
+        isOpen={showDbConfigModal}
+        onClose={() => setShowDbConfigModal(false)}
+      />
 
       {/* Danger Zone for Super Admin */}
       {user.role === 'Super Admin' && (

@@ -33,7 +33,8 @@ import {
   Check,
   Salad,
   Flame,
-  Apple
+  Apple,
+  ExternalLink
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { dbStore, isComboProduct } from '../services/store';
@@ -284,6 +285,84 @@ export const getThermalDimensions = (
   return { stickerWidthMm, stickerHeightMm, rowHeightMm, rollWidthMm };
 };
 
+export const LABEL_SIZE_INFO: Record<string, { label: string; desc: string; defaultPerRow: 1 | 2 }> = {
+  '50x25': { label: '50 × 25 mm', desc: 'Standard 2"x1" Dual Roll', defaultPerRow: 2 },
+  '38x25': { label: '38 × 25 mm', desc: '1.5"x1" Compact Dual Roll', defaultPerRow: 2 },
+  '40x25': { label: '40 × 25 mm', desc: '40x25 mm Retail Roll', defaultPerRow: 2 },
+  '50x30': { label: '50 × 30 mm', desc: '2"x1.2" Roll', defaultPerRow: 2 },
+  '50x38': { label: '50 × 38 mm', desc: '2"x1.5" Large MRP/Exp', defaultPerRow: 2 },
+  '50x50': { label: '50 × 50 mm', desc: '2"x2" Food & Nutrition', defaultPerRow: 1 },
+  '50x75': { label: '50 × 75 mm', desc: '2"x3" Food Master', defaultPerRow: 1 },
+  '60x100': { label: '60 × 100 mm', desc: '2.4"x4" Tall Master', defaultPerRow: 1 },
+  '100x50': { label: '100 × 50 mm', desc: '4"x2" Box / Pack', defaultPerRow: 1 },
+  '100x75': { label: '100 × 75 mm', desc: '4"x3" Kokanastha Nutri', defaultPerRow: 1 },
+  '100x100': { label: '100 × 100 mm', desc: '4"x4" Big Box', defaultPerRow: 1 },
+  'standard': { label: 'Standard', desc: '50 × 25 mm Card', defaultPerRow: 2 }
+};
+
+export const getPrintPageDimensions = (
+  size: '50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard',
+  perRow: 1 | 2,
+  orientation: 'auto' | 'landscape' | 'portrait' | 'rotated90',
+  printerType: 'thermal' | 'a4' = 'thermal'
+) => {
+  if (printerType === 'a4') {
+    return {
+      pageWidthMm: '210mm',
+      pageHeightMm: '297mm',
+      pageWidthNum: 210,
+      pageHeightNum: 297,
+      cssPageSize: '210mm 297mm',
+      isRotated: false,
+      rotationDeg: 0,
+      baseDims: getThermalDimensions('50x25', 1),
+      labelDescription: 'A4 Sheet (210 × 297 mm)'
+    };
+  }
+
+  const baseDims = getThermalDimensions(size, perRow);
+  const wNum = parseFloat(baseDims.rollWidthMm);
+  const hNum = parseFloat(baseDims.rowHeightMm);
+  const isNaturallyPortrait = hNum > wNum;
+  const isNaturallyLandscape = wNum > hNum;
+
+  let pageWidthNum = wNum;
+  let pageHeightNum = hNum;
+  let rotationDeg = 0;
+
+  if (orientation === 'rotated90') {
+    pageWidthNum = hNum;
+    pageHeightNum = wNum;
+    rotationDeg = 90;
+  } else if (orientation === 'landscape') {
+    pageWidthNum = Math.max(wNum, hNum);
+    pageHeightNum = Math.min(wNum, hNum);
+    if (isNaturallyPortrait) {
+      rotationDeg = -90;
+    }
+  } else if (orientation === 'portrait') {
+    pageWidthNum = Math.min(wNum, hNum);
+    pageHeightNum = Math.max(wNum, hNum);
+    if (isNaturallyLandscape) {
+      rotationDeg = 90;
+    }
+  }
+
+  const isRotated = rotationDeg !== 0;
+
+  return {
+    pageWidthMm: `${pageWidthNum}mm`,
+    pageHeightMm: `${pageHeightNum}mm`,
+    pageWidthNum,
+    pageHeightNum,
+    cssPageSize: `${pageWidthNum}mm ${pageHeightNum}mm`,
+    isRotated,
+    rotationDeg,
+    baseDims,
+    labelDescription: `${pageWidthNum} × ${pageHeightNum} mm (${perRow}-Up Roll)`
+  };
+};
+
 export interface ThermalBarcodeStickerProps {
   product: Product;
   size: '50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard';
@@ -292,6 +371,10 @@ export interface ThermalBarcodeStickerProps {
   salePrice: number | string;
   packedOn: string;
   expiryOn?: string;
+  fssaiNumber?: string;
+  address?: string;
+  ingredients?: string;
+  orientation?: 'auto' | 'landscape' | 'portrait' | 'rotated90';
   mode?: 'preview' | 'print';
 }
 
@@ -303,18 +386,39 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   salePrice,
   packedOn,
   expiryOn,
+  fssaiNumber,
+  address,
+  ingredients,
+  orientation = 'auto',
   mode = 'preview'
 }) => {
   const barcodeValue = product.barcode || product.sku || '12345678';
   const effectiveCompany = companyName || 'KOKANASTHA';
   const effectiveMrp = mrp || product.mrp || product.selling_price || 0;
   const effectiveSale = salePrice || product.selling_price || 0;
-  const isVeg = product.food_packaging?.is_vegetarian !== false;
+  const isVeg = product.food_packaging?.dietary_type ? product.food_packaging.dietary_type === 'veg' : product.food_packaging?.is_vegetarian !== false;
   const netWeight = product.food_packaging?.net_weight || product.unit || (size === '100x100' ? '1000g' : size === '100x75' ? '500g' : size === '60x100' ? '500g' : size === '50x75' ? '250g' : '100g');
-  const fssaiLic = product.food_packaging?.fssai_license_number || '11521034000123';
-  const ingredients = product.food_packaging?.ingredients || 'Rice Flour, Gram Flour, Spices, Edible Oil, Salt';
+  
+  const effectiveFssai = fssaiNumber || product.food_packaging?.fssai_license || (product.food_packaging as any)?.fssai_license_number || '11521018000123';
+  const effectiveAddress = address || product.food_packaging?.mfg_by || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092';
+  const effectiveIngredients = ingredients || product.food_packaging?.ingredients || 'Roasted Rice Flour, Bengal Gram, Spices, Edible Oil, Salt';
 
-  // Sizing styling for preview mode
+  // Base preview pixel dimensions (width x height)
+  const previewSizeDims: Record<string, { w: number; h: number }> = {
+    '50x25': { w: 189, h: 95 },
+    '40x25': { w: 189, h: 95 },
+    '38x25': { w: 144, h: 95 },
+    '50x30': { w: 189, h: 113 },
+    '50x38': { w: 189, h: 143 },
+    '50x50': { w: 200, h: 200 },
+    '50x75': { w: 200, h: 280 },
+    '60x100': { w: 240, h: 400 },
+    '100x50': { w: 360, h: 180 },
+    '100x75': { w: 360, h: 270 },
+    '100x100': { w: 340, h: 340 },
+    'standard': { w: 220, h: 220 }
+  };
+
   const previewSizeClasses: Record<string, string> = {
     '50x25': 'w-[189px] h-[95px] p-1.5',
     '40x25': 'w-[189px] h-[95px] p-1.5',
@@ -324,9 +428,9 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     '50x50': 'w-[200px] h-[200px] p-2',
     '50x75': 'w-[200px] h-[280px] p-2',
     '60x100': 'w-[240px] h-[400px] p-2.5',
-    '100x50': 'w-[280px] h-[140px] p-2.5',
-    '100x75': 'w-[320px] h-[240px] p-2.5',
-    '100x100': 'w-[320px] h-[320px] p-3',
+    '100x50': 'w-[360px] h-[180px] p-2.5',
+    '100x75': 'w-[360px] h-[270px] p-2.5',
+    '100x100': 'w-[340px] h-[340px] p-3',
     'standard': 'w-[220px] p-3'
   };
 
@@ -334,8 +438,9 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     ? `${previewSizeClasses[size] || 'w-[189px] h-[95px] p-1.5'} bg-white rounded-md border-2 border-indigo-400 dark:border-indigo-500 shadow-md flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none relative shrink-0 text-slate-900`
     : 'w-full h-full p-[0.5mm] bg-white flex flex-col justify-between items-center text-center overflow-hidden font-sans text-black box-border';
 
-  // 1. 38x25 mm Compact
-  if (size === '38x25') {
+  const renderStickerContent = () => {
+    // 1. 38x25 mm Compact
+    if (size === '38x25') {
     return (
       <div className={containerClasses}>
         <div className="w-full">
@@ -578,18 +683,16 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     );
   }
 
-  // 60x100 mm Kokanastha Tall Master Sticker
+  // 60x100 mm Kokanastha Tall Master Sticker (2.4"x4")
   if (size === '60x100') {
     return (
       <div className={containerClasses}>
-        <div className="w-full flex justify-between items-center border-b border-slate-300 dark:border-slate-700 pb-1">
+        <div className="w-full flex justify-between items-center border-b border-slate-300 dark:border-slate-700 pb-1 shrink-0">
           <div className="text-left">
             <span className="text-[10px] font-black uppercase truncate max-w-[140px] block">{effectiveCompany}</span>
-            {product.food_packaging?.fssai_license_number && (
-              <div className="text-[7px] text-slate-500 tracking-wider">
-                FSSAI Lic: {product.food_packaging.fssai_license_number}
-              </div>
-            )}
+            <div className="text-[7px] text-slate-500 font-mono">
+              SKU: {product.sku || 'SKU-001'}
+            </div>
           </div>
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-1">
@@ -601,16 +704,17 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           </div>
         </div>
         
-        <span className="text-[12px] font-black uppercase tracking-tight leading-tight truncate w-full my-1">
+        <span className="text-[12px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 shrink-0">
           {product.name}
         </span>
 
-        <div className="my-1 flex items-center justify-center">
+        {/* Barcode */}
+        <div className="my-0.5 flex items-center justify-center shrink-0">
           <ReactBarcode 
             value={barcodeValue} 
-            height={28} 
-            width={1.2}
-            fontSize={9}
+            height={26} 
+            width={1.15}
+            fontSize={8.5}
             margin={0}
             fontOptions="bold"
             displayValue={true}
@@ -619,35 +723,42 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           />
         </div>
 
+        {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
+        <div className="w-full text-left bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded border border-slate-300 dark:border-slate-700 my-0.5 space-y-0.5 shrink-0">
+          <div className="text-[7.5px] font-black uppercase tracking-wider text-slate-900 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-0.5 flex justify-between items-center">
+            <span>FSSAI Lic. No: <b className="font-mono text-indigo-700 dark:text-indigo-400">{effectiveFssai}</b></span>
+            <span className="text-[6.5px] font-bold text-emerald-700 dark:text-emerald-400">{isVeg ? '🌱 100% VEG' : 'NON-VEG'}</span>
+          </div>
+          <div className="text-[7px] leading-tight text-slate-800 dark:text-slate-200">
+            <b>Address:</b> {effectiveAddress}
+          </div>
+          <div className="text-[7px] leading-tight text-slate-800 dark:text-slate-200">
+            <b>Ingredients:</b> {effectiveIngredients}
+          </div>
+        </div>
+
         {/* Detailed Nutrition Table for 60x100 */}
-        <div className="w-full border border-slate-800 dark:border-slate-600 text-[8px] text-left leading-tight my-1 rounded-xs overflow-hidden">
-          <div className="bg-slate-900 text-white px-1.5 py-0.5 font-black text-[8.5px] flex justify-between">
+        <div className="w-full border border-slate-800 dark:border-slate-600 text-[7.5px] text-left leading-tight my-0.5 rounded-xs overflow-hidden shrink-0">
+          <div className="bg-slate-900 text-white px-1.5 py-0.5 font-black text-[8px] flex justify-between">
             <span>NUTRITIONAL FACTS</span>
             <span>Per {product.nutrition_facts?.serving_size || '100g'}</span>
           </div>
-          <div className="divide-y divide-slate-200 dark:divide-slate-700 bg-white text-slate-900">
+          <div className="divide-y divide-slate-200 dark:divide-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
             <div className="flex justify-between px-1.5 py-0.5"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
             <div className="flex justify-between px-1.5 py-0.5"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
             <div className="flex justify-between px-1.5 py-0.5"><span>Total Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
-            <div className="flex justify-between px-1.5 py-0.5 text-[7px] pl-3 text-slate-600"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
+            <div className="flex justify-between px-1.5 py-0.5 text-[6.5px] pl-3 text-slate-600 dark:text-slate-400"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
             <div className="flex justify-between px-1.5 py-0.5"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
-            <div className="flex justify-between px-1.5 py-0.5"><span>Dietary Fiber</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '3.5'} g</b></div>
             <div className="flex justify-between px-1.5 py-0.5"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
           </div>
         </div>
 
-        {product.food_packaging?.ingredients && (
-          <div className="w-full text-left text-[7.5px] text-slate-600 dark:text-slate-400 line-clamp-2 border-t border-slate-200 dark:border-slate-700 pt-1">
-            <b>Ingredients:</b> {ingredients}
-          </div>
-        )}
-
-        <div className="w-full text-[9px] font-bold uppercase border-t-2 border-slate-300 dark:border-slate-700 pt-1 mt-1">
+        <div className="w-full text-[8.5px] font-bold uppercase border-t-2 border-slate-300 dark:border-slate-700 pt-1 mt-0.5 shrink-0">
           <div className="flex justify-between">
             <span>MRP: ₹{effectiveMrp}</span>
             <span className="text-emerald-700 dark:text-emerald-500 font-black">SALE: ₹{effectiveSale}</span>
           </div>
-          <div className="flex justify-between text-[7.5px] text-slate-600 dark:text-slate-400 mt-0.5">
+          <div className="flex justify-between text-[7px] text-slate-600 dark:text-slate-400 mt-0.5">
             <span>PKD: {packedOn}</span>
             <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best before 60 days'}</span>
           </div>
@@ -656,14 +767,14 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     );
   }
 
-  // 6. 100x75 mm Kokanastha Food Master Sticker
+  // 6. 100x75 mm Kokanastha Food Master Sticker (4"x3")
   if (size === '100x75') {
     return (
       <div className={containerClasses}>
-        <div className="w-full flex justify-between items-center border-b-2 border-slate-900 dark:border-slate-700 pb-1">
+        <div className="w-full flex justify-between items-center border-b-2 border-slate-900 dark:border-slate-700 pb-1 shrink-0">
           <div className="text-left">
-            <div className="text-[11px] font-black uppercase">{effectiveCompany}</div>
-            <div className="text-[7.5px] text-slate-600 dark:text-slate-400 font-mono">FSSAI Lic: {fssaiLic}</div>
+            <div className="text-[11px] font-black uppercase tracking-wider">{effectiveCompany}</div>
+            <div className="text-[7.5px] text-slate-600 dark:text-slate-400 font-mono">SKU: {product.sku || 'SKU-001'}</div>
           </div>
           <div className="flex items-center gap-1.5">
             <span className={`w-3.5 h-3.5 rounded-xs border-2 flex items-center justify-center shrink-0 ${isVeg ? 'border-emerald-600' : 'border-rose-600'}`}>
@@ -675,16 +786,16 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           </div>
         </div>
 
-        <div className="w-full grid grid-cols-2 gap-2 my-1 items-center">
-          {/* Left: Product & Barcode */}
-          <div className="flex flex-col items-center justify-center text-left">
-            <span className="text-[11px] font-black uppercase tracking-tight leading-tight w-full truncate">
+        <div className="w-full grid grid-cols-2 gap-2 my-1 items-start">
+          {/* Left: Product & Barcode & Under Barcode details */}
+          <div className="flex flex-col items-center justify-start text-left">
+            <span className="text-[11px] font-black uppercase tracking-tight leading-tight w-full truncate mb-0.5">
               {product.name}
             </span>
-            <div className="my-1 flex items-center justify-center">
+            <div className="my-0.5 flex items-center justify-center">
               <ReactBarcode 
                 value={barcodeValue} 
-                height={26} 
+                height={24} 
                 width={1.05}
                 fontSize={8}
                 margin={0}
@@ -694,7 +805,19 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
                 lineColor="#000000"
               />
             </div>
-            <div className="text-[8px] font-bold text-slate-700 dark:text-slate-300 w-full space-y-0.5">
+            {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
+            <div className="w-full bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 rounded p-1.5 space-y-0.5 text-left my-1">
+              <div className="text-[7.5px] font-bold text-slate-900 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-0.5 flex justify-between items-center">
+                <span>FSSAI Lic. No: <b className="font-mono text-indigo-700 dark:text-indigo-400">{effectiveFssai}</b></span>
+              </div>
+              <div className="text-[7px] text-slate-700 dark:text-slate-300 leading-tight line-clamp-2">
+                <b>Address:</b> {effectiveAddress}
+              </div>
+              <div className="text-[7px] text-slate-700 dark:text-slate-300 leading-tight line-clamp-2">
+                <b>Ingredients:</b> {effectiveIngredients}
+              </div>
+            </div>
+            <div className="text-[8px] font-bold text-slate-700 dark:text-slate-300 w-full space-y-0.5 pt-0.5 border-t border-slate-200 dark:border-slate-700">
               <div className="flex justify-between"><span>MRP: <b>₹{effectiveMrp}</b></span> <span className="text-emerald-700 dark:text-emerald-500 font-black">SALE: <b>₹{effectiveSale}</b></span></div>
               <div className="flex justify-between text-[7px] text-slate-500"><span>PKD: {packedOn}</span> <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best: 90 Days'}</span></div>
             </div>
@@ -710,29 +833,34 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
               <div className="flex justify-between py-0.2"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '460'} kcal</b></div>
               <div className="flex justify-between py-0.2"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.8'} g</b></div>
               <div className="flex justify-between py-0.2"><span>Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '64'} g</b></div>
+              <div className="flex justify-between py-0.2 text-[6.5px] pl-2 text-slate-600 dark:text-slate-400"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
               <div className="flex justify-between py-0.2"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '16'} g</b></div>
               <div className="flex justify-between py-0.2"><span>Dietary Fiber</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '4.2'} g</b></div>
               <div className="flex justify-between py-0.2"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '310'} mg</b></div>
             </div>
+            <div className="bg-slate-100 dark:bg-slate-800 p-1 text-[6.5px] text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700">
+              <div>Store in airtight container after opening.</div>
+              <div>Customer Care: <b>ops@kokanasthafaral.com</b></div>
+            </div>
           </div>
         </div>
 
-        <div className="w-full text-[6.5px] text-slate-600 dark:text-slate-400 text-left border-t border-slate-300 dark:border-slate-700 pt-0.5 flex justify-between items-center">
-          <span className="truncate max-w-[200px]"><b>Ingredients:</b> {ingredients}</span>
-          <span className="font-bold text-slate-800 dark:text-slate-200">Kokanastha Master</span>
+        <div className="w-full text-[6.5px] text-slate-600 dark:text-slate-400 text-left border-t border-slate-300 dark:border-slate-700 pt-0.5 flex justify-between items-center shrink-0">
+          <span className="font-bold text-slate-800 dark:text-slate-200">Kokanastha Nutri Quality Certified</span>
+          <span>Made in India</span>
         </div>
       </div>
     );
   }
 
-  // 7. 100x100 mm Big Box Sticker
+  // 7. 100x100 mm Big Box Sticker (4"x4")
   if (size === '100x100') {
     return (
       <div className={containerClasses}>
-        <div className="w-full flex justify-between items-center border-b-2 border-slate-900 dark:border-slate-700 pb-1">
+        <div className="w-full flex justify-between items-center border-b-2 border-slate-900 dark:border-slate-700 pb-1 shrink-0">
           <div className="text-left">
-            <div className="text-[12px] font-black uppercase">{effectiveCompany}</div>
-            <div className="text-[8px] text-slate-600 dark:text-slate-400 font-mono">FSSAI Lic: {fssaiLic}</div>
+            <div className="text-[12px] font-black uppercase tracking-wider">{effectiveCompany}</div>
+            <div className="text-[8px] text-slate-600 dark:text-slate-400 font-mono">SKU: {product.sku || 'SKU-001'}</div>
           </div>
           <div className="flex items-center gap-1.5">
             <span className={`w-4 h-4 rounded-xs border-2 flex items-center justify-center shrink-0 ${isVeg ? 'border-emerald-600' : 'border-rose-600'}`}>
@@ -744,14 +872,15 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           </div>
         </div>
 
-        <span className="text-[13px] font-black uppercase tracking-tight leading-tight w-full my-1 truncate">
+        <span className="text-[13px] font-black uppercase tracking-tight leading-tight w-full my-0.5 truncate shrink-0">
           {product.name}
         </span>
 
-        <div className="my-0.5 flex items-center justify-center">
+        {/* Barcode */}
+        <div className="my-0.5 flex items-center justify-center shrink-0">
           <ReactBarcode 
             value={barcodeValue} 
-            height={32} 
+            height={28} 
             width={1.15}
             fontSize={9}
             margin={0}
@@ -762,31 +891,47 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           />
         </div>
 
+        {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
+        <div className="w-full bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 rounded p-1.5 space-y-0.5 text-left my-1 text-black shrink-0">
+          <div className="flex justify-between items-center text-[8.5px] font-black border-b border-slate-200 dark:border-slate-700 pb-0.5 text-slate-900 dark:text-slate-100">
+            <span>FSSAI Lic. No: <b className="font-mono text-indigo-700 dark:text-indigo-400">{effectiveFssai}</b></span>
+            <span className="text-[7.5px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800 font-bold">
+              {isVeg ? '🌱 100% Vegetarian' : 'Non-Vegetarian'}
+            </span>
+          </div>
+          <div className="text-[7.5px] text-slate-800 dark:text-slate-200 leading-tight">
+            <b>Packer & Mfg Address:</b> {effectiveAddress}
+          </div>
+          <div className="text-[7.5px] text-slate-800 dark:text-slate-200 leading-tight">
+            <b>Ingredients:</b> {effectiveIngredients}
+          </div>
+        </div>
+
         {/* Detailed Full Box Nutrition Table */}
-        <div className="w-full border-2 border-slate-900 dark:border-slate-700 rounded overflow-hidden text-[7.5px] text-left my-0.5">
+        <div className="w-full border-2 border-slate-900 dark:border-slate-700 rounded overflow-hidden text-[7.5px] text-left my-0.5 shrink-0">
           <div className="bg-slate-900 text-white px-2 py-0.5 font-black text-[8px] flex justify-between">
             <span>NUTRITION FACTS & COMPLIANCE</span>
             <span>Per 100g Serving</span>
           </div>
-          <div className="grid grid-cols-2 divide-x divide-slate-300 dark:divide-slate-700 bg-white text-slate-900 p-1 gap-x-2">
+          <div className="grid grid-cols-2 divide-x divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-1 gap-x-2">
             <div className="space-y-0.5">
               <div className="flex justify-between"><span>Energy (Calories):</span><b>{product.nutrition_facts?.energy_kcal ?? '480'} kcal</b></div>
               <div className="flex justify-between"><span>Total Protein:</span><b>{product.nutrition_facts?.protein_g ?? '11'} g</b></div>
               <div className="flex justify-between"><span>Carbohydrates:</span><b>{product.nutrition_facts?.carbohydrates_g ?? '62'} g</b></div>
-              <div className="flex justify-between text-slate-600 pl-1 text-[6.5px]"><span>- Added Sugars:</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
+              <div className="flex justify-between text-slate-600 dark:text-slate-400 pl-1 text-[6.5px]"><span>- Added Sugars:</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
             </div>
             <div className="space-y-0.5 pl-1.5">
               <div className="flex justify-between"><span>Total Fat:</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
-              <div className="flex justify-between text-slate-600 pl-1 text-[6.5px]"><span>- Saturated Fat:</span><b>{product.nutrition_facts?.saturated_fat_g ?? '4.5'} g</b></div>
+              <div className="flex justify-between text-slate-600 dark:text-slate-400 pl-1 text-[6.5px]"><span>- Saturated Fat:</span><b>{product.nutrition_facts?.saturated_fat_g ?? '4.5'} g</b></div>
               <div className="flex justify-between"><span>Dietary Fiber:</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '5.0'} g</b></div>
               <div className="flex justify-between"><span>Sodium:</span><b>{product.nutrition_facts?.sodium_mg ?? '320'} mg</b></div>
             </div>
           </div>
         </div>
 
-        <div className="w-full text-[8px] font-bold uppercase border-t-2 border-slate-900 dark:border-slate-700 pt-1">
+        <div className="w-full text-[8px] font-bold uppercase border-t-2 border-slate-900 dark:border-slate-700 pt-1 shrink-0">
           <div className="flex justify-between items-center text-[10px]">
-            <div>MRP: <b className="text-slate-600">₹{effectiveMrp}</b></div>
+            <div>MRP: <b className="text-slate-600 dark:text-slate-400 line-through">₹{effectiveMrp}</b></div>
             <div>SPECIAL OFFER: <b className="text-emerald-700 dark:text-emerald-500 text-sm font-black">₹{effectiveSale}</b></div>
           </div>
           <div className="flex justify-between text-[7px] text-slate-600 dark:text-slate-400 mt-0.5">
@@ -798,33 +943,82 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     );
   }
 
-  // 8. 100x50 mm Shipping / Master Box Sticker
+  // 8. 100x50 mm Box/Pack Sticker (4"x2")
   if (size === '100x50') {
     return (
       <div className={containerClasses}>
-        <div className="w-full flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-1">
-          <span className="text-[10px] font-black uppercase tracking-wider">{effectiveCompany}</span>
-          <span className="text-[8px] font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-bold">SKU: {product.sku}</span>
+        {/* Top Header */}
+        <div className="w-full flex justify-between items-center border-b border-slate-300 dark:border-slate-700 pb-0.5 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-wider">{effectiveCompany}</span>
+            <span className="text-[7.5px] font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.2 rounded font-bold">SKU: {product.sku || 'SKU-001'}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className={`w-3 h-3 rounded-xs border flex items-center justify-center shrink-0 ${isVeg ? 'border-emerald-600' : 'border-rose-600'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-emerald-600' : 'bg-rose-600'}`} />
+            </span>
+            <span className="text-[8.5px] font-bold">{netWeight}</span>
+          </div>
         </div>
-        <span className="text-[11px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5">
+
+        {/* Product Name */}
+        <span className="text-[11px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 shrink-0">
           {product.name}
         </span>
-        <div className="my-0.5 flex items-center justify-center">
-          <ReactBarcode 
-            value={barcodeValue} 
-            height={34} 
-            width={1.2}
-            fontSize={10}
-            margin={0}
-            fontOptions="bold"
-            displayValue={true}
-            background="#ffffff"
-            lineColor="#000000"
-          />
+
+        {/* 2-Column Split: Left = Barcode + Under-barcode details, Right = Pricing + Dates */}
+        <div className="w-full grid grid-cols-12 gap-2 my-0.5 items-start">
+          <div className="col-span-7 flex flex-col items-center text-left">
+            <div className="flex items-center justify-center">
+              <ReactBarcode 
+                value={barcodeValue} 
+                height={20} 
+                width={1.05}
+                fontSize={8}
+                margin={0}
+                fontOptions="bold"
+                displayValue={true}
+                background="#ffffff"
+                lineColor="#000000"
+              />
+            </div>
+            {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
+            <div className="w-full mt-1 bg-slate-50 dark:bg-slate-800/60 p-1 rounded border border-slate-200 dark:border-slate-700 text-left space-y-0.5">
+              <div className="text-[7px] font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
+                <span>FSSAI Lic. No: <b className="font-mono text-indigo-700 dark:text-indigo-400">{effectiveFssai}</b></span>
+              </div>
+              <div className="text-[6.5px] text-slate-700 dark:text-slate-300 leading-tight line-clamp-1">
+                <b>Address:</b> {effectiveAddress}
+              </div>
+              <div className="text-[6.5px] text-slate-700 dark:text-slate-300 leading-tight line-clamp-1">
+                <b>Ingredients:</b> {effectiveIngredients}
+              </div>
+            </div>
+          </div>
+
+          <div className="col-span-5 flex flex-col justify-between h-full border-l border-slate-200 dark:border-slate-700 pl-1.5 text-left">
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-1 rounded border border-slate-200 dark:border-slate-700 space-y-0.5">
+              <div className="flex justify-between items-center text-[7.5px]">
+                <span className="text-slate-500 font-bold">MRP:</span>
+                <span className="line-through text-slate-600 font-bold">₹{effectiveMrp}</span>
+              </div>
+              <div className="flex justify-between items-center text-[8.5px]">
+                <span className="font-black text-slate-900 dark:text-slate-100">SALE:</span>
+                <span className="font-black text-emerald-700 dark:text-emerald-400 text-[10px]">₹{effectiveSale}</span>
+              </div>
+            </div>
+            <div className="text-[6.5px] text-slate-600 dark:text-slate-400 space-y-0.5 pt-0.5">
+              <div><b>PKD:</b> {packedOn}</div>
+              <div><b>EXP:</b> {expiryOn || 'Best before 90 days'}</div>
+              <div className="font-bold text-slate-800 dark:text-slate-200 truncate">Mfg: {effectiveCompany}</div>
+            </div>
+          </div>
         </div>
-        <div className="w-full flex justify-between items-center text-[9px] font-bold uppercase border-t border-slate-200 dark:border-slate-700 pt-1">
-          <div>MRP: <b>₹{effectiveMrp}</b> | SALE: <b className="text-indigo-700 dark:text-indigo-500 font-black">₹{effectiveSale}</b></div>
-          <div className="text-[7.5px] text-slate-600 dark:text-slate-400">PKD: {packedOn} {expiryOn ? `| EXP: ${expiryOn}` : ''}</div>
+
+        {/* Bottom Bar */}
+        <div className="w-full flex justify-between items-center text-[6.5px] font-bold uppercase border-t border-slate-200 dark:border-slate-700 pt-0.5 text-slate-500 shrink-0">
+          <span>Customer Care: +91 98200 12345</span>
+          <span>Store in Cool & Dry Place</span>
         </div>
       </div>
     );
@@ -898,6 +1092,80 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
       </div>
     </div>
   );
+  };
+
+  const stickerMarkup = renderStickerContent();
+
+  const origDim = previewSizeDims[size] || { w: 189, h: 95 };
+  const isNaturallyPortrait = origDim.h > origDim.w;
+  const isNaturallyLandscape = origDim.w > origDim.h;
+
+  let rotationDeg = 0;
+  if (orientation === 'rotated90') {
+    rotationDeg = 90;
+  } else if (orientation === 'landscape' && isNaturallyPortrait) {
+    rotationDeg = -90;
+  } else if (orientation === 'portrait' && isNaturallyLandscape) {
+    rotationDeg = 90;
+  }
+
+  const isRotated = rotationDeg !== 0;
+
+  if (mode !== 'preview') {
+    if (!isRotated) {
+      return stickerMarkup;
+    }
+    const baseW = getThermalDimensions(size, 1).stickerWidthMm;
+    const baseH = getThermalDimensions(size, 1).stickerHeightMm;
+    return (
+      <div 
+        className="w-full h-full flex items-center justify-center overflow-hidden"
+        style={{ width: '100%', height: '100%' }}
+      >
+        <div 
+          className="flex items-center justify-center origin-center shrink-0"
+          style={{
+            width: baseW,
+            height: baseH,
+            transform: `rotate(${rotationDeg}deg)`
+          }}
+        >
+          {stickerMarkup}
+        </div>
+      </div>
+    );
+  }
+  const outerW = isRotated ? origDim.h : origDim.w;
+  const outerH = isRotated ? origDim.w : origDim.h;
+
+  return (
+    <div 
+      className="relative flex items-center justify-center shrink-0 transition-all duration-300 my-1"
+      style={{ width: `${outerW}px`, height: `${outerH}px` }}
+    >
+      <div 
+        className="transition-all duration-300 origin-center flex items-center justify-center"
+        style={{
+          width: `${origDim.w}px`,
+          height: `${origDim.h}px`,
+          transform: isRotated ? `rotate(${rotationDeg}deg)` : 'none'
+        }}
+      >
+        {stickerMarkup}
+      </div>
+      {orientation !== 'auto' && (
+        <div className={`absolute -top-1.5 -right-1.5 text-[7.5px] font-black px-1.5 py-0.2 rounded shadow-xs z-20 pointer-events-none flex items-center gap-0.5 border ${
+          orientation === 'rotated90' 
+            ? 'bg-amber-600 text-white border-amber-300 ring-1 ring-amber-400' 
+            : orientation === 'landscape'
+              ? 'bg-blue-600 text-white border-blue-300 ring-1 ring-blue-400'
+              : 'bg-emerald-600 text-white border-emerald-300 ring-1 ring-emerald-400'
+        }`}>
+          <span>{orientation === 'rotated90' ? '🔄 90° Swapped' : orientation === 'landscape' ? '➡ Wide' : '⬇ Tall'}</span>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export const ProductModule: React.FC<ProductModuleProps> = ({ 
@@ -941,6 +1209,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [printPackedOn, setPrintPackedOn] = useState(new Date().toISOString().split('T')[0]);
   const [printExpiryOn, setPrintExpiryOn] = useState('');
   const [printCompanyName, setPrintCompanyName] = useState('KOKANASTHA');
+  const [printFssaiNumber, setPrintFssaiNumber] = useState('');
+  const [printAddress, setPrintAddress] = useState('');
+  const [printIngredients, setPrintIngredients] = useState('');
 
   useEffect(() => {
     if (printingBarcodeProduct) {
@@ -954,6 +1225,23 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       
       const currentBiz = dbStore.getBusiness(businessId);
       setPrintCompanyName(currentBiz?.name || 'KOKANASTHA');
+
+      const initialFssai = printingBarcodeProduct.food_packaging?.fssai_license 
+        || (printingBarcodeProduct.food_packaging as any)?.fssai_license_number 
+        || currentBiz?.fssai_number 
+        || '11521018000123';
+      setPrintFssaiNumber(initialFssai);
+
+      const initialAddress = printingBarcodeProduct.food_packaging?.mfg_by 
+        || currentBiz?.billing_address 
+        || currentBiz?.shipping_address 
+        || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092';
+      setPrintAddress(initialAddress);
+
+      const initialIngredients = printingBarcodeProduct.food_packaging?.ingredients 
+        || 'Roasted Rice Flour, Bengal Gram, Spices, Edible Oil, Salt';
+      setPrintIngredients(initialIngredients);
+
       if (printingBarcodeProduct.nutrition_facts) {
         setPrintIncludeNutrition(true);
       }
@@ -2003,35 +2291,32 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     if (!printingBarcodeProduct) return;
 
     const count = Math.max(1, Number(printLabelCount) || 1);
-    const dims = getThermalDimensions(printLabelSize, printLabelsPerRow);
-    
-    let pageSizeCss = 'A4 portrait';
-    if (printerType === 'thermal') {
-      if (printOrientation === 'landscape') {
-        pageSizeCss = `${dims.rollWidthMm} ${dims.rowHeightMm} landscape`;
-      } else if (printOrientation === 'portrait') {
-        pageSizeCss = `${dims.rollWidthMm} ${dims.rowHeightMm} portrait`;
-      } else if (printOrientation === 'rotated90') {
-        pageSizeCss = `${dims.rowHeightMm} ${dims.rollWidthMm} portrait`;
-      } else {
-        pageSizeCss = `${dims.rollWidthMm} ${dims.rowHeightMm}`; // auto / driver managed
-      }
-    }
+    const pageDims = getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType);
+    const sizeInfo = LABEL_SIZE_INFO[printLabelSize] || { label: printLabelSize, desc: '' };
+    const orientationLabel = 
+      printOrientation === 'auto' ? 'Auto (TSC Default)' :
+      printOrientation === 'landscape' ? 'Landscape (Forced Wide)' :
+      printOrientation === 'portrait' ? 'Portrait (Forced Tall)' :
+      'Swap W/H (Sideways Fix)';
 
-    triggerToast(`Dispatching ${count} barcode label(s) for "${printingBarcodeProduct.name}" (${printerType === 'thermal' ? `${printLabelsPerRow}-Up ${dims.rollWidthMm}x${dims.rowHeightMm} [${printOrientation}]` : 'A4 Grid'})...`, 'info');
+    triggerToast(`Opening ${count} label(s) for "${printingBarcodeProduct.name}" (${sizeInfo.label} • ${pageDims.pageWidthMm}×${pageDims.pageHeightMm} • ${orientationLabel})...`, 'info');
     dbStore.logActivity(
       user.id,
       user.name,
       user.role,
       'Print Barcode',
-      `Printed ${count} barcodes (${printerType === 'thermal' ? `${printLabelsPerRow}-Up ${printLabelSize} (${dims.rollWidthMm}x${dims.rowHeightMm})` : 'A4 Grid'}) for SKU: ${printingBarcodeProduct.sku || printingBarcodeProduct.barcode}`,
+      `Printed ${count} barcodes (${sizeInfo.label} • ${pageDims.pageWidthMm}×${pageDims.pageHeightMm} [${printOrientation}]) for SKU: ${printingBarcodeProduct.sku || printingBarcodeProduct.barcode}`,
       businessId
     );
 
     // If popup mode requested, open popup immediately on click to prevent browser popup blocker
     let popupWindow: Window | null = null;
     if (targetMode === 'popup') {
-      popupWindow = window.open('', '_blank', 'width=750,height=650,menubar=no,toolbar=no,location=no,status=no');
+      try {
+        popupWindow = window.open('', '_blank', 'width=980,height=820,menubar=no,toolbar=no,location=no,status=no');
+      } catch (e) {
+        console.warn('Popup window blocked or error:', e);
+      }
     }
 
     setTimeout(() => {
@@ -2041,56 +2326,190 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         return;
       }
 
-      const parentStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-        .map(el => el.outerHTML)
-        .join('\n');
+      const totalRows = Math.ceil(count / printLabelsPerRow);
 
       const printHtml = `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Barcode_${printingBarcodeProduct.sku || printingBarcodeProduct.barcode || 'Label'}_${count}Labels</title>
-  ${parentStyles}
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title></title>
   <style>
-    @page {
-      size: ${pageSizeCss} !important;
-      margin: 0mm !important;
-    }
-    @media print {
-      @page {
-        size: ${pageSizeCss} !important;
-        margin: 0mm !important;
-      }
-      body {
-        margin: 0 !important;
-        padding: 0 !important;
-        background: #ffffff !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-    }
     *, *:before, *:after {
       box-sizing: border-box !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-    html, body {
+    html {
+      background: #090d16;
+      color: #000000;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #090d16;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* EXACT PAPER SIZE SPECIFICATION - ENFORCES CUSTOM THERMAL ROLL SIZE INSTEAD OF A4 */
+    @page {
+      size: ${pageDims.cssPageSize} !important;
       margin: 0 !important;
       padding: 0 !important;
-      background: #ffffff !important;
-      color: #000000 !important;
-      width: ${printerType === 'a4' ? '210mm' : dims.rollWidthMm} !important;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
-      -webkit-font-smoothing: antialiased;
-      overflow: visible !important;
     }
+    @page :first { margin: 0 !important; }
+    @page :left { margin: 0 !important; }
+    @page :right { margin: 0 !important; }
+
+    @media print {
+      @page {
+        size: ${pageDims.cssPageSize} !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      @page :first { margin: 0 !important; }
+      @page :left { margin: 0 !important; }
+      @page :right { margin: 0 !important; }
+      .no-print, [class*="no-print"], header, .popup-header, .print-guidance-banner {
+        display: none !important;
+      }
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        display: block !important;
+        overflow: visible !important;
+      }
+      .barcode-print-portal {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: #ffffff !important;
+        width: 100% !important;
+      }
+      .barcode-print-portal * {
+        visibility: visible !important;
+      }
+    }
+
+    /* Screen Preview Toolbar */
+    .popup-header {
+      position: sticky;
+      top: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 12px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      z-index: 99999;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      border-bottom: 2px solid #6366f1;
+    }
+    .popup-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .badge-size {
+      background: #312e81;
+      color: #c7d2fe;
+      border: 1px solid #4f46e5;
+    }
+    .badge-roll {
+      background: #064e3b;
+      color: #a7f3d0;
+      border: 1px solid #059669;
+    }
+    .badge-orient {
+      background: #78350f;
+      color: #fde68a;
+      border: 1px solid #d97706;
+    }
+    .badge-nota4 {
+      background: #1e1b4b;
+      color: #818cf8;
+      border: 1px solid #6366f1;
+    }
+    .btn-print {
+      background: linear-gradient(135deg, #4f46e5, #3b82f6);
+      color: #ffffff;
+      border: none;
+      padding: 9px 22px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 2px 10px rgba(79,70,229,0.5);
+      transition: transform 0.1s, opacity 0.1s;
+    }
+    .btn-print:hover {
+      opacity: 0.95;
+    }
+    .btn-print:active {
+      transform: scale(0.97);
+    }
+    .btn-close {
+      background: #334155;
+      color: #cbd5e1;
+      border: 1px solid #475569;
+      padding: 9px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-close:hover {
+      background: #475569;
+      color: #ffffff;
+    }
+
+    /* Screen Paper Roll Container */
+    .barcode-print-portal {
+      margin: 24px auto;
+      background: #ffffff;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      border-radius: 6px;
+      overflow: hidden;
+      width: ${pageDims.pageWidthMm};
+      display: block;
+    }
+
+    /* Print Row & Sticker Styles */
     .barcode-print-row {
       display: flex !important;
       flex-direction: row !important;
-      justify-content: ${printLabelsPerRow === 2 ? 'space-between' : 'center'} !important;
+      justify-content: ${printLabelsPerRow === 2 && !pageDims.isRotated ? 'space-between' : 'center'} !important;
       align-items: center !important;
-      width: ${dims.rollWidthMm} !important;
-      height: ${dims.rowHeightMm} !important;
+      width: ${pageDims.pageWidthMm} !important;
+      height: ${pageDims.pageHeightMm} !important;
       page-break-after: always !important;
       page-break-inside: avoid !important;
       break-after: page !important;
@@ -2099,16 +2518,21 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       padding: 0 !important;
       overflow: hidden !important;
       box-sizing: border-box !important;
+      background: #ffffff !important;
+      border-bottom: 1px dashed #cbd5e1;
+    }
+    @media print {
+      .barcode-print-row {
+        border-bottom: none !important;
+      }
     }
     .barcode-print-row:last-child {
       page-break-after: auto !important;
       break-after: auto !important;
+      border-bottom: none;
     }
+
     .barcode-label-sticker {
-      width: ${dims.stickerWidthMm} !important;
-      height: ${dims.stickerHeightMm} !important;
-      max-width: ${dims.stickerWidthMm} !important;
-      max-height: ${dims.stickerHeightMm} !important;
       box-sizing: border-box !important;
       margin: 0 !important;
       padding: 0 !important;
@@ -2125,8 +2549,6 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       break-inside: avoid !important;
     }
     .barcode-label-placeholder {
-      width: ${dims.stickerWidthMm} !important;
-      height: ${dims.stickerHeightMm} !important;
       visibility: hidden !important;
       opacity: 0 !important;
     }
@@ -2141,10 +2563,153 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       font-family: monospace, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto !important;
       font-weight: bold !important;
     }
+
+    /* Embedded Standard Utilities for Crisp Thermal Printing */
+    .w-full { width: 100% !important; }
+    .h-full { height: 100% !important; }
+    .flex { display: flex !important; }
+    .flex-col { flex-direction: column !important; }
+    .flex-row { flex-direction: row !important; }
+    .justify-between { justify-content: space-between !important; }
+    .justify-center { justify-content: center !important; }
+    .items-center { align-items: center !important; }
+    .items-start { align-items: flex-start !important; }
+    .items-end { align-items: flex-end !important; }
+    .text-center { text-align: center !important; }
+    .text-left { text-align: left !important; }
+    .text-right { text-align: right !important; }
+    .truncate { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+    .shrink-0 { flex-shrink: 0 !important; }
+    .grow { flex-grow: 1 !important; }
+    .grid { display: grid !important; }
+    .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    .grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)) !important; }
+    .col-span-5 { grid-column: span 5 / span 5 !important; }
+    .col-span-7 { grid-column: span 7 / span 7 !important; }
+    .col-span-12 { grid-column: span 12 / span 12 !important; }
+    .gap-0\\.5 { gap: 2px !important; }
+    .gap-1 { gap: 4px !important; }
+    .gap-1\\.5 { gap: 6px !important; }
+    .gap-2 { gap: 8px !important; }
+    .p-0\\.5 { padding: 2px !important; }
+    .p-1 { padding: 4px !important; }
+    .p-1\\.5 { padding: 6px !important; }
+    .p-2 { padding: 8px !important; }
+    .p-2\\.5 { padding: 10px !important; }
+    .p-3 { padding: 12px !important; }
+    .px-0\\.5 { padding-left: 2px !important; padding-right: 2px !important; }
+    .px-1 { padding-left: 4px !important; padding-right: 4px !important; }
+    .px-1\\.5 { padding-left: 6px !important; padding-right: 6px !important; }
+    .px-2 { padding-left: 8px !important; padding-right: 8px !important; }
+    .py-0\\.5 { padding-top: 2px !important; padding-bottom: 2px !important; }
+    .py-1 { padding-top: 4px !important; padding-bottom: 4px !important; }
+    .pb-0\\.5 { padding-bottom: 2px !important; }
+    .pb-1 { padding-bottom: 4px !important; }
+    .pt-0\\.5 { padding-top: 2px !important; }
+    .pt-1 { padding-top: 4px !important; }
+    .my-0\\.5 { margin-top: 2px !important; margin-bottom: 2px !important; }
+    .my-1 { margin-top: 4px !important; margin-bottom: 4px !important; }
+    .mb-0\\.5 { margin-bottom: 2px !important; }
+    .mb-1 { margin-bottom: 4px !important; }
+    .border { border: 1px solid #cbd5e1 !important; }
+    .border-b { border-bottom: 1px solid #cbd5e1 !important; }
+    .border-t { border-top: 1px solid #cbd5e1 !important; }
+    .border-b-2 { border-bottom: 2px solid #0f172a !important; }
+    .border-slate-300 { border-color: #cbd5e1 !important; }
+    .border-slate-700 { border-color: #334155 !important; }
+    .border-slate-800 { border-color: #1e293b !important; }
+    .border-slate-900 { border-color: #0f172a !important; }
+    .bg-white { background-color: #ffffff !important; }
+    .bg-slate-50 { background-color: #f8fafc !important; }
+    .bg-slate-100 { background-color: #f1f5f9 !important; }
+    .text-black { color: #000000 !important; }
+    .text-slate-900 { color: #0f172a !important; }
+    .text-slate-800 { color: #1e293b !important; }
+    .text-slate-700 { color: #334155 !important; }
+    .text-slate-600 { color: #475569 !important; }
+    .text-slate-500 { color: #64748b !important; }
+    .text-slate-400 { color: #94a3b8 !important; }
+    .text-indigo-700 { color: #4338ca !important; }
+    .text-indigo-600 { color: #4f46e5 !important; }
+    .text-emerald-700 { color: #047857 !important; }
+    .text-emerald-600 { color: #059669 !important; }
+    .text-rose-600 { color: #e11d48 !important; }
+    .border-emerald-600 { border-color: #059669 !important; }
+    .border-rose-600 { border-color: #e11d48 !important; }
+    .bg-emerald-600 { background-color: #059669 !important; }
+    .bg-rose-600 { background-color: #e11d48 !important; }
+    .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important; }
+    .font-sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important; }
+    .font-bold { font-weight: 700 !important; }
+    .font-black { font-weight: 900 !important; }
+    .uppercase { text-transform: uppercase !important; }
+    .rounded { border-radius: 4px !important; }
+    .rounded-xs { border-radius: 2px !important; }
+    .rounded-md { border-radius: 6px !important; }
+    .rounded-full { border-radius: 9999px !important; }
+    .leading-none { line-height: 1 !important; }
+    .leading-tight { line-height: 1.25 !important; }
+    .tracking-tight { letter-spacing: -0.025em !important; }
+    .tracking-wider { letter-spacing: 0.05em !important; }
+    .box-border { box-sizing: border-box !important; }
   </style>
 </head>
 <body>
-  ${printableEl.innerHTML}
+  <!-- Interactive Browser Popup Print Header (Hidden on actual print) -->
+  <header class="popup-header no-print">
+    <div style="display: flex; flex-direction: column; gap: 6px; width: 100%;">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+          <span style="font-weight: 900; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #ffffff;">🖨️ Thermal Barcode Print Station</span>
+          <span class="popup-badge badge-size">📏 Selected Size: ${sizeInfo.label} (${sizeInfo.desc})</span>
+          <span class="popup-badge badge-nota4">✅ Paper Size: ${pageDims.pageWidthMm} × ${pageDims.pageHeightMm} (Not A4)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button class="btn-print" onclick="try{document.title='';}catch(e){}window.print()">
+            <span>🖨️ Print Now (${pageDims.pageWidthMm} × ${pageDims.pageHeightMm})</span>
+          </button>
+          <button class="btn-close" onclick="window.close()">
+            <span>✕ Close</span>
+          </button>
+        </div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11px; color: #94a3b8;">
+        <span>Item: <b>${printingBarcodeProduct.name}</b> (${printingBarcodeProduct.sku || printingBarcodeProduct.barcode || 'No SKU'})</span>
+        <span>•</span>
+        <span class="popup-badge badge-roll" style="font-size: 10px; padding: 2px 6px;">${printLabelsPerRow}-Up Roll</span>
+        <span>•</span>
+        <span class="popup-badge badge-orient" style="font-size: 10px; padding: 2px 6px;">${orientationLabel}</span>
+        <span>•</span>
+        <span>Total: <b>${count} Labels</b> (${totalRows} Rows)</span>
+      </div>
+      <!-- Crucial Browser Header/Footer Removal Notice -->
+      <div style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #f59e0b; display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+        <span style="font-size: 14px;">🚫</span>
+        <span><b>To remove "about:blank", Date, Title & "1/10":</b> In the Print preview on the right ➔ Click <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b> & set <b>Margins: "None"</b>.</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Printable Area Wrapped in .barcode-print-portal -->
+  <div id="barcode-printable-area" class="barcode-print-portal">
+    ${printableEl.innerHTML}
+  </div>
+
+  <script>
+    window.addEventListener('load', function() {
+      try {
+        document.title = '';
+      } catch(e) {}
+      setTimeout(function() {
+        try {
+          document.title = '';
+          window.print();
+        } catch(e) {
+          console.warn('Auto-print error:', e);
+        }
+      }, 350);
+    });
+  </script>
 </body>
 </html>`;
 
@@ -2154,9 +2719,6 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           popupWindow.document.write(printHtml);
           popupWindow.document.close();
           popupWindow.focus();
-          setTimeout(() => {
-            popupWindow?.print();
-          }, 350);
           return;
         } catch (err) {
           console.warn('Popup write failed, falling back to iframe', err);
@@ -2187,6 +2749,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         frameDoc.close();
         setTimeout(() => {
           try {
+            if (printFrame.contentWindow?.document) {
+              printFrame.contentWindow.document.title = '';
+            }
             printFrame.contentWindow?.focus();
             printFrame.contentWindow?.print();
           } catch (e) {
@@ -2279,6 +2844,23 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           >
             <FileSpreadsheet size={14} className="text-emerald-400" />
             <span>Export Catalog</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => {
+              const prodToPrint = products[0];
+              if (prodToPrint) {
+                handleOpenBarcodeModal(prodToPrint);
+              } else {
+                triggerToast('Please add or select a product to print barcodes.', 'info');
+              }
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-[10px] sm:text-[11px] font-bold cursor-pointer shadow-md transition-all whitespace-nowrap shrink-0 border border-indigo-400/30 active:scale-95"
+            title="Open Barcode Label & Thermal Print Station (Popup Console)"
+          >
+            <Printer size={14} />
+            <span>🖨️ Barcode Print Station</span>
           </button>
           {user.role !== 'Viewer' && (
             <>
@@ -3567,17 +4149,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <style>{`
             @media print {
               @page { 
-                size: ${
-                  printerType === 'a4' 
-                    ? 'A4 portrait' 
-                    : printOrientation === 'landscape'
-                      ? `${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} landscape`
-                      : printOrientation === 'portrait'
-                        ? `${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} portrait`
-                        : printOrientation === 'rotated90'
-                          ? `${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} portrait`
-                          : `${getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} ${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm}`
-                } !important; 
+                size: ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).cssPageSize} !important; 
                 margin: 0mm !important; 
               }
 
@@ -3598,7 +4170,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 color: #000000 !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
-                width: ${printerType === 'a4' ? '210mm' : getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} !important;
+                width: ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} !important;
                 height: auto !important;
                 overflow: visible !important;
               }
@@ -3606,7 +4178,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               .barcode-print-portal { 
                 display: block !important; 
                 position: static !important;
-                width: ${printerType === 'a4' ? '210mm' : getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} !important;
+                width: ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 background: #ffffff !important;
@@ -3623,10 +4195,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               .barcode-print-row { 
                 display: flex !important; 
                 flex-direction: row !important;
-                justify-content: ${printLabelsPerRow === 2 ? 'space-between' : 'center'} !important;
+                justify-content: ${printLabelsPerRow === 2 && !getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).isRotated ? 'space-between' : 'center'} !important;
                 align-items: center !important;
-                width: 100% !important;
-                height: ${getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm} !important;
+                width: ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} !important;
+                height: ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm} !important;
                 page-break-after: always !important;
                 page-break-inside: avoid !important;
                 break-after: page !important;
@@ -3643,10 +4215,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               }
               
               .barcode-label-sticker {
-                width: ${getThermalDimensions(printLabelSize, printLabelsPerRow).stickerWidthMm} !important;
-                height: ${getThermalDimensions(printLabelSize, printLabelsPerRow).stickerHeightMm} !important;
-                max-width: ${getThermalDimensions(printLabelSize, printLabelsPerRow).stickerWidthMm} !important;
-                max-height: ${getThermalDimensions(printLabelSize, printLabelsPerRow).stickerHeightMm} !important;
+                width: ${printLabelsPerRow === 2 && !getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).isRotated ? getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm : getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} !important;
+                height: ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm} !important;
+                max-width: ${printLabelsPerRow === 2 && !getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).isRotated ? getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm : getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} !important;
+                max-height: ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm} !important;
                 box-sizing: border-box !important;
                 margin: 0 !important;
                 padding: 0.5mm !important;
@@ -3693,22 +4265,53 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           `}</style>
 
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in duration-150 my-auto border border-slate-200 dark:border-slate-800 flex flex-col max-h-[92vh]">
-            <div className="bg-slate-950 text-white px-5 py-3.5 flex items-center justify-between shrink-0">
+            <div className="bg-slate-950 text-white px-5 py-3 flex items-center justify-between shrink-0 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-lg bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
                   <Printer size={16} />
                 </div>
                 <div>
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-white">Barcode Label & Thermal Print Station</h2>
-                  <p className="text-[10px] text-slate-400 font-mono">Product: {printingBarcodeProduct.name} ({printingBarcodeProduct.sku})</p>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                    <span>Barcode Label & Thermal Print Station</span>
+                    <span className="text-[9px] bg-indigo-600/40 text-indigo-300 px-1.5 py-0.5 rounded font-mono">Popup Console</span>
+                  </h2>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] text-slate-400">Select Item:</span>
+                    <select
+                      value={printingBarcodeProduct.id}
+                      onChange={(e) => {
+                        const sel = products.find(p => p.id === e.target.value);
+                        if (sel) handleOpenBarcodeModal(sel);
+                      }}
+                      className="bg-slate-900 text-indigo-200 border border-indigo-500/40 rounded px-1.5 py-0.5 text-[10px] font-bold outline-hidden cursor-pointer max-w-[200px] truncate"
+                    >
+                      {products.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.sku || p.barcode || 'No SKU'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
-              <button 
-                onClick={() => setPrintingBarcodeProduct(null)} 
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handlePrintBarcodeSubmit('popup')}
+                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                  title="Open Print Window in Dedicated Popup"
+                >
+                  <ExternalLink size={12} />
+                  <span>Popup Window</span>
+                </button>
+                <button 
+                  onClick={() => setPrintingBarcodeProduct(null)} 
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Close Station"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="p-5 space-y-4 overflow-y-auto">
@@ -3759,17 +4362,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         Thermal Label Size
                       </label>
                       <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-bold">
-                        {printLabelSize === '50x25' ? '50×25mm (Standard 2"×1")' :
-                         printLabelSize === '38x25' ? '38×25mm (1.5"×1" Compact)' :
-                         printLabelSize === '40x25' ? '40×25mm (Retail)' :
-                         printLabelSize === '50x30' ? '50×30mm (2"×1.2")' :
-                         printLabelSize === '50x38' ? '50×38mm (2"×1.5" MRP/Exp)' :
-                         printLabelSize === '50x50' ? '50×50mm (2"×2" Food & Nutrition)' :
-                         printLabelSize === '50x75' ? '50×75mm (2"×3" Nutrition Master)' :
-                         printLabelSize === '60x100' ? '60×100mm (2.4"×4" Tall Master)' :
-                         printLabelSize === '100x50' ? '100×50mm (4"×2" Shipping/Box)' :
-                         printLabelSize === '100x75' ? '100×75mm (4"×3" Kokanastha Food Master)' :
-                         printLabelSize === '100x100' ? '100×100mm (4"×4" Full Hamper/Box)' : '220px Card'}
+                        {LABEL_SIZE_INFO[printLabelSize] ? `${LABEL_SIZE_INFO[printLabelSize].label} (${LABEL_SIZE_INFO[printLabelSize].desc})` : printLabelSize}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
@@ -3906,7 +4499,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-lg p-2.5 text-[11px] text-indigo-950 dark:text-indigo-200 flex items-center gap-2">
                     <Info size={15} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
                     <div className="text-[10.5px] leading-tight">
-                      Printing <b>{printLabelCount} label(s)</b> across <b>{Math.ceil(printLabelCount / printLabelsPerRow)} row(s)</b> on <b>{printLabelsPerRow}-Up roll ({getThermalDimensions(printLabelSize, printLabelsPerRow).rollWidthMm} × {getThermalDimensions(printLabelSize, printLabelsPerRow).rowHeightMm})</b>.
+                      Printing <b>{printLabelCount} label(s)</b> across <b>{Math.ceil(printLabelCount / printLabelsPerRow)} row(s)</b> on <b>{printLabelsPerRow}-Up roll ({getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} × {getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm})</b> • Custom thermal roll (Not A4).
                     </div>
                   </div>
                 </div>
@@ -3997,18 +4590,39 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
               {/* LIVE STICKER PREVIEW */}
               <div className="flex flex-col items-center justify-center no-print bg-slate-100 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
-                <div className="flex items-center justify-between w-full mb-2 px-1">
-                  <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                    {printerType === 'thermal' ? `Live Preview: ${printLabelsPerRow}-Up Row (${printLabelsPerRow === 2 ? '2 Stickers Across' : '1 Sticker Across'})` : 'Live A4 Grid Preview'}
-                  </span>
-                  <span className="text-[9px] font-mono text-slate-500 bg-white dark:bg-slate-700 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-600">
-                    {printLabelsPerRow === 2 ? '104mm × 25mm Roll' : '50mm × 25mm Roll'}
-                  </span>
+                <div className="flex flex-wrap items-center justify-between w-full mb-2.5 px-1 gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      {printerType === 'thermal' ? `Live Preview: ${printLabelsPerRow}-Up Row` : 'Live A4 Grid Preview'}
+                    </span>
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider transition-all flex items-center gap-1 shadow-xs ${
+                      printOrientation === 'auto' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800' :
+                      printOrientation === 'landscape' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-800' :
+                      printOrientation === 'portrait' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800' :
+                      'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-400 dark:border-amber-700 ring-2 ring-amber-400/40'
+                    }`}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                      <span>
+                        {printOrientation === 'auto' ? 'Auto (TSC Default)' :
+                         printOrientation === 'landscape' ? 'Landscape (Forced Wide)' :
+                         printOrientation === 'portrait' ? 'Portrait (Forced Tall)' :
+                         '🔄 Swap W/H (Sideways Fix)'}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold">
+                      {(() => {
+                        const pageDims = getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType);
+                        return `${pageDims.pageWidthMm} × ${pageDims.pageHeightMm} (${printLabelsPerRow}-Up Roll • Not A4)`;
+                      })()}
+                    </span>
+                  </div>
                 </div>
                 
                 {/* 2-Up Dual Sticker Row Preview */}
                 {printerType === 'thermal' && printLabelsPerRow === 2 ? (
-                  <div className="flex items-center gap-2 p-2 bg-slate-200 dark:bg-slate-900/60 rounded-lg border border-slate-300 dark:border-slate-700 overflow-x-auto max-w-full">
+                  <div className="flex items-center gap-2 p-3 bg-slate-200 dark:bg-slate-900/60 rounded-xl border border-slate-300 dark:border-slate-700 overflow-x-auto max-w-full justify-center">
                     <ThermalBarcodeSticker
                       product={printingBarcodeProduct}
                       size={printLabelSize}
@@ -4017,6 +4631,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       salePrice={printSalePrice}
                       packedOn={printPackedOn}
                       expiryOn={printExpiryOn}
+                      fssaiNumber={printFssaiNumber}
+                      address={printAddress}
+                      ingredients={printIngredients}
+                      orientation={printOrientation}
                       mode="preview"
                     />
                     <div className="text-[9px] text-slate-500 font-bold px-0.5">2-Up</div>
@@ -4028,11 +4646,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       salePrice={printSalePrice}
                       packedOn={printPackedOn}
                       expiryOn={printExpiryOn}
+                      fssaiNumber={printFssaiNumber}
+                      address={printAddress}
+                      ingredients={printIngredients}
+                      orientation={printOrientation}
                       mode="preview"
                     />
                   </div>
                 ) : (
-                  <div className="p-2 bg-slate-200 dark:bg-slate-900/60 rounded-lg border border-slate-300 dark:border-slate-700 flex justify-center items-center overflow-x-auto max-w-full">
+                  <div className="p-3 bg-slate-200 dark:bg-slate-900/60 rounded-xl border border-slate-300 dark:border-slate-700 flex justify-center items-center overflow-x-auto max-w-full">
                     <ThermalBarcodeSticker
                       product={printingBarcodeProduct}
                       size={printLabelSize}
@@ -4041,10 +4663,46 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       salePrice={printSalePrice}
                       packedOn={printPackedOn}
                       expiryOn={printExpiryOn}
+                      fssaiNumber={printFssaiNumber}
+                      address={printAddress}
+                      ingredients={printIngredients}
+                      orientation={printOrientation}
                       mode="preview"
                     />
                   </div>
                 )}
+
+                {/* Real-time Orientation Status & Quick-select bar */}
+                <div className="w-full mt-2 pt-2 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between text-[10px] text-slate-600 dark:text-slate-400 px-1 gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Feed Output:</span>
+                    <span className="font-mono text-slate-900 dark:text-slate-100 font-bold">
+                      {printOrientation === 'auto' && '⬇ Standard Roll Feed (TSC Default 0°)'}
+                      {printOrientation === 'landscape' && '➡ Wide Landscape Feed (Cross-head)'}
+                      {printOrientation === 'portrait' && '⬇ Vertical Portrait Feed (Tall)'}
+                      {printOrientation === 'rotated90' && '🔄 90° Rotated Feed (Sideways Fix - Corrects rotated prints)'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-[9px]">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider">Test Orientation:</span>
+                    {(['auto', 'landscape', 'portrait', 'rotated90'] as const).map(mode => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setPrintOrientation(mode)}
+                        className={`px-2 py-0.5 rounded cursor-pointer transition-all font-bold ${
+                          printOrientation === mode
+                            ? mode === 'rotated90'
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600'
+                        }`}
+                      >
+                        {mode === 'auto' ? 'Auto' : mode === 'landscape' ? 'Landscape' : mode === 'portrait' ? 'Portrait' : 'Swap W/H'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* Editable Label Metadata Inputs */}
@@ -4095,6 +4753,36 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">FSSAI License No.</label>
+                  <input 
+                    type="text"
+                    value={printFssaiNumber}
+                    onChange={(e) => setPrintFssaiNumber(e.target.value)}
+                    placeholder="e.g. 11521018000123"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-mono font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Manufacturer / Facility Address</label>
+                  <input 
+                    type="text"
+                    value={printAddress}
+                    onChange={(e) => setPrintAddress(e.target.value)}
+                    placeholder="e.g. Shop 14, Station Road, Borivali West, Mumbai, MH 400092"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Ingredients List</label>
+                  <input 
+                    type="text"
+                    value={printIngredients}
+                    onChange={(e) => setPrintIngredients(e.target.value)}
+                    placeholder="e.g. Roasted Rice Flour, Bengal Gram, Spices, Edible Oil, Salt"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+                <div className="space-y-1 col-span-2 sm:col-span-1">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Labels to Print</label>
                     <button
@@ -4157,7 +4845,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 <div id="barcode-printable-area" className="barcode-print-portal fixed -left-[9999px] top-0 opacity-0 pointer-events-none">
                   {printerType === 'thermal' ? (
                     (() => {
-                      const dims = getThermalDimensions(printLabelSize, printLabelsPerRow);
+                      const pageDims = getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType);
+                      const dims = pageDims.baseDims;
                       const totalRows = Math.ceil(printLabelCount / printLabelsPerRow);
                       return Array.from({ length: totalRows }).map((_, rIdx) => {
                         const countInThisRow = Math.min(printLabelsPerRow, printLabelCount - rIdx * printLabelsPerRow);
@@ -4168,11 +4857,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                             key={rIdx} 
                             className="barcode-print-row"
                             style={{
-                              height: dims.rowHeightMm,
-                              width: dims.rollWidthMm,
+                              height: pageDims.pageHeightMm,
+                              width: pageDims.pageWidthMm,
                               display: 'flex',
                               flexDirection: 'row',
-                              justifyContent: printLabelsPerRow === 2 ? 'space-between' : 'center',
+                              justifyContent: printLabelsPerRow === 2 && !pageDims.isRotated ? 'space-between' : 'center',
                               alignItems: 'center',
                               pageBreakAfter: isLastRow ? 'avoid' : 'always',
                               pageBreakInside: 'avoid',
@@ -4185,8 +4874,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                 key={cIdx} 
                                 className="barcode-label-sticker"
                                 style={{
-                                  width: dims.stickerWidthMm,
-                                  height: dims.rowHeightMm
+                                  width: printLabelsPerRow === 2 && !pageDims.isRotated ? dims.stickerWidthMm : pageDims.pageWidthMm,
+                                  height: pageDims.pageHeightMm
                                 }}
                               >
                                 <ThermalBarcodeSticker
@@ -4197,17 +4886,21 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                   salePrice={printSalePrice}
                                   packedOn={printPackedOn}
                                   expiryOn={printExpiryOn}
+                                  fssaiNumber={printFssaiNumber}
+                                  address={printAddress}
+                                  ingredients={printIngredients}
+                                  orientation={printOrientation}
                                   mode="print"
                                 />
                               </div>
                             ))}
                             {/* Empty spacer if odd number of labels in last row of a 2-up roll */}
-                            {printLabelsPerRow === 2 && countInThisRow === 1 && (
+                            {printLabelsPerRow === 2 && countInThisRow === 1 && !pageDims.isRotated && (
                               <div 
                                 className="barcode-label-sticker barcode-label-placeholder"
                                 style={{ 
                                   width: dims.stickerWidthMm, 
-                                  height: dims.rowHeightMm,
+                                  height: pageDims.pageHeightMm,
                                   visibility: 'hidden',
                                   opacity: 0
                                 }} 
@@ -4230,6 +4923,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                             salePrice={printSalePrice}
                             packedOn={printPackedOn}
                             expiryOn={printExpiryOn}
+                            fssaiNumber={printFssaiNumber}
+                            address={printAddress}
+                            ingredients={printIngredients}
+                            orientation={printOrientation}
                             mode="print"
                           />
                         </div>
@@ -4260,20 +4957,20 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200/90 dark:border-amber-800/60 shadow-2xs">
                     <div className="font-black text-slate-900 dark:text-slate-100 text-[10.5px] flex items-center gap-1.5">
                       <span className="w-4 h-4 rounded-full bg-amber-500 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">1</span>
-                      <span>Paper Size: Change A4 ➔ Label Size</span>
+                      <span>Destination & Paper Size</span>
                     </div>
                     <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
-                      In Chrome Print Dialog $\rightarrow$ <b>More settings</b> $\rightarrow$ <b>Paper size</b>: select your thermal label roll size (e.g. <b>50x25</b> or <b>USER</b>). If left as <b>A4</b>, printer rolls 8 blank stickers!
+                      Change <b>Destination</b> from "Microsoft Print to PDF" to your <b>Thermal Printer</b> (TSC / Zebra / Xprinter). Under <b>More settings</b>, choose your roll label size (e.g. <b>50x25mm</b> or <b>USER</b>).
                     </p>
                   </div>
 
-                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200/90 dark:border-amber-800/60 shadow-2xs">
-                    <div className="font-black text-slate-900 dark:text-slate-100 text-[10.5px] flex items-center gap-1.5">
-                      <span className="w-4 h-4 rounded-full bg-amber-500 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">2</span>
-                      <span>Uncheck "Headers and Footers"</span>
+                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border-2 border-rose-300 dark:border-rose-700/80 shadow-2xs">
+                    <div className="font-black text-rose-700 dark:text-rose-400 text-[10.5px] flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-rose-600 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">2</span>
+                      <span>Remove "about:blank" & Date/Page</span>
                     </div>
                     <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
-                      Under <b>More settings</b>, turn <b>OFF</b> "Headers and footers" so URL/dates don't print on the label edges.
+                      Under <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b>. This removes the <b>Date, Title, "about:blank"</b>, and <b>"1/10"</b> numbers from printing!
                     </p>
                   </div>
 
@@ -4283,7 +4980,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       <span>Margins = None</span>
                     </div>
                     <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
-                      Set <b>Margins</b> to <b>None</b> (or Minimum) so the barcode centers perfectly on each sticker.
+                      Set <b>Margins</b> to <b>None</b> (or Minimum) so the barcode fits edge-to-edge without blank margins.
                     </p>
                   </div>
                 </div>
@@ -4311,18 +5008,20 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   <button 
                     type="button"
                     onClick={() => handlePrintBarcodeSubmit('popup')}
-                    className="px-3 py-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-semibold hover:bg-slate-300 dark:hover:bg-slate-600 cursor-pointer flex items-center gap-1.5"
-                    title="Open print dialog in a dedicated popup window"
+                    className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-xl text-[11px] font-bold hover:from-indigo-700 hover:to-blue-700 cursor-pointer flex items-center gap-2 shadow-sm transition-transform active:scale-95"
+                    title="Open thermal print dialog in a dedicated popup window"
                   >
-                    <span>↗ Open Print Tab</span>
+                    <ExternalLink size={14} />
+                    <span>🖨️ Print in Popup Window ({printLabelCount} labels)</span>
                   </button>
                   <button 
                     type="button"
                     onClick={() => handlePrintBarcodeSubmit('iframe')}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[11px] font-bold hover:bg-indigo-700 cursor-pointer flex items-center gap-2 shadow-sm transition-transform active:scale-95"
+                    className="px-3.5 py-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-semibold hover:bg-slate-300 dark:hover:bg-slate-600 cursor-pointer flex items-center gap-1.5"
+                    title="Direct Browser Print Dialog"
                   >
-                    <Printer size={15} />
-                    <span>Print Barcodes ({printLabelCount} labels)</span>
+                    <Printer size={14} />
+                    <span>Direct Print</span>
                   </button>
                 </div>
               </div>

@@ -49,6 +49,7 @@ import { safeStorage } from './utils/safeStorage';
 import { useNotificationSound } from './utils/useNotificationSound';
 import { UserProfile, Business, UserRole } from './types/erp';
 import { supabase, isSupabaseConfigured } from './services/supabase';
+import { DatabaseConfigModal } from './components/DatabaseConfigModal';
 
 // Import Views
 import { PackingAlertBanner } from "./components/PackingAlertBanner";
@@ -331,6 +332,7 @@ export default function App() {
 
   // DB Connection Mode
   const [dbMode, setDbMode] = useState<'local' | 'supabase'>(isSupabaseConfigured ? 'supabase' : 'local');
+  const [showDbConfigModal, setShowDbConfigModal] = useState(false);
 
   // Public Invoice Deep Link
   const [publicInvoiceNum, setPublicInvoiceNum] = useState<string | null>(() => {
@@ -1720,19 +1722,35 @@ export default function App() {
                 </div>
 
                 <div className="space-y-6">
-                  {/* Supabase Status Warning (Only show if not configured) */}
-                  {!isSupabaseConfigured && (
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 shadow-sm">
-                      <div className="flex items-center gap-2 font-bold mb-1.5 text-amber-900">
-                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></div>
-                        <span>Database Not Configured</span>
+                  {/* Database Connection Status Card */}
+                  <div className={`p-4 rounded-xl text-xs border shadow-sm ${
+                    isSupabaseConfigured 
+                      ? 'bg-emerald-50/90 border-emerald-200 text-emerald-900' 
+                      : 'bg-amber-50 border-amber-200 text-amber-900'
+                  }`}>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-2 font-bold">
+                        <div className={`w-2.5 h-2.5 rounded-full ${isSupabaseConfigured ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-amber-500 animate-pulse'}`}></div>
+                        <span>{isSupabaseConfigured ? 'Connected to Cloud Database' : 'Database Not Connected'}</span>
                       </div>
-                      <p className="text-amber-700/90 leading-relaxed font-medium">
-                        Supabase is not configured. Falling back to local offline sandbox.
-                        Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable live mode.
-                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowDbConfigModal(true)}
+                        className={`px-2.5 py-1 rounded-lg font-bold text-[11px] shadow-sm cursor-pointer transition-all ${
+                          isSupabaseConfigured
+                            ? 'bg-white hover:bg-emerald-100/80 text-emerald-800 border border-emerald-300'
+                            : 'bg-amber-600 hover:bg-amber-700 text-white'
+                        }`}
+                      >
+                        {isSupabaseConfigured ? 'Database Settings' : 'Connect Database'}
+                      </button>
                     </div>
-                  )}
+                    <p className="text-[11px] leading-relaxed font-medium opacity-90">
+                      {isSupabaseConfigured
+                        ? 'All store records (sales, purchases, inventory, accounts) are saved directly in your Supabase PostgreSQL cloud database.'
+                        : 'Connect your Supabase database to save all store data in the cloud database instead of local storage. No .env file required.'}
+                    </p>
+                  </div>
 
                   {authError && (
                     <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex flex-col gap-2 shadow-sm">
@@ -2046,6 +2064,11 @@ export default function App() {
             </div>
           ))}
         </div>
+
+        <DatabaseConfigModal
+          isOpen={showDbConfigModal}
+          onClose={() => setShowDbConfigModal(false)}
+        />
 
       </div>
     );
@@ -2746,6 +2769,11 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <DatabaseConfigModal
+        isOpen={showDbConfigModal}
+        onClose={() => setShowDbConfigModal(false)}
+      />
 
     </div>
   );

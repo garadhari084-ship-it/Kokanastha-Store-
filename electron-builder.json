@@ -8,8 +8,7 @@
   "files": [
     "dist/**/*",
     "electron-main.cjs",
-    "package.json",
-    ".env"
+    "package.json"
   ],
   "mac": {
     "category": "public.app-category.business"

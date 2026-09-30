@@ -286,7 +286,7 @@ export const getThermalDimensions = (
 };
 
 export const LABEL_SIZE_INFO: Record<string, { label: string; desc: string; defaultPerRow: 1 | 2 }> = {
-  '50x25': { label: '50 × 25 mm', desc: 'Standard 2"x1" Dual Roll', defaultPerRow: 2 },
+  '50x25': { label: '50 × 25 mm', desc: 'Standard 2"x1" Dual Roll (Double Line)', defaultPerRow: 2 },
   '38x25': { label: '38 × 25 mm', desc: '1.5"x1" Compact Dual Roll', defaultPerRow: 2 },
   '40x25': { label: '40 × 25 mm', desc: '40x25 mm Retail Roll', defaultPerRow: 2 },
   '50x30': { label: '50 × 30 mm', desc: '2"x1.2" Roll', defaultPerRow: 2 },
@@ -366,7 +366,8 @@ export const getPrintPageDimensions = (
 export interface ThermalBarcodeStickerProps {
   product: Product;
   size: '50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard';
-  companyName: string;
+  companyName?: string;
+  showCompanyName?: boolean;
   mrp: number | string;
   salePrice: number | string;
   packedOn: string;
@@ -376,12 +377,15 @@ export interface ThermalBarcodeStickerProps {
   ingredients?: string;
   orientation?: 'auto' | 'landscape' | 'portrait' | 'rotated90';
   mode?: 'preview' | 'print';
+  boxBorder?: boolean;
+  barcodeFrame?: boolean;
 }
 
 export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   product,
   size,
-  companyName,
+  companyName = '',
+  showCompanyName = false,
   mrp,
   salePrice,
   packedOn,
@@ -390,10 +394,14 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   address,
   ingredients,
   orientation = 'auto',
-  mode = 'preview'
+  mode = 'preview',
+  boxBorder = true,
+  barcodeFrame = true
 }) => {
   const barcodeValue = product.barcode || product.sku || '12345678';
-  const effectiveCompany = companyName || 'KOKANASTHA';
+  const effectiveCompany = showCompanyName && companyName && companyName.trim().length > 0 
+    ? companyName.trim() 
+    : '';
   const effectiveMrp = mrp || product.mrp || product.selling_price || 0;
   const effectiveSale = salePrice || product.selling_price || 0;
   const isVeg = product.food_packaging?.dietary_type ? product.food_packaging.dietary_type === 'veg' : product.food_packaging?.is_vegetarian !== false;
@@ -435,663 +443,615 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   };
 
   const containerClasses = mode === 'preview'
-    ? `${previewSizeClasses[size] || 'w-[189px] h-[95px] p-1.5'} bg-white rounded-md border-2 border-indigo-400 dark:border-indigo-500 shadow-md flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none relative shrink-0 text-slate-900`
-    : 'w-full h-full p-[0.5mm] bg-white flex flex-col justify-between items-center text-center overflow-hidden font-sans text-black box-border';
+    ? `${previewSizeClasses[size] || 'w-[189px] h-[95px] p-1.5'} bg-white rounded-md ${boxBorder ? 'border-[1.5px] border-black' : 'border-2 border-indigo-400 dark:border-indigo-500'} shadow-md flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none relative shrink-0 text-black`
+    : `w-full h-full p-[0.8mm] bg-white flex flex-col justify-between items-center text-center overflow-hidden font-sans text-black box-border ${boxBorder ? 'border-[1px] border-black rounded-[2px]' : ''}`;
 
-  const renderStickerContent = () => {
-    // 1. 38x25 mm Compact
-    if (size === '38x25') {
-    return (
-      <div className={containerClasses}>
-        <div className="w-full">
-          <div className="text-[7px] font-black uppercase leading-none truncate mb-0.5">{effectiveCompany}</div>
-          <div className="text-[7.5px] font-black uppercase tracking-tight leading-tight truncate w-full border-b border-slate-200 dark:border-slate-800 pb-0.5">
-            {product.name}
-          </div>
-        </div>
-        <div className="my-0.5 flex items-center justify-center">
-          <ReactBarcode 
-            value={barcodeValue} 
-            height={18} 
-            width={0.88}
-            fontSize={7}
-            margin={0}
-            fontOptions="bold"
-            displayValue={true}
-            background="#ffffff"
-            lineColor="#000000"
-          />
-        </div>
-        <div className="w-full space-y-0.5 text-[6.5px] font-black border-t border-slate-200 dark:border-slate-800 pt-0.5 uppercase">
-          <div className="flex justify-between items-center px-0.5">
-            <span>MRP: ₹{effectiveMrp}</span>
-            <span className="text-indigo-700 dark:text-indigo-600 font-black">SALE: ₹{effectiveSale}</span>
-          </div>
-          <div className="text-[6px] text-slate-600 dark:text-slate-400 font-bold">
-            PKD: {packedOn} {expiryOn ? `| EXP: ${expiryOn}` : ''}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const valLen = String(barcodeValue).length;
+  // Calibrated bar module width to ensure barcode never exceeds box or bleeds
+  const getBarWidth = (targetSize: string) => {
+    if (targetSize === '38x25') return valLen > 12 ? 0.88 : valLen > 8 ? 0.95 : 1.05;
+    if (targetSize === '50x25' || targetSize === '40x25') return valLen > 13 ? 0.92 : valLen > 10 ? 1.0 : 1.1;
+    if (targetSize === '50x30' || targetSize === '50x38') return valLen > 13 ? 1.0 : valLen > 10 ? 1.1 : 1.2;
+    if (targetSize === '50x50' || targetSize === '50x75') return valLen > 13 ? 0.95 : 1.05;
+    if (targetSize === '60x100') return valLen > 13 ? 1.05 : 1.2;
+    if (targetSize === '100x50' || targetSize === '100x75' || targetSize === '100x100') return valLen > 13 ? 1.15 : 1.3;
+    return valLen > 12 ? 1.0 : 1.15;
+  };
+  const barWidth = getBarWidth(size);
 
-  // 2. 50x30 mm
-  if (size === '50x30') {
-    return (
-      <div className={containerClasses}>
-        <div className="w-full">
-          <div className="text-[8px] font-black uppercase leading-none truncate mb-0.5">{effectiveCompany}</div>
-          <div className="text-[9px] font-black uppercase tracking-tight leading-none truncate w-full px-0.5 border-b border-slate-200 dark:border-slate-800 pb-0.5">
-            {product.name}
-          </div>
-        </div>
-        <div className="my-0.5 flex items-center justify-center">
-          <ReactBarcode 
-            value={barcodeValue} 
-            height={24} 
-            width={1.0}
-            fontSize={8}
-            margin={0}
-            fontOptions="bold"
-            displayValue={true}
-            background="#ffffff"
-            lineColor="#000000"
-          />
-        </div>
-        <div className="w-full space-y-0.5 text-[7.5px] font-bold uppercase border-t border-slate-200 dark:border-slate-800 pt-0.5">
-          <div className="flex justify-between px-1">
-            <span>MRP: ₹{effectiveMrp}</span>
-            <span className="text-indigo-700 dark:text-indigo-600 font-black">SALE: ₹{effectiveSale}</span>
-          </div>
-          <div className="flex justify-between text-[6.5px] text-slate-600 dark:text-slate-400 px-1">
-            <span>PKD: {packedOn}</span>
-            {expiryOn && <span>EXP: {expiryOn}</span>}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 3. 50x38 mm MRP/Exp Box
-  if (size === '50x38') {
-    return (
-      <div className={containerClasses}>
-        <span className="text-[9.5px] font-black uppercase tracking-tight leading-tight truncate w-full">
-          {product.name}
-        </span>
-        <div className="my-0.5 flex items-center justify-center">
-          <ReactBarcode 
-            value={barcodeValue} 
-            height={30} 
-            width={1.05}
-            fontSize={8.5}
-            margin={0}
-            fontOptions="bold"
-            displayValue={true}
-            background="#ffffff"
-            lineColor="#000000"
-          />
-        </div>
-        <div className="w-full space-y-0.5 text-[8px] font-bold uppercase border-t border-slate-200 dark:border-slate-800 pt-0.5">
-          <div className="flex justify-between px-0.5">
-            <span>MRP: ₹{effectiveMrp}</span>
-            <span className="text-indigo-700 dark:text-indigo-600 font-black">SALE: ₹{effectiveSale}</span>
-          </div>
-          <div className="flex justify-between text-[7px] text-slate-600 dark:text-slate-400 px-0.5">
-            <span>PKD: {packedOn}</span>
-            {expiryOn && <span>EXP: {expiryOn}</span>}
-          </div>
-          <div className="font-black tracking-widest text-[8px] text-slate-900 dark:text-slate-100 truncate">
-            {effectiveCompany}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 4. 50x50 mm Food & Nutrition Sticker
-  if (size === '50x50') {
-    return (
-      <div className={containerClasses}>
-        <div className="w-full flex justify-between items-center border-b border-slate-300 dark:border-slate-700 pb-0.5">
-          <span className="text-[8px] font-black uppercase truncate max-w-[120px] text-left">{effectiveCompany}</span>
-          <div className="flex items-center gap-1">
-            <span className={`w-2.5 h-2.5 rounded-xs border flex items-center justify-center shrink-0 ${isVeg ? 'border-emerald-600' : 'border-rose-600'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-emerald-600' : 'bg-rose-600'}`} />
-            </span>
-            <span className="text-[7px] font-bold text-slate-700 dark:text-slate-300">{netWeight}</span>
-          </div>
-        </div>
-        
-        <span className="text-[9px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5">
-          {product.name}
-        </span>
-
-        <div className="my-0.5 flex items-center justify-center">
-          <ReactBarcode 
-            value={barcodeValue} 
-            height={18} 
-            width={0.9}
-            fontSize={7}
-            margin={0}
-            fontOptions="bold"
-            displayValue={true}
-            background="#ffffff"
-            lineColor="#000000"
-          />
-        </div>
-
-        {/* Compact Nutrition Table */}
-        <div className="w-full border border-slate-400 dark:border-slate-600 text-[6.5px] text-left leading-tight my-0.5 rounded-xs overflow-hidden">
-          <div className="bg-slate-900 text-white px-1 py-0.5 font-black text-[6.5px] flex justify-between">
-            <span>NUTRITION (per {product.nutrition_facts?.serving_size || '100g'})</span>
-            <span>ENERGY: {product.nutrition_facts?.energy_kcal ?? '350'} kcal</span>
-          </div>
-          <div className="grid grid-cols-2 px-1 py-0.5 gap-x-1 text-[6px] bg-white text-slate-900">
-            <div>Protein: <b>{product.nutrition_facts?.protein_g ?? '8.5'}g</b></div>
-            <div>Carbs: <b>{product.nutrition_facts?.carbohydrates_g ?? '60'}g</b></div>
-            <div>Total Fat: <b>{product.nutrition_facts?.fat_total_g ?? '12'}g</b></div>
-            <div>Sodium: <b>{product.nutrition_facts?.sodium_mg ?? '220'}mg</b></div>
-          </div>
-        </div>
-
-        <div className="w-full text-[7px] font-bold uppercase border-t border-slate-300 dark:border-slate-700 pt-0.5">
-          <div className="flex justify-between">
-            <span>MRP: ₹{effectiveMrp}</span>
-            <span className="text-emerald-700 dark:text-emerald-500 font-black">SALE: ₹{effectiveSale}</span>
-          </div>
-          <div className="flex justify-between text-[6px] text-slate-600 dark:text-slate-400">
-            <span>PKD: {packedOn}</span>
-            <span>{expiryOn ? `EXP: ${expiryOn}` : (product.food_packaging?.best_before_days ? `Best: ${product.food_packaging.best_before_days}d` : 'Best: 60d')}</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 5. 50x75 mm Food Master Sticker
-  if (size === '50x75') {
-    return (
-      <div className={containerClasses}>
-        <div className="w-full flex justify-between items-center border-b border-slate-300 dark:border-slate-700 pb-0.5">
-          <span className="text-[8.5px] font-black uppercase truncate max-w-[120px] text-left">{effectiveCompany}</span>
-          <div className="flex items-center gap-1">
-            <span className={`w-2.5 h-2.5 rounded-xs border flex items-center justify-center shrink-0 ${isVeg ? 'border-emerald-600' : 'border-rose-600'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-emerald-600' : 'bg-rose-600'}`} />
-            </span>
-            <span className="text-[7.5px] font-bold">{netWeight}</span>
-          </div>
-        </div>
-        
-        <span className="text-[10px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5">
-          {product.name}
-        </span>
-
-        <div className="my-0.5 flex items-center justify-center">
-          <ReactBarcode 
-            value={barcodeValue} 
-            height={22} 
-            width={0.95}
-            fontSize={7.5}
-            margin={0}
-            fontOptions="bold"
-            displayValue={true}
-            background="#ffffff"
-            lineColor="#000000"
-          />
-        </div>
-
-        {/* Kokanastha Detailed Nutrition Table */}
-        <div className="w-full border border-slate-800 dark:border-slate-600 text-[6.5px] text-left leading-tight my-0.5 rounded-xs overflow-hidden">
-          <div className="bg-slate-900 text-white px-1 py-0.5 font-black text-[7px] flex justify-between">
-            <span>NUTRITIONAL FACTS</span>
-            <span>Per {product.nutrition_facts?.serving_size || '100g'}</span>
-          </div>
-          <div className="divide-y divide-slate-200 dark:divide-slate-700 bg-white text-slate-900">
-            <div className="flex justify-between px-1 py-0.2"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
-            <div className="flex justify-between px-1 py-0.2"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
-            <div className="flex justify-between px-1 py-0.2"><span>Total Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
-            <div className="flex justify-between px-1 py-0.2 text-[6px] pl-2 text-slate-600"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
-            <div className="flex justify-between px-1 py-0.2"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
-            <div className="flex justify-between px-1 py-0.2"><span>Dietary Fiber</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '3.5'} g</b></div>
-            <div className="flex justify-between px-1 py-0.2"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
-          </div>
-        </div>
-
-        {product.food_packaging?.ingredients && (
-          <div className="w-full text-left text-[6px] text-slate-600 dark:text-slate-400 line-clamp-1 border-t border-slate-200 dark:border-slate-700 pt-0.5">
-            <b>Ing:</b> {ingredients}
-          </div>
-        )}
-
-        <div className="w-full text-[7.5px] font-bold uppercase border-t border-slate-300 dark:border-slate-700 pt-0.5">
-          <div className="flex justify-between">
-            <span>MRP: ₹{effectiveMrp}</span>
-            <span className="text-emerald-700 dark:text-emerald-500 font-black">SALE: ₹{effectiveSale}</span>
-          </div>
-          <div className="flex justify-between text-[6.5px] text-slate-600 dark:text-slate-400">
-            <span>PKD: {packedOn}</span>
-            <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best before 60 days'}</span>
-          </div>
-          {product.food_packaging?.fssai_license_number && (
-            <div className="text-[6px] text-slate-500 tracking-wider text-left">
-              FSSAI Lic: {product.food_packaging.fssai_license_number}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // 60x100 mm Kokanastha Tall Master Sticker (2.4"x4")
-  if (size === '60x100') {
-    return (
-      <div className={containerClasses}>
-        <div className="w-full flex justify-between items-center border-b border-slate-300 dark:border-slate-700 pb-1 shrink-0">
-          <div className="text-left">
-            <span className="text-[10px] font-black uppercase truncate max-w-[140px] block">{effectiveCompany}</span>
-            <div className="text-[7px] text-slate-500 font-mono">
-              SKU: {product.sku || 'SKU-001'}
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-1">
-              <span className={`w-3 h-3 rounded-xs border flex items-center justify-center shrink-0 ${isVeg ? 'border-emerald-600' : 'border-rose-600'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-emerald-600' : 'bg-rose-600'}`} />
-              </span>
-              <span className="text-[9px] font-bold">{netWeight}</span>
-            </div>
-          </div>
-        </div>
-        
-        <span className="text-[12px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 shrink-0">
-          {product.name}
-        </span>
-
-        {/* Barcode */}
-        <div className="my-0.5 flex items-center justify-center shrink-0">
-          <ReactBarcode 
-            value={barcodeValue} 
-            height={26} 
-            width={1.15}
-            fontSize={8.5}
-            margin={0}
-            fontOptions="bold"
-            displayValue={true}
-            background="#ffffff"
-            lineColor="#000000"
-          />
-        </div>
-
-        {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
-        <div className="w-full text-left bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded border border-slate-300 dark:border-slate-700 my-0.5 space-y-0.5 shrink-0">
-          <div className="text-[7.5px] font-black uppercase tracking-wider text-slate-900 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-0.5 flex justify-between items-center">
-            <span>FSSAI Lic. No: <b className="font-mono text-indigo-700 dark:text-indigo-400">{effectiveFssai}</b></span>
-            <span className="text-[6.5px] font-bold text-emerald-700 dark:text-emerald-400">{isVeg ? '🌱 100% VEG' : 'NON-VEG'}</span>
-          </div>
-          <div className="text-[7px] leading-tight text-slate-800 dark:text-slate-200">
-            <b>Address:</b> {effectiveAddress}
-          </div>
-          <div className="text-[7px] leading-tight text-slate-800 dark:text-slate-200">
-            <b>Ingredients:</b> {effectiveIngredients}
-          </div>
-        </div>
-
-        {/* Detailed Nutrition Table for 60x100 */}
-        <div className="w-full border border-slate-800 dark:border-slate-600 text-[7.5px] text-left leading-tight my-0.5 rounded-xs overflow-hidden shrink-0">
-          <div className="bg-slate-900 text-white px-1.5 py-0.5 font-black text-[8px] flex justify-between">
-            <span>NUTRITIONAL FACTS</span>
-            <span>Per {product.nutrition_facts?.serving_size || '100g'}</span>
-          </div>
-          <div className="divide-y divide-slate-200 dark:divide-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-            <div className="flex justify-between px-1.5 py-0.5"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
-            <div className="flex justify-between px-1.5 py-0.5"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
-            <div className="flex justify-between px-1.5 py-0.5"><span>Total Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
-            <div className="flex justify-between px-1.5 py-0.5 text-[6.5px] pl-3 text-slate-600 dark:text-slate-400"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
-            <div className="flex justify-between px-1.5 py-0.5"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
-            <div className="flex justify-between px-1.5 py-0.5"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
-          </div>
-        </div>
-
-        <div className="w-full text-[8.5px] font-bold uppercase border-t-2 border-slate-300 dark:border-slate-700 pt-1 mt-0.5 shrink-0">
-          <div className="flex justify-between">
-            <span>MRP: ₹{effectiveMrp}</span>
-            <span className="text-emerald-700 dark:text-emerald-500 font-black">SALE: ₹{effectiveSale}</span>
-          </div>
-          <div className="flex justify-between text-[7px] text-slate-600 dark:text-slate-400 mt-0.5">
-            <span>PKD: {packedOn}</span>
-            <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best before 60 days'}</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 6. 100x75 mm Kokanastha Food Master Sticker (4"x3")
-  if (size === '100x75') {
-    return (
-      <div className={containerClasses}>
-        <div className="w-full flex justify-between items-center border-b-2 border-slate-900 dark:border-slate-700 pb-1 shrink-0">
-          <div className="text-left">
-            <div className="text-[11px] font-black uppercase tracking-wider">{effectiveCompany}</div>
-            <div className="text-[7.5px] text-slate-600 dark:text-slate-400 font-mono">SKU: {product.sku || 'SKU-001'}</div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className={`w-3.5 h-3.5 rounded-xs border-2 flex items-center justify-center shrink-0 ${isVeg ? 'border-emerald-600' : 'border-rose-600'}`}>
-              <span className={`w-2 h-2 rounded-full shrink-0 ${isVeg ? 'bg-emerald-600' : 'bg-rose-600'}`} />
-            </span>
-            <span className="text-[9px] font-black bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700">
-              {netWeight}
-            </span>
-          </div>
-        </div>
-
-        <div className="w-full grid grid-cols-2 gap-2 my-1 items-start">
-          {/* Left: Product & Barcode & Under Barcode details */}
-          <div className="flex flex-col items-center justify-start text-left">
-            <span className="text-[11px] font-black uppercase tracking-tight leading-tight w-full truncate mb-0.5">
-              {product.name}
-            </span>
-            <div className="my-0.5 flex items-center justify-center">
-              <ReactBarcode 
-                value={barcodeValue} 
-                height={24} 
-                width={1.05}
-                fontSize={8}
-                margin={0}
-                fontOptions="bold"
-                displayValue={true}
-                background="#ffffff"
-                lineColor="#000000"
-              />
-            </div>
-            {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
-            <div className="w-full bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 rounded p-1.5 space-y-0.5 text-left my-1">
-              <div className="text-[7.5px] font-bold text-slate-900 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-0.5 flex justify-between items-center">
-                <span>FSSAI Lic. No: <b className="font-mono text-indigo-700 dark:text-indigo-400">{effectiveFssai}</b></span>
-              </div>
-              <div className="text-[7px] text-slate-700 dark:text-slate-300 leading-tight line-clamp-2">
-                <b>Address:</b> {effectiveAddress}
-              </div>
-              <div className="text-[7px] text-slate-700 dark:text-slate-300 leading-tight line-clamp-2">
-                <b>Ingredients:</b> {effectiveIngredients}
-              </div>
-            </div>
-            <div className="text-[8px] font-bold text-slate-700 dark:text-slate-300 w-full space-y-0.5 pt-0.5 border-t border-slate-200 dark:border-slate-700">
-              <div className="flex justify-between"><span>MRP: <b>₹{effectiveMrp}</b></span> <span className="text-emerald-700 dark:text-emerald-500 font-black">SALE: <b>₹{effectiveSale}</b></span></div>
-              <div className="flex justify-between text-[7px] text-slate-500"><span>PKD: {packedOn}</span> <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best: 90 Days'}</span></div>
-            </div>
-          </div>
-
-          {/* Right: Kokanastha Nutrition Table */}
-          <div className="border border-slate-900 dark:border-slate-700 rounded overflow-hidden text-[7px] text-left">
-            <div className="bg-slate-900 text-white px-1.5 py-0.5 font-black text-[7.5px] flex justify-between">
-              <span>NUTRITIONAL INFORMATION</span>
-              <span>(Per 100g)</span>
-            </div>
-            <div className="divide-y divide-slate-200 dark:divide-slate-700 bg-white text-slate-900 px-1 py-0.5">
-              <div className="flex justify-between py-0.2"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '460'} kcal</b></div>
-              <div className="flex justify-between py-0.2"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.8'} g</b></div>
-              <div className="flex justify-between py-0.2"><span>Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '64'} g</b></div>
-              <div className="flex justify-between py-0.2 text-[6.5px] pl-2 text-slate-600 dark:text-slate-400"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
-              <div className="flex justify-between py-0.2"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '16'} g</b></div>
-              <div className="flex justify-between py-0.2"><span>Dietary Fiber</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '4.2'} g</b></div>
-              <div className="flex justify-between py-0.2"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '310'} mg</b></div>
-            </div>
-            <div className="bg-slate-100 dark:bg-slate-800 p-1 text-[6.5px] text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700">
-              <div>Store in airtight container after opening.</div>
-              <div>Customer Care: <b>ops@kokanasthafaral.com</b></div>
-            </div>
-          </div>
-        </div>
-
-        <div className="w-full text-[6.5px] text-slate-600 dark:text-slate-400 text-left border-t border-slate-300 dark:border-slate-700 pt-0.5 flex justify-between items-center shrink-0">
-          <span className="font-bold text-slate-800 dark:text-slate-200">Kokanastha Nutri Quality Certified</span>
-          <span>Made in India</span>
-        </div>
-      </div>
-    );
-  }
-
-  // 7. 100x100 mm Big Box Sticker (4"x4")
-  if (size === '100x100') {
-    return (
-      <div className={containerClasses}>
-        <div className="w-full flex justify-between items-center border-b-2 border-slate-900 dark:border-slate-700 pb-1 shrink-0">
-          <div className="text-left">
-            <div className="text-[12px] font-black uppercase tracking-wider">{effectiveCompany}</div>
-            <div className="text-[8px] text-slate-600 dark:text-slate-400 font-mono">SKU: {product.sku || 'SKU-001'}</div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className={`w-4 h-4 rounded-xs border-2 flex items-center justify-center shrink-0 ${isVeg ? 'border-emerald-600' : 'border-rose-600'}`}>
-              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isVeg ? 'bg-emerald-600' : 'bg-rose-600'}`} />
-            </span>
-            <span className="text-[10px] font-black bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700">
-              {netWeight}
-            </span>
-          </div>
-        </div>
-
-        <span className="text-[13px] font-black uppercase tracking-tight leading-tight w-full my-0.5 truncate shrink-0">
-          {product.name}
-        </span>
-
-        {/* Barcode */}
-        <div className="my-0.5 flex items-center justify-center shrink-0">
-          <ReactBarcode 
-            value={barcodeValue} 
-            height={28} 
-            width={1.15}
-            fontSize={9}
-            margin={0}
-            fontOptions="bold"
-            displayValue={true}
-            background="#ffffff"
-            lineColor="#000000"
-          />
-        </div>
-
-        {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
-        <div className="w-full bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 rounded p-1.5 space-y-0.5 text-left my-1 text-black shrink-0">
-          <div className="flex justify-between items-center text-[8.5px] font-black border-b border-slate-200 dark:border-slate-700 pb-0.5 text-slate-900 dark:text-slate-100">
-            <span>FSSAI Lic. No: <b className="font-mono text-indigo-700 dark:text-indigo-400">{effectiveFssai}</b></span>
-            <span className="text-[7.5px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800 font-bold">
-              {isVeg ? '🌱 100% Vegetarian' : 'Non-Vegetarian'}
-            </span>
-          </div>
-          <div className="text-[7.5px] text-slate-800 dark:text-slate-200 leading-tight">
-            <b>Packer & Mfg Address:</b> {effectiveAddress}
-          </div>
-          <div className="text-[7.5px] text-slate-800 dark:text-slate-200 leading-tight">
-            <b>Ingredients:</b> {effectiveIngredients}
-          </div>
-        </div>
-
-        {/* Detailed Full Box Nutrition Table */}
-        <div className="w-full border-2 border-slate-900 dark:border-slate-700 rounded overflow-hidden text-[7.5px] text-left my-0.5 shrink-0">
-          <div className="bg-slate-900 text-white px-2 py-0.5 font-black text-[8px] flex justify-between">
-            <span>NUTRITION FACTS & COMPLIANCE</span>
-            <span>Per 100g Serving</span>
-          </div>
-          <div className="grid grid-cols-2 divide-x divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-1 gap-x-2">
-            <div className="space-y-0.5">
-              <div className="flex justify-between"><span>Energy (Calories):</span><b>{product.nutrition_facts?.energy_kcal ?? '480'} kcal</b></div>
-              <div className="flex justify-between"><span>Total Protein:</span><b>{product.nutrition_facts?.protein_g ?? '11'} g</b></div>
-              <div className="flex justify-between"><span>Carbohydrates:</span><b>{product.nutrition_facts?.carbohydrates_g ?? '62'} g</b></div>
-              <div className="flex justify-between text-slate-600 dark:text-slate-400 pl-1 text-[6.5px]"><span>- Added Sugars:</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
-            </div>
-            <div className="space-y-0.5 pl-1.5">
-              <div className="flex justify-between"><span>Total Fat:</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
-              <div className="flex justify-between text-slate-600 dark:text-slate-400 pl-1 text-[6.5px]"><span>- Saturated Fat:</span><b>{product.nutrition_facts?.saturated_fat_g ?? '4.5'} g</b></div>
-              <div className="flex justify-between"><span>Dietary Fiber:</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '5.0'} g</b></div>
-              <div className="flex justify-between"><span>Sodium:</span><b>{product.nutrition_facts?.sodium_mg ?? '320'} mg</b></div>
-            </div>
-          </div>
-        </div>
-
-        <div className="w-full text-[8px] font-bold uppercase border-t-2 border-slate-900 dark:border-slate-700 pt-1 shrink-0">
-          <div className="flex justify-between items-center text-[10px]">
-            <div>MRP: <b className="text-slate-600 dark:text-slate-400 line-through">₹{effectiveMrp}</b></div>
-            <div>SPECIAL OFFER: <b className="text-emerald-700 dark:text-emerald-500 text-sm font-black">₹{effectiveSale}</b></div>
-          </div>
-          <div className="flex justify-between text-[7px] text-slate-600 dark:text-slate-400 mt-0.5">
-            <span>PKD DATE: {packedOn}</span>
-            <span>EXPIRY DATE: {expiryOn || 'Best before 90 days from packing'}</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 8. 100x50 mm Box/Pack Sticker (4"x2")
-  if (size === '100x50') {
-    return (
-      <div className={containerClasses}>
-        {/* Top Header */}
-        <div className="w-full flex justify-between items-center border-b border-slate-300 dark:border-slate-700 pb-0.5 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-wider">{effectiveCompany}</span>
-            <span className="text-[7.5px] font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.2 rounded font-bold">SKU: {product.sku || 'SKU-001'}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className={`w-3 h-3 rounded-xs border flex items-center justify-center shrink-0 ${isVeg ? 'border-emerald-600' : 'border-rose-600'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-emerald-600' : 'bg-rose-600'}`} />
-            </span>
-            <span className="text-[8.5px] font-bold">{netWeight}</span>
-          </div>
-        </div>
-
-        {/* Product Name */}
-        <span className="text-[11px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 shrink-0">
-          {product.name}
-        </span>
-
-        {/* 2-Column Split: Left = Barcode + Under-barcode details, Right = Pricing + Dates */}
-        <div className="w-full grid grid-cols-12 gap-2 my-0.5 items-start">
-          <div className="col-span-7 flex flex-col items-center text-left">
-            <div className="flex items-center justify-center">
-              <ReactBarcode 
-                value={barcodeValue} 
-                height={20} 
-                width={1.05}
-                fontSize={8}
-                margin={0}
-                fontOptions="bold"
-                displayValue={true}
-                background="#ffffff"
-                lineColor="#000000"
-              />
-            </div>
-            {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
-            <div className="w-full mt-1 bg-slate-50 dark:bg-slate-800/60 p-1 rounded border border-slate-200 dark:border-slate-700 text-left space-y-0.5">
-              <div className="text-[7px] font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
-                <span>FSSAI Lic. No: <b className="font-mono text-indigo-700 dark:text-indigo-400">{effectiveFssai}</b></span>
-              </div>
-              <div className="text-[6.5px] text-slate-700 dark:text-slate-300 leading-tight line-clamp-1">
-                <b>Address:</b> {effectiveAddress}
-              </div>
-              <div className="text-[6.5px] text-slate-700 dark:text-slate-300 leading-tight line-clamp-1">
-                <b>Ingredients:</b> {effectiveIngredients}
-              </div>
-            </div>
-          </div>
-
-          <div className="col-span-5 flex flex-col justify-between h-full border-l border-slate-200 dark:border-slate-700 pl-1.5 text-left">
-            <div className="bg-slate-50 dark:bg-slate-800/60 p-1 rounded border border-slate-200 dark:border-slate-700 space-y-0.5">
-              <div className="flex justify-between items-center text-[7.5px]">
-                <span className="text-slate-500 font-bold">MRP:</span>
-                <span className="line-through text-slate-600 font-bold">₹{effectiveMrp}</span>
-              </div>
-              <div className="flex justify-between items-center text-[8.5px]">
-                <span className="font-black text-slate-900 dark:text-slate-100">SALE:</span>
-                <span className="font-black text-emerald-700 dark:text-emerald-400 text-[10px]">₹{effectiveSale}</span>
-              </div>
-            </div>
-            <div className="text-[6.5px] text-slate-600 dark:text-slate-400 space-y-0.5 pt-0.5">
-              <div><b>PKD:</b> {packedOn}</div>
-              <div><b>EXP:</b> {expiryOn || 'Best before 90 days'}</div>
-              <div className="font-bold text-slate-800 dark:text-slate-200 truncate">Mfg: {effectiveCompany}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Bar */}
-        <div className="w-full flex justify-between items-center text-[6.5px] font-bold uppercase border-t border-slate-200 dark:border-slate-700 pt-0.5 text-slate-500 shrink-0">
-          <span>Customer Care: +91 98200 12345</span>
-          <span>Store in Cool & Dry Place</span>
-        </div>
-      </div>
-    );
-  }
-
-  // 9. Standard 220px Card
-  if (size === 'standard') {
-    return (
-      <div className={containerClasses}>
-        <div className="text-[9px] font-black uppercase mb-0.5">{effectiveCompany}</div>
-        <span className="text-[11px] font-black uppercase mb-1 leading-tight">{product.name}</span>
-        <div className="my-1 flex items-center justify-center">
-          <ReactBarcode 
-            value={barcodeValue} 
-            height={36} 
-            width={1.15}
-            fontSize={9.5}
-            margin={0}
-            fontOptions="bold"
-            displayValue={true}
-            background="#ffffff"
-            lineColor="#000000"
-          />
-        </div>
-        <div className="flex flex-col items-center gap-0.5 mt-1 font-bold uppercase text-[9.5px] w-full border-t border-slate-200 dark:border-slate-800 pt-1">
-          <div className="flex justify-between w-full px-2">
-            <span>MRP: ₹{effectiveMrp}</span>
-            <span className="text-indigo-700 dark:text-indigo-500 font-black">SALE: ₹{effectiveSale}</span>
-          </div>
-          <div className="text-[7.5px] text-slate-600 dark:text-slate-400">
-            PKD: {packedOn} {expiryOn ? `| EXP: ${expiryOn}` : ''}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 10. Default: 50x25 mm and 40x25 mm Standard Retail Label
-  return (
-    <div className={containerClasses}>
-      <div className="w-full">
-        <div className="text-[7.5px] font-black uppercase leading-none truncate mb-0.5">{effectiveCompany}</div>
-        <div className="text-[8.5px] font-black uppercase tracking-tight leading-tight truncate w-full px-0.5 border-b border-slate-200 dark:border-slate-800 pb-0.5">
-          {product.name}
-        </div>
-      </div>
-      
-      <div className="my-0.5 flex items-center justify-center">
+  // Dedicated Boxed Barcode with guaranteed white quiet zone margin
+  const renderBarcodeBox = (h: number, customW?: number) => (
+    <div className="w-full flex items-center justify-center my-0.5 shrink-0" style={{ margin: '1px 0' }}>
+      <div 
+        className={`barcode-inner-box bg-white flex flex-col items-center justify-center w-[98%] max-w-full ${barcodeFrame ? 'border-[1px] border-black rounded-[2px] px-1.5 py-0.5' : 'px-1 py-0.5'}`}
+        style={{ backgroundColor: '#ffffff', boxSizing: 'border-box' }}
+      >
         <ReactBarcode 
+          renderer="img"
           value={barcodeValue} 
-          height={20} 
-          width={0.95}
-          fontSize={7.5}
+          height={h} 
+          width={customW || barWidth}
+          fontSize={size === '38x25' ? 7 : size === '50x25' || size === '40x25' ? 7.5 : 8}
           margin={0}
+          textMargin={1.5}
           fontOptions="bold"
+          font="monospace"
           displayValue={true}
           background="#ffffff"
           lineColor="#000000"
         />
       </div>
-
-      <div className="w-full text-[7.5px] font-black leading-none pt-0.5 uppercase border-t border-slate-200 dark:border-slate-800">
-        <div className="flex justify-between items-center px-0.5 mb-0.5">
-          <span>MRP: ₹{effectiveMrp}</span>
-          <span className="text-indigo-700 dark:text-indigo-500 font-black">SALE: ₹{effectiveSale}</span>
-        </div>
-        <div className="flex justify-between items-center px-0.5 text-[6px] text-slate-600 dark:text-slate-400">
-          <span>PKD: {packedOn}</span>
-          <span>{expiryOn ? `EXP: ${expiryOn}` : ''}</span>
-        </div>
-      </div>
     </div>
   );
+
+  const renderStickerContent = () => {
+    // 1. 38x25 mm Compact (1.5"x1")
+    if (size === '38x25') {
+      return (
+        <div className={containerClasses}>
+          <div className="w-full text-black shrink-0">
+            {effectiveCompany && <div className="text-[7px] font-black uppercase leading-none truncate mb-0.5">{effectiveCompany}</div>}
+            <div className="text-[7.5px] font-black uppercase tracking-tight leading-none truncate w-full border-b border-black pb-0.5">
+              {product.name}
+            </div>
+          </div>
+          {renderBarcodeBox(effectiveCompany ? 13 : 15)}
+          <div className="w-full space-y-0.5 text-[6.5px] font-black border-t border-black pt-0.5 uppercase text-black shrink-0">
+            <div className="flex justify-between items-center px-0.5">
+              <span>MRP: ₹{effectiveMrp}</span>
+              <span className="font-black text-black">SALE: ₹{effectiveSale}</span>
+            </div>
+            <div className="flex justify-between text-[6px] font-bold text-black px-0.5">
+              <span>PKD: {packedOn}</span>
+              {expiryOn && <span>EXP: {expiryOn}</span>}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 2. 50x30 mm (2"x1.2")
+    if (size === '50x30') {
+      return (
+        <div className={containerClasses}>
+          <div className="w-full text-black shrink-0">
+            {effectiveCompany && <div className="text-[8px] font-black uppercase leading-none truncate mb-0.5">{effectiveCompany}</div>}
+            <div className="text-[8.5px] font-black uppercase tracking-tight leading-none truncate w-full px-0.5 border-b border-black pb-0.5">
+              {product.name}
+            </div>
+          </div>
+          {renderBarcodeBox(effectiveCompany ? 18 : 20)}
+          <div className="w-full space-y-0.5 text-[7.5px] font-black uppercase border-t border-black pt-0.5 text-black shrink-0">
+            <div className="flex justify-between px-1">
+              <span>MRP: ₹{effectiveMrp}</span>
+              <span className="font-black text-black">SALE: ₹{effectiveSale}</span>
+            </div>
+            <div className="flex justify-between text-[6.5px] font-bold text-black px-1">
+              <span>PKD: {packedOn}</span>
+              {expiryOn && <span>EXP: {expiryOn}</span>}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 3. 50x38 mm MRP/Exp Box (2"x1.5")
+    if (size === '50x38') {
+      return (
+        <div className={containerClasses}>
+          <div className="w-full border-b border-black pb-0.5 text-black shrink-0">
+            {effectiveCompany && <div className="text-[8px] font-black uppercase leading-none truncate mb-0.5">{effectiveCompany}</div>}
+            <span className="text-[9px] font-black uppercase tracking-tight leading-tight truncate w-full block">
+              {product.name}
+            </span>
+          </div>
+          {renderBarcodeBox(22)}
+          <div className="w-full space-y-0.5 text-[8px] font-black uppercase border-t border-black pt-0.5 text-black shrink-0">
+            <div className="flex justify-between px-0.5">
+              <span>MRP: ₹{effectiveMrp}</span>
+              <span className="font-black text-black">SALE: ₹{effectiveSale}</span>
+            </div>
+            <div className="flex justify-between text-[7px] font-bold text-black px-0.5">
+              <span>PKD: {packedOn}</span>
+              {expiryOn && <span>EXP: {expiryOn}</span>}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 4. 50x50 mm Food & Nutrition Sticker (2"x2")
+    if (size === '50x50') {
+      return (
+        <div className={containerClasses}>
+          <div className="w-full flex justify-between items-center border-b border-black pb-0.5 text-black shrink-0">
+            <span className="text-[8px] font-black uppercase truncate max-w-[120px] text-left">{effectiveCompany}</span>
+            <div className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-xs border border-black flex items-center justify-center shrink-0">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
+              </span>
+              <span className="text-[7px] font-black text-black">{netWeight}</span>
+            </div>
+          </div>
+          
+          <span className="text-[9px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 text-black shrink-0">
+            {product.name}
+          </span>
+
+          {renderBarcodeBox(16)}
+
+          {/* Compact Nutrition Table */}
+          <div className="w-full border border-black text-[6.5px] text-left leading-tight my-0.5 rounded-xs overflow-hidden text-black shrink-0">
+            <div className="bg-black text-white px-1 py-0.5 font-black text-[6.5px] flex justify-between">
+              <span>NUTRITION (per {product.nutrition_facts?.serving_size || '100g'})</span>
+              <span>{product.nutrition_facts?.energy_kcal ?? '350'} kcal</span>
+            </div>
+            <div className="grid grid-cols-2 px-1 py-0.5 gap-x-1 text-[6px] bg-white text-black font-bold">
+              <div>Protein: <b>{product.nutrition_facts?.protein_g ?? '8.5'}g</b></div>
+              <div>Carbs: <b>{product.nutrition_facts?.carbohydrates_g ?? '60'}g</b></div>
+              <div>Total Fat: <b>{product.nutrition_facts?.fat_total_g ?? '12'}g</b></div>
+              <div>Sodium: <b>{product.nutrition_facts?.sodium_mg ?? '220'}mg</b></div>
+            </div>
+          </div>
+
+          <div className="w-full text-[7px] font-black uppercase border-t border-black pt-0.5 text-black shrink-0">
+            <div className="flex justify-between">
+              <span>MRP: ₹{effectiveMrp}</span>
+              <span className="font-black text-black">SALE: ₹{effectiveSale}</span>
+            </div>
+            <div className="flex justify-between text-[6px] font-bold text-black">
+              <span>PKD: {packedOn}</span>
+              <span>{expiryOn ? `EXP: ${expiryOn}` : (product.food_packaging?.best_before_days ? `Best: ${product.food_packaging.best_before_days}d` : 'Best: 60d')}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 5. 50x75 mm Food Master Sticker (2"x3")
+    if (size === '50x75') {
+      return (
+        <div className={containerClasses}>
+          <div className="w-full flex justify-between items-center border-b border-black pb-0.5 text-black shrink-0">
+            <span className="text-[8.5px] font-black uppercase truncate max-w-[120px] text-left">{effectiveCompany}</span>
+            <div className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-xs border border-black flex items-center justify-center shrink-0">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
+              </span>
+              <span className="text-[7.5px] font-black text-black">{netWeight}</span>
+            </div>
+          </div>
+          
+          <span className="text-[10px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 text-black shrink-0">
+            {product.name}
+          </span>
+
+          {renderBarcodeBox(18)}
+
+          {/* Detailed Nutrition Table */}
+          <div className="w-full border border-black text-[6.5px] text-left leading-tight my-0.5 rounded-xs overflow-hidden text-black shrink-0">
+            <div className="bg-black text-white px-1 py-0.5 font-black text-[7px] flex justify-between">
+              <span>NUTRITIONAL FACTS</span>
+              <span>Per {product.nutrition_facts?.serving_size || '100g'}</span>
+            </div>
+            <div className="divide-y divide-black bg-white text-black">
+              <div className="flex justify-between px-1 py-0.2"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
+              <div className="flex justify-between px-1 py-0.2"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
+              <div className="flex justify-between px-1 py-0.2"><span>Total Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
+              <div className="flex justify-between px-1 py-0.2 text-[6px] pl-2 text-black"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
+              <div className="flex justify-between px-1 py-0.2"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
+              <div className="flex justify-between px-1 py-0.2"><span>Dietary Fiber</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '3.5'} g</b></div>
+              <div className="flex justify-between px-1 py-0.2"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
+            </div>
+          </div>
+
+          {product.food_packaging?.ingredients && (
+            <div className="w-full text-left text-[6px] text-black line-clamp-1 border-t border-black pt-0.5 shrink-0">
+              <b>Ing:</b> {ingredients}
+            </div>
+          )}
+
+          <div className="w-full text-[7.5px] font-black uppercase border-t border-black pt-0.5 text-black shrink-0">
+            <div className="flex justify-between">
+              <span>MRP: ₹{effectiveMrp}</span>
+              <span className="font-black text-black">SALE: ₹{effectiveSale}</span>
+            </div>
+            <div className="flex justify-between text-[6.5px] font-bold text-black">
+              <span>PKD: {packedOn}</span>
+              <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best before 60 days'}</span>
+            </div>
+            {product.food_packaging?.fssai_license_number && (
+              <div className="text-[6px] text-black tracking-wider text-left font-mono">
+                FSSAI Lic: {product.food_packaging.fssai_license_number}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // 6. 60x100 mm Tall Master Sticker (2.4"x4")
+    if (size === '60x100') {
+      return (
+        <div className={containerClasses}>
+          <div className="w-full flex justify-between items-center border-b border-black pb-1 shrink-0 text-black">
+            <div className="text-left">
+              <span className="text-[10px] font-black uppercase truncate max-w-[140px] block">{effectiveCompany}</span>
+              <div className="text-[7px] text-black font-mono font-bold">
+                SKU: {product.sku || 'SKU-001'}
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-xs border border-black flex items-center justify-center shrink-0">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
+                </span>
+                <span className="text-[9px] font-black text-black">{netWeight}</span>
+              </div>
+            </div>
+          </div>
+          
+          <span className="text-[12px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 shrink-0 text-black">
+            {product.name}
+          </span>
+
+          {renderBarcodeBox(22)}
+
+          {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
+          <div className="w-full text-left bg-white p-1 rounded border border-black my-0.5 space-y-0.5 shrink-0 text-black">
+            <div className="text-[7.5px] font-black uppercase tracking-wider text-black border-b border-black pb-0.5 flex justify-between items-center">
+              <span>FSSAI Lic. No: <b className="font-mono text-black">{effectiveFssai}</b></span>
+              <span className="text-[6.5px] font-black text-black">{isVeg ? '🌱 100% VEG' : 'NON-VEG'}</span>
+            </div>
+            <div className="text-[7px] leading-tight text-black">
+              <b>Address:</b> {effectiveAddress}
+            </div>
+            <div className="text-[7px] leading-tight text-black">
+              <b>Ingredients:</b> {effectiveIngredients}
+            </div>
+          </div>
+
+          {/* Detailed Nutrition Table for 60x100 */}
+          <div className="w-full border border-black text-[7.5px] text-left leading-tight my-0.5 rounded-xs overflow-hidden shrink-0 text-black">
+            <div className="bg-black text-white px-1.5 py-0.5 font-black text-[8px] flex justify-between">
+              <span>NUTRITIONAL FACTS</span>
+              <span>Per {product.nutrition_facts?.serving_size || '100g'}</span>
+            </div>
+            <div className="divide-y divide-black bg-white text-black">
+              <div className="flex justify-between px-1.5 py-0.5"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
+              <div className="flex justify-between px-1.5 py-0.5"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
+              <div className="flex justify-between px-1.5 py-0.5"><span>Total Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
+              <div className="flex justify-between px-1.5 py-0.5 text-[6.5px] pl-3 text-black"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
+              <div className="flex justify-between px-1.5 py-0.5"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
+              <div className="flex justify-between px-1.5 py-0.5"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
+            </div>
+          </div>
+
+          <div className="w-full text-[8.5px] font-black uppercase border-t border-black pt-1 mt-0.5 shrink-0 text-black">
+            <div className="flex justify-between">
+              <span>MRP: ₹{effectiveMrp}</span>
+              <span className="font-black text-black">SALE: ₹{effectiveSale}</span>
+            </div>
+            <div className="flex justify-between text-[7px] font-bold text-black mt-0.5">
+              <span>PKD: {packedOn}</span>
+              <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best before 60 days'}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 7. 100x75 mm Food Master Sticker (4"x3")
+    if (size === '100x75') {
+      return (
+        <div className={containerClasses}>
+          <div className="w-full flex justify-between items-center border-b border-black pb-1 shrink-0 text-black">
+            <div className="text-left">
+              <div className="text-[11px] font-black uppercase tracking-wider">{effectiveCompany}</div>
+              <div className="text-[7.5px] text-black font-mono font-bold">SKU: {product.sku || 'SKU-001'}</div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 rounded-xs border border-black flex items-center justify-center shrink-0">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
+              </span>
+              <span className="text-[9px] font-black bg-white px-1.5 py-0.5 rounded border border-black">
+                {netWeight}
+              </span>
+            </div>
+          </div>
+
+          <div className="w-full grid grid-cols-2 gap-2 my-1 items-start text-black">
+            {/* Left: Product & Barcode in the Box */}
+            <div className="flex flex-col items-center justify-start text-left">
+              <span className="text-[11px] font-black uppercase tracking-tight leading-tight w-full truncate mb-0.5 text-black">
+                {product.name}
+              </span>
+              {renderBarcodeBox(20)}
+              {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
+              <div className="w-full bg-white border border-black rounded p-1.5 space-y-0.5 text-left my-1 text-black">
+                <div className="text-[7.5px] font-black text-black border-b border-black pb-0.5 flex justify-between items-center">
+                  <span>FSSAI Lic. No: <b className="font-mono text-black">{effectiveFssai}</b></span>
+                </div>
+                <div className="text-[7px] text-black leading-tight line-clamp-2">
+                  <b>Address:</b> {effectiveAddress}
+                </div>
+                <div className="text-[7px] text-black leading-tight line-clamp-2">
+                  <b>Ingredients:</b> {effectiveIngredients}
+                </div>
+              </div>
+              <div className="text-[8px] font-black text-black w-full space-y-0.5 pt-0.5 border-t border-black">
+                <div className="flex justify-between"><span>MRP: <b>₹{effectiveMrp}</b></span> <span className="font-black text-black">SALE: <b>₹{effectiveSale}</b></span></div>
+                <div className="flex justify-between text-[7px] text-black font-bold"><span>PKD: {packedOn}</span> <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best: 90 Days'}</span></div>
+              </div>
+            </div>
+
+            {/* Right: Nutrition Table */}
+            <div className="border border-black rounded overflow-hidden text-[7px] text-left text-black">
+              <div className="bg-black text-white px-1.5 py-0.5 font-black text-[7.5px] flex justify-between">
+                <span>NUTRITIONAL INFORMATION</span>
+                <span>(Per 100g)</span>
+              </div>
+              <div className="divide-y divide-black bg-white text-black px-1 py-0.5">
+                <div className="flex justify-between py-0.2"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '460'} kcal</b></div>
+                <div className="flex justify-between py-0.2"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.8'} g</b></div>
+                <div className="flex justify-between py-0.2"><span>Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '64'} g</b></div>
+                <div className="flex justify-between py-0.2 text-[6.5px] pl-2 text-black"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
+                <div className="flex justify-between py-0.2"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '16'} g</b></div>
+                <div className="flex justify-between py-0.2"><span>Dietary Fiber</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '4.2'} g</b></div>
+                <div className="flex justify-between py-0.2"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '310'} mg</b></div>
+              </div>
+              <div className="bg-white p-1 text-[6.5px] text-black border-t border-black font-bold">
+                <div>Store in airtight container after opening.</div>
+                <div>Customer Care: <b>ops@kokanasthafaral.com</b></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full text-[6.5px] text-black text-left border-t border-black pt-0.5 flex justify-between items-center shrink-0 font-bold">
+            <span className="font-black text-black">Quality Certified</span>
+            <span>Made in India</span>
+          </div>
+        </div>
+      );
+    }
+
+    // 8. 100x100 mm Big Box Sticker (4"x4")
+    if (size === '100x100') {
+      return (
+        <div className={containerClasses}>
+          <div className="w-full flex justify-between items-center border-b border-black pb-1 shrink-0 text-black">
+            <div className="text-left">
+              <div className="text-[12px] font-black uppercase tracking-wider">{effectiveCompany}</div>
+              <div className="text-[8px] text-black font-mono font-bold">SKU: {product.sku || 'SKU-001'}</div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-4 h-4 rounded-xs border border-black flex items-center justify-center shrink-0">
+                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
+              </span>
+              <span className="text-[10px] font-black bg-white px-2 py-0.5 rounded border border-black">
+                {netWeight}
+              </span>
+            </div>
+          </div>
+
+          <span className="text-[13px] font-black uppercase tracking-tight leading-tight w-full my-0.5 truncate shrink-0 text-black">
+            {product.name}
+          </span>
+
+          {renderBarcodeBox(24)}
+
+          {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
+          <div className="w-full bg-white border border-black rounded p-1.5 space-y-0.5 text-left my-1 text-black shrink-0">
+            <div className="flex justify-between items-center text-[8.5px] font-black border-b border-black pb-0.5 text-black">
+              <span>FSSAI Lic. No: <b className="font-mono text-black">{effectiveFssai}</b></span>
+              <span className="text-[7.5px] bg-white text-black px-1.5 py-0.2 rounded border border-black font-black">
+                {isVeg ? '🌱 100% Vegetarian' : 'Non-Vegetarian'}
+              </span>
+            </div>
+            <div className="text-[7.5px] text-black leading-tight">
+              <b>Packer & Mfg Address:</b> {effectiveAddress}
+            </div>
+            <div className="text-[7.5px] text-black leading-tight">
+              <b>Ingredients:</b> {effectiveIngredients}
+            </div>
+          </div>
+
+          {/* Detailed Full Box Nutrition Table */}
+          <div className="w-full border border-black rounded overflow-hidden text-[7.5px] text-left my-0.5 shrink-0 text-black">
+            <div className="bg-black text-white px-2 py-0.5 font-black text-[8px] flex justify-between">
+              <span>NUTRITION FACTS & COMPLIANCE</span>
+              <span>Per 100g Serving</span>
+            </div>
+            <div className="grid grid-cols-2 divide-x divide-black bg-white text-black p-1 gap-x-2">
+              <div className="space-y-0.5">
+                <div className="flex justify-between"><span>Energy (Calories):</span><b>{product.nutrition_facts?.energy_kcal ?? '480'} kcal</b></div>
+                <div className="flex justify-between"><span>Total Protein:</span><b>{product.nutrition_facts?.protein_g ?? '11'} g</b></div>
+                <div className="flex justify-between"><span>Carbohydrates:</span><b>{product.nutrition_facts?.carbohydrates_g ?? '62'} g</b></div>
+                <div className="flex justify-between text-black pl-1 text-[6.5px]"><span>- Added Sugars:</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
+              </div>
+              <div className="space-y-0.5 pl-1.5">
+                <div className="flex justify-between"><span>Total Fat:</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
+                <div className="flex justify-between text-black pl-1 text-[6.5px]"><span>- Saturated Fat:</span><b>{product.nutrition_facts?.saturated_fat_g ?? '4.5'} g</b></div>
+                <div className="flex justify-between"><span>Dietary Fiber:</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '5.0'} g</b></div>
+                <div className="flex justify-between"><span>Sodium:</span><b>{product.nutrition_facts?.sodium_mg ?? '320'} mg</b></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full text-[8px] font-black uppercase border-t border-black pt-1 shrink-0 text-black">
+            <div className="flex justify-between items-center text-[10px]">
+              <div>MRP: <b className="text-black line-through">₹{effectiveMrp}</b></div>
+              <div>SPECIAL OFFER: <b className="text-black text-sm font-black">₹{effectiveSale}</b></div>
+            </div>
+            <div className="flex justify-between text-[7px] text-black mt-0.5 font-bold">
+              <span>PKD DATE: {packedOn}</span>
+              <span>EXPIRY DATE: {expiryOn || 'Best before 90 days from packing'}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 9. 100x50 mm Box/Pack Sticker (4"x2")
+    if (size === '100x50') {
+      return (
+        <div className={containerClasses}>
+          {/* Top Header */}
+          <div className="w-full flex justify-between items-center border-b border-black pb-0.5 shrink-0 text-black">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider">{effectiveCompany}</span>
+              <span className="text-[7.5px] font-mono bg-white px-1 py-0.2 rounded border border-black font-bold">SKU: {product.sku || 'SKU-001'}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-xs border border-black flex items-center justify-center shrink-0">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
+              </span>
+              <span className="text-[8.5px] font-black">{netWeight}</span>
+            </div>
+          </div>
+
+          {/* Product Name */}
+          <span className="text-[11px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 shrink-0 text-black">
+            {product.name}
+          </span>
+
+          {/* 2-Column Split: Left = Barcode in Box + Under-barcode details, Right = Pricing + Dates */}
+          <div className="w-full grid grid-cols-12 gap-2 my-0.5 items-start text-black">
+            <div className="col-span-7 flex flex-col items-center text-left">
+              {renderBarcodeBox(18)}
+              {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
+              <div className="w-full mt-1 bg-white p-1 rounded border border-black text-left space-y-0.5 text-black">
+                <div className="text-[7px] font-black text-black flex items-center justify-between">
+                  <span>FSSAI Lic. No: <b className="font-mono text-black">{effectiveFssai}</b></span>
+                </div>
+                <div className="text-[6.5px] text-black leading-tight line-clamp-1">
+                  <b>Address:</b> {effectiveAddress}
+                </div>
+                <div className="text-[6.5px] text-black leading-tight line-clamp-1">
+                  <b>Ingredients:</b> {effectiveIngredients}
+                </div>
+              </div>
+            </div>
+
+            <div className="col-span-5 flex flex-col justify-between h-full border-l border-black pl-1.5 text-left text-black">
+              <div className="bg-white p-1 rounded border border-black space-y-0.5">
+                <div className="flex justify-between items-center text-[7.5px]">
+                  <span className="font-bold">MRP:</span>
+                  <span className="line-through font-bold">₹{effectiveMrp}</span>
+                </div>
+                <div className="flex justify-between items-center text-[8.5px]">
+                  <span className="font-black">SALE:</span>
+                  <span className="font-black text-[10px]">₹{effectiveSale}</span>
+                </div>
+              </div>
+              <div className="text-[6.5px] text-black space-y-0.5 pt-0.5 font-bold">
+                <div><b>PKD:</b> {packedOn}</div>
+                <div><b>EXP:</b> {expiryOn || 'Best before 90 days'}</div>
+                <div className="font-black truncate">Mfg: {effectiveCompany}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Bar */}
+          <div className="w-full flex justify-between items-center text-[6.5px] font-black uppercase border-t border-black pt-0.5 text-black shrink-0">
+            <span>Customer Care: +91 98200 12345</span>
+            <span>Store in Cool & Dry Place</span>
+          </div>
+        </div>
+      );
+    }
+
+    // 10. Standard 220px Card
+    if (size === 'standard') {
+      return (
+        <div className={containerClasses}>
+          <div className="text-[9px] font-black uppercase mb-0.5 text-black shrink-0">{effectiveCompany}</div>
+          <span className="text-[11px] font-black uppercase mb-1 leading-tight text-black shrink-0">{product.name}</span>
+          {renderBarcodeBox(24)}
+          <div className="flex flex-col items-center gap-0.5 mt-1 font-black uppercase text-[9.5px] w-full border-t border-black pt-1 text-black shrink-0">
+            <div className="flex justify-between w-full px-2">
+              <span>MRP: ₹{effectiveMrp}</span>
+              <span className="font-black text-black">SALE: ₹{effectiveSale}</span>
+            </div>
+            <div className="text-[7.5px] font-bold text-black">
+              PKD: {packedOn} {expiryOn ? `| EXP: ${expiryOn}` : ''}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 11. 50x25 mm Standard Retail Label (Standard 2"x1" Thermal Sticker Roll - Double Line / 2-Up)
+    if (size === '50x25') {
+      return (
+        <div className={containerClasses} style={{ width: '100%', height: '100%', padding: '0.8mm', boxSizing: 'border-box' }}>
+          {/* Top Brand / Company Header with optional Net Wt / Unit */}
+          <div className="w-full text-black shrink-0" style={{ width: '100%', flexShrink: 0 }}>
+            {effectiveCompany ? (
+              <div className="flex justify-between items-center px-0.5 leading-none mb-0.5" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1px' }}>
+                <span className="text-[7.5px] font-black uppercase tracking-wider truncate max-w-[125px]" style={{ fontSize: '7.5px', fontWeight: 900, textTransform: 'uppercase', maxWidth: '125px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {effectiveCompany}
+                </span>
+                {netWeight && (
+                  <span className="text-[6.5px] font-black uppercase bg-black text-white px-1 py-0.2 rounded-xs shrink-0" style={{ fontSize: '6.5px', fontWeight: 900, backgroundColor: '#000000', color: '#ffffff', padding: '1px 3px', borderRadius: '2px', flexShrink: 0 }}>
+                    {netWeight}
+                  </span>
+                )}
+              </div>
+            ) : null}
+            <div className="text-[8.5px] font-black uppercase tracking-tight leading-none truncate w-full px-0.5 border-b border-black pb-0.5 flex justify-between items-center" style={{ fontSize: effectiveCompany ? '8px' : '9px', fontWeight: 900, textTransform: 'uppercase', width: '100%', borderBottom: '1px solid #000000', paddingBottom: '1px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="truncate" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</span>
+              {!effectiveCompany && netWeight && (
+                <span className="text-[6.5px] font-black uppercase bg-black text-white px-1 py-0.2 rounded-xs shrink-0 ml-1" style={{ fontSize: '6.5px', fontWeight: 900, backgroundColor: '#000000', color: '#ffffff', padding: '1px 3px', borderRadius: '2px', flexShrink: 0 }}>
+                  {netWeight}
+                </span>
+              )}
+            </div>
+          </div>
+          
+          {/* CENTER: Barcode in the Box */}
+          {renderBarcodeBox(effectiveCompany ? 13 : 15)}
+
+          {/* Bottom Pricing & Packaging Info */}
+          <div className="w-full text-[7.5px] font-black leading-none pt-0.5 uppercase border-t border-black text-black shrink-0" style={{ width: '100%', borderTop: '1px solid #000000', paddingTop: '1px', flexShrink: 0 }}>
+            <div className="flex justify-between items-center px-0.5 mb-0.5" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1px' }}>
+              <span style={{ fontSize: '7.5px', fontWeight: 900 }}>MRP: <b style={{ fontWeight: 900 }}>₹{effectiveMrp}</b></span>
+              <span className="font-black text-black text-[8px]" style={{ fontSize: '8px', fontWeight: 900, color: '#000000' }}>SALE: ₹{effectiveSale}</span>
+            </div>
+            <div className="flex justify-between items-center px-0.5 text-[6.5px] font-bold text-black" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '6.5px', fontWeight: 700, color: '#000000' }}>
+              <span>PKD: {packedOn}</span>
+              <span>{expiryOn ? `EXP: ${expiryOn}` : (product.food_packaging?.best_before_days ? `BEST: ${product.food_packaging.best_before_days}D` : 'BEST: 90 DAYS')}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 12. Default / 40x25 mm Retail Roll Label
+    return (
+      <div className={containerClasses}>
+        <div className="w-full text-black shrink-0">
+          {effectiveCompany && <div className="text-[7px] font-black uppercase leading-none truncate mb-0.5">{effectiveCompany}</div>}
+          <div className="text-[8px] font-black uppercase tracking-tight leading-none truncate w-full px-0.5 border-b border-black pb-0.5">
+            {product.name}
+          </div>
+        </div>
+        
+        {/* BARCODE IN THE BOX */}
+        {renderBarcodeBox(effectiveCompany ? (size === '40x25' ? 14 : 15) : (size === '40x25' ? 16 : 17))}
+
+        <div className="w-full text-[7.5px] font-black leading-none pt-0.5 uppercase border-t border-black text-black shrink-0">
+          <div className="flex justify-between items-center px-0.5 mb-0.5">
+            <span>MRP: ₹{effectiveMrp}</span>
+            <span className="font-black text-black">SALE: ₹{effectiveSale}</span>
+          </div>
+          <div className="flex justify-between items-center px-0.5 text-[6.5px] font-bold text-black">
+            <span>PKD: {packedOn}</span>
+            <span>{expiryOn ? `EXP: ${expiryOn}` : ''}</span>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const stickerMarkup = renderStickerContent();
@@ -1202,13 +1162,16 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [printLabelSize, setPrintLabelSize] = useState<'50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard'>('50x25');
   const [printLabelsPerRow, setPrintLabelsPerRow] = useState<1 | 2>(2);
   const [printOrientation, setPrintOrientation] = useState<'auto' | 'landscape' | 'portrait' | 'rotated90'>('auto');
+  const [printBoxBorder, setPrintBoxBorder] = useState(true);
+  const [printBarcodeFrame, setPrintBarcodeFrame] = useState(true);
   const [showPrintHelp, setShowPrintHelp] = useState(false);
   const [printIncludeNutrition, setPrintIncludeNutrition] = useState(true);
+  const [printIncludeCompanyName, setPrintIncludeCompanyName] = useState<boolean>(false);
   const [printSalePrice, setPrintSalePrice] = useState<number | string>('');
   const [printMrp, setPrintMrp] = useState<number | string>('');
   const [printPackedOn, setPrintPackedOn] = useState(new Date().toISOString().split('T')[0]);
   const [printExpiryOn, setPrintExpiryOn] = useState('');
-  const [printCompanyName, setPrintCompanyName] = useState('KOKANASTHA');
+  const [printCompanyName, setPrintCompanyName] = useState('');
   const [printFssaiNumber, setPrintFssaiNumber] = useState('');
   const [printAddress, setPrintAddress] = useState('');
   const [printIngredients, setPrintIngredients] = useState('');
@@ -1224,7 +1187,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       setPrintExpiryOn(expiryDate.toISOString().split('T')[0]);
       
       const currentBiz = dbStore.getBusiness(businessId);
-      setPrintCompanyName(currentBiz?.name || 'KOKANASTHA');
+      setPrintCompanyName(currentBiz?.name || '');
 
       const initialFssai = printingBarcodeProduct.food_packaging?.fssai_license 
         || (printingBarcodeProduct.food_packaging as any)?.fssai_license_number 
@@ -2277,6 +2240,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
   const handleOpenBarcodeModal = (prod: Product) => {
     setPrintingBarcodeProduct(prod);
+    setPrintLabelSize('50x25');
+    setPrintLabelsPerRow(2);
+    setPrintIncludeCompanyName(false);
     setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
     setPrintSalePrice(prod.selling_price !== undefined && prod.selling_price !== null ? prod.selling_price : '');
     setPrintMrp(prod.mrp !== undefined && prod.mrp !== null ? prod.mrp : (prod.selling_price || ''));
@@ -2360,28 +2326,28 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     /* EXACT PAPER SIZE SPECIFICATION - ENFORCES CUSTOM THERMAL ROLL SIZE INSTEAD OF A4 */
     @page {
       size: ${pageDims.cssPageSize} !important;
-      margin: 0 !important;
-      padding: 0 !important;
+      margin: 0mm !important;
+      padding: 0mm !important;
     }
-    @page :first { margin: 0 !important; }
-    @page :left { margin: 0 !important; }
-    @page :right { margin: 0 !important; }
+    @page :first { margin: 0mm !important; }
+    @page :left { margin: 0mm !important; }
+    @page :right { margin: 0mm !important; }
 
     @media print {
       @page {
         size: ${pageDims.cssPageSize} !important;
-        margin: 0 !important;
-        padding: 0 !important;
+        margin: 0mm !important;
+        padding: 0mm !important;
       }
-      @page :first { margin: 0 !important; }
-      @page :left { margin: 0 !important; }
-      @page :right { margin: 0 !important; }
+      @page :first { margin: 0mm !important; }
+      @page :left { margin: 0mm !important; }
+      @page :right { margin: 0mm !important; }
       .no-print, [class*="no-print"], header, .popup-header, .print-guidance-banner {
         display: none !important;
       }
       html, body {
-        margin: 0 !important;
-        padding: 0 !important;
+        margin: 0mm !important;
+        padding: 0mm !important;
         background: #ffffff !important;
         color: #000000 !important;
         width: 100% !important;
@@ -2454,6 +2420,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       background: #1e1b4b;
       color: #818cf8;
       border: 1px solid #6366f1;
+    }
+    .badge-box {
+      background: #1e293b;
+      color: #38bdf8;
+      border: 1px solid #0284c7;
     }
     .btn-print {
       background: linear-gradient(135deg, #4f46e5, #3b82f6);
@@ -2539,7 +2510,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       border: none !important;
       display: flex !important;
       flex-direction: column !important;
-      justify-content: space-between !important;
+      justify-content: center !important;
       align-items: center !important;
       text-align: center !important;
       overflow: hidden !important;
@@ -2552,19 +2523,41 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       visibility: hidden !important;
       opacity: 0 !important;
     }
+    .barcode-label-sticker img,
     .barcode-label-sticker svg {
       display: block !important;
       margin: 0 auto !important;
       max-width: 100% !important;
+      height: auto !important;
       background-color: #ffffff !important;
-      shape-rendering: crispEdges !important;
+      image-rendering: -webkit-optimize-contrast !important;
+      image-rendering: crisp-edges !important;
+      image-rendering: pixelated !important;
     }
     .barcode-label-sticker svg text {
-      font-family: monospace, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto !important;
-      font-weight: bold !important;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+      font-weight: 700 !important;
+    }
+    .barcode-inner-box {
+      background-color: #ffffff !important;
+      box-sizing: border-box !important;
     }
 
     /* Embedded Standard Utilities for Crisp Thermal Printing */
+    .text-\\[6px\\] { font-size: 6px !important; line-height: 1.1 !important; }
+    .text-\\[6\\.5px\\] { font-size: 6.5px !important; line-height: 1.1 !important; }
+    .text-\\[7px\\] { font-size: 7px !important; line-height: 1.1 !important; }
+    .text-\\[7\\.5px\\] { font-size: 7.5px !important; line-height: 1.1 !important; }
+    .text-\\[8px\\] { font-size: 8px !important; line-height: 1.15 !important; }
+    .text-\\[8\\.5px\\] { font-size: 8.5px !important; line-height: 1.15 !important; }
+    .text-\\[9px\\] { font-size: 9px !important; line-height: 1.2 !important; }
+    .text-\\[10px\\] { font-size: 10px !important; line-height: 1.2 !important; }
+    .text-\\[11px\\] { font-size: 11px !important; line-height: 1.2 !important; }
+    .text-\\[12px\\] { font-size: 12px !important; line-height: 1.2 !important; }
+    .bg-black { background-color: #000000 !important; color: #ffffff !important; }
+    .text-white { color: #ffffff !important; }
+    .max-w-\\[125px\\] { max-width: 125px !important; }
+    .max-w-\\[130px\\] { max-width: 130px !important; }
     .w-full { width: 100% !important; }
     .h-full { height: 100% !important; }
     .flex { display: flex !important; }
@@ -2611,33 +2604,30 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     .my-1 { margin-top: 4px !important; margin-bottom: 4px !important; }
     .mb-0\\.5 { margin-bottom: 2px !important; }
     .mb-1 { margin-bottom: 4px !important; }
-    .border { border: 1px solid #cbd5e1 !important; }
-    .border-b { border-bottom: 1px solid #cbd5e1 !important; }
-    .border-t { border-top: 1px solid #cbd5e1 !important; }
-    .border-b-2 { border-bottom: 2px solid #0f172a !important; }
-    .border-slate-300 { border-color: #cbd5e1 !important; }
-    .border-slate-700 { border-color: #334155 !important; }
-    .border-slate-800 { border-color: #1e293b !important; }
-    .border-slate-900 { border-color: #0f172a !important; }
+    .border { border: 1px solid #000000 !important; }
+    .border-b { border-bottom: 1px solid #000000 !important; }
+    .border-t { border-top: 1px solid #000000 !important; }
+    .border-l { border-left: 1px solid #000000 !important; }
+    .border-r { border-right: 1px solid #000000 !important; }
+    .border-b-2 { border-bottom: 2px solid #000000 !important; }
+    .border-t-2 { border-top: 2px solid #000000 !important; }
+    .border-black { border-color: #000000 !important; }
+    .border-slate-300, .border-slate-400, .border-slate-600, .border-slate-700, .border-slate-800, .border-slate-900 { border-color: #000000 !important; }
+    .barcode-print-portal .border { border: 1px solid #000000 !important; }
+    .barcode-print-portal .border-b { border-bottom: 1px solid #000000 !important; }
+    .barcode-print-portal .border-t { border-top: 1px solid #000000 !important; }
+    .barcode-print-portal .border-l { border-left: 1px solid #000000 !important; }
+    .barcode-print-portal .border-r { border-right: 1px solid #000000 !important; }
+    .barcode-print-portal .divide-black > :not([hidden]) ~ :not([hidden]) { border-color: #000000 !important; }
+    .barcode-print-portal .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: #000000 !important; }
     .bg-white { background-color: #ffffff !important; }
-    .bg-slate-50 { background-color: #f8fafc !important; }
-    .bg-slate-100 { background-color: #f1f5f9 !important; }
+    .bg-slate-50, .bg-slate-100 { background-color: #ffffff !important; }
     .text-black { color: #000000 !important; }
-    .text-slate-900 { color: #0f172a !important; }
-    .text-slate-800 { color: #1e293b !important; }
-    .text-slate-700 { color: #334155 !important; }
-    .text-slate-600 { color: #475569 !important; }
-    .text-slate-500 { color: #64748b !important; }
-    .text-slate-400 { color: #94a3b8 !important; }
-    .text-indigo-700 { color: #4338ca !important; }
-    .text-indigo-600 { color: #4f46e5 !important; }
-    .text-emerald-700 { color: #047857 !important; }
-    .text-emerald-600 { color: #059669 !important; }
-    .text-rose-600 { color: #e11d48 !important; }
-    .border-emerald-600 { border-color: #059669 !important; }
-    .border-rose-600 { border-color: #e11d48 !important; }
-    .bg-emerald-600 { background-color: #059669 !important; }
-    .bg-rose-600 { background-color: #e11d48 !important; }
+    .text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600, .text-slate-500, .text-slate-400, .text-indigo-700, .text-indigo-600, .text-emerald-700, .text-emerald-600 { color: #000000 !important; }
+    .border-emerald-600 { border-color: #000000 !important; }
+    .border-rose-600 { border-color: #000000 !important; }
+    .bg-emerald-600 { background-color: #000000 !important; }
+    .bg-rose-600 { background-color: #000000 !important; }
     .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important; }
     .font-sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important; }
     .font-bold { font-weight: 700 !important; }
@@ -2663,6 +2653,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <span style="font-weight: 900; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #ffffff;">🖨️ Thermal Barcode Print Station</span>
           <span class="popup-badge badge-size">📏 Selected Size: ${sizeInfo.label} (${sizeInfo.desc})</span>
           <span class="popup-badge badge-nota4">✅ Paper Size: ${pageDims.pageWidthMm} × ${pageDims.pageHeightMm} (Not A4)</span>
+          <span class="popup-badge badge-box">📦 Box Border: ${printBoxBorder ? 'Active' : 'Off'}</span>
+          <span class="popup-badge badge-box">🔲 Barcode Box: ${printBarcodeFrame ? 'Active' : 'Off'}</span>
         </div>
         <div style="display: flex; align-items: center; gap: 10px;">
           <button class="btn-print" onclick="try{document.title='';}catch(e){}window.print()">
@@ -2685,7 +2677,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       <!-- Crucial Browser Header/Footer Removal Notice -->
       <div style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #f59e0b; display: flex; align-items: center; gap: 8px; margin-top: 4px;">
         <span style="font-size: 14px;">🚫</span>
-        <span><b>To remove "about:blank", Date, Title & "1/10":</b> In the Print preview on the right ➔ Click <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b> & set <b>Margins: "None"</b>.</span>
+        <span><b>To remove Application Name, Date, "about:blank" & "1/10":</b> In the Print dialog on the right ➔ Click <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b> & set <b>Margins: "None"</b>.</span>
       </div>
     </div>
   </header>
@@ -2699,6 +2691,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     window.addEventListener('load', function() {
       try {
         document.title = '';
+        if (window.opener) {
+          window.opener.document.title = '';
+        }
       } catch(e) {}
       setTimeout(function() {
         try {
@@ -2748,7 +2743,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         frameDoc.write(printHtml);
         frameDoc.close();
         setTimeout(() => {
+          const origDocTitle = document.title;
           try {
+            document.title = '';
             if (printFrame.contentWindow?.document) {
               printFrame.contentWindow.document.title = '';
             }
@@ -2756,11 +2753,21 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
             printFrame.contentWindow?.print();
           } catch (e) {
             console.warn('Iframe print failed, falling back to window.print', e);
+            try { document.title = ''; } catch (err) {}
             window.print();
+          } finally {
+            setTimeout(() => {
+              try { document.title = origDocTitle; } catch (err) {}
+            }, 1200);
           }
         }, 300);
       } else {
+        const origDocTitle = document.title;
+        try { document.title = ''; } catch (err) {}
         window.print();
+        setTimeout(() => {
+          try { document.title = origDocTitle; } catch (err) {}
+        }, 1200);
       }
     }, 100);
   };
@@ -4221,11 +4228,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 max-height: ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm} !important;
                 box-sizing: border-box !important;
                 margin: 0 !important;
-                padding: 0.5mm !important;
+                padding: 0 !important;
                 border: none !important;
                 display: flex !important;
                 flex-direction: column !important;
-                justify-content: space-between !important;
+                justify-content: center !important;
                 align-items: center !important;
                 text-align: center !important;
                 overflow: hidden !important;
@@ -4242,25 +4249,44 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 color: #000000 !important;
               }
 
-              /* SVG Barcode crisp rendering */
+              /* Barcode crisp rendering */
+              .barcode-label-sticker img,
               .barcode-label-sticker svg {
                 visibility: visible !important;
                 display: block !important;
                 margin: 0 auto !important;
                 max-width: 100% !important;
+                height: auto !important;
                 background-color: #ffffff !important;
-                shape-rendering: crispEdges !important;
+                image-rendering: -webkit-optimize-contrast !important;
+                image-rendering: crisp-edges !important;
+                image-rendering: pixelated !important;
               }
 
               .barcode-label-sticker svg text {
-                font-family: monospace, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto !important;
-                font-weight: bold !important;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+                font-weight: 700 !important;
               }
 
-              .barcode-label-sticker svg rect,
-              .barcode-label-sticker svg path {
-                visibility: visible !important;
+              .barcode-inner-box {
+                background-color: #ffffff !important;
+                box-sizing: border-box !important;
               }
+
+              .text-\\[6px\\] { font-size: 6px !important; line-height: 1.1 !important; }
+              .text-\\[6\\.5px\\] { font-size: 6.5px !important; line-height: 1.1 !important; }
+              .text-\\[7px\\] { font-size: 7px !important; line-height: 1.1 !important; }
+              .text-\\[7\\.5px\\] { font-size: 7.5px !important; line-height: 1.1 !important; }
+              .text-\\[8px\\] { font-size: 8px !important; line-height: 1.15 !important; }
+              .text-\\[8\\.5px\\] { font-size: 8.5px !important; line-height: 1.15 !important; }
+              .text-\\[9px\\] { font-size: 9px !important; line-height: 1.2 !important; }
+              .text-\\[10px\\] { font-size: 10px !important; line-height: 1.2 !important; }
+              .text-\\[11px\\] { font-size: 11px !important; line-height: 1.2 !important; }
+              .text-\\[12px\\] { font-size: 12px !important; line-height: 1.2 !important; }
+              .bg-black { background-color: #000000 !important; color: #ffffff !important; }
+              .text-white { color: #ffffff !important; }
+              .max-w-\\[125px\\] { max-width: 125px !important; }
+              .max-w-\\[130px\\] { max-width: 130px !important; }
             }
           `}</style>
 
@@ -4404,31 +4430,38 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
                   {/* Columns Per Row */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-                      Thermal Roll Columns (Labels Across / Row)
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                        Thermal Roll Columns (Labels Across / Row)
+                      </label>
+                      <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400">
+                        {printLabelsPerRow === 1 ? '50mm Width (1-Up Single Roll)' : '104mm Width (2-Up Dual Roll)'}
+                      </span>
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => setPrintLabelsPerRow(2)}
-                        className={`py-2 px-3 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                          printLabelsPerRow === 2
-                            ? 'bg-indigo-600 text-white shadow-xs'
+                        onClick={() => setPrintLabelsPerRow(1)}
+                        className={`py-2 px-3 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                          printLabelsPerRow === 1
+                            ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
                             : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        <span>✌️ 2-Up Roll (Dual Column - 2 Across)</span>
+                        <span className="flex items-center gap-1.5 font-black">☝️ 1-Up Roll (Single)</span>
+                        <span className={`text-[8.5px] ${printLabelsPerRow === 1 ? 'text-indigo-200' : 'text-slate-400'}`}>1 Across • 50mm Roll Width</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setPrintLabelsPerRow(1)}
-                        className={`py-2 px-3 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                          printLabelsPerRow === 1
-                            ? 'bg-indigo-600 text-white shadow-xs'
+                        onClick={() => setPrintLabelsPerRow(2)}
+                        className={`py-2 px-3 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                          printLabelsPerRow === 2
+                            ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
                             : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        <span>☝️ 1-Up Roll (Single Column - 1 Across)</span>
+                        <span className="flex items-center gap-1.5 font-black">✌️ 2-Up Roll (Dual)</span>
+                        <span className={`text-[8.5px] ${printLabelsPerRow === 2 ? 'text-indigo-200' : 'text-slate-400'}`}>2 Across • 104mm Roll Width</span>
                       </button>
                     </div>
                   </div>
@@ -4492,6 +4525,49 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         <span className="text-[10px] font-bold">Swap W/H</span>
                         <span className={`text-[8px] ${printOrientation === 'rotated90' ? 'text-amber-100' : 'text-slate-400'}`}>Sideways Fix</span>
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Box & Border Framing Controls ("Barcode in the Box") */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                        <span>📦 Label Box & Framing Style</span>
+                        <span className="text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-full">
+                          Professional Print
+                        </span>
+                      </label>
+                      <span className="text-[9px] text-slate-500 font-mono">100% Crisp Thermal Alignment</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label className={`p-2 rounded-lg border flex items-center gap-2 cursor-pointer transition-all ${
+                        printBoxBorder ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-700' : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600'
+                      }`}>
+                        <input 
+                          type="checkbox"
+                          checked={printBoxBorder}
+                          onChange={(e) => setPrintBoxBorder(e.target.checked)}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-600 cursor-pointer"
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-[10.5px] font-bold text-slate-900 dark:text-slate-100">📦 Label Outer Box Border</span>
+                          <span className="text-[8.5px] text-slate-500 dark:text-slate-400">Crisp solid black boundary outline around sticker</span>
+                        </div>
+                      </label>
+                      <label className={`p-2 rounded-lg border flex items-center gap-2 cursor-pointer transition-all ${
+                        printBarcodeFrame ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-700' : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600'
+                      }`}>
+                        <input 
+                          type="checkbox"
+                          checked={printBarcodeFrame}
+                          onChange={(e) => setPrintBarcodeFrame(e.target.checked)}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-600 cursor-pointer"
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-[10.5px] font-bold text-slate-900 dark:text-slate-100">🔲 Barcode in the Box</span>
+                          <span className="text-[8.5px] text-slate-500 dark:text-slate-400">Enclose barcode in dedicated framed box</span>
+                        </div>
+                      </label>
                     </div>
                   </div>
 
@@ -4626,7 +4702,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     <ThermalBarcodeSticker
                       product={printingBarcodeProduct}
                       size={printLabelSize}
-                      companyName={printCompanyName}
+                      companyName={printIncludeCompanyName ? printCompanyName : ''}
+                      showCompanyName={printIncludeCompanyName}
                       mrp={printMrp}
                       salePrice={printSalePrice}
                       packedOn={printPackedOn}
@@ -4636,12 +4713,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       ingredients={printIngredients}
                       orientation={printOrientation}
                       mode="preview"
+                      boxBorder={printBoxBorder}
+                      barcodeFrame={printBarcodeFrame}
                     />
                     <div className="text-[9px] text-slate-500 font-bold px-0.5">2-Up</div>
                     <ThermalBarcodeSticker
                       product={printingBarcodeProduct}
                       size={printLabelSize}
-                      companyName={printCompanyName}
+                      companyName={printIncludeCompanyName ? printCompanyName : ''}
+                      showCompanyName={printIncludeCompanyName}
                       mrp={printMrp}
                       salePrice={printSalePrice}
                       packedOn={printPackedOn}
@@ -4651,6 +4731,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       ingredients={printIngredients}
                       orientation={printOrientation}
                       mode="preview"
+                      boxBorder={printBoxBorder}
+                      barcodeFrame={printBarcodeFrame}
                     />
                   </div>
                 ) : (
@@ -4658,7 +4740,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     <ThermalBarcodeSticker
                       product={printingBarcodeProduct}
                       size={printLabelSize}
-                      companyName={printCompanyName}
+                      companyName={printIncludeCompanyName ? printCompanyName : ''}
+                      showCompanyName={printIncludeCompanyName}
                       mrp={printMrp}
                       salePrice={printSalePrice}
                       packedOn={printPackedOn}
@@ -4668,6 +4751,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       ingredients={printIngredients}
                       orientation={printOrientation}
                       mode="preview"
+                      boxBorder={printBoxBorder}
+                      barcodeFrame={printBarcodeFrame}
                     />
                   </div>
                 )}
@@ -4744,12 +4829,31 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Brand / Company Name</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Brand / Company Name</label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input 
+                        type="checkbox"
+                        checked={printIncludeCompanyName}
+                        onChange={(e) => setPrintIncludeCompanyName(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-600 cursor-pointer"
+                      />
+                      <span className="text-[9.5px] font-bold text-indigo-600 dark:text-indigo-400">
+                        Print on Label
+                      </span>
+                    </label>
+                  </div>
                   <input 
                     type="text"
+                    disabled={!printIncludeCompanyName}
                     value={printCompanyName}
                     onChange={(e) => setPrintCompanyName(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                    placeholder="Unchecked = No company name printed"
+                    className={`w-full px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+                      printIncludeCompanyName 
+                        ? 'bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200 dark:border-slate-700' 
+                        : 'bg-slate-100 dark:bg-slate-800/40 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60'
+                    }`}
                   />
                 </div>
                 <div className="space-y-1">
@@ -4881,7 +4985,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                 <ThermalBarcodeSticker
                                   product={printingBarcodeProduct}
                                   size={printLabelSize}
-                                  companyName={printCompanyName}
+                                  companyName={printIncludeCompanyName ? printCompanyName : ''}
+                                  showCompanyName={printIncludeCompanyName}
                                   mrp={printMrp}
                                   salePrice={printSalePrice}
                                   packedOn={printPackedOn}
@@ -4891,6 +4996,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                   ingredients={printIngredients}
                                   orientation={printOrientation}
                                   mode="print"
+                                  boxBorder={printBoxBorder}
+                                  barcodeFrame={printBarcodeFrame}
                                 />
                               </div>
                             ))}
@@ -4914,11 +5021,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     /* A4 Sheet Grid */
                     <div className="grid grid-cols-3 gap-4 p-4 bg-white w-[210mm]">
                       {Array.from({ length: printLabelCount }).map((_, idx) => (
-                        <div key={idx} className="barcode-label-sticker p-2 border border-slate-300 rounded bg-white flex flex-col items-center">
+                        <div key={idx} className="barcode-label-sticker p-2 border border-black rounded bg-white flex flex-col items-center">
                           <ThermalBarcodeSticker
                             product={printingBarcodeProduct}
                             size="standard"
-                            companyName={printCompanyName}
+                            companyName={printIncludeCompanyName ? printCompanyName : ''}
+                            showCompanyName={printIncludeCompanyName}
                             mrp={printMrp}
                             salePrice={printSalePrice}
                             packedOn={printPackedOn}
@@ -4928,6 +5036,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                             ingredients={printIngredients}
                             orientation={printOrientation}
                             mode="print"
+                            boxBorder={printBoxBorder}
+                            barcodeFrame={printBarcodeFrame}
                           />
                         </div>
                       ))}

@@ -122,19 +122,18 @@ export default function App() {
 
   useEffect(() => {
     // Sanitize old localStorage data that violates UUID schema
-    
     const profiles = safeStorage.getItem('omnipack_erp_profiles');
     const cats = safeStorage.getItem('omnipack_erp_categories');
     
-    if (
-        (cats && cats.includes('"cat-')) || 
-        (profiles && profiles.includes('"admin_user"'))
-    ) {
-       console.log('Clearing old non-UUID local storage...');
-       safeStorage.pruneNonEssential();
-       window.location.reload();
+    if (cats && cats.includes('"cat-')) {
+       console.log('Clearing old non-UUID categories from local storage...');
+       safeStorage.removeItem('omnipack_erp_categories');
+       safeStorage.removeItem('omnipack_erp_products');
     }
-
+    if (profiles && profiles.includes('"admin_user"')) {
+       console.log('Clearing old non-UUID profiles from local storage...');
+       safeStorage.removeItem('omnipack_erp_profiles');
+    }
   }, []);
 
   // Main content ref for scroll tracking
@@ -147,8 +146,8 @@ export default function App() {
   const [syncTick, setSyncTick] = useState(0);
   
   // Login flow states
-  const [emailInput, setEmailInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
+  const [emailInput, setEmailInput] = useState('admin@admin.com');
+  const [passwordInput, setPasswordInput] = useState('admin');
   const [authError, setAuthError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   
@@ -526,73 +525,90 @@ export default function App() {
 
   // Restore session on mount
   useEffect(() => {
-    const restoreSession = async () => {
-      const savedSession = safeStorage.getItem('omnipack_session');
-      const deviceId = getDeviceId();
-      let localSessionToken = '';
-      if (savedSession) {
-        try {
-          localSessionToken = JSON.parse(savedSession).sessionToken || '';
-        } catch (e) {}
+    let didFinish = false;
+    const safetyTimer = setTimeout(() => {
+      if (!didFinish) {
+        console.warn("Session restore safety timeout reached. Initializing UI...");
+        setIsInitializing(false);
       }
-      
-      if (isSupabaseConfigured && supabase) {
-        // Sync public business info (logo, cover, QR) so login screen shows uploaded images
-        try {
-          await dbStore.syncFromSupabase();
-        } catch (syncErr) {
-          console.warn("Public business sync notice:", syncErr);
-        }
+    }, 2000);
 
-        // Try supabase session
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session && session.user) {
-            const { data: dbProfile } = await supabase
-              .from('users_profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .maybeSingle();
-                  
-            if (dbProfile) {
-              dbStore.registerDeviceSession(dbProfile.id, deviceId, localSessionToken || dbProfile.session_token || '', dbProfile.business_id);
-              setCurrentUser(dbProfile as UserProfile);
-              await dbStore.syncFromSupabase(dbProfile.business_id);
-              const biz = dbStore.getBusiness(dbProfile.business_id) || dbStore.getBusinesses()[0];
-              setCurrentBusiness(biz);
-              setDbMode('supabase');
-              setIsInitializing(false);
-              return;
+    const restoreSession = async () => {
+      try {
+        const savedSession = safeStorage.getItem('omnipack_session');
+        const deviceId = getDeviceId();
+        let localSessionToken = '';
+        if (savedSession) {
+          try {
+            localSessionToken = JSON.parse(savedSession).sessionToken || '';
+          } catch (e) {}
+        }
+        
+        if (isSupabaseConfigured && supabase) {
+          // Sync public business info (logo, cover, QR) so login screen shows uploaded images
+          try {
+            await dbStore.syncFromSupabase();
+          } catch (syncErr) {
+            console.warn("Public business sync notice:", syncErr);
+          }
+
+          // Try supabase session
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session && session.user) {
+              const { data: dbProfile } = await supabase
+                .from('users_profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .maybeSingle();
+                    
+              if (dbProfile) {
+                dbStore.registerDeviceSession(dbProfile.id, deviceId, localSessionToken || dbProfile.session_token || '', dbProfile.business_id);
+                setCurrentUser(dbProfile as UserProfile);
+                await dbStore.syncFromSupabase(dbProfile.business_id);
+                const biz = dbStore.getBusiness(dbProfile.business_id) || dbStore.getBusinesses()[0];
+                setCurrentBusiness(biz);
+                setDbMode('supabase');
+                setIsInitializing(false);
+                didFinish = true;
+                clearTimeout(safetyTimer);
+                return;
+              }
             }
+          } catch (err) {
+            console.warn("Supabase session restore attempt:", err);
           }
-        } catch (err) {
-          console.warn("Supabase session restore attempt:", err);
         }
-      }
-      
-      // Fallback to local session (always persistent across refresh & inactivity)
-      if (savedSession) {
-        try {
-          const parsed = JSON.parse(savedSession);
-          const { userId, businessId, mode, sessionToken } = parsed;
-          let user = dbStore.getUsers(businessId).find(u => u.id === userId);
-          if (!user) {
-            // Also search all profiles in store cache
-            const allProfiles = dbStore.getUsers();
-            user = allProfiles.find(u => u.id === userId);
+        
+        // Fallback to local session (always persistent across refresh & inactivity)
+        if (savedSession) {
+          try {
+            const parsed = JSON.parse(savedSession);
+            const { userId, businessId, mode, sessionToken } = parsed;
+            let user = dbStore.getUsers(businessId).find(u => u.id === userId);
+            if (!user) {
+              // Also search all profiles in store cache
+              const allProfiles = dbStore.getUsers();
+              user = allProfiles.find(u => u.id === userId);
+            }
+            const biz = dbStore.getBusiness(businessId) || dbStore.getBusinesses()[0];
+            if (user && biz) {
+              dbStore.registerDeviceSession(user.id, deviceId, sessionToken || user.session_token || '', biz.id);
+              setCurrentUser(user);
+              setCurrentBusiness(biz);
+              setDbMode(mode === 'supabase' ? 'supabase' : 'local');
+            }
+          } catch(e) {
+            console.error("Error parsing session:", e);
           }
-          const biz = dbStore.getBusiness(businessId) || dbStore.getBusinesses()[0];
-          if (user && biz) {
-            dbStore.registerDeviceSession(user.id, deviceId, sessionToken || user.session_token || '', biz.id);
-            setCurrentUser(user);
-            setCurrentBusiness(biz);
-            setDbMode(mode === 'supabase' ? 'supabase' : 'local');
-          }
-        } catch(e) {
-          console.error("Error parsing session:", e);
         }
+      } catch (globalRestoreErr) {
+        console.warn("Session restore unexpected error:", globalRestoreErr);
+      } finally {
+        didFinish = true;
+        clearTimeout(safetyTimer);
+        setIsInitializing(false);
       }
-      setIsInitializing(false);
     };
     
     restoreSession();
@@ -1011,6 +1027,61 @@ export default function App() {
     } finally {
       setIsLoggingIn(false);
     }
+  };
+
+  const handleQuickLogin = (email: string, pass: string) => {
+    setEmailInput(email);
+    setPasswordInput(pass);
+    setAuthError('');
+    setIsLoggingIn(true);
+    const deviceId = getDeviceId();
+
+    setTimeout(() => {
+      try {
+        let result = dbStore.login(email, pass, deviceId);
+        
+        // If login failed (e.g. user was not in cache yet), attempt to find or re-seed
+        if (!result.success) {
+          const profiles = dbStore.getUsers();
+          const found = profiles.find(u => u.email.toLowerCase() === email.toLowerCase());
+          if (!found && email === 'admin@admin.com') {
+            const biz = dbStore.getBusinesses()[0];
+            const newUser = dbStore.createUser({
+              id: 'a1111111-1111-1111-1111-111111111111',
+              email: 'admin@admin.com',
+              name: 'System Admin',
+              role: 'Super Admin',
+              business_id: biz.id,
+              active: true,
+              password_hash: 'admin'
+            });
+            result = { success: true, user: newUser, business: biz };
+          }
+        }
+
+        if (result.success && result.user && result.business) {
+          const newSessionToken = result.user.session_token || ('st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11));
+          safeStorage.setItem('omnipack_session', JSON.stringify({
+            userId: result.user.id,
+            businessId: result.business.id,
+            mode: 'local',
+            sessionToken: newSessionToken,
+            deviceId
+          }));
+          dbStore.registerDeviceSession(result.user.id, deviceId, newSessionToken, result.business.id);
+          setCurrentUser(result.user);
+          setCurrentBusiness(result.business);
+          setActiveView('dashboard');
+          triggerToast(`Logged in successfully as ${result.user.name} (${result.user.role})`, 'success');
+        } else {
+          setAuthError(result.error || 'Authentication failed. Please check credentials.');
+        }
+      } catch (err: any) {
+        setAuthError(err?.message || 'Login error occurred.');
+      } finally {
+        setIsLoggingIn(false);
+      }
+    }, 80);
   };
 
   const handleLogout = () => {
@@ -1827,6 +1898,64 @@ export default function App() {
                       )}
                     </button>
                   </form>
+
+                  {/* 1-Click Instant Login for Easy Access */}
+                  <div className="pt-3 space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('admin@admin.com', 'admin')}
+                      disabled={isLoggingIn}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      <Sparkles size={16} className="text-emerald-200" />
+                      <span>⚡ 1-Click Instant Login (Super Admin)</span>
+                    </button>
+
+                    <div className="pt-2 border-t border-slate-100">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 text-center">
+                        Quick Demo Role Sign In
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickLogin('admin@admin.com', 'admin')}
+                          className="px-2 py-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 rounded-lg text-[10px] font-bold transition-all border border-slate-200 text-center cursor-pointer"
+                        >
+                          👑 Admin
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickLogin('sales@kokanastha.com', 'sales')}
+                          className="px-2 py-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 rounded-lg text-[10px] font-bold transition-all border border-slate-200 text-center cursor-pointer"
+                        >
+                          🛒 Sales
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickLogin('pack@kokanastha.com', 'pack')}
+                          className="px-2 py-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 rounded-lg text-[10px] font-bold transition-all border border-slate-200 text-center cursor-pointer"
+                        >
+                          📦 Packing
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-1 text-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          safeStorage.removeItem('omnipack_session');
+                          safeStorage.removeItem('omnipack_erp_categories');
+                          safeStorage.removeItem('omnipack_erp_profiles');
+                          safeStorage.removeItem('omnipack_erp_products');
+                          handleQuickLogin('admin@admin.com', 'admin');
+                        }}
+                        className="text-[10.5px] text-slate-400 hover:text-indigo-600 underline font-medium cursor-pointer transition-colors"
+                      >
+                        Reset Storage & Launch Clean System
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </>
             ) : resetStep === 'email' ? (

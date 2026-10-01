@@ -329,23 +329,31 @@ export const getPrintPageDimensions = (
   let pageWidthNum = wNum;
   let pageHeightNum = hNum;
   let rotationDeg = 0;
+  let cssPageSize = `${wNum}mm ${hNum}mm`;
 
   if (orientation === 'rotated90') {
     pageWidthNum = hNum;
     pageHeightNum = wNum;
     rotationDeg = 90;
+    cssPageSize = `${hNum}mm ${wNum}mm`;
   } else if (orientation === 'landscape') {
+    // Horizontal printing (Wide): formats page horizontally across roll (104x25mm / 50x25mm)
     pageWidthNum = Math.max(wNum, hNum);
     pageHeightNum = Math.min(wNum, hNum);
-    if (isNaturallyPortrait) {
-      rotationDeg = -90;
-    }
+    rotationDeg = 0;
+    cssPageSize = `${pageWidthNum}mm ${pageHeightNum}mm`;
   } else if (orientation === 'portrait') {
+    // Vertical printing (Tall roll feed or tall stickers)
     pageWidthNum = Math.min(wNum, hNum);
     pageHeightNum = Math.max(wNum, hNum);
-    if (isNaturallyLandscape) {
-      rotationDeg = 90;
-    }
+    rotationDeg = 0;
+    cssPageSize = `${pageWidthNum}mm ${pageHeightNum}mm`;
+  } else {
+    // 'auto'
+    pageWidthNum = wNum;
+    pageHeightNum = hNum;
+    rotationDeg = 0;
+    cssPageSize = `${wNum}mm ${hNum}mm`;
   }
 
   const isRotated = rotationDeg !== 0;
@@ -355,7 +363,7 @@ export const getPrintPageDimensions = (
     pageHeightMm: `${pageHeightNum}mm`,
     pageWidthNum,
     pageHeightNum,
-    cssPageSize: `${pageWidthNum}mm ${pageHeightNum}mm`,
+    cssPageSize,
     isRotated,
     rotationDeg,
     baseDims,
@@ -1063,11 +1071,8 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   let rotationDeg = 0;
   if (orientation === 'rotated90') {
     rotationDeg = 90;
-  } else if (orientation === 'landscape' && isNaturallyPortrait) {
-    rotationDeg = -90;
-  } else if (orientation === 'portrait' && isNaturallyLandscape) {
-    rotationDeg = 90;
   }
+  // Upright roll feed for 'portrait', 'auto', and 'landscape' without rotating stickers
 
   const isRotated = rotationDeg !== 0;
 
@@ -1118,10 +1123,10 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           orientation === 'rotated90' 
             ? 'bg-amber-600 text-white border-amber-300 ring-1 ring-amber-400' 
             : orientation === 'landscape'
-              ? 'bg-blue-600 text-white border-blue-300 ring-1 ring-blue-400'
-              : 'bg-emerald-600 text-white border-emerald-300 ring-1 ring-emerald-400'
+              ? 'bg-emerald-600 text-white border-emerald-300 ring-1 ring-emerald-400'
+              : 'bg-indigo-600 text-white border-indigo-300 ring-1 ring-indigo-400'
         }`}>
-          <span>{orientation === 'rotated90' ? '🔄 90° Swapped' : orientation === 'landscape' ? '➡ Wide' : '⬇ Tall'}</span>
+          <span>{orientation === 'rotated90' ? '🔄 90° Swapped' : orientation === 'landscape' ? '➡ Horizontal' : '⬇ Vertical'}</span>
         </div>
       )}
     </div>
@@ -1161,7 +1166,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [printerType, setPrinterType] = useState<'thermal' | 'a4'>('thermal');
   const [printLabelSize, setPrintLabelSize] = useState<'50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard'>('50x25');
   const [printLabelsPerRow, setPrintLabelsPerRow] = useState<1 | 2>(2);
-  const [printOrientation, setPrintOrientation] = useState<'auto' | 'landscape' | 'portrait' | 'rotated90'>('auto');
+  const [printOrientation, setPrintOrientation] = useState<'auto' | 'landscape' | 'portrait' | 'rotated90'>('landscape');
   const [printBoxBorder, setPrintBoxBorder] = useState(true);
   const [printBarcodeFrame, setPrintBarcodeFrame] = useState(true);
   const [showPrintHelp, setShowPrintHelp] = useState(false);
@@ -2242,6 +2247,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setPrintingBarcodeProduct(prod);
     setPrintLabelSize('50x25');
     setPrintLabelsPerRow(2);
+    setPrintOrientation('landscape');
     setPrintIncludeCompanyName(false);
     setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
     setPrintSalePrice(prod.selling_price !== undefined && prod.selling_price !== null ? prod.selling_price : '');
@@ -2260,10 +2266,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     const pageDims = getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType);
     const sizeInfo = LABEL_SIZE_INFO[printLabelSize] || { label: printLabelSize, desc: '' };
     const orientationLabel = 
-      printOrientation === 'auto' ? 'Auto (TSC Default)' :
-      printOrientation === 'landscape' ? 'Landscape (Forced Wide)' :
-      printOrientation === 'portrait' ? 'Portrait (Forced Tall)' :
-      'Swap W/H (Sideways Fix)';
+      printOrientation === 'landscape' ? 'Horizontal (Wide - Fits Box)' :
+      printOrientation === 'portrait' ? 'Vertical (Portrait / Tall Roll)' :
+      printOrientation === 'auto' ? 'Auto (Exact Dimensions)' :
+      '90° Swapped (Sideways Fix)';
 
     triggerToast(`Opening ${count} label(s) for "${printingBarcodeProduct.name}" (${sizeInfo.label} • ${pageDims.pageWidthMm}×${pageDims.pageHeightMm} • ${orientationLabel})...`, 'info');
     dbStore.logActivity(
@@ -2280,6 +2286,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     if (targetMode === 'popup') {
       try {
         popupWindow = window.open('', '_blank', 'width=980,height=820,menubar=no,toolbar=no,location=no,status=no');
+        if (popupWindow) {
+          popupWindow.document.title = '\u200B';
+        }
       } catch (e) {
         console.warn('Popup window blocked or error:', e);
       }
@@ -2299,7 +2308,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title></title>
+  <title>&#8203;</title>
   <style>
     *, *:before, *:after {
       box-sizing: border-box !important;
@@ -2328,6 +2337,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       size: ${pageDims.cssPageSize} !important;
       margin: 0mm !important;
       padding: 0mm !important;
+      @top-left { content: "" !important; display: none !important; }
+      @top-right { content: "" !important; display: none !important; }
+      @top-center { content: "" !important; display: none !important; }
+      @bottom-left { content: "" !important; display: none !important; }
+      @bottom-right { content: "" !important; display: none !important; }
+      @bottom-center { content: "" !important; display: none !important; }
     }
     @page :first { margin: 0mm !important; }
     @page :left { margin: 0mm !important; }
@@ -2338,6 +2353,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         size: ${pageDims.cssPageSize} !important;
         margin: 0mm !important;
         padding: 0mm !important;
+        @top-left { content: "" !important; display: none !important; }
+        @top-right { content: "" !important; display: none !important; }
+        @top-center { content: "" !important; display: none !important; }
+        @bottom-left { content: "" !important; display: none !important; }
+        @bottom-right { content: "" !important; display: none !important; }
+        @bottom-center { content: "" !important; display: none !important; }
       }
       @page :first { margin: 0mm !important; }
       @page :left { margin: 0mm !important; }
@@ -2657,7 +2678,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <span class="popup-badge badge-box">🔲 Barcode Box: ${printBarcodeFrame ? 'Active' : 'Off'}</span>
         </div>
         <div style="display: flex; align-items: center; gap: 10px;">
-          <button class="btn-print" onclick="try{document.title='';}catch(e){}window.print()">
+          <button class="btn-print" onclick="try{document.title='\u200B';if(window.opener&&window.opener.document)window.opener.document.title='\u200B';}catch(e){}window.print()">
             <span>🖨️ Print Now (${pageDims.pageWidthMm} × ${pageDims.pageHeightMm})</span>
           </button>
           <button class="btn-close" onclick="window.close()">
@@ -2674,10 +2695,16 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         <span>•</span>
         <span>Total: <b>${count} Labels</b> (${totalRows} Rows)</span>
       </div>
-      <!-- Crucial Browser Header/Footer Removal Notice -->
-      <div style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #f59e0b; display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-        <span style="font-size: 14px;">🚫</span>
-        <span><b>To remove Application Name, Date, "about:blank" & "1/10":</b> In the Print dialog on the right ➔ Click <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b> & set <b>Margins: "None"</b>.</span>
+      <!-- Print Setup Guidance for Clean Label Feed & Removing Application Name -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 6px; margin-top: 4px;">
+        <div style="background: #fef2f2; color: #991b1b; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #f87171; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 14px;">🚫</span>
+          <span><b>To Remove App Name ("Kokanastha Operation") & Date:</b> In Chrome Print Dialog ➔ Click <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b> & set <b>Margins: "None"</b>.</span>
+        </div>
+        <div style="background: #eff6ff; color: #1e40af; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #60a5fa; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 14px;">📐</span>
+          <span><b>Horizontal Printing (Fit in Box):</b> In Chrome Print Dialog ➔ Set <b>Layout to "LANDSCAPE"</b> (Horizontal). This prints horizontally across the label roll and fits the sticker box very perfectly and professionally! (Paper Size: Default or custom "${pageDims.pageWidthMm} × ${pageDims.pageHeightMm}").</span>
+        </div>
       </div>
     </div>
   </header>
@@ -2690,19 +2717,26 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   <script>
     window.addEventListener('load', function() {
       try {
-        document.title = '';
-        if (window.opener) {
-          window.opener.document.title = '';
+        document.title = '\u200B';
+        if (window.opener && window.opener.document) {
+          window.opener.document.title = '\u200B';
         }
       } catch(e) {}
       setTimeout(function() {
         try {
-          document.title = '';
+          document.title = '\u200B';
           window.print();
         } catch(e) {
           console.warn('Auto-print error:', e);
         }
       }, 350);
+    });
+    window.addEventListener('afterprint', function() {
+      try {
+        if (window.opener && window.opener.document) {
+          window.opener.document.title = 'Kokanastha Operation';
+        }
+      } catch(e) {}
     });
   </script>
 </body>
@@ -2745,29 +2779,29 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         setTimeout(() => {
           const origDocTitle = document.title;
           try {
-            document.title = '';
+            document.title = '\u200B';
             if (printFrame.contentWindow?.document) {
-              printFrame.contentWindow.document.title = '';
+              printFrame.contentWindow.document.title = '\u200B';
             }
             printFrame.contentWindow?.focus();
             printFrame.contentWindow?.print();
           } catch (e) {
             console.warn('Iframe print failed, falling back to window.print', e);
-            try { document.title = ''; } catch (err) {}
+            try { document.title = '\u200B'; } catch (err) {}
             window.print();
           } finally {
             setTimeout(() => {
-              try { document.title = origDocTitle; } catch (err) {}
-            }, 1200);
+              try { document.title = origDocTitle || 'Kokanastha Operation'; } catch (err) {}
+            }, 2500);
           }
         }, 300);
       } else {
         const origDocTitle = document.title;
-        try { document.title = ''; } catch (err) {}
+        try { document.title = '\u200B'; } catch (err) {}
         window.print();
         setTimeout(() => {
-          try { document.title = origDocTitle; } catch (err) {}
-        }, 1200);
+          try { document.title = origDocTitle || 'Kokanastha Operation'; } catch (err) {}
+        }, 2500);
       }
     }, 100);
   };
@@ -4469,49 +4503,28 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   {/* Orientation Mode */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-                        Page Feed Orientation
+                      <label className="text-[10px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                        <span>Page Orientation & Feed Direction</span>
+                        <span className="text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-full">
+                          Horizontal Printing
+                        </span>
                       </label>
-                      <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold">
-                        {printOrientation === 'auto' ? 'Auto (TSC/Seagull)' : printOrientation === 'landscape' ? 'Default 2-Up (Landscape)' : printOrientation === 'portrait' ? 'Vertical Feed (Portrait)' : '90° Swapped'}
+                      <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold">
+                        {printOrientation === 'landscape' ? '🌟 Horizontal (Landscape) - Fits Box Perfectly' : printOrientation === 'portrait' ? 'Vertical (Portrait / Tall Roll)' : printOrientation === 'auto' ? 'Auto (Exact Dimensions)' : '90° Swapped (Sideways Fix)'}
                       </span>
                     </div>
                     <div className="grid grid-cols-4 gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setPrintOrientation('auto')}
-                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
-                          printOrientation === 'auto'
-                            ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
-                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className="text-[10px] font-bold">Auto</span>
-                        <span className={`text-[8px] ${printOrientation === 'auto' ? 'text-indigo-100' : 'text-slate-400'}`}>TSC Default</span>
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => setPrintOrientation('landscape')}
                         className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
                           printOrientation === 'landscape'
-                            ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
+                            ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/30'
                             : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        <span className="text-[10px] font-bold">Landscape</span>
-                        <span className={`text-[8px] ${printOrientation === 'landscape' ? 'text-indigo-100' : 'text-slate-400'}`}>Forced Wide</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPrintOrientation('portrait')}
-                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
-                          printOrientation === 'portrait'
-                            ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
-                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className="text-[10px] font-bold">Portrait</span>
-                        <span className={`text-[8px] ${printOrientation === 'portrait' ? 'text-indigo-100' : 'text-slate-400'}`}>Forced Tall</span>
+                        <span className="text-[10px] font-black">➡ Horizontal</span>
+                        <span className={`text-[8px] ${printOrientation === 'landscape' ? 'text-emerald-100' : 'text-slate-400'}`}>Recommended</span>
                       </button>
                       <button
                         type="button"
@@ -4522,8 +4535,32 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                             : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        <span className="text-[10px] font-bold">Swap W/H</span>
-                        <span className={`text-[8px] ${printOrientation === 'rotated90' ? 'text-amber-100' : 'text-slate-400'}`}>Sideways Fix</span>
+                        <span className="text-[10px] font-bold">🔄 Rotate 90°</span>
+                        <span className={`text-[8px] ${printOrientation === 'rotated90' ? 'text-amber-100' : 'text-slate-400'}`}>Sideways Feed</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPrintOrientation('auto')}
+                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          printOrientation === 'auto'
+                            ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold">Auto</span>
+                        <span className={`text-[8px] ${printOrientation === 'auto' ? 'text-indigo-100' : 'text-slate-400'}`}>Exact Size</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPrintOrientation('portrait')}
+                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          printOrientation === 'portrait'
+                            ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold">⬇ Vertical</span>
+                        <span className={`text-[8px] ${printOrientation === 'portrait' ? 'text-indigo-100' : 'text-slate-400'}`}>Tall Feed</span>
                       </button>
                     </div>
                   </div>
@@ -4762,28 +4799,30 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-slate-700 dark:text-slate-300">Feed Output:</span>
                     <span className="font-mono text-slate-900 dark:text-slate-100 font-bold">
-                      {printOrientation === 'auto' && '⬇ Standard Roll Feed (TSC Default 0°)'}
-                      {printOrientation === 'landscape' && '➡ Wide Landscape Feed (Cross-head)'}
-                      {printOrientation === 'portrait' && '⬇ Vertical Portrait Feed (Tall)'}
-                      {printOrientation === 'rotated90' && '🔄 90° Rotated Feed (Sideways Fix - Corrects rotated prints)'}
+                      {printOrientation === 'portrait' && '⬇ Portrait Roll Feed (Recommended - Stops Chrome Auto-Landscape)'}
+                      {printOrientation === 'auto' && '📐 Exact Size Feed (104mm × 25mm)'}
+                      {printOrientation === 'landscape' && '➡ Wide Landscape Feed'}
+                      {printOrientation === 'rotated90' && '🔄 90° Rotated Feed (Sideways Fix)'}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 text-[9px]">
-                    <span className="text-slate-400 font-bold uppercase tracking-wider">Test Orientation:</span>
-                    {(['auto', 'landscape', 'portrait', 'rotated90'] as const).map(mode => (
+                    <span className="text-slate-400 font-bold uppercase tracking-wider">Orientation:</span>
+                    {(['portrait', 'auto', 'rotated90', 'landscape'] as const).map(mode => (
                       <button
                         key={mode}
                         type="button"
                         onClick={() => setPrintOrientation(mode)}
                         className={`px-2 py-0.5 rounded cursor-pointer transition-all font-bold ${
                           printOrientation === mode
-                            ? mode === 'rotated90'
-                              ? 'bg-amber-600 text-white shadow-xs'
-                              : 'bg-indigo-600 text-white shadow-xs'
+                            ? mode === 'portrait'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : mode === 'rotated90'
+                                ? 'bg-amber-600 text-white shadow-xs'
+                                : 'bg-indigo-600 text-white shadow-xs'
                             : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600'
                         }`}
                       >
-                        {mode === 'auto' ? 'Auto' : mode === 'landscape' ? 'Landscape' : mode === 'portrait' ? 'Portrait' : 'Swap W/H'}
+                        {mode === 'portrait' ? 'Portrait (Roll)' : mode === 'auto' ? 'Auto (104×25)' : mode === 'rotated90' ? 'Rotate 90°' : 'Landscape'}
                       </button>
                     ))}
                   </div>
@@ -5047,62 +5086,85 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 document.body
               )}
 
-              {/* Essential Browser Print Dialog Guidance (Fix for Blank Page Feed & Sideways) */}
+              {/* Essential Browser Print Dialog Guidance (Fix for Auto-Landscape, App Name, & Blank Page Feed) */}
               <div className="no-print bg-amber-50/90 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/80 rounded-xl p-3.5 text-[11px] space-y-2 shadow-xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-amber-950 dark:text-amber-200 font-black text-[12px]">
-                    <span className="text-base">🚨</span>
-                    <span>TSC TTP-244 Plus: Why Extra Blank Stickers Feed Out & How to Fix</span>
+                    <span className="text-base">🖨️</span>
+                    <span>Thermal Printer (TSC / Zebra / TVS): 4 Essential Chrome Print Settings</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowPrintHelp(!showPrintHelp)}
                     className="text-[10.5px] text-amber-800 dark:text-amber-300 underline font-bold cursor-pointer hover:text-amber-950"
                   >
-                    {showPrintHelp ? 'Hide Details' : 'Read 2-Step Setup'}
+                    {showPrintHelp ? 'Hide Detailed Guide' : 'Read Paper Size & Setup Guide'}
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200/90 dark:border-amber-800/60 shadow-2xs">
-                    <div className="font-black text-slate-900 dark:text-slate-100 text-[10.5px] flex items-center gap-1.5">
-                      <span className="w-4 h-4 rounded-full bg-amber-500 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">1</span>
-                      <span>Destination & Paper Size</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border-2 border-emerald-500 dark:border-emerald-600 shadow-2xs">
+                    <div className="font-black text-emerald-700 dark:text-emerald-300 text-[10.5px] flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-emerald-600 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">1</span>
+                      <span>Layout: LANDSCAPE (Horizontal)</span>
                     </div>
                     <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
-                      Change <b>Destination</b> from "Microsoft Print to PDF" to your <b>Thermal Printer</b> (TSC / Zebra / Xprinter). Under <b>More settings</b>, choose your roll label size (e.g. <b>50x25mm</b> or <b>USER</b>).
+                      In Chrome Print Dialog, select <b>Layout: LANDSCAPE</b>. This forces <b>horizontal printing</b> across the width of the label roll so barcodes and text fit in the rectangular sticker box very perfectly and professionally!
                     </p>
                   </div>
 
-                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border-2 border-rose-300 dark:border-rose-700/80 shadow-2xs">
+                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border-2 border-rose-400 dark:border-rose-600 shadow-2xs">
                     <div className="font-black text-rose-700 dark:text-rose-400 text-[10.5px] flex items-center gap-1.5">
                       <span className="w-4 h-4 rounded-full bg-rose-600 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">2</span>
-                      <span>Remove "about:blank" & Date/Page</span>
+                      <span>Remove Application Name</span>
                     </div>
                     <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
-                      Under <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b>. This removes the <b>Date, Title, "about:blank"</b>, and <b>"1/10"</b> numbers from printing!
+                      Click <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b>. This stops Chrome from printing the Application Name ("Kokanastha Operation"), Date, URL, and page count on your labels!
                     </p>
                   </div>
 
                   <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200/90 dark:border-amber-800/60 shadow-2xs">
                     <div className="font-black text-slate-900 dark:text-slate-100 text-[10.5px] flex items-center gap-1.5">
                       <span className="w-4 h-4 rounded-full bg-amber-500 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">3</span>
-                      <span>Margins = None</span>
+                      <span>Paper Size Selection</span>
                     </div>
                     <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
-                      Set <b>Margins</b> to <b>None</b> (or Minimum) so the barcode fits edge-to-edge without blank margins.
+                      Select your <b>Thermal Printer</b> as Destination. If your printer driver has the roll size configured, keep <b>Paper size: Default</b>, or select <b>104×25mm / USER</b>.
+                    </p>
+                  </div>
+
+                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200/90 dark:border-amber-800/60 shadow-2xs">
+                    <div className="font-black text-slate-900 dark:text-slate-100 text-[10.5px] flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-amber-500 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">4</span>
+                      <span>Margins: None</span>
+                    </div>
+                    <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
+                      Set <b>Margins</b> to <b>None</b> (0 mm) so barcode printing starts right at the edge of the physical sticker without top or left offset.
                     </p>
                   </div>
                 </div>
 
                 {showPrintHelp && (
-                  <div className="mt-2.5 pt-2.5 border-t border-amber-200 dark:border-amber-800/60 text-[10.5px] text-amber-950 dark:text-amber-200 space-y-1.5 bg-amber-100/50 dark:bg-amber-900/30 p-2.5 rounded-lg">
-                    <p className="font-bold">🔍 Why did the printer roll out blank stickers?</p>
-                    <p className="text-[10px] leading-relaxed">
-                      1. Thermal printers (like TSC TTP-244 Plus) feed paper according to the length received from Windows/Chrome. When Chrome is set to <b>A4 paper (297mm height)</b>, the printer prints 1 label (25mm) and then advances the remaining 272mm of blank stickers to finish the "A4 page".
-                      <br />
-                      2. Setting <b>Paper size to 50x25mm / 104x25mm (or USER)</b> in Chrome tells the printer the page is only 25mm high, stopping instantly after printing each row without feeding any blank labels!
-                    </p>
+                  <div className="mt-2.5 pt-2.5 border-t border-amber-200 dark:border-amber-800/60 text-[10.5px] text-amber-950 dark:text-amber-200 space-y-2 bg-amber-100/50 dark:bg-amber-900/30 p-2.5 rounded-lg">
+                    <p className="font-bold">🔍 Thermal Roll FAQs & Driver Tips:</p>
+                    <div className="space-y-1 text-[10px] leading-relaxed">
+                      <p>
+                        <b>Q: Why was it printing vertically instead of horizontally?</b><br />
+                        Thermal label rolls (50×25mm or 104×25mm) are wide horizontal boxes. If Chrome's layout was set to Portrait, the printer rotated the label vertically. Selecting <b>Layout: LANDSCAPE</b> in Chrome print dialog ensures 100% horizontal printing that fits inside the box perfectly.
+                      </p>
+                      <p>
+                        <b>Q: What if my printer feeds labels sideways?</b><br />
+                        If your thermal printer model (e.g. TSC, Zebra, TVS) feeds the roll through a vertical orientation, select our <b>Rotate 90°</b> orientation option above to turn the label sideways to fit your printer feed.
+                      </p>
+                      <p>
+                        <b>Q: Do I need to select paper size when I print?</b><br />
+                        If your printer (e.g. TSC TTP-244 Pro, TVS, Zebra) already has a 104×25mm / 50×25mm 2-Up stock defined in Windows Printer Properties, leave <b>Paper size: Default</b>. If you see blank stickers rolling out, select the custom 104×25mm / 50×25mm stock from the Paper size dropdown.
+                      </p>
+                      <p>
+                        <b>Q: How do I remove the app title "Kokanastha Operation"?</b><br />
+                        In the Chrome print preview panel on the right, expand <b>More settings</b> and uncheck the <b>Headers and footers</b> checkbox.
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>

@@ -79,6 +79,26 @@ const PRE_SEEDED_PROFILES: (UserProfile & { password_hash: string })[] = [
     active: true,
     created_at: new Date().toISOString(),
     password_hash: 'admin'
+  },
+  {
+    id: 'a2222222-2222-2222-2222-222222222222',
+    email: 'sales@kokanastha.com',
+    name: 'Sales Manager',
+    role: 'Sales Staff',
+    business_id: BIZ_ID,
+    active: true,
+    created_at: new Date().toISOString(),
+    password_hash: 'sales'
+  },
+  {
+    id: 'a3333333-3333-3333-3333-333333333333',
+    email: 'pack@kokanastha.com',
+    name: 'Packing Supervisor',
+    role: 'Packing Staff',
+    business_id: BIZ_ID,
+    active: true,
+    created_at: new Date().toISOString(),
+    password_hash: 'pack'
   }
 ];
 
@@ -626,9 +646,15 @@ class ERPStorage {
 
   constructor() {
     const catStr = safeStorage.getItem('omnipack_erp_categories');
+    const profStr = safeStorage.getItem('omnipack_erp_profiles');
     if (catStr && catStr.includes('"cat-')) {
-       console.log('Clearing old invalid local storage with non-UUIDs...');
-       safeStorage.pruneNonEssential();
+       console.log('Clearing old invalid categories with non-UUIDs...');
+       safeStorage.removeItem('omnipack_erp_categories');
+       safeStorage.removeItem('omnipack_erp_products');
+    }
+    if (profStr && profStr.includes('"admin_user"')) {
+       console.log('Clearing old invalid profiles with non-UUIDs...');
+       safeStorage.removeItem('omnipack_erp_profiles');
     }
     const isInitialized = safeStorage.getItem('omnipack_erp_initialized') === 'true';
     this.cache = {

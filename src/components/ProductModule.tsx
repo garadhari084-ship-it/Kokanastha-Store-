@@ -303,7 +303,7 @@ export const LABEL_SIZE_INFO: Record<string, { label: string; desc: string; defa
 export const getPrintPageDimensions = (
   size: '50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard',
   perRow: 1 | 2,
-  orientation: 'auto' | 'landscape' | 'portrait' | 'rotated90',
+  orientation: 'auto' | 'landscape' | 'portrait' | 'rotated90' | 'thermal-portrait-fix' | 'thermal-270-fix',
   printerType: 'thermal' | 'a4' = 'thermal'
 ) => {
   if (printerType === 'a4') {
@@ -331,13 +331,22 @@ export const getPrintPageDimensions = (
   let rotationDeg = 0;
   let cssPageSize = `${wNum}mm ${hNum}mm`;
 
-  if (orientation === 'rotated90') {
-    pageWidthNum = hNum;
-    pageHeightNum = wNum;
+  if (orientation === 'thermal-portrait-fix' || orientation === 'rotated90') {
+    // FIX FOR THERMAL PRINTERS THAT ALWAYS PRINT VERTICAL:
+    // Page width is set to 25mm (feed height) and page height is set to 104mm (roll width).
+    // Chrome marks the page as Portrait, matching the thermal printer's driver orientation.
+    // Chrome does NOT auto-rotate the document. The 90° rotated content prints 100% HORIZONTALLY!
+    pageWidthNum = Math.min(wNum, hNum);
+    pageHeightNum = Math.max(wNum, hNum);
     rotationDeg = 90;
-    cssPageSize = `${hNum}mm ${wNum}mm`;
+    cssPageSize = `${pageWidthNum}mm ${pageHeightNum}mm`;
+  } else if (orientation === 'thermal-270-fix') {
+    pageWidthNum = Math.min(wNum, hNum);
+    pageHeightNum = Math.max(wNum, hNum);
+    rotationDeg = 270;
+    cssPageSize = `${pageWidthNum}mm ${pageHeightNum}mm`;
   } else if (orientation === 'landscape') {
-    // Horizontal printing (Wide): formats page horizontally across roll (104x25mm / 50x25mm)
+    // Standard Horizontal printing (Wide): formats page horizontally across roll (104x25mm / 50x25mm)
     pageWidthNum = Math.max(wNum, hNum);
     pageHeightNum = Math.min(wNum, hNum);
     rotationDeg = 0;
@@ -367,7 +376,7 @@ export const getPrintPageDimensions = (
     isRotated,
     rotationDeg,
     baseDims,
-    labelDescription: `${pageWidthNum} × ${pageHeightNum} mm (${perRow}-Up Roll)`
+    labelDescription: `${pageWidthNum} × ${pageHeightNum} mm (${perRow}-Up Roll - ${isRotated ? `${rotationDeg}° Rotation Fix` : 'Standard Wide'})`
   };
 };
 
@@ -383,7 +392,7 @@ export interface ThermalBarcodeStickerProps {
   fssaiNumber?: string;
   address?: string;
   ingredients?: string;
-  orientation?: 'auto' | 'landscape' | 'portrait' | 'rotated90';
+  orientation?: 'auto' | 'landscape' | 'portrait' | 'rotated90' | 'thermal-portrait-fix' | 'thermal-270-fix';
   mode?: 'preview' | 'print';
   boxBorder?: boolean;
   barcodeFrame?: boolean;
@@ -1069,10 +1078,11 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   const isNaturallyLandscape = origDim.w > origDim.h;
 
   let rotationDeg = 0;
-  if (orientation === 'rotated90') {
+  if (orientation === 'rotated90' || orientation === 'thermal-portrait-fix') {
     rotationDeg = 90;
+  } else if (orientation === 'thermal-270-fix') {
+    rotationDeg = 270;
   }
-  // Upright roll feed for 'portrait', 'auto', and 'landscape' without rotating stickers
 
   const isRotated = rotationDeg !== 0;
 
@@ -1084,8 +1094,12 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     const baseH = getThermalDimensions(size, 1).stickerHeightMm;
     return (
       <div 
-        className="w-full h-full flex items-center justify-center overflow-hidden"
-        style={{ width: '100%', height: '100%' }}
+        className="flex items-center justify-center overflow-hidden"
+        style={{ 
+          width: baseH,
+          height: baseW,
+          position: 'relative'
+        }}
       >
         <div 
           className="flex items-center justify-center origin-center shrink-0"
@@ -1120,13 +1134,13 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
       </div>
       {orientation !== 'auto' && (
         <div className={`absolute -top-1.5 -right-1.5 text-[7.5px] font-black px-1.5 py-0.2 rounded shadow-xs z-20 pointer-events-none flex items-center gap-0.5 border ${
-          orientation === 'rotated90' 
-            ? 'bg-amber-600 text-white border-amber-300 ring-1 ring-amber-400' 
+          isRotated 
+            ? 'bg-emerald-600 text-white border-emerald-300 ring-1 ring-emerald-400' 
             : orientation === 'landscape'
-              ? 'bg-emerald-600 text-white border-emerald-300 ring-1 ring-emerald-400'
+              ? 'bg-blue-600 text-white border-blue-300 ring-1 ring-blue-400'
               : 'bg-indigo-600 text-white border-indigo-300 ring-1 ring-indigo-400'
         }`}>
-          <span>{orientation === 'rotated90' ? '🔄 90° Swapped' : orientation === 'landscape' ? '➡ Horizontal' : '⬇ Vertical'}</span>
+          <span>{rotationDeg === 90 ? '🌟 90° Fix' : rotationDeg === 270 ? '🔄 270° Fix' : orientation === 'landscape' ? '➡ Wide' : '⬇ Vertical'}</span>
         </div>
       )}
     </div>
@@ -1166,7 +1180,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [printerType, setPrinterType] = useState<'thermal' | 'a4'>('thermal');
   const [printLabelSize, setPrintLabelSize] = useState<'50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard'>('50x25');
   const [printLabelsPerRow, setPrintLabelsPerRow] = useState<1 | 2>(2);
-  const [printOrientation, setPrintOrientation] = useState<'auto' | 'landscape' | 'portrait' | 'rotated90'>('landscape');
+  const [printOrientation, setPrintOrientation] = useState<'auto' | 'landscape' | 'portrait' | 'rotated90' | 'thermal-portrait-fix' | 'thermal-270-fix'>('thermal-portrait-fix');
   const [printBoxBorder, setPrintBoxBorder] = useState(true);
   const [printBarcodeFrame, setPrintBarcodeFrame] = useState(true);
   const [showPrintHelp, setShowPrintHelp] = useState(false);
@@ -2247,7 +2261,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setPrintingBarcodeProduct(prod);
     setPrintLabelSize('50x25');
     setPrintLabelsPerRow(2);
-    setPrintOrientation('landscape');
+    setPrintOrientation('thermal-portrait-fix');
     setPrintIncludeCompanyName(false);
     setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
     setPrintSalePrice(prod.selling_price !== undefined && prod.selling_price !== null ? prod.selling_price : '');
@@ -2266,10 +2280,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     const pageDims = getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType);
     const sizeInfo = LABEL_SIZE_INFO[printLabelSize] || { label: printLabelSize, desc: '' };
     const orientationLabel = 
-      printOrientation === 'landscape' ? 'Horizontal (Wide - Fits Box)' :
-      printOrientation === 'portrait' ? 'Vertical (Portrait / Tall Roll)' :
-      printOrientation === 'auto' ? 'Auto (Exact Dimensions)' :
-      '90° Swapped (Sideways Fix)';
+      printOrientation === 'thermal-portrait-fix' || printOrientation === 'rotated90' ? 'Horizontal (90° Thermal Fix - Recommended)' :
+      printOrientation === 'thermal-270-fix' ? 'Horizontal (270° Reverse Fix)' :
+      printOrientation === 'landscape' ? 'Standard Wide (0° Feed)' :
+      printOrientation === 'portrait' ? 'Vertical (Tall Roll Feed)' :
+      'Auto (Exact Dimensions)';
 
     triggerToast(`Opening ${count} label(s) for "${printingBarcodeProduct.name}" (${sizeInfo.label} • ${pageDims.pageWidthMm}×${pageDims.pageHeightMm} • ${orientationLabel})...`, 'info');
     dbStore.logActivity(
@@ -2497,8 +2512,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     /* Print Row & Sticker Styles */
     .barcode-print-row {
       display: flex !important;
-      flex-direction: row !important;
-      justify-content: ${printLabelsPerRow === 2 && !pageDims.isRotated ? 'space-between' : 'center'} !important;
+      flex-direction: ${pageDims.isRotated ? 'column' : 'row'} !important;
+      justify-content: ${printLabelsPerRow === 2 ? 'space-between' : 'center'} !important;
       align-items: center !important;
       width: ${pageDims.pageWidthMm} !important;
       height: ${pageDims.pageHeightMm} !important;
@@ -2701,9 +2716,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <span style="font-size: 14px;">🚫</span>
           <span><b>To Remove App Name ("Kokanastha Operation") & Date:</b> In Chrome Print Dialog ➔ Click <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b> & set <b>Margins: "None"</b>.</span>
         </div>
-        <div style="background: #eff6ff; color: #1e40af; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #60a5fa; display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 14px;">📐</span>
-          <span><b>Horizontal Printing (Fit in Box):</b> In Chrome Print Dialog ➔ Set <b>Layout to "LANDSCAPE"</b> (Horizontal). This prints horizontally across the label roll and fits the sticker box very perfectly and professionally! (Paper Size: Default or custom "${pageDims.pageWidthMm} × ${pageDims.pageHeightMm}").</span>
+        <div style="background: #ecfdf5; color: #065f46; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #10b981; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 14px;">🌟</span>
+          <span><b>Thermal Printer Fix Active:</b> Formatted with <b>${orientationLabel}</b> so Chrome does NOT auto-rotate your stickers vertically. Prints <b>100% HORIZONTALLY</b> across the physical label box! (Paper size: "${pageDims.pageWidthMm} × ${pageDims.pageHeightMm}").</span>
         </div>
       </div>
     </div>
@@ -4506,49 +4521,53 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       <label className="text-[10px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                         <span>Page Orientation & Feed Direction</span>
                         <span className="text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-full">
-                          Horizontal Printing
+                          Horizontal Fix Active
                         </span>
                       </label>
                       <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold">
-                        {printOrientation === 'landscape' ? '🌟 Horizontal (Landscape) - Fits Box Perfectly' : printOrientation === 'portrait' ? 'Vertical (Portrait / Tall Roll)' : printOrientation === 'auto' ? 'Auto (Exact Dimensions)' : '90° Swapped (Sideways Fix)'}
+                        {printOrientation === 'thermal-portrait-fix' || printOrientation === 'rotated90' ? 'Horizontal (90° Thermal Fix - Recommended)' :
+                         printOrientation === 'thermal-270-fix' ? 'Horizontal (270° Reverse Fix)' :
+                         printOrientation === 'landscape' ? 'Standard Wide (0° Feed)' :
+                         printOrientation === 'portrait' ? 'Vertical (Tall Roll Feed)' :
+                         'Auto (Exact Dimensions)'}
                       </span>
                     </div>
                     <div className="grid grid-cols-4 gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setPrintOrientation('landscape')}
+                        onClick={() => setPrintOrientation('thermal-portrait-fix')}
                         className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
-                          printOrientation === 'landscape'
+                          printOrientation === 'thermal-portrait-fix' || printOrientation === 'rotated90'
                             ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/30'
                             : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        <span className="text-[10px] font-black">➡ Horizontal</span>
-                        <span className={`text-[8px] ${printOrientation === 'landscape' ? 'text-emerald-100' : 'text-slate-400'}`}>Recommended</span>
+                        <span className="text-[10px] font-black">🌟 90° Fix</span>
+                        <span className={`text-[8px] ${printOrientation === 'thermal-portrait-fix' || printOrientation === 'rotated90' ? 'text-emerald-100' : 'text-slate-400'}`}>Recommended</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setPrintOrientation('rotated90')}
+                        onClick={() => setPrintOrientation('thermal-270-fix')}
                         className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
-                          printOrientation === 'rotated90'
-                            ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-500/30'
+                          printOrientation === 'thermal-270-fix'
+                            ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/30'
                             : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        <span className="text-[10px] font-bold">🔄 Rotate 90°</span>
-                        <span className={`text-[8px] ${printOrientation === 'rotated90' ? 'text-amber-100' : 'text-slate-400'}`}>Sideways Feed</span>
+                        <span className="text-[10px] font-bold">🔄 270° Fix</span>
+                        <span className={`text-[8px] ${printOrientation === 'thermal-270-fix' ? 'text-emerald-100' : 'text-slate-400'}`}>Reverse Feed</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setPrintOrientation('auto')}
+                        onClick={() => setPrintOrientation('landscape')}
                         className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
-                          printOrientation === 'auto'
+                          printOrientation === 'landscape'
                             ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/30'
                             : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        <span className="text-[10px] font-bold">Auto</span>
-                        <span className={`text-[8px] ${printOrientation === 'auto' ? 'text-indigo-100' : 'text-slate-400'}`}>Exact Size</span>
+                        <span className="text-[10px] font-bold">➡ 0° Normal</span>
+                        <span className={`text-[8px] ${printOrientation === 'landscape' ? 'text-indigo-100' : 'text-slate-400'}`}>Standard Wide</span>
                       </button>
                       <button
                         type="button"
@@ -5003,8 +5022,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                               height: pageDims.pageHeightMm,
                               width: pageDims.pageWidthMm,
                               display: 'flex',
-                              flexDirection: 'row',
-                              justifyContent: printLabelsPerRow === 2 && !pageDims.isRotated ? 'space-between' : 'center',
+                              flexDirection: pageDims.isRotated ? 'column' : 'row',
+                              justifyContent: printLabelsPerRow === 2 ? 'space-between' : 'center',
                               alignItems: 'center',
                               pageBreakAfter: isLastRow ? 'avoid' : 'always',
                               pageBreakInside: 'avoid',
@@ -5017,8 +5036,13 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                 key={cIdx} 
                                 className="barcode-label-sticker"
                                 style={{
-                                  width: printLabelsPerRow === 2 && !pageDims.isRotated ? dims.stickerWidthMm : pageDims.pageWidthMm,
-                                  height: pageDims.pageHeightMm
+                                  width: pageDims.isRotated ? dims.rowHeightMm : (printLabelsPerRow === 2 ? dims.stickerWidthMm : pageDims.pageWidthMm),
+                                  height: pageDims.isRotated ? dims.stickerWidthMm : pageDims.pageHeightMm,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  overflow: 'hidden',
+                                  boxSizing: 'border-box'
                                 }}
                               >
                                 <ThermalBarcodeSticker
@@ -5041,12 +5065,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                               </div>
                             ))}
                             {/* Empty spacer if odd number of labels in last row of a 2-up roll */}
-                            {printLabelsPerRow === 2 && countInThisRow === 1 && !pageDims.isRotated && (
+                            {printLabelsPerRow === 2 && countInThisRow === 1 && (
                               <div 
                                 className="barcode-label-sticker barcode-label-placeholder"
                                 style={{ 
-                                  width: dims.stickerWidthMm, 
-                                  height: pageDims.pageHeightMm,
+                                  width: pageDims.isRotated ? dims.rowHeightMm : dims.stickerWidthMm, 
+                                  height: pageDims.isRotated ? dims.stickerWidthMm : pageDims.pageHeightMm,
                                   visibility: 'hidden',
                                   opacity: 0
                                 }} 
@@ -5106,10 +5130,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border-2 border-emerald-500 dark:border-emerald-600 shadow-2xs">
                     <div className="font-black text-emerald-700 dark:text-emerald-300 text-[10.5px] flex items-center gap-1.5">
                       <span className="w-4 h-4 rounded-full bg-emerald-600 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">1</span>
-                      <span>Layout: LANDSCAPE (Horizontal)</span>
+                      <span>Fix For "Always Vertical" Printing</span>
                     </div>
                     <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
-                      In Chrome Print Dialog, select <b>Layout: LANDSCAPE</b>. This forces <b>horizontal printing</b> across the width of the label roll so barcodes and text fit in the rectangular sticker box very perfectly and professionally!
+                      Thermal printers (TSC/Zebra/TVS) feed labels in portrait mode, which causes Chrome to auto-rotate horizontal jobs sideways. Our active <b>🌟 90° Fix</b> aligns with the printer's portrait feed so stickers print <b>100% HORIZONTALLY</b> across the label!
                     </p>
                   </div>
 
@@ -5149,12 +5173,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     <p className="font-bold">🔍 Thermal Roll FAQs & Driver Tips:</p>
                     <div className="space-y-1 text-[10px] leading-relaxed">
                       <p>
-                        <b>Q: Why was it printing vertically instead of horizontally?</b><br />
-                        Thermal label rolls (50×25mm or 104×25mm) are wide horizontal boxes. If Chrome's layout was set to Portrait, the printer rotated the label vertically. Selecting <b>Layout: LANDSCAPE</b> in Chrome print dialog ensures 100% horizontal printing that fits inside the box perfectly.
+                        <b>Q: Why does my thermal printer always print vertically even in Landscape?</b><br />
+                        Thermal printer drivers in Windows configure the label feed as <b>Portrait</b>. When Chrome sends a wide horizontal job (104×25mm), Chrome detects a mismatch and auto-rotates the output 90°, making it print vertically down the label. Our <b>🌟 90° Fix</b> (active by default) provides the exact counter-rotation needed so the printout emerges <b>100% HORIZONTAL</b> across your physical sticker!
                       </p>
                       <p>
-                        <b>Q: What if my printer feeds labels sideways?</b><br />
-                        If your thermal printer model (e.g. TSC, Zebra, TVS) feeds the roll through a vertical orientation, select our <b>Rotate 90°</b> orientation option above to turn the label sideways to fit your printer feed.
+                        <b>Q: What if the print is upside down or feeding backwards?</b><br />
+                        Simply select <b>🔄 270° Fix</b> above to reverse the orientation by 180°. If you have a driver that requires standard 0°, select <b>➡ 0° Normal</b>.
                       </p>
                       <p>
                         <b>Q: Do I need to select paper size when I print?</b><br />

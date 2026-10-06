@@ -468,8 +468,8 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     if (targetSize === '50x25' || targetSize === '40x25') return valLen > 13 ? 0.92 : valLen > 10 ? 1.0 : 1.1;
     if (targetSize === '50x30' || targetSize === '50x38') return valLen > 13 ? 1.0 : valLen > 10 ? 1.1 : 1.2;
     if (targetSize === '50x50' || targetSize === '50x75') return valLen > 13 ? 0.95 : 1.05;
-    if (targetSize === '60x100') return valLen > 13 ? 1.05 : 1.2;
-    if (targetSize === '100x50' || targetSize === '100x75' || targetSize === '100x100') return valLen > 13 ? 1.15 : 1.3;
+    if (targetSize === '60x100') return valLen > 13 ? 0.95 : 1.1;
+    if (targetSize === '100x50' || targetSize === '100x75' || targetSize === '100x100') return valLen > 13 ? 1.05 : 1.2;
     return valLen > 12 ? 1.0 : 1.15;
   };
   const barWidth = getBarWidth(size);
@@ -478,7 +478,7 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   const renderBarcodeBox = (h: number, customW?: number) => (
     <div className="w-full flex items-center justify-center my-0.5 shrink-0" style={{ margin: '1px 0' }}>
       <div 
-        className={`barcode-inner-box bg-white flex flex-col items-center justify-center w-[98%] max-w-full ${barcodeFrame ? 'border-[1px] border-black rounded-[2px] px-1.5 py-0.5' : 'px-1 py-0.5'}`}
+        className={`barcode-inner-box bg-white flex flex-col items-center justify-center w-[96%] max-w-full ${barcodeFrame ? 'border-[1px] border-black rounded-[2px] px-2 py-0.5' : 'px-1.5 py-0.5'}`}
         style={{ backgroundColor: '#ffffff', boxSizing: 'border-box' }}
       >
         <ReactBarcode 
@@ -688,68 +688,68 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     // 6. 60x100 mm Tall Master Sticker (2.4"x4")
     if (size === '60x100') {
       return (
-        <div className={containerClasses}>
+        <div className={containerClasses} style={mode === 'print' ? { padding: '2mm' } : {}}>
           <div className="w-full flex justify-between items-center border-b border-black pb-1 shrink-0 text-black">
             <div className="text-left">
-              <span className="text-[10px] font-black uppercase truncate max-w-[140px] block">{effectiveCompany}</span>
-              <div className="text-[7px] text-black font-mono font-bold">
+              <span className="text-[11px] font-black uppercase truncate max-w-[140px] block leading-tight">{effectiveCompany}</span>
+              <div className="text-[7.5px] text-black font-mono font-bold mt-0.5">
                 SKU: {product.sku || 'SKU-001'}
               </div>
             </div>
             <div className="flex flex-col items-end gap-1">
               <div className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded-xs border border-black flex items-center justify-center shrink-0">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
+                <span className="w-3.5 h-3.5 rounded-xs border border-black flex items-center justify-center shrink-0">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
                 </span>
-                <span className="text-[9px] font-black text-black">{netWeight}</span>
+                <span className="text-[10px] font-black text-black">{netWeight}</span>
               </div>
             </div>
           </div>
           
-          <span className="text-[12px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 shrink-0 text-black">
+          <span className="text-[13px] font-black uppercase tracking-tight leading-tight truncate w-full my-1 shrink-0 text-black">
             {product.name}
           </span>
 
-          {renderBarcodeBox(22)}
+          {renderBarcodeBox(32)}
 
           {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
-          <div className="w-full text-left bg-white p-1 rounded border border-black my-0.5 space-y-0.5 shrink-0 text-black">
-            <div className="text-[7.5px] font-black uppercase tracking-wider text-black border-b border-black pb-0.5 flex justify-between items-center">
+          <div className="w-full text-left bg-white p-1.5 rounded border border-black my-1 space-y-0.5 shrink-0 text-black">
+            <div className="text-[8px] font-black uppercase tracking-wider text-black border-b border-black pb-1 flex justify-between items-center">
               <span>FSSAI Lic. No: <b className="font-mono text-black">{effectiveFssai}</b></span>
-              <span className="text-[6.5px] font-black text-black">{isVeg ? '🌱 100% VEG' : 'NON-VEG'}</span>
+              <span className="text-[7px] font-black text-black bg-white px-1 rounded border border-black">{isVeg ? '🌱 VEG' : 'NON-VEG'}</span>
             </div>
-            <div className="text-[7px] leading-tight text-black">
+            <div className="text-[7.5px] leading-tight text-black pt-0.5">
               <b>Address:</b> {effectiveAddress}
             </div>
-            <div className="text-[7px] leading-tight text-black">
+            <div className="text-[7.5px] leading-tight text-black">
               <b>Ingredients:</b> {effectiveIngredients}
             </div>
           </div>
 
-          {/* Detailed Nutrition Table for 60x100 */}
-          <div className="w-full border border-black text-[7.5px] text-left leading-tight my-0.5 rounded-xs overflow-hidden shrink-0 text-black">
-            <div className="bg-black text-white px-1.5 py-0.5 font-black text-[8px] flex justify-between">
+          {/* Detailed Nutrition Table for 60x100 - More spacious */}
+          <div className="w-full border border-black text-[8px] text-left leading-tight my-1 rounded-xs overflow-hidden shrink-0 text-black">
+            <div className="bg-black text-white px-2 py-0.5 font-black text-[8.5px] flex justify-between">
               <span>NUTRITIONAL FACTS</span>
               <span>Per {product.nutrition_facts?.serving_size || '100g'}</span>
             </div>
             <div className="divide-y divide-black bg-white text-black">
-              <div className="flex justify-between px-1.5 py-0.5"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
-              <div className="flex justify-between px-1.5 py-0.5"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
-              <div className="flex justify-between px-1.5 py-0.5"><span>Total Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
-              <div className="flex justify-between px-1.5 py-0.5 text-[6.5px] pl-3 text-black"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
-              <div className="flex justify-between px-1.5 py-0.5"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
-              <div className="flex justify-between px-1.5 py-0.5"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
+              <div className="flex justify-between px-2 py-0.5"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
+              <div className="flex justify-between px-2 py-0.5"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
+              <div className="flex justify-between px-2 py-0.5"><span>Total Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
+              <div className="flex justify-between px-2 py-0.5 text-[7px] pl-3 text-black"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
+              <div className="flex justify-between px-2 py-0.5"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
+              <div className="flex justify-between px-2 py-0.5"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
             </div>
           </div>
 
-          <div className="w-full text-[8.5px] font-black uppercase border-t border-black pt-1 mt-0.5 shrink-0 text-black">
+          <div className="w-full text-[9px] font-black uppercase border-t border-black pt-1 mt-1 shrink-0 text-black">
             <div className="flex justify-between">
-              <span>MRP: ₹{effectiveMrp}</span>
-              <span className="font-black text-black">SALE: ₹{effectiveSale}</span>
+              <span>MRP: <b>₹{effectiveMrp}</b></span>
+              <span className="font-black text-black">SALE: <b>₹{effectiveSale}</b></span>
             </div>
-            <div className="flex justify-between text-[7px] font-bold text-black mt-0.5">
+            <div className="flex justify-between text-[7.5px] font-bold text-black mt-1">
               <span>PKD: {packedOn}</span>
-              <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best before 60 days'}</span>
+              <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best before 90 days'}</span>
             </div>
           </div>
         </div>

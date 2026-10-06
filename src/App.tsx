@@ -1717,9 +1717,9 @@ export default function App() {
     const defaultLogoUrl = dbStore.getBusinesses()[0]?.logo_url || '/logo.png';
     const defaultCoverUrl = dbStore.getBusinesses()[0]?.login_cover_url;
     return (
-      <div className="min-h-screen w-full bg-slate-50 flex flex-col lg:flex-row overflow-x-hidden overflow-y-auto select-none" id="login-screen-root">
+      <div className="min-h-screen w-full bg-slate-50 flex flex-col lg:flex-row select-none" id="login-screen-root">
         {/* Left Side: Cover Photo / Graphic Showcase */}
-        <div className="hidden lg:flex lg:w-1/2 min-h-screen bg-slate-900 relative overflow-hidden items-center justify-center p-8 shrink-0">
+        <div className="hidden lg:flex lg:w-1/2 h-full bg-slate-900 relative overflow-hidden items-center justify-center p-8 shrink-0">
           {defaultCoverUrl ? (
             <div className="absolute inset-0 z-0 flex items-center justify-center p-8 bg-slate-900">
               <div 
@@ -1758,13 +1758,13 @@ export default function App() {
         </div>
 
         {/* Right Side: Logo & Login Form / Password Reset */}
-        <div className="flex-1 flex flex-col justify-center items-center py-10 px-4 sm:px-6 lg:px-12 bg-slate-50 z-10 shadow-[-20px_0_40px_-10px_rgba(0,0,0,0.1)] relative min-h-screen w-full overflow-y-auto">
+        <div className="flex-1 flex flex-col items-center justify-center py-8 sm:py-12 px-4 sm:px-6 lg:px-12 bg-slate-50 z-10 shadow-[-20px_0_40px_-10px_rgba(0,0,0,0.1)] relative w-full overflow-y-auto custom-scrollbar">
           
-          <div className="w-full max-w-md bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-xl shadow-slate-200/50 my-auto shrink-0 box-border">
+          <div className="w-full max-w-md bg-white p-5 sm:p-8 rounded-2xl border border-slate-200/80 shadow-xl shadow-slate-200/50 my-auto shrink-0 box-border">
             
             {/* Logo at top of Right Side (Desktop & Mobile) */}
-            <div className="flex flex-col items-center mb-5">
-              <div className="flex items-center justify-center h-16 sm:h-20 w-full max-w-[200px] mb-2">
+            <div className="flex flex-col items-center mb-4 sm:mb-5">
+              <div className="flex items-center justify-center h-12 sm:h-20 w-full max-w-[200px] mb-1 sm:mb-2">
                 <img 
                   src={defaultLogoUrl}
                   alt="Company Logo" 
@@ -1783,16 +1783,16 @@ export default function App() {
 
             {resetStep === 'none' ? (
               <>
-                <div className="mb-6 text-center">
-                  <h2 className="text-2xl font-bold text-slate-800 tracking-tight">
+                <div className="mb-4 sm:mb-6 text-center">
+                  <h2 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
                     Welcome back
                   </h2>
-                  <p className="mt-1 text-xs text-slate-500 font-medium">
+                  <p className="mt-0.5 text-[10px] sm:text-xs text-slate-500 font-medium">
                     Please enter your credentials to access the portal.
                   </p>
                 </div>
 
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                   {/* Database Connection Status Card */}
                   <div className={`p-4 rounded-xl text-xs border shadow-sm ${
                     isSupabaseConfigured 
@@ -1845,30 +1845,30 @@ export default function App() {
                     </div>
                   )}
 
-                  <form onSubmit={handleLoginSubmit} className="space-y-5">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Email Address</label>
+                  <form onSubmit={handleLoginSubmit} className="space-y-3 sm:space-y-5">
+                    <div className="space-y-1 sm:space-y-2">
+                      <label className="text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider">Email Address</label>
                       <input 
                         type="email" 
                         required
                         placeholder={isSupabaseConfigured ? 'your-email@example.com' : 'admin@admin.com'}
                         value={emailInput}
                         onChange={(e) => setEmailInput(e.target.value)}
-                        className="w-full px-4 py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans text-slate-900 text-sm shadow-sm"
+                        className="w-full px-4 py-2.5 sm:py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans text-slate-900 text-sm shadow-sm"
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Password</label>
+                    <div className="space-y-1 sm:space-y-2">
+                      <label className="text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider">Password</label>
                       <input 
                         type="password" 
                         required
                         placeholder="••••••••"
                         value={passwordInput}
                         onChange={(e) => setPasswordInput(e.target.value)}
-                        className="w-full px-4 py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans text-slate-900 text-sm shadow-sm"
+                        className="w-full px-4 py-2.5 sm:py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans text-slate-900 text-sm shadow-sm"
                       />
-                      <div className="flex justify-end pt-1">
+                      <div className="flex justify-end pt-0.5">
                         <button 
                           type="button" 
                           onClick={() => {

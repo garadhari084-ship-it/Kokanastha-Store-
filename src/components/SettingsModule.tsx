@@ -73,6 +73,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [festiveAdvanceInvoicePrefix, setFestiveAdvanceInvoicePrefix] = useState(business?.festive_advance_invoice_prefix || 'FEST-ADV-');
   const [taxRateDefault, setTaxRateDefault] = useState<number>(business?.tax_rate_default ?? 18);
   const [billingAddress, setBillingAddress] = useState(business?.billing_address || 'Warehouse 4B, Apex Industrial Estate, Dahisar East, Mumbai 400068');
+  const [mfgAddress, setMfgAddress] = useState(business?.mfg_address || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092');
   const [logoUrl, setLogoUrl] = useState(business?.logo_url || '');
   const [loginCoverUrl, setLoginCoverUrl] = useState(business?.login_cover_url || '');
 
@@ -126,6 +127,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       setFestiveAdvanceInvoicePrefix(updated.festive_advance_invoice_prefix || 'FEST-ADV-');
       setTaxRateDefault(updated.tax_rate_default ?? 5);
       setBillingAddress(updated.billing_address || '');
+      setMfgAddress(updated.mfg_address || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092');
       setLogoUrl(updated.logo_url || '');
       setLoginCoverUrl(updated.login_cover_url || '');
       setCurrencySymbol(updated.currency_symbol || '₹');
@@ -357,6 +359,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         festive_advance_invoice_prefix: festiveAdvanceInvoicePrefix.toUpperCase().trim().substring(0, 50),
         tax_rate_default: Number(taxRateDefault),
         billing_address: billingAddress.trim(),
+        mfg_address: mfgAddress.trim(),
         logo_url: logoUrl,
         login_cover_url: loginCoverUrl,
         currency_symbol: currencySymbol.substring(0, 10),
@@ -496,6 +499,17 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   required
                   value={billingAddress}
                   onChange={(e) => setBillingAddress(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-[11px] font-bold text-slate-500 uppercase">Manufacturer / Facility Address (Default for Stickers)</label>
+                <textarea 
+                  rows={2}
+                  required
+                  value={mfgAddress}
+                  onChange={(e) => setMfgAddress(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500"
                 />
               </div>

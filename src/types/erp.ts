@@ -44,6 +44,7 @@ export interface Business {
   sms_gateway_url?: string;
   google_maps_key?: string;
   loyalty_config?: LoyaltyConfig;
+  mfg_address?: string;
 }
 
 export interface UserProfile {

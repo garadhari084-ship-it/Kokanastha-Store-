@@ -495,7 +495,7 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           value={barcodeValue} 
           height={h} 
           width={customW || barWidth}
-          fontSize={size === '38x25' ? 7 : size === '50x25' || size === '40x25' ? 7.5 : 8}
+          fontSize={size === '60x100' ? 11 : size === '38x25' ? 7 : size === '50x25' || size === '40x25' ? 7.5 : 8}
           margin={0}
           textMargin={1.5}
           fontOptions="bold"
@@ -699,68 +699,68 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
       return (
         <div 
           className={containerClasses} 
-          style={mode === 'print' ? { padding: '2.5mm', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start' } : {}}
+          style={mode === 'print' ? { padding: '1mm', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start' } : {}}
         >
-          <div className="w-full flex flex-col items-center border-b-[1.2px] border-black pb-1 shrink-0 text-black">
-            <span className="text-[12px] font-black uppercase text-center block w-full leading-tight mb-1 truncate">
+          <div className="w-full flex flex-col items-center border-b-2 border-black pb-1.5 shrink-0 text-black">
+            <span className="text-[14px] font-black uppercase text-center block w-full leading-tight mb-1 truncate tracking-tight">
               {effectiveCompany}
             </span>
-            <div className="flex items-center justify-center gap-3 w-full text-[8.5px] font-black font-mono">
-              <span className="shrink-0">SKU: {product.sku || 'SKU-001'}</span>
+            <div className="flex items-center justify-center gap-4 w-full text-[10px] font-black font-mono">
+              <span className="shrink-0 bg-black text-white px-1.5 rounded-sm">SKU: {product.sku || 'SKU-001'}</span>
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="w-3.5 h-3.5 rounded-xs border-[1.2px] border-black flex items-center justify-center shrink-0">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
+                <span className="w-4 h-4 rounded-xs border-2 border-black flex items-center justify-center shrink-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border-2 border-black'}`} />
                 </span>
-                <span>{netWeight}</span>
+                <span className="text-[11px]">{netWeight}</span>
               </div>
             </div>
           </div>
           
-          <span className="text-[14px] font-black uppercase tracking-tight leading-tight text-center block w-full my-1 shrink-0 text-black">
+          <span className="text-[16px] font-black uppercase tracking-tight leading-tight text-center block w-full my-1.5 shrink-0 text-black border-b border-black pb-1">
             {product.name}
           </span>
 
-          <div className="w-full flex justify-center shrink-0">
-            {renderBarcodeBox(42)}
+          <div className="w-full flex justify-center shrink-0 my-1">
+            {renderBarcodeBox(48)}
           </div>
 
           {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
-          <div className="w-full text-left bg-white p-1.5 rounded border-[1.2px] border-black mt-1.5 mb-4 space-y-1 shrink-0 text-black">
-            <div className="text-[8.5px] font-black uppercase tracking-wider text-black border-b-[1.2px] border-black pb-0.5 flex justify-between items-center font-mono">
+          <div className="w-full text-left bg-white p-2 rounded border-2 border-black mt-1 mb-1.5 space-y-1.5 shrink-0 text-black">
+            <div className="text-[10px] font-black uppercase tracking-wider text-black border-b-2 border-black pb-1 flex justify-between items-center font-mono">
               <span>FSSAI Lic: <b className="font-black font-mono text-black">{effectiveFssai}</b></span>
-              <span className="text-[7.5px] font-black text-black bg-white px-1 rounded border-[1.2px] border-black shrink-0">{isVeg ? '🌱 VEG' : 'NON-VEG'}</span>
+              <span className="text-[8.5px] font-black text-black bg-white px-1.5 py-0.5 rounded border-2 border-black shrink-0">{isVeg ? '🌱 VEG' : 'NON-VEG'}</span>
             </div>
-            <div className="text-[8px] leading-tight text-black pt-0.5 font-black line-clamp-2">
-              <b>Address:</b> {effectiveAddress}
+            <div className="text-[9.5px] leading-tight text-black pt-0.5 font-black line-clamp-2">
+              <b className="underline">Address:</b> {effectiveAddress}
             </div>
-            <div className="text-[8px] leading-tight text-black font-black line-clamp-2">
-              <b>Ingredients:</b> {effectiveIngredients}
+            <div className="text-[9.5px] leading-tight text-black font-black line-clamp-2">
+              <b className="underline">Ingredients:</b> {effectiveIngredients}
             </div>
           </div>
 
           {/* Detailed Nutrition Table for 60x100 - More spacious */}
-          <div className="w-full border-[1.2px] border-black text-[9px] text-left leading-tight mt-0 mb-1 rounded-xs overflow-hidden shrink-0 text-black">
-            <div className="bg-black text-white px-2 py-0.5 font-black text-[9px] flex justify-between">
+          <div className="w-full border-2 border-black text-[10px] text-left leading-tight mt-1 mb-1 rounded-xs overflow-hidden shrink-0 text-black">
+            <div className="bg-black text-white px-2 py-1 font-black text-[10px] flex justify-between">
               <span>NUTRITIONAL FACTS</span>
               <span>Per {product.nutrition_facts?.serving_size || '100g'}</span>
             </div>
-            <div className="divide-y-[1.2px] divide-black bg-white text-black font-black">
-              <div className="flex justify-between px-2 py-0.6"><span>Energy</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
-              <div className="flex justify-between px-2 py-0.6"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
-              <div className="flex justify-between px-2 py-0.6"><span>Carbs</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
-              <div className="flex justify-between px-2 py-0.6"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
-              <div className="flex justify-between px-2 py-0.6"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
+            <div className="divide-y-2 divide-black bg-white text-black font-black">
+              <div className="flex justify-between px-2 py-0.8"><span>Energy</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
+              <div className="flex justify-between px-2 py-0.8"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
+              <div className="flex justify-between px-2 py-0.8"><span>Carbs</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
+              <div className="flex justify-between px-2 py-0.8"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
+              <div className="flex justify-between px-2 py-0.8"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
             </div>
           </div>
 
-          <div className="w-full text-[12px] font-black uppercase border-t-[1.5px] border-black pt-1 mt-1.5 shrink-0 text-black">
-            <div className="flex justify-between items-center w-full">
-              <span>MRP: <b className="text-[13px]">₹{effectiveMrp}</b></span>
-              <span className="font-black text-black text-right">SALE: <b className="text-[15px]">₹{effectiveSale}</b></span>
+          <div className="w-full text-[14px] font-black uppercase border-t-2 border-black pt-1.5 mt-1 shrink-0 text-black">
+            <div className="flex justify-between items-center w-full mb-1">
+              <span>MRP: <b className="text-[15px] bg-black text-white px-1 ml-1">₹{effectiveMrp}</b></span>
+              <span className="font-black text-black text-right">SALE: <b className="text-[18px] underline decoration-2">₹{effectiveSale}</b></span>
             </div>
-            <div className="flex justify-between items-center w-full text-[10.5px] font-black text-black mt-1 border-t border-black pt-0.5">
-              <span>PKD: {packedOn}</span>
-              <span className="text-right">{expiryOn ? `EXP: ${expiryOn}` : (product.food_packaging?.best_before_days ? `Best before ${product.food_packaging.best_before_days} days` : 'Best before 90 days')}</span>
+            <div className="flex justify-between items-center w-full text-[12px] font-black text-black mt-1 border-t-2 border-black pt-1.5">
+              <span>PKD: <b className="bg-black text-white px-1">{packedOn}</b></span>
+              <span className="text-right">{expiryOn ? <span>EXP: <b className="bg-black text-white px-1">{expiryOn}</b></span> : (product.food_packaging?.best_before_days ? `Best before ${product.food_packaging.best_before_days} days` : 'Best before 90 days')}</span>
             </div>
           </div>
         </div>
@@ -826,8 +826,9 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
                   <span>SALE:</span>
                   <span>₹{effectiveSale}</span>
                 </div>
-                <div className="text-[7px] font-bold mt-1 border-t border-black pt-1">
-                  PKD: {packedOn}
+                <div className="text-[8px] font-black mt-1 border-t border-black pt-1 flex justify-between">
+                  <span>PKD: {packedOn}</span>
+                  <span>EXP: {expiryOn || '90D'}</span>
                 </div>
               </div>
             </div>
@@ -1270,6 +1271,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       setPrintFssaiNumber(initialFssai);
 
       const initialAddress = printingBarcodeProduct.food_packaging?.mfg_by 
+        || currentBiz?.mfg_address
         || currentBiz?.billing_address 
         || currentBiz?.shipping_address 
         || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092';
@@ -2314,9 +2316,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
   const handleOpenBarcodeModal = (prod: Product) => {
     setPrintingBarcodeProduct(prod);
-    setPrintLabelSize('50x25');
-    setPrintLabelsPerRow(2);
-    setPrintOrientation('landscape');
+    setPrintLabelSize('60x100');
+    setPrintLabelsPerRow(1);
+    setPrintOrientation('portrait');
     setPrintIncludeCompanyName(false);
     setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
     setPrintSalePrice(prod.selling_price !== undefined && prod.selling_price !== null ? prod.selling_price : '');
@@ -2388,12 +2390,14 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     html {
       background: white;
       color: #000000;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 0;
       padding: 0;
       text-rendering: optimizeLegibility !important;
       -webkit-font-smoothing: antialiased !important;
       -moz-osx-font-smoothing: grayscale !important;
+      font-smoothing: antialiased !important;
+      letter-spacing: 0.01em !important;
     }
     body {
       margin: 0;
@@ -2447,11 +2451,17 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         width: 100% !important;
         height: auto !important;
         min-height: 0 !important;
-        display: block !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
         overflow: visible !important;
       }
       .barcode-print-portal {
-        display: block !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
         visibility: visible !important;
         opacity: 1 !important;
         margin: 0 !important;
@@ -2644,10 +2654,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       max-width: 100% !important;
       height: auto !important;
       background-color: #ffffff !important;
-      image-rendering: -webkit-optimize-contrast !important;
-      image-rendering: crisp-edges !important;
-      image-rendering: pixelated !important;
-      shape-rendering: crispEdges !important;
+      image-rendering: auto !important;
+      shape-rendering: geometricPrecision !important;
     }
     .barcode-label-sticker svg text {
       font-family: "Courier New", Courier, monospace !important;
@@ -5012,7 +5020,20 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">FSSAI License No.</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">FSSAI License No.</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        dbStore.updateBusiness(businessId, { fssai_number: printFssaiNumber });
+                        triggerToast('FSSAI Number saved as business default.', 'success');
+                      }}
+                      className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
+                      title="Save this FSSAI number as the default for the business"
+                    >
+                      Save as Default
+                    </button>
+                  </div>
                   <input 
                     type="text"
                     value={printFssaiNumber}
@@ -5022,7 +5043,41 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   />
                 </div>
                 <div className="space-y-1 col-span-2">
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Manufacturer / Facility Address</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Manufacturer / Facility Address</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!printingBarcodeProduct) return;
+                          const updated = {
+                            ...printingBarcodeProduct,
+                            food_packaging: {
+                              ...printingBarcodeProduct.food_packaging,
+                              mfg_by: printAddress
+                            }
+                          };
+                          dbStore.updateProduct(printingBarcodeProduct.id, updated);
+                          triggerToast('Address saved to this product.', 'success');
+                        }}
+                        className="text-[9px] text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
+                        title="Save this address only for this specific product"
+                      >
+                        Save to Product
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          dbStore.updateBusiness(businessId, { mfg_address: printAddress });
+                          triggerToast('Address saved as global business default.', 'success');
+                        }}
+                        className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer border-l border-slate-200 dark:border-slate-700 pl-2"
+                        title="Save this address as the default for all future stickers"
+                      >
+                        Save as Default
+                      </button>
+                    </div>
+                  </div>
                   <input 
                     type="text"
                     value={printAddress}

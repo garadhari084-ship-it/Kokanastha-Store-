@@ -204,7 +204,7 @@ interface ProductModuleProps {
 }
 
 export const getThermalDimensions = (
-  size: '50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard',
+  size: '50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x60' | '100x50' | '100x75' | '100x100' | 'standard',
   perRow: 1 | 2
 ) => {
   let stickerWidthMm = '50mm';
@@ -255,6 +255,12 @@ export const getThermalDimensions = (
       rowHeightMm = '100mm';
       rollWidthMm = perRow === 2 ? '124mm' : '60mm';
       break;
+    case '100x60':
+      stickerWidthMm = '100mm';
+      stickerHeightMm = '60mm';
+      rowHeightMm = '60mm';
+      rollWidthMm = perRow === 2 ? '204mm' : '100mm';
+      break;
     case '100x50':
       stickerWidthMm = '100mm';
       stickerHeightMm = '50mm';
@@ -294,6 +300,7 @@ export const LABEL_SIZE_INFO: Record<string, { label: string; desc: string; defa
   '50x50': { label: '50 × 50 mm', desc: '2"x2" Food & Nutrition', defaultPerRow: 1 },
   '50x75': { label: '50 × 75 mm', desc: '2"x3" Food Master', defaultPerRow: 1 },
   '60x100': { label: '60 × 100 mm', desc: '2.4"x4" Tall Master', defaultPerRow: 1 },
+  '100x60': { label: '100 × 60 mm', desc: '4"x2.4" Horizontal Master', defaultPerRow: 1 },
   '100x50': { label: '100 × 50 mm', desc: '4"x2" Box / Pack', defaultPerRow: 1 },
   '100x75': { label: '100 × 75 mm', desc: '4"x3" Kokanastha Nutri', defaultPerRow: 1 },
   '100x100': { label: '100 × 100 mm', desc: '4"x4" Big Box', defaultPerRow: 1 },
@@ -301,7 +308,7 @@ export const LABEL_SIZE_INFO: Record<string, { label: string; desc: string; defa
 };
 
 export const getPrintPageDimensions = (
-  size: '50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard',
+  size: '50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x60' | '100x50' | '100x75' | '100x100' | 'standard',
   perRow: 1 | 2,
   orientation: 'auto' | 'landscape' | 'portrait' | 'rotated90' | 'thermal-portrait-fix' | 'thermal-270-fix',
   printerType: 'thermal' | 'a4' = 'thermal'
@@ -380,7 +387,7 @@ export const getPrintPageDimensions = (
 
 export interface ThermalBarcodeStickerProps {
   product: Product;
-  size: '50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard';
+  size: '50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x60' | '100x50' | '100x75' | '100x100' | 'standard';
   companyName?: string;
   showCompanyName?: boolean;
   mrp: number | string;
@@ -436,6 +443,7 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     '50x50': { w: 200, h: 200 },
     '50x75': { w: 200, h: 280 },
     '60x100': { w: 240, h: 400 },
+    '100x60': { w: 360, h: 216 },
     '100x50': { w: 360, h: 180 },
     '100x75': { w: 360, h: 270 },
     '100x100': { w: 340, h: 340 },
@@ -451,6 +459,7 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     '50x50': 'w-[200px] h-[200px] p-2',
     '50x75': 'w-[200px] h-[280px] p-2',
     '60x100': 'w-[240px] h-[400px] p-2.5',
+    '100x60': 'w-[360px] h-[216px] p-2.5',
     '100x50': 'w-[360px] h-[180px] p-2.5',
     '100x75': 'w-[360px] h-[270px] p-2.5',
     '100x100': 'w-[340px] h-[340px] p-3',
@@ -468,8 +477,8 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     if (targetSize === '50x25' || targetSize === '40x25') return valLen > 13 ? 0.92 : valLen > 10 ? 1.0 : 1.1;
     if (targetSize === '50x30' || targetSize === '50x38') return valLen > 13 ? 1.0 : valLen > 10 ? 1.1 : 1.2;
     if (targetSize === '50x50' || targetSize === '50x75') return valLen > 13 ? 0.95 : 1.05;
-    if (targetSize === '60x100') return valLen > 13 ? 0.95 : 1.1;
-    if (targetSize === '100x50' || targetSize === '100x75' || targetSize === '100x100') return valLen > 13 ? 1.05 : 1.2;
+    if (targetSize === '60x100') return valLen > 13 ? 1.7 : 2.0;
+    if (targetSize === '100x60' || targetSize === '100x50' || targetSize === '100x75' || targetSize === '100x100') return valLen > 13 ? 1.5 : 1.8;
     return valLen > 12 ? 1.0 : 1.15;
   };
   const barWidth = getBarWidth(size);
@@ -482,7 +491,7 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
         style={{ backgroundColor: '#ffffff', boxSizing: 'border-box' }}
       >
         <ReactBarcode 
-          renderer="img"
+          renderer="svg"
           value={barcodeValue} 
           height={h} 
           width={customW || barWidth}
@@ -688,47 +697,47 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     // 6. 60x100 mm Tall Master Sticker (2.4"x4")
     if (size === '60x100') {
       return (
-        <div className={containerClasses} style={mode === 'print' ? { padding: '2mm' } : {}}>
-          <div className="w-full flex justify-between items-center border-b border-black pb-1 shrink-0 text-black">
+        <div className={containerClasses} style={mode === 'print' ? { padding: '1.2mm' } : {}}>
+          <div className="w-full flex justify-between items-center border-b-[1.2px] border-black pb-1 shrink-0 text-black">
             <div className="text-left">
-              <span className="text-[11px] font-black uppercase truncate max-w-[140px] block leading-tight">{effectiveCompany}</span>
-              <div className="text-[7.5px] text-black font-mono font-bold mt-0.5">
+              <span className="text-[12px] font-black uppercase truncate max-w-[150px] block leading-tight">{effectiveCompany}</span>
+              <div className="text-[8px] text-black font-mono font-bold mt-0.5">
                 SKU: {product.sku || 'SKU-001'}
               </div>
             </div>
             <div className="flex flex-col items-end gap-1">
               <div className="flex items-center gap-1">
-                <span className="w-3.5 h-3.5 rounded-xs border border-black flex items-center justify-center shrink-0">
+                <span className="w-3.5 h-3.5 rounded-xs border-[1.2px] border-black flex items-center justify-center shrink-0">
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
                 </span>
-                <span className="text-[10px] font-black text-black">{netWeight}</span>
+                <span className="text-[11px] font-black text-black">{netWeight}</span>
               </div>
             </div>
           </div>
           
-          <span className="text-[13px] font-black uppercase tracking-tight leading-tight truncate w-full my-1 shrink-0 text-black">
+          <span className="text-[14px] font-black uppercase tracking-tight leading-tight truncate w-full my-1 shrink-0 text-black">
             {product.name}
           </span>
 
-          {renderBarcodeBox(32)}
+          {renderBarcodeBox(60)}
 
           {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
           <div className="w-full text-left bg-white p-1.5 rounded border border-black my-1 space-y-0.5 shrink-0 text-black">
-            <div className="text-[8px] font-black uppercase tracking-wider text-black border-b border-black pb-1 flex justify-between items-center">
+            <div className="text-[8.5px] font-black uppercase tracking-wider text-black border-b border-black pb-1 flex justify-between items-center">
               <span>FSSAI Lic. No: <b className="font-mono text-black">{effectiveFssai}</b></span>
-              <span className="text-[7px] font-black text-black bg-white px-1 rounded border border-black">{isVeg ? '🌱 VEG' : 'NON-VEG'}</span>
+              <span className="text-[7.5px] font-black text-black bg-white px-1 rounded border border-black">{isVeg ? '🌱 VEG' : 'NON-VEG'}</span>
             </div>
-            <div className="text-[7.5px] leading-tight text-black pt-0.5">
+            <div className="text-[8px] leading-tight text-black pt-0.5">
               <b>Address:</b> {effectiveAddress}
             </div>
-            <div className="text-[7.5px] leading-tight text-black">
+            <div className="text-[8px] leading-tight text-black">
               <b>Ingredients:</b> {effectiveIngredients}
             </div>
           </div>
 
           {/* Detailed Nutrition Table for 60x100 - More spacious */}
-          <div className="w-full border border-black text-[8px] text-left leading-tight my-1 rounded-xs overflow-hidden shrink-0 text-black">
-            <div className="bg-black text-white px-2 py-0.5 font-black text-[8.5px] flex justify-between">
+          <div className="w-full border border-black text-[8.5px] text-left leading-tight my-1 rounded-xs overflow-hidden shrink-0 text-black">
+            <div className="bg-black text-white px-2 py-0.5 font-black text-[9px] flex justify-between">
               <span>NUTRITIONAL FACTS</span>
               <span>Per {product.nutrition_facts?.serving_size || '100g'}</span>
             </div>
@@ -736,21 +745,95 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
               <div className="flex justify-between px-2 py-0.5"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
               <div className="flex justify-between px-2 py-0.5"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
               <div className="flex justify-between px-2 py-0.5"><span>Total Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
-              <div className="flex justify-between px-2 py-0.5 text-[7px] pl-3 text-black"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
+              <div className="flex justify-between px-2 py-0.5 text-[7.5px] pl-3 text-black"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
               <div className="flex justify-between px-2 py-0.5"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
               <div className="flex justify-between px-2 py-0.5"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
             </div>
           </div>
 
-          <div className="w-full text-[9px] font-black uppercase border-t border-black pt-1 mt-1 shrink-0 text-black">
+          <div className="w-full text-[10px] font-black uppercase border-t border-black pt-1 mt-1 shrink-0 text-black">
             <div className="flex justify-between">
               <span>MRP: <b>₹{effectiveMrp}</b></span>
               <span className="font-black text-black">SALE: <b>₹{effectiveSale}</b></span>
             </div>
-            <div className="flex justify-between text-[7.5px] font-bold text-black mt-1">
+            <div className="flex justify-between text-[8px] font-bold text-black mt-1">
               <span>PKD: {packedOn}</span>
               <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best before 90 days'}</span>
             </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 6.5. 100x60 mm Horizontal Master Sticker (4"x2.4")
+    if (size === '100x60') {
+      return (
+        <div className={containerClasses}>
+          <div className="w-full flex justify-between items-center border-b border-black pb-1 shrink-0 text-black">
+            <div className="text-left">
+              <div className="text-[12px] font-black uppercase tracking-wider">{effectiveCompany}</div>
+              <div className="text-[8px] text-black font-mono font-bold">SKU: {product.sku || 'SKU-001'}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-3.5 h-3.5 rounded-xs border border-black flex items-center justify-center shrink-0">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
+              </span>
+              <span className="text-[9.5px] font-black bg-white px-2 py-0.5 rounded border border-black">
+                {netWeight}
+              </span>
+            </div>
+          </div>
+
+          <div className="w-full grid grid-cols-12 gap-3 my-1 items-start text-black">
+            {/* Left: Product & Barcode */}
+            <div className="col-span-7 flex flex-col items-start text-left">
+              <span className="text-[12px] font-black uppercase tracking-tight leading-tight w-full truncate mb-1 text-black">
+                {product.name}
+              </span>
+              {renderBarcodeBox(28)}
+              <div className="w-full bg-white border border-black rounded p-1.5 space-y-1 text-left mt-1 text-black">
+                <div className="text-[8px] font-black text-black border-b border-black pb-0.5">
+                  FSSAI Lic: <b className="font-mono text-black">{effectiveFssai}</b>
+                </div>
+                <div className="text-[7.5px] text-black leading-tight line-clamp-2">
+                  <b>Address:</b> {effectiveAddress}
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Nutrition & Pricing */}
+            <div className="col-span-5 flex flex-col gap-1 text-black">
+              <div className="border border-black rounded overflow-hidden text-[7.5px] text-left text-black">
+                <div className="bg-black text-white px-1.5 py-0.5 font-black text-[8px] flex justify-between">
+                  <span>NUTRITION</span>
+                  <span>(100g)</span>
+                </div>
+                <div className="divide-y divide-black bg-white text-black px-1.5 py-0.5">
+                  <div className="flex justify-between"><span>Energy</span><b>{product.nutrition_facts?.energy_kcal ?? '420'}</b></div>
+                  <div className="flex justify-between"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'}g</b></div>
+                  <div className="flex justify-between"><span>Carbs</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'}g</b></div>
+                  <div className="flex justify-between"><span>Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'}g</b></div>
+                </div>
+              </div>
+              <div className="bg-white border border-black rounded p-1.5 text-black">
+                <div className="flex justify-between items-center text-[9px] font-black">
+                  <span>MRP:</span>
+                  <span>₹{effectiveMrp}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px] font-black text-black">
+                  <span>SALE:</span>
+                  <span>₹{effectiveSale}</span>
+                </div>
+                <div className="text-[7px] font-bold mt-1 border-t border-black pt-1">
+                  PKD: {packedOn}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full text-[7.5px] text-black text-left border-t border-black pt-1 flex justify-between items-center shrink-0 font-bold">
+            <span className="font-black text-black">Professional Grade Quality</span>
+            <span>Batch No: {product.sku || 'B2023'}</span>
           </div>
         </div>
       );
@@ -2301,7 +2384,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       print-color-adjust: exact !important;
     }
     html {
-      background: #090d16;
+      background: white;
       color: #000000;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       margin: 0;
@@ -2310,7 +2393,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     body {
       margin: 0;
       padding: 0;
-      background: #090d16;
+      background: white;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -4438,6 +4521,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         { id: '50x50', label: '50 × 50 mm', desc: '2"x2" Food/Nutri' },
                         { id: '50x75', label: '50 × 75 mm', desc: '2"x3" Food Master' },
                         { id: '60x100', label: '60 × 100 mm', desc: '2.4"x4" Tall Master' },
+                        { id: '100x60', label: '100 × 60 mm', desc: '4"x2.4" Horizontal Master' },
                         { id: '100x50', label: '100 × 50 mm', desc: '4"x2" Box/Pack' },
                         { id: '100x75', label: '100 × 75 mm', desc: '4"x3" Kokanastha Nutri' },
                         { id: '100x100', label: '100 × 100 mm', desc: '4"x4" Big Box' }
@@ -4447,7 +4531,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                           type="button"
                           onClick={() => {
                             setPrintLabelSize(sz.id as any);
-                            if (['50x50', '50x75', '60x100', '100x75', '100x100'].includes(sz.id)) {
+                            if (['50x50', '50x75', '60x100', '100x60', '100x50', '100x75', '100x100'].includes(sz.id)) {
                               setPrintIncludeNutrition(true);
                               setPrintLabelsPerRow(1);
                             }
@@ -5139,10 +5223,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200/90 dark:border-amber-800/60 shadow-2xs">
                     <div className="font-black text-slate-900 dark:text-slate-100 text-[10.5px] flex items-center gap-1.5">
                       <span className="w-4 h-4 rounded-full bg-amber-500 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">4</span>
-                      <span>Margins: None</span>
+                      <span>Margins: None | Scale: 100%</span>
                     </div>
                     <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
-                      Set <b>Margins</b> to <b>None</b> (0 mm) so barcode printing starts right at the edge of the physical sticker without top or left offset.
+                      Set <b>Margins</b> to <b>None</b> and <b>Scale</b> to <b>100%</b>. This ensures the barcode printing fits perfectly on the 60x100mm sticker without any shrinking or off-center alignment.
                     </p>
                   </div>
                 </div>

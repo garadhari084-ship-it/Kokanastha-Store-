@@ -56,7 +56,7 @@ export const QuickCreateCustomerModal: React.FC<QuickCreateCustomerModalProps> =
   const [pan, setPan] = useState('');
   const [creditLimit, setCreditLimit] = useState<number | ''>(0);
   const [isLoyalMember, setIsLoyalMember] = useState(false);
-  const [loyaltyTier, setLoyaltyTier] = useState('Silver');
+  const [loyaltyTier, setLoyaltyTier] = useState('None');
 
   // Custom Area state
   const [isAddingArea, setIsAddingArea] = useState(false);
@@ -140,7 +140,7 @@ export const QuickCreateCustomerModal: React.FC<QuickCreateCustomerModalProps> =
         pan: pan.trim().toUpperCase() || '',
         credit_limit: typeof creditLimit === 'number' ? creditLimit : 0,
         is_loyal_member: isLoyalMember,
-        loyalty_tier: isLoyalMember ? (loyaltyTier as any) : undefined,
+        loyalty_tier: (loyaltyTier as any) || 'None',
         business_id: businessId,
         active: true
       });
@@ -400,6 +400,7 @@ export const QuickCreateCustomerModal: React.FC<QuickCreateCustomerModalProps> =
                     onChange={(e) => setLoyaltyTier(e.target.value)}
                     className="px-2.5 py-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs rounded-lg border border-amber-300 dark:border-amber-700 font-bold"
                   >
+                    <option value="None">None</option>
                     <option value="Silver">Silver Tier</option>
                     <option value="Gold">Gold Tier (LMR)</option>
                     <option value="Platinum">Platinum Tier (LMR)</option>

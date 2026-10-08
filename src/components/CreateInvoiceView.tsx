@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   PlusCircle, 
   User, 
@@ -30,10 +30,16 @@ import {
   Tag,
   AlertCircle,
   AlertTriangle,
-  BellRing
+  BellRing,
+  Eye,
+  Download,
+  X,
+  FileText
 } from 'lucide-react';
-import { SalesItem, Customer, Product, UserProfile, Business } from '../types/erp';
+import { SalesItem, SalesOrder, Customer, Product, UserProfile, Business } from '../types/erp';
 import { dbStore } from '../services/store';
+import { BillOfSupplyView } from './BillOfSupplyView';
+import { generateBillOfSupplyHTML } from '../utils/invoiceTemplate';
 
 const mapPincodeToArea = (pin: string) => {
   const code = pin.trim();
@@ -308,6 +314,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   isAdvanceBooking,
   isFulfilledImmediately,
   orderDate,
+  orderTime,
   deliveryDate,
   deliveryType,
   selectedCustomerId,
@@ -326,6 +333,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   discountType,
   additionalCharges,
   deliveryCharges,
+  additionalChargeType,
   orderItems,
   customers,
   products,
@@ -403,6 +411,141 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     actualRedeem
   } = calculatedTotals;
 
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+
+  const getPreviewOrder = (): SalesOrder => {
+    let itemsForPreview = [...orderItems];
+    if (rowProductId) {
+      const p = products.find(prod => prod.id === rowProductId) || dbStore.getProducts(businessId).find(prod => prod.id === rowProductId);
+      if (p && !itemsForPreview.some(it => it.product_id === p.id)) {
+        const evalRes = calculateApplicablePrice(p, {
+          isLoyalMember: isLoyalMember(selectedCust),
+          isAdvanceBooking,
+          isDiwaliSale: isFestiveBooking,
+          business: currentBiz,
+          orderDate
+        });
+        const finalPrice = rowPrice !== '' && !isNaN(Number(rowPrice)) ? Number(rowPrice) : evalRes.appliedPrice;
+        const finalTax = rowTaxRate !== '' && !isNaN(Number(rowTaxRate)) ? Number(rowTaxRate) : (p.gst_rate || defaultTenantTax);
+        const finalQuantity = Math.max(1, Number(rowQty) || 1);
+
+        itemsForPreview.push({
+          id: 'preview-pending-item',
+          product_id: p.id,
+          product_name: p.name,
+          qty: finalQuantity,
+          scanned_qty: 0,
+          selling_price: finalPrice,
+          gst_rate: finalTax,
+          normal_rate: evalRes.normalRate,
+          rate_type: evalRes.rateType,
+          rate_reason: evalRes.rateReason,
+          unit_savings: evalRes.unitSavings,
+          is_overridden: Number(rowPrice) !== evalRes.appliedPrice
+        });
+      }
+    }
+
+    itemsForPreview = itemsForPreview.map(it => {
+      const p = products.find(prod => prod.id === it.product_id) || dbStore.getProducts(businessId).find(prod => prod.id === it.product_id);
+      return {
+        ...it,
+        product_name: it.product_name || p?.name || 'Product Item',
+        qty: Number(it.qty) || 1,
+        selling_price: Number(it.selling_price) || (p?.selling_price || 0)
+      };
+    });
+
+    const orderNum = customInvoiceNumber.trim() || getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking);
+    const custName = selectedCust?.name || (selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer');
+
+    return {
+      id: editingOrderId || 'draft-preview',
+      order_number: orderNum,
+      customer_id: selectedCustomerId,
+      customer_name: custName,
+      area: selectedArea || 'Dahisar',
+      channel: selectedCustomerId === 'WALK_IN' ? 'Walk-in' : 'Direct Order',
+      time: orderTime || '12:00 PM',
+      order_date: orderDate || (new Date().toISOString().split('T')[0]),
+      delivery_date: deliveryDate || null,
+      delivery_type: deliveryType,
+      status: isFulfilledImmediately ? 'Delivered' : 'Pending',
+      payment_status: (paymentStatus || 'Unpaid') as any,
+      payment_mode: paymentMode || 'Cash',
+      paid_amount: Number(calculatedTotals.computedPaid) || 0,
+      delivery_status: isFulfilledImmediately ? 'Delivered' : 'Pending',
+      items: itemsForPreview,
+      advance_booking: isAdvanceBooking,
+      festive_booking: isFestiveBooking,
+      total_amount: calculatedTotals.finalAmount,
+      discount_amount: calculatedTotals.discountAmount,
+      discount_percentage: calculatedTotals.discountPercentage,
+      additional_charges: Number(additionalCharges) || 0,
+      delivery_charges: Number(deliveryCharges) || 0,
+      additional_charges_type: additionalChargeType,
+      points_redeemed: calculatedTotals.actualRedeem,
+      qr_code_data: `${orderNum}|${selectedCustomerId}|${custName}|${itemsForPreview.length} items`,
+      business_id: businessId,
+      created_at: new Date().toISOString()
+    };
+  };
+
+  const handlePrintPreviewInvoice = async (order: SalesOrder) => {
+    const cust = customers.find(c => c.id === order.customer_id);
+    const businessObj = currentBiz || dbStore.getBusiness(businessId);
+    const allProds = [
+      ...(Array.isArray(products) ? products : []),
+      ...dbStore.getProducts(businessId),
+      ...((dbStore as any).cache?.products || [])
+    ];
+    const printHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
+    let printFrame = document.getElementById('tax-invoice-print-frame') as HTMLIFrameElement;
+    if (!printFrame) {
+      printFrame = document.createElement('iframe');
+      printFrame.id = 'tax-invoice-print-frame';
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      document.body.appendChild(printFrame);
+    }
+    const frameDoc = printFrame.contentWindow?.document || printFrame.contentDocument;
+    if (frameDoc) {
+      frameDoc.open();
+      frameDoc.write(printHtml);
+      frameDoc.close();
+      setTimeout(() => {
+        printFrame.contentWindow?.focus();
+        printFrame.contentWindow?.print();
+      }, 500);
+    }
+  };
+
+  const handleDownloadPreviewPDF = async (order: SalesOrder) => {
+    const cust = customers.find(c => c.id === order.customer_id);
+    const businessObj = currentBiz || dbStore.getBusiness(businessId);
+    const allProds = [
+      ...(Array.isArray(products) ? products : []),
+      ...dbStore.getProducts(businessId),
+      ...((dbStore as any).cache?.products || [])
+    ];
+    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Bill_of_Supply_${order.order_number}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    triggerToast(`Bill of Supply for "${order.order_number}" downloaded & opening print spooler!`, 'success');
+    handlePrintPreviewInvoice(order);
+  };
+
   return (
     <div className="w-full space-y-4 animate-in fade-in duration-150 pb-12">
       {/* 1. TOP COMMAND BAR WITH INVOICE #, CUSTOMER & BOOKING TYPE */}
@@ -417,6 +560,23 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
           >
             <ChevronLeft size={16} />
             <span>Back</span>
+          </button>
+
+          {/* Top Bar Preview Button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (orderItems.length === 0 && !rowProductId) {
+                triggerToast('Please select or add at least one product to preview invoice.', 'info');
+                return;
+              }
+              setIsPreviewModalOpen(true);
+            }}
+            className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs shrink-0 self-start xl:self-center"
+            title="Live Preview Tax Invoice & PDF"
+          >
+            <Eye size={15} />
+            <span>Invoice Preview</span>
           </button>
 
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 hidden xl:block shrink-0" />
@@ -828,7 +988,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-amber-500 text-slate-950 rounded-xl font-black text-xs text-center min-w-[70px]">
                       <div className="text-[9px] uppercase tracking-wider opacity-80">Tier</div>
-                      <div>{selectedCust.loyalty_tier || 'Silver'}</div>
+                      <div>{selectedCust.loyalty_tier || 'None'}</div>
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -1553,6 +1713,23 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
               {/* Action Buttons */}
               <div className="space-y-2 pt-2">
+                {/* Dedicated Preview Invoice Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (orderItems.length === 0 && !rowProductId) {
+                      triggerToast('Please select or add at least one product to preview invoice.', 'info');
+                      return;
+                    }
+                    setIsPreviewModalOpen(true);
+                  }}
+                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-[0.99]"
+                  title="Live Preview Commercial Tax Invoice & PDF before saving"
+                >
+                  <Eye size={15} />
+                  <span>Preview Invoice & PDF</span>
+                </button>
+
                 <div className="relative flex shadow-sm rounded-xl">
                   <button 
                     type="button" 
@@ -1610,6 +1787,96 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
         </div>
 
       </div>
+
+      {/* ================= LIVE INVOICE PREVIEW & CONFIRMATION MODAL ================= */}
+      {isPreviewModalOpen && (() => {
+        const previewOrder = getPreviewOrder();
+        const custObj = customers.find(c => c.id === previewOrder.customer_id) || {
+          id: selectedCustomerId,
+          name: selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer',
+          billing_address: selectedCustomerAddress,
+          phone: selectedCustomerPhone,
+          shipping_address: selectedCustomerShippingAddress || selectedCustomerAddress
+        } as any;
+        const businessObj = currentBiz || dbStore.getBusiness(businessId);
+
+        return (
+          <div 
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsPreviewModalOpen(false);
+            }}
+            className="fixed inset-0 z-[100] bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
+          >
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+              
+              {/* Header */}
+              <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between shrink-0 print:hidden">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
+                    <Eye size={18} />
+                  </div>
+                  <div>
+                    <h2 className="text-xs font-black uppercase tracking-wider text-amber-400">
+                      Live Invoice Preview & Confirmation
+                    </h2>
+                    <p className="text-[10px] text-slate-400 font-mono">
+                      Invoice #{previewOrder.order_number} • {previewOrder.items.length} Selected Product(s)
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setIsPreviewModalOpen(false)} 
+                  className="p-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800 transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Printable Body with selected products table */}
+              <div className="flex-1 overflow-y-auto p-4 bg-slate-100 dark:bg-slate-950 print:p-0 print:bg-white" id="printable-tax-invoice">
+                <BillOfSupplyView 
+                  order={previewOrder} 
+                  customer={custObj} 
+                  businessObj={businessObj} 
+                  products={products} 
+                />
+              </div>
+
+              {/* Action buttons */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 space-y-2 shrink-0 print:hidden">
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadPreviewPDF(previewOrder)}
+                    className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5 shadow-xs transition"
+                    title="Save & Download Tax Invoice as PDF / HTML"
+                  >
+                    <Download size={14} className="shrink-0" />
+                    <span className="truncate">Save / Download PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePrintPreviewInvoice(previewOrder)}
+                    className="py-2.5 px-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5 shadow-xs transition"
+                    title="Send to System Print Spooler"
+                  >
+                    <Printer size={14} className="shrink-0" />
+                    <span className="truncate">Print Bill</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPreviewModalOpen(false)}
+                    className="py-2.5 px-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5 shadow-xs transition"
+                  >
+                    <span>Close Preview</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

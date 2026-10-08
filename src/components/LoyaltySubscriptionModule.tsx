@@ -238,8 +238,8 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
     e.preventDefault();
     if (!selectedCustomerForMembership) return;
 
-    const oldTier = selectedCustomerForMembership.loyalty_tier;
-    const newTier = membershipIsActive ? (membershipTier || undefined) : undefined;
+    const oldTier = selectedCustomerForMembership.loyalty_tier || 'None';
+    const newTier = (membershipTier as any) || 'None';
     const tierChanged = oldTier !== newTier;
 
     dbStore.updateCustomer(selectedCustomerForMembership.id, {
@@ -252,7 +252,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
       loyalty_discount_percentage: membershipIsActive && membershipDiscount !== '' ? Number(membershipDiscount) : undefined
     });
 
-    if (tierChanged && newTier) {
+    if (tierChanged && newTier && newTier !== 'None') {
       let bonusPts = 0;
       if (newTier === 'Silver') bonusPts = loyaltyConfig.silver_bonus_points || 0;
       if (newTier === 'Gold') bonusPts = loyaltyConfig.gold_bonus_points || 0;
@@ -307,7 +307,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
       loyalty_start_date: undefined,
       loyalty_end_date: undefined,
       loyalty_auto_renew: false,
-      loyalty_tier: undefined,
+      loyalty_tier: 'None',
       loyalty_points: 0
     });
     dbStore.logActivity(
@@ -366,7 +366,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
 
     let targetCustomers = customers;
     if (bonusTargetTier !== 'ALL') {
-      targetCustomers = customers.filter(c => (c.loyalty_tier || 'Silver') === bonusTargetTier);
+      targetCustomers = customers.filter(c => (c.loyalty_tier || 'None') === bonusTargetTier);
     }
 
     if (targetCustomers.length === 0) {
@@ -729,6 +729,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                 >
                   <option value="ALL">All Tiers</option>
                   <option value="EXPIRING">Expiring Soon ⏳</option>
+                  <option value="None">None</option>
                   <option value="Silver">Silver 🥈</option>
                   <option value="Gold">Gold 🥇</option>
                   <option value="Platinum">Platinum 💎</option>
@@ -847,6 +848,11 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                                 🥈 Silver ({loyaltyConfig.silver_multiplier || 1.0}x)
                               </span>
                             )}
+                            {(!tier || tier === 'None') && (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700 inline-flex items-center gap-1">
+                                None
+                              </span>
+                            )}
                           </td>
 
                           <td className="py-3.5 px-4">
@@ -903,7 +909,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                                     setMembershipStartDate(cust.loyalty_start_date || new Date().toISOString().split('T')[0]);
                                     setMembershipEndDate(cust.loyalty_end_date || addOneYear(cust.loyalty_start_date || new Date().toISOString().split('T')[0]));
                                     setMembershipAutoRenew(!!cust.loyalty_auto_renew);
-                                    setMembershipTier(cust.loyalty_tier || '');
+                                    setMembershipTier(cust.loyalty_tier || 'None');
                                     setMembershipPlan(cust.loyalty_plan || '');
                                     setMembershipDiscount(cust.loyalty_discount_percentage || '');
                                     setIsMembershipModalOpen(true);
@@ -1563,18 +1569,18 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                   <strong className="font-bold text-slate-900 dark:text-white">{selectedCustomerForAdjust.loyalty_points || 0} pts</strong>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500">Loyalty Tier Override:</span>
+                  <span className="text-slate-500">Loyalty Tier:</span>
                   <select
-                    value={selectedCustomerForAdjust.loyalty_tier || ''}
+                    value={selectedCustomerForAdjust.loyalty_tier || 'None'}
                     onChange={(e) => {
                       const newTier = e.target.value;
-                      const updatedCustomer = { ...selectedCustomerForAdjust, loyalty_tier: newTier || undefined };
+                      const updatedCustomer = { ...selectedCustomerForAdjust, loyalty_tier: (newTier as any) || 'None' };
                       setSelectedCustomerForAdjust(updatedCustomer);
                       dbStore.updateCustomer(updatedCustomer.id, updatedCustomer);
                     }}
                     className="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-indigo-600 dark:text-indigo-400 focus:outline-none"
                   >
-                    <option value="">Auto (Spend-based)</option>
+                    <option value="None">None</option>
                     <option value="Silver">Silver</option>
                     <option value="Gold">Gold</option>
                     <option value="Platinum">Platinum</option>
@@ -1709,6 +1715,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
                   >
                     <option value="ALL">All Customers ({customers.length})</option>
+                    <option value="None">None Tier Only</option>
                     <option value="Silver">Silver Only</option>
                     <option value="Gold">Gold Only</option>
                     <option value="Platinum">Platinum Only</option>
@@ -2245,13 +2252,13 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                   </div>
                   <div className="flex gap-2 mb-3">
                     <div className="flex-1 flex flex-col p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
-                      <label className="text-xs font-bold text-slate-900 dark:text-white block mb-1.5">Loyalty Tier (Override)</label>
+                      <label className="text-xs font-bold text-slate-900 dark:text-white block mb-1.5">Loyalty Tier</label>
                       <select 
-                        value={membershipTier}
+                        value={membershipTier || 'None'}
                         onChange={(e) => setMembershipTier(e.target.value)}
                         className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden text-slate-700 dark:text-slate-300"
                       >
-                        <option value="">Auto (Spend-based)</option>
+                        <option value="None">None</option>
                         <option value="Silver">Silver</option>
                         <option value="Gold">Gold</option>
                         <option value="Platinum">Platinum</option>
@@ -2407,7 +2414,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                           setMembershipEndDate(cust.loyalty_end_date || addOneYear(new Date().toISOString().split('T')[0]));
                           setMembershipAutoRenew(!!cust.loyalty_auto_renew);
                           setMembershipIsActive(!!cust.is_loyal_member);
-                          setMembershipTier(cust.loyalty_tier || '');
+                          setMembershipTier(cust.loyalty_tier || 'None');
                           setMembershipDiscount(cust.loyalty_discount_percentage || '');
                           setIsEnrollModalOpen(false);
                           setIsMembershipModalOpen(true);
@@ -2509,6 +2516,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                         pan: '',
                         group: 'Retail',
                         is_loyal_member: false,
+                        loyalty_tier: 'None',
                         active: true,
                         credit_limit: 0
                       });
@@ -2517,7 +2525,7 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                       setMembershipStartDate(new Date().toISOString().split('T')[0]);
                       setMembershipEndDate(addOneYear(new Date().toISOString().split('T')[0]));
                       setMembershipAutoRenew(true);
-                      setMembershipTier('');
+                      setMembershipTier('None');
                       setMembershipDiscount('');
                       
                       setIsManualEnroll(false);

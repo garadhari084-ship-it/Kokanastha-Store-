@@ -301,7 +301,7 @@ export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
     const body = customers.map(c => [
       c.name,
       c.phone || '-',
-      c.loyalty_tier || 'Silver',
+      c.loyalty_tier || 'None',
       (c.loyalty_points || 0).toString(),
       `Rs. ${(c.lifetime_spend || 0).toLocaleString()}`,
       `Rs. ${(c.outstanding_amount || 0).toLocaleString()}`,
@@ -324,7 +324,7 @@ export const ReportsModule: React.FC<ReportsModuleProps> = ({ businessId }) => {
     const data = customers.map(c => ({
       'Customer Name': c.name,
       'Phone': c.phone || '-',
-      'Loyalty Tier': c.loyalty_tier || 'Silver',
+      'Loyalty Tier': c.loyalty_tier || 'None',
       'Loyalty Points': c.loyalty_points || 0,
       'Lifetime Spend': c.lifetime_spend || 0,
       'Outstanding Amount': c.outstanding_amount || 0,

@@ -44,11 +44,11 @@ import {
   RefreshCw,
   User,
 } from 'lucide-react';
-import { dbStore } from './services/store';
+import { dbStore, isSameBusiness } from './services/store';
 import { safeStorage } from './utils/safeStorage';
 import { useNotificationSound } from './utils/useNotificationSound';
 import { UserProfile, Business, UserRole } from './types/erp';
-import { supabase, isSupabaseConfigured } from './services/supabase';
+import { supabase, isSupabaseConfigured, fetchServerSupabaseConfig, saveSupabaseConfig } from './services/supabase';
 import { DatabaseConfigModal } from './components/DatabaseConfigModal';
 
 // Import Views
@@ -544,6 +544,17 @@ export default function App() {
           } catch (e) {}
         }
         
+        if (!isSupabaseConfigured) {
+          try {
+            const srvCfg = await fetchServerSupabaseConfig();
+            if (srvCfg && srvCfg.url && srvCfg.key) {
+              saveSupabaseConfig(srvCfg.url, srvCfg.key);
+              window.location.reload();
+              return;
+            }
+          } catch (_) {}
+        }
+
         if (isSupabaseConfigured && supabase) {
           // Sync public business info (logo, cover, QR) so login screen shows uploaded images
           try {
@@ -642,13 +653,26 @@ export default function App() {
           'broadcast',
           { event: 'sync_update' },
           async (payload: any) => {
-            console.log('Sync update broadcast received:', payload);
+            console.log('Sync update broadcast received live:', payload);
             const sessionData = safeStorage.getItem('omnipack_session');
             if (sessionData) {
               try {
                 const { businessId } = JSON.parse(sessionData);
-                if (businessId && payload.payload?.businessId === businessId) {
-                  await dbStore.syncFromSupabase(businessId, payload?.table || payload?.payload?.table);
+                const pl = payload?.payload || payload;
+                const incomingBId = pl?.businessId;
+                const incomingTable = pl?.table;
+                const incomingKey = pl?.key;
+
+                if (businessId && (!incomingBId || isSameBusiness(incomingBId, businessId))) {
+                  // Direct 0ms in-memory cache update for instantaneous display
+                  if (pl?.record && incomingKey && pl?.action === 'upsert') {
+                    dbStore.patchIncomingRecord(incomingKey, pl.record);
+                  } else if (pl?.id && incomingKey && pl?.action === 'delete') {
+                    dbStore.patchIncomingDelete(incomingKey, pl.id);
+                  }
+
+                  // Fully sync relational table from Supabase in background
+                  await dbStore.syncFromSupabase(businessId, incomingTable);
                   setSyncTick(prev => prev + 1);
                 }
               } catch(e) {}
@@ -734,8 +758,25 @@ export default function App() {
             }
           }
         )
-        .subscribe();
+        .subscribe((status: string) => {
+          console.log('[Supabase Realtime] Channel status:', status);
+        });
     }
+
+    // High-frequency live polling fallback (every 4 seconds) ensuring any activity on another device is displayed live without refresh
+    const liveSyncInterval = setInterval(() => {
+      const sessionData = safeStorage.getItem('omnipack_session');
+      if (sessionData && isSupabaseConfigured && supabase) {
+        try {
+          const { businessId } = JSON.parse(sessionData);
+          if (businessId) {
+            dbStore.syncFromSupabase(businessId, 'sales_orders').then(() => {
+              setSyncTick(prev => prev + 1);
+            }).catch(() => {});
+          }
+        } catch(e) {}
+      }
+    }, 4000);
 
     // Cross-tab BroadcastChannel listener for immediate local synchronization
     let localBc: BroadcastChannel | null = null;
@@ -779,6 +820,7 @@ export default function App() {
         }
       });
       return () => {
+        clearInterval(liveSyncInterval);
         subscription.unsubscribe();
         if (realtimeChannel) {
           supabase.removeChannel(realtimeChannel);
@@ -791,6 +833,7 @@ export default function App() {
     }
 
     return () => {
+      clearInterval(liveSyncInterval);
       if (localBc) {
         localBc.close();
       }

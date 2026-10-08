@@ -66,7 +66,7 @@ export const DatabaseConfigModal: React.FC<DatabaseConfigModalProps> = ({
     }
     setIsSaving(true);
     try {
-      saveSupabaseConfig(url, key);
+      await saveSupabaseConfig(url, key);
       if (onSuccess) onSuccess();
       // Reload window so all services, realtime listeners and stores initialize with the new credentials
       window.location.reload();
@@ -76,9 +76,9 @@ export const DatabaseConfigModal: React.FC<DatabaseConfigModalProps> = ({
     }
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
     if (window.confirm('Are you sure you want to disconnect the cloud database? The app will switch to local mode.')) {
-      clearSupabaseConfig();
+      await clearSupabaseConfig();
       window.location.reload();
     }
   };

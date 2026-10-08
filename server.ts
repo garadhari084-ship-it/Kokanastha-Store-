@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
@@ -103,6 +104,44 @@ Ensure that you only output valid JSON.`;
     } catch (error: any) {
       console.error("Error scanning invoice:", error);
       res.status(500).json({ error: error.message || "Failed to scan invoice" });
+    }
+  });
+
+  // Global shared Supabase configuration so all users and devices connect to the same live database
+  const configFilePath = path.join(process.cwd(), 'supabase-config.json');
+
+  app.get("/api/config/supabase", (req, res) => {
+    try {
+      const envUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+      const envKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+      if (envUrl && envKey) {
+        return res.json({ url: envUrl, key: envKey });
+      }
+      if (fs.existsSync(configFilePath)) {
+        const raw = fs.readFileSync(configFilePath, 'utf8');
+        const parsed = JSON.parse(raw);
+        return res.json({ url: parsed.url || '', key: parsed.key || '' });
+      }
+      return res.json({ url: '', key: '' });
+    } catch (e: any) {
+      return res.json({ url: '', key: '' });
+    }
+  });
+
+  app.post("/api/config/supabase", (req, res) => {
+    try {
+      const { url, key } = req.body;
+      const data = { 
+        url: (url || '').trim(), 
+        key: (key || '').trim(), 
+        updated_at: new Date().toISOString() 
+      };
+      fs.writeFileSync(configFilePath, JSON.stringify(data, null, 2), 'utf8');
+      process.env.VITE_SUPABASE_URL = data.url;
+      process.env.VITE_SUPABASE_ANON_KEY = data.key;
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: e.message });
     }
   });
 

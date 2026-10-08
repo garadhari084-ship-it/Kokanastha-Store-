@@ -21,20 +21,47 @@ export function getSupabaseConfig(): { url: string; key: string } {
   }
 }
 
-export function saveSupabaseConfig(url: string, key: string): void {
+export async function saveSupabaseConfig(url: string, key: string): Promise<void> {
   if (typeof window !== 'undefined') {
     localStorage.setItem('kokanastha_supabase_url', url.trim());
     localStorage.setItem('kokanastha_supabase_key', key.trim());
+    try {
+      await fetch('/api/config/supabase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim(), key: key.trim() })
+      }).catch(() => {});
+    } catch (_) {}
   }
 }
 
-export function clearSupabaseConfig(): void {
+export async function clearSupabaseConfig(): Promise<void> {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('kokanastha_supabase_url');
     localStorage.removeItem('kokanastha_supabase_key');
     localStorage.removeItem('supabase_project_url');
     localStorage.removeItem('supabase_anon_key');
+    try {
+      await fetch('/api/config/supabase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: '', key: '' })
+      }).catch(() => {});
+    } catch (_) {}
   }
+}
+
+export async function fetchServerSupabaseConfig(): Promise<{ url: string; key: string } | null> {
+  try {
+    const res = await fetch('/api/config/supabase');
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.url && data?.key) {
+        return { url: data.url.trim(), key: data.key.trim() };
+      }
+    }
+  } catch (_) {}
+  return null;
 }
 
 export async function testSupabaseConnection(url: string, key: string): Promise<{ success: boolean; error?: string }> {

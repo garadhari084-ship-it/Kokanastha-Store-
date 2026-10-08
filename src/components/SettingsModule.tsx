@@ -32,6 +32,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { dbStore } from '../services/store';
+import { safeStorage } from '../utils/safeStorage';
 import { Business, UserProfile } from '../types/erp';
 import { compressImageFile } from '../utils/imageCompressor';
 import { uploadFileToSupabaseStorage, supabase, isSupabaseConfigured } from '../services/supabase';
@@ -74,6 +75,9 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [taxRateDefault, setTaxRateDefault] = useState<number>(business?.tax_rate_default ?? 18);
   const [billingAddress, setBillingAddress] = useState(business?.billing_address || 'Warehouse 4B, Apex Industrial Estate, Dahisar East, Mumbai 400068');
   const [mfgAddress, setMfgAddress] = useState(business?.mfg_address || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092');
+  const [barcodePhone, setBarcodePhone] = useState(business?.barcode_phone || '');
+  const [barcodeAddress, setBarcodeAddress] = useState(business?.barcode_address || '');
+  const [barcodeOtherInfo, setBarcodeOtherInfo] = useState(business?.barcode_other_info || '');
   const [logoUrl, setLogoUrl] = useState(business?.logo_url || '');
   const [loginCoverUrl, setLoginCoverUrl] = useState(business?.login_cover_url || '');
 
@@ -128,6 +132,9 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       setTaxRateDefault(updated.tax_rate_default ?? 5);
       setBillingAddress(updated.billing_address || '');
       setMfgAddress(updated.mfg_address || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092');
+      setBarcodePhone(updated.barcode_phone || '');
+      setBarcodeAddress(updated.barcode_address || '');
+      setBarcodeOtherInfo(updated.barcode_other_info || '');
       setLogoUrl(updated.logo_url || '');
       setLoginCoverUrl(updated.login_cover_url || '');
       setCurrencySymbol(updated.currency_symbol || '₹');
@@ -360,6 +367,9 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         tax_rate_default: Number(taxRateDefault),
         billing_address: billingAddress.trim(),
         mfg_address: mfgAddress.trim(),
+        barcode_phone: barcodePhone.trim(),
+        barcode_address: barcodeAddress.trim(),
+        barcode_other_info: barcodeOtherInfo.trim(),
         logo_url: logoUrl,
         login_cover_url: loginCoverUrl,
         currency_symbol: currencySymbol.substring(0, 10),
@@ -385,6 +395,18 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         sms_gateway_url: smsGatewayUrl.trim(),
         google_maps_key: googleMapsKey.trim()
       });
+
+      try {
+        let existingDefaults: any = {};
+        const raw = safeStorage.getItem(`omnipack_barcode_defaults_${businessId}`);
+        if (raw) existingDefaults = JSON.parse(raw);
+        safeStorage.setItem(`omnipack_barcode_defaults_${businessId}`, JSON.stringify({
+          ...existingDefaults,
+          phone: barcodePhone.trim(),
+          address: barcodeAddress.trim(),
+          other_info: barcodeOtherInfo.trim()
+        }));
+      } catch (e) {}
 
       dbStore.logActivity(
         user.id,
@@ -512,6 +534,51 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   onChange={(e) => setMfgAddress(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500"
                 />
+              </div>
+
+              {/* Barcode 60*100 and Thermal Sticker Permanent Defaults */}
+              <div className="space-y-2 sm:col-span-2 p-4 bg-amber-50/70 dark:bg-amber-950/25 rounded-2xl border border-amber-200 dark:border-amber-800/60 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-amber-900 dark:text-amber-200 uppercase tracking-wider">🏷️ Barcode 60*100 & Sticker Permanent Defaults</span>
+                    <span className="text-[9px] bg-amber-200 dark:bg-amber-900/60 text-amber-950 dark:text-amber-200 px-2 py-0.5 rounded-full font-extrabold uppercase">Always Show</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                  These details will <b>always display on 60*100 barcodes and thermal stickers</b> under the phone number and address until you change them.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Barcode Helpline / Phone Number</label>
+                    <input 
+                      type="text"
+                      value={barcodePhone}
+                      onChange={(e) => setBarcodePhone(e.target.value)}
+                      placeholder="e.g. +91 9820769697 / 022-28901234"
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 font-mono font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Barcode Other Info (Shows under Phone & Address in 60*100)</label>
+                    <input 
+                      type="text"
+                      value={barcodeOtherInfo}
+                      onChange={(e) => setBarcodeOtherInfo(e.target.value)}
+                      placeholder="e.g. Email: care@kokanastha.com • Web: www.kokanastha.com"
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Barcode Address (Overrides address for barcode printing)</label>
+                    <textarea 
+                      rows={2}
+                      value={barcodeAddress}
+                      onChange={(e) => setBarcodeAddress(e.target.value)}
+                      placeholder="e.g. Gala 4, Laxmi Industrial Estate, Borivali West, Mumbai 400092"
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700 font-bold"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Logo & Cover Upload */}

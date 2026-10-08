@@ -564,6 +564,40 @@ export function isOrderInTimeHorizon(
   return true;
 }
 
+/**
+ * Safely extracts a concise Area Zone location (e.g. 'Dahisar', 'Borivali')
+ * and guarantees that a full street/building address is NEVER shown in the Area Zone column.
+ */
+export function extractAreaZone(rawArea?: string, rawAddress?: string, customZones?: string[]): string {
+  const standardZones = customZones && customZones.length > 0 
+    ? customZones 
+    : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
+
+  // 1. If rawArea is provided and is a valid concise zone name (no commas, no digits, < 25 chars)
+  if (rawArea && typeof rawArea === 'string' && rawArea.trim() && rawArea !== 'Other') {
+    const cleanArea = rawArea.replace(/ Resident$/i, '').trim();
+    // Direct case-insensitive match against registered zones
+    const exactMatch = standardZones.find(z => z.toLowerCase() === cleanArea.toLowerCase());
+    if (exactMatch) return exactMatch;
+    // If it's a short custom zone without street-address indicators
+    if (cleanArea.length <= 25 && !cleanArea.includes(',') && !/\d{5,}/.test(cleanArea) && !/\b(flat|room|road|building|apt|chawl|opp|near)\b/i.test(cleanArea)) {
+      return cleanArea;
+    }
+  }
+
+  // 2. Search for registered zones inside rawArea or rawAddress
+  const combinedText = `${rawArea || ''} ${rawAddress || ''}`;
+  for (const zone of standardZones) {
+    const regex = new RegExp(`\\b${zone}\\b`, 'i');
+    if (regex.test(combinedText)) {
+      return zone;
+    }
+  }
+
+  // 3. Fallback to default
+  return standardZones[0] || 'Dahisar';
+}
+
 // ====================================================================
 // STORAGE STATE CLASS (LOCALSTORAGE BACKED)
 // ====================================================================
@@ -617,8 +651,40 @@ class ERPStorage {
     this.listeners.push(listener);
     return () => { this.listeners = this.listeners.filter(l => l !== listener); };
   }
-  private notify() {
+  public notify() {
     this.listeners.forEach(l => l());
+  }
+
+  public patchIncomingRecord(key: string, record: any) {
+    if (!record || !record.id) return;
+    const cacheArr = (this.cache as any)[key];
+    if (Array.isArray(cacheArr)) {
+      const idx = cacheArr.findIndex((item: any) => item.id === record.id);
+      if (idx !== -1) {
+        cacheArr[idx] = { ...cacheArr[idx], ...record };
+      } else {
+        cacheArr.unshift(record);
+      }
+      try {
+        safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
+      } catch (_) {}
+      this.notify();
+    }
+  }
+
+  public patchIncomingDelete(key: string, id: string) {
+    if (!id) return;
+    const cacheArr = (this.cache as any)[key];
+    if (Array.isArray(cacheArr)) {
+      const idx = cacheArr.findIndex((item: any) => item.id === id);
+      if (idx !== -1) {
+        cacheArr.splice(idx, 1);
+        try {
+          safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
+        } catch (_) {}
+        this.notify();
+      }
+    }
   }
   private cache: {
     businesses: Business[];
@@ -907,16 +973,35 @@ class ERPStorage {
                if (so.status === 'Cancelled' && so.dispatch_notes?.includes('[SYSTEM_RETURNED]')) {
                  so.status = 'Returned';
                }
+               let localSavedItems: any[] = [];
+               if (!existingSO?.items || existingSO.items.length === 0) {
+                 try {
+                   const localSales = JSON.parse(safeStorage.getItem('omnipack_erp_sales') || '[]');
+                   const localMatch = localSales.find((ls: any) => ls.id === so.id);
+                   if (localMatch?.items && Array.isArray(localMatch.items) && localMatch.items.length > 0) {
+                     localSavedItems = localMatch.items;
+                   }
+                 } catch (e) {}
+               }
+
                const hasRemoteItems = itemsByOrder[so.id] && itemsByOrder[so.id].length > 0;
                const rawItems = hasRemoteItems 
                  ? itemsByOrder[so.id] 
-                 : (existingSO?.items && existingSO.items.length > 0 ? existingSO.items : (so.items || []));
+                 : (existingSO?.items && existingSO.items.length > 0 
+                     ? existingSO.items 
+                     : (localSavedItems.length > 0 ? localSavedItems : (so.items || [])));
                const mergedItems = rawItems.map((rit: any) => {
-                 const existingItem = existingSO?.items?.find((eit: any) => eit.product_id === rit.product_id || eit.id === rit.id);
+                 const existingItem = (existingSO?.items || localSavedItems)?.find((eit: any) => eit.product_id === rit.product_id || eit.id === rit.id);
                  const existingScanned = typeof existingItem?.scanned_qty === 'number' && !isNaN(existingItem.scanned_qty) ? existingItem.scanned_qty : 0;
                  const remoteScanned = typeof rit.scanned_qty === 'number' && !isNaN(rit.scanned_qty) ? rit.scanned_qty : 0;
+                 const prod = (this.cache.products || []).find((p: any) => p.id === rit.product_id);
                  return {
+                   ...existingItem,
                    ...rit,
+                   product_name: rit.product_name || existingItem?.product_name || prod?.name || 'Product Item',
+                   selling_price: typeof rit.selling_price === 'number' ? rit.selling_price : (existingItem?.selling_price || prod?.selling_price || 0),
+                   qty: typeof rit.qty === 'number' && rit.qty > 0 ? rit.qty : (existingItem?.qty || 1),
+                   gst_rate: typeof rit.gst_rate === 'number' ? rit.gst_rate : (existingItem?.gst_rate || prod?.gst_rate || 0),
                    scanned_qty: Math.max(existingScanned, remoteScanned)
                  };
                });
@@ -948,7 +1033,7 @@ class ERPStorage {
                  ...remoteCust,
                  area: remoteCust.area || localCust?.area || undefined,
                  loyalty_points: typeof remoteCust.loyalty_points === 'number' ? remoteCust.loyalty_points : (localCust?.loyalty_points || 0),
-                 loyalty_tier: remoteCust.loyalty_tier || localCust?.loyalty_tier || 'Silver',
+                 loyalty_tier: remoteCust.loyalty_tier || localCust?.loyalty_tier || 'None',
                  lifetime_spend: typeof remoteCust.lifetime_spend === 'number' ? remoteCust.lifetime_spend : (localCust?.lifetime_spend || 0)
                };
              });
@@ -1064,8 +1149,37 @@ class ERPStorage {
           } else if (key === 'businesses') {
              const mergedBusinesses = (data || []).map((b: any) => {
                 const existing = (this.cache.businesses || []).find(eb => eb.id === b.id);
-                if (!existing) return b;
-                return { ...existing, ...b };
+                let savedDefaults: any = {};
+                try {
+                   const raw = safeStorage.getItem(`omnipack_barcode_defaults_${b.id}`);
+                   if (raw) savedDefaults = JSON.parse(raw);
+                } catch (e) {}
+
+                if (!existing) {
+                   return {
+                      ...b,
+                      barcode_phone: savedDefaults.phone || b.barcode_phone,
+                      barcode_address: savedDefaults.address || b.barcode_address,
+                      barcode_other_info: savedDefaults.other_info || b.barcode_other_info,
+                      barcode_fssai: savedDefaults.fssai || b.barcode_fssai,
+                      barcode_ingredients: savedDefaults.ingredients || b.barcode_ingredients,
+                      barcode_company_name: savedDefaults.company_name || b.barcode_company_name,
+                      barcode_show_company: savedDefaults.show_company ?? b.barcode_show_company,
+                      barcode_label_size: savedDefaults.label_size || b.barcode_label_size
+                   };
+                }
+                return {
+                   ...existing,
+                   ...b,
+                   barcode_phone: existing.barcode_phone || savedDefaults.phone || b.barcode_phone,
+                   barcode_address: existing.barcode_address || savedDefaults.address || b.barcode_address,
+                   barcode_other_info: existing.barcode_other_info || savedDefaults.other_info || b.barcode_other_info,
+                   barcode_fssai: existing.barcode_fssai || savedDefaults.fssai || b.barcode_fssai,
+                   barcode_ingredients: existing.barcode_ingredients || savedDefaults.ingredients || b.barcode_ingredients,
+                   barcode_company_name: existing.barcode_company_name || savedDefaults.company_name || b.barcode_company_name,
+                   barcode_show_company: existing.barcode_show_company ?? savedDefaults.show_company ?? b.barcode_show_company,
+                   barcode_label_size: existing.barcode_label_size || savedDefaults.label_size || b.barcode_label_size
+                };
              });
              this.cache.businesses = mergedBusinesses.length > 0 ? mergedBusinesses : this.cache.businesses;
              safeStorage.setItem('omnipack_erp_businesses', JSON.stringify(this.cache.businesses));
@@ -1193,6 +1307,16 @@ class ERPStorage {
            const sess = JSON.parse(safeStorage.getItem('omnipack_session') || '{}');
            if (sess.businessId) activeBusinessId = sess.businessId;
        } catch (e) {}
+       if (!activeBusinessId && dataItem) {
+           if (Array.isArray(dataItem) && dataItem[0]?.business_id) {
+               activeBusinessId = dataItem[0].business_id;
+           } else if (dataItem.business_id) {
+               activeBusinessId = dataItem.business_id;
+           }
+       }
+       if (!activeBusinessId && this.cache.businesses.length > 0) {
+           activeBusinessId = this.cache.businesses[0].id;
+       }
        
        const cleanItem = (item: any) => {
            const clean = { ...item };
@@ -1215,12 +1339,16 @@ class ERPStorage {
                clean.business_id = sanitizeUUID(clean.business_id, false);
            }
            if (tableName === 'customers') {
-               delete clean.area;
+               if (clean.area) {
+                 clean.area = extractAreaZone(clean.area, clean.shipping_address);
+               } else {
+                 clean.area = 'Dahisar';
+               }
                if (clean.pan) clean.pan = String(clean.pan).substring(0, 10);
                if (clean.gstin) clean.gstin = String(clean.gstin).substring(0, 15);
                clean.loyalty_points = Number(clean.loyalty_points || 0);
                clean.lifetime_spend = Number(clean.lifetime_spend || 0);
-               if (!clean.loyalty_tier) clean.loyalty_tier = 'Silver';
+               if (!clean.loyalty_tier) clean.loyalty_tier = 'None';
            }
            if (tableName === 'suppliers') {
                if (clean.pan) clean.pan = String(clean.pan).substring(0, 10);
@@ -1239,7 +1367,11 @@ class ERPStorage {
                clean.parent_id = sanitizeUUID(clean.parent_id, true);
            }
            if (tableName === 'sales_orders') {
-               delete clean.area;
+               if (clean.area) {
+                 clean.area = extractAreaZone(clean.area, clean.shipping_address);
+               } else {
+                 clean.area = 'Dahisar';
+               }
                if (clean.status === 'Returned') {
                  clean.status = 'Cancelled';
                  clean.dispatch_notes = (clean.dispatch_notes || '') + ' [SYSTEM_RETURNED]';
@@ -1248,11 +1380,14 @@ class ERPStorage {
                if (clean.customer_id && Array.isArray(this.cache.customers) && !this.cache.customers.some((c: any) => c.id === clean.customer_id)) {
                    clean.customer_id = null;
                }
-               if (clean.items) {
+               if (clean.items && Array.isArray(clean.items)) {
                    clean.items.forEach((i: any) => {
-                       const si = { ...i, sales_order_id: clean.id, business_id: clean.business_id };
+                       const si = { ...i, sales_order_id: clean.id };
                        si.id = sanitizeUUID(si.id, false);
                        si.product_id = sanitizeUUID(si.product_id, false);
+                       delete si.business_id;
+                       delete si.product_name;
+                       delete si.name;
                        delete si.is_overridden; delete si.normal_rate; delete si.rate_type; delete si.rate_reason; delete si.unit_savings; delete si.original_calc_price;
                        salesItems.push(si);
                    });
@@ -1261,11 +1396,14 @@ class ERPStorage {
            }
            if (tableName === 'purchase_orders') {
                clean.supplier_id = sanitizeUUID(clean.supplier_id, false);
-               if (clean.items) {
+               if (clean.items && Array.isArray(clean.items)) {
                    clean.items.forEach((i: any) => {
-                       const pi = { ...i, purchase_order_id: clean.id, business_id: clean.business_id };
+                       const pi = { ...i, purchase_order_id: clean.id };
                        pi.id = sanitizeUUID(pi.id, false);
                        pi.product_id = sanitizeUUID(pi.product_id, false);
+                       delete pi.business_id;
+                       delete pi.product_name;
+                       delete pi.name;
                        delete pi.is_overridden;
                        purchaseItems.push(pi);
                    });
@@ -1294,6 +1432,14 @@ class ERPStorage {
            if (tableName === 'businesses') {
                delete clean.last_supabase_sync;
                delete clean.loyalty_config;
+               delete clean.barcode_phone;
+               delete clean.barcode_address;
+               delete clean.barcode_fssai;
+               delete clean.barcode_ingredients;
+               delete clean.barcode_company_name;
+               delete clean.barcode_show_company;
+               delete clean.barcode_label_size;
+               delete clean.barcode_other_info;
                if (clean.invoice_prefix) clean.invoice_prefix = String(clean.invoice_prefix).substring(0, 50);
                if (clean.advance_invoice_prefix) clean.advance_invoice_prefix = String(clean.advance_invoice_prefix).substring(0, 50);
                if (clean.festive_invoice_prefix) clean.festive_invoice_prefix = String(clean.festive_invoice_prefix).substring(0, 50);
@@ -1399,6 +1545,13 @@ class ERPStorage {
            if (dataItem && Array.isArray(dataItem)) {
              dataItem.forEach((item: any) => { if (item && item.id) this.pendingUploads.delete(item.id) });
            }
+           if (activeBusinessId && this.realtimeChannel) {
+             this.realtimeChannel.send({
+               type: 'broadcast',
+               event: 'sync_update',
+               payload: { businessId: activeBusinessId, key, table: tableName, action: 'upsert', timestamp: Date.now() }
+             }).catch(() => {});
+           }
            return;
        } else {
            payload = cleanItem(payload);
@@ -1476,7 +1629,15 @@ class ERPStorage {
            this.realtimeChannel.send({
                type: 'broadcast',
                event: 'sync_update',
-               payload: { businessId: activeBusinessId, key }
+               payload: { 
+                 businessId: activeBusinessId, 
+                 key, 
+                 table: tableName, 
+                 action: isDelete ? 'delete' : 'upsert',
+                 id: deleteId || (dataItem && !Array.isArray(dataItem) ? dataItem.id : undefined),
+                 record: dataItem && !Array.isArray(dataItem) ? dataItem : undefined,
+                 timestamp: Date.now()
+               }
            }).catch(() => {});
        }
     }
@@ -2462,7 +2623,7 @@ class ERPStorage {
       outstanding_amount: 0,
       loyalty_points: welcomeBonus,
       lifetime_spend: 0,
-      loyalty_tier: 'Silver',
+      loyalty_tier: cust.loyalty_tier || 'None',
       created_at: new Date().toISOString()
     };
     this.cache.customers.push(newCust);
@@ -2524,7 +2685,7 @@ class ERPStorage {
       outstanding_amount: 0,
       loyalty_points: welcomeBonus,
       lifetime_spend: 0,
-      loyalty_tier: 'Silver',
+      loyalty_tier: cust.loyalty_tier || 'None',
       created_at: now
     }));
 
@@ -2636,12 +2797,12 @@ class ERPStorage {
     this.save('loyaltyLogs', newLog);
   }
 
-  public calculateCustomerTier(lifetimeSpend: number, config: LoyaltyConfig, overrideTier?: string): 'Silver' | 'Gold' | 'Platinum' {
-    if (overrideTier === 'Platinum' || overrideTier === 'Gold' || overrideTier === 'Silver') return overrideTier;
-    if (lifetimeSpend >= (config.platinum_min_spend || 20000)) return 'Platinum';
-    if (lifetimeSpend >= (config.gold_min_spend || 10000)) return 'Gold';
-    if (config.silver_min_spend !== undefined && lifetimeSpend >= config.silver_min_spend) return 'Silver';
-    return 'Silver'; // Default
+  public calculateCustomerTier(lifetimeSpend: number, config: LoyaltyConfig, overrideTier?: string): 'Silver' | 'Gold' | 'Platinum' | 'None' {
+    if (overrideTier) {
+      if (overrideTier === 'Platinum' || overrideTier === 'Gold' || overrideTier === 'Silver') return overrideTier;
+      if (overrideTier === 'None') return 'None';
+    }
+    return 'None';
   }
 
   public processOrderLoyalty(
@@ -2679,9 +2840,18 @@ class ERPStorage {
     }
 
     // 2. Calculate tier & spend
-    const oldTier = cust.loyalty_tier || 'Silver';
+    const oldTier = cust.loyalty_tier || 'None';
     const newLifetimeSpend = (cust.lifetime_spend || 0) + orderAmount;
-    const newTier = this.calculateCustomerTier(newLifetimeSpend, config, cust.loyalty_tier_override);
+    let newTier: 'Silver' | 'Gold' | 'Platinum' | 'None' = cust.loyalty_tier || 'None';
+    if (cust.loyalty_tier_override && cust.loyalty_tier_override !== 'None') {
+      newTier = cust.loyalty_tier_override;
+    } else if (cust.loyalty_tier && cust.loyalty_tier !== 'None') {
+      if (newLifetimeSpend >= (config.platinum_min_spend || 20000)) {
+        newTier = 'Platinum';
+      } else if (newLifetimeSpend >= (config.gold_min_spend || 10000) && cust.loyalty_tier === 'Silver') {
+        newTier = 'Gold';
+      }
+    }
 
     // Tier Bonus Points (if moved to a higher tier)
     if (newTier !== oldTier) {
@@ -3519,11 +3689,7 @@ class ERPStorage {
         .filter(s => isSameBusiness(s.business_id, businessId))
         .map(s => {
           const cust = customerMap.get(s.customer_id);
-          const resolvedArea = (s.area && s.area !== 'Other') 
-            ? s.area 
-            : (cust?.area && cust.area !== 'Other') 
-            ? cust.area 
-            : (cust?.shipping_address && !/Other/i.test(cust.shipping_address) ? cust.shipping_address.replace(/ Resident$/i, '').trim() : undefined) || 'Dahisar';
+          const resolvedArea = extractAreaZone(s.area, cust?.shipping_address || (s as any).shipping_address || cust?.area);
           
           let rawItems = s.items;
           if (typeof rawItems === 'string') {

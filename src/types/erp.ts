@@ -45,6 +45,14 @@ export interface Business {
   google_maps_key?: string;
   loyalty_config?: LoyaltyConfig;
   mfg_address?: string;
+  barcode_phone?: string;
+  barcode_address?: string;
+  barcode_fssai?: string;
+  barcode_ingredients?: string;
+  barcode_company_name?: string;
+  barcode_show_company?: boolean;
+  barcode_label_size?: string;
+  barcode_other_info?: string;
 }
 
 export interface UserProfile {
@@ -113,6 +121,8 @@ export interface FoodPackagingInfo {
   mfg_by?: string; // Manufacturer name & address
   mkt_by?: string; // Marketer name & address
   customer_care?: string; // Customer care helpline / email
+  customer_care_phone?: string;
+  other_info?: string;
 }
 
 export interface Product {
@@ -189,8 +199,8 @@ export interface Customer {
   outstanding_amount: number;
   loyalty_points?: number;
   lifetime_spend?: number;
-  loyalty_tier?: 'Silver' | 'Gold' | 'Platinum';
-  loyalty_tier_override?: 'Silver' | 'Gold' | 'Platinum';
+  loyalty_tier?: 'Silver' | 'Gold' | 'Platinum' | 'None';
+  loyalty_tier_override?: 'Silver' | 'Gold' | 'Platinum' | 'None';
   loyalty_plan?: string; // e.g. 'Premium Annual'
   is_loyal_member?: boolean; // Kokanastha Loyal Member Program enrollee
   loyalty_start_date?: string;
@@ -413,7 +423,7 @@ export interface BusinessSettings {
 }
 
 // ==================== LOYALTY PROGRAM TYPES ====================
-export type LoyaltyTier = 'Silver' | 'Gold' | 'Platinum';
+export type LoyaltyTier = 'Silver' | 'Gold' | 'Platinum' | 'None';
 
 export interface LoyaltyConfig {
   enabled: boolean;

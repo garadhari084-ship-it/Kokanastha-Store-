@@ -52,7 +52,7 @@ import {
   Building2,
   ChevronLeft
 } from 'lucide-react';
-import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
+import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
 import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
 import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
@@ -484,6 +484,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
       return {
         ...it,
+        product_name: it.product_name || p.name,
         selling_price: evalRes.appliedPrice,
         normal_rate: evalRes.normalRate,
         rate_type: evalRes.rateType,
@@ -590,6 +591,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     const newItem: SalesItem = {
       id: crypto.randomUUID(),
       product_id: prod.id,
+      product_name: prod.name,
       qty: finalQty,
       scanned_qty: 0,
       selling_price: finalPrice,
@@ -1111,9 +1113,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
     // Auto-capture pending row item if product was selected in row input
     let itemsToProcess = [...orderItems];
-    if (itemsToProcess.length === 0 && rowProductId) {
+    if (rowProductId) {
       const selectedProd = products.find(p => p.id === rowProductId) || dbStore.getProducts(businessId).find(p => p.id === rowProductId);
-      if (selectedProd) {
+      if (selectedProd && !itemsToProcess.some(it => it.product_id === selectedProd.id)) {
         const selCust = customers.find(c => c.id === selectedCustomerId);
         const evalRes = calculateApplicablePrice(selectedProd, {
           isLoyalMember: isLoyalMember(selCust),
@@ -1221,12 +1223,13 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             finalCustomerName = cObj.name;
             finalCustomerArea = selectedArea || (cObj.area && cObj.area !== 'Other' ? cObj.area : 'Dahisar');
             // Save updated customer contact & addresses if changed inline
-            if (selectedCustomerPhone.trim() || selectedCustomerAddress.trim() || selectedCustomerShippingAddress.trim() || selectedPincode.trim()) {
+            if (selectedCustomerPhone.trim() || selectedCustomerAddress.trim() || selectedCustomerShippingAddress.trim() || selectedPincode.trim() || finalCustomerArea) {
               dbStore.updateCustomer(cObj.id, {
                 phone: selectedCustomerPhone.trim() || cObj.phone,
                 billing_address: selectedCustomerAddress.trim() || cObj.billing_address,
                 shipping_address: isSameShippingAddress ? (selectedCustomerAddress.trim() || cObj.billing_address) : (selectedCustomerShippingAddress.trim() || cObj.shipping_address),
-                pin_code: selectedPincode.trim() || cObj.pin_code
+                pin_code: selectedPincode.trim() || cObj.pin_code,
+                area: finalCustomerArea
               });
             }
          }
@@ -1521,7 +1524,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
     const cust = customers.find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
-    const printHtml = await generateBillOfSupplyHTML(order, cust, businessObj, products);
+    const allProds = [
+      ...(Array.isArray(products) ? products : []),
+      ...dbStore.getProducts(businessId),
+      ...((dbStore as any).cache?.products || [])
+    ];
+    const printHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
 
     try {
       let printFrame = document.getElementById('tax-invoice-print-frame') as HTMLIFrameElement;
@@ -1563,7 +1571,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const handleDownload3InchBill = async (order: SalesOrder) => {
     const cust = customers.find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
-    const fullHtml = await generate3InchBillHTML(order, cust, businessObj, products);
+    const allProds = [
+      ...(Array.isArray(products) ? products : []),
+      ...dbStore.getProducts(businessId),
+      ...((dbStore as any).cache?.products || [])
+    ];
+    const fullHtml = await generate3InchBillHTML(order, cust, businessObj, allProds);
 
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1596,7 +1609,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const handleDownloadPDFInvoice = async (order: SalesOrder) => {
     const cust = customers.find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
-    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, products);
+    const allProds = [
+      ...(Array.isArray(products) ? products : []),
+      ...dbStore.getProducts(businessId),
+      ...((dbStore as any).cache?.products || [])
+    ];
+    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
 
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1973,7 +1991,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
                   <td className="py-2 px-3 font-semibold text-slate-700 dark:text-slate-300 text-xs">
                     <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/80 dark:border-slate-700 font-medium text-[10px] text-slate-700 dark:text-slate-300">
-                      📍 {o.area || 'Dahisar'}
+                      📍 {extractAreaZone(o.area, cust?.shipping_address, currentBiz?.area_zones)}
                     </span>
                   </td>
 

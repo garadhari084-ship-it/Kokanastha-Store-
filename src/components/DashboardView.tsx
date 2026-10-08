@@ -74,7 +74,7 @@ import {
   ClipboardList,
   AlertCircle
 } from 'lucide-react';
-import { dbStore, isOrderInTimeHorizon, TimeHorizon } from '../services/store';
+import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone } from '../services/store';
 import { SalesOrder, UserProfile, OrderStatus } from '../types/erp';
 import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
 import { BillOfSupplyView } from './BillOfSupplyView';
@@ -205,7 +205,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
     const cust = customers.find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
-    const printHtml = await generateBillOfSupplyHTML(order, cust, businessObj, products);
+    const allProds = [
+      ...(Array.isArray(products) ? products : []),
+      ...dbStore.getProducts(businessId),
+      ...((dbStore as any).cache?.products || [])
+    ];
+    const printHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
 
     try {
       let printFrame = document.getElementById('tax-invoice-print-frame') as HTMLIFrameElement;
@@ -247,7 +252,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const handleDownload3InchBill = async (order: SalesOrder) => {
     const cust = customers.find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
-    const fullHtml = await generate3InchBillHTML(order, cust, businessObj, products);
+    const allProds = [
+      ...(Array.isArray(products) ? products : []),
+      ...dbStore.getProducts(businessId),
+      ...((dbStore as any).cache?.products || [])
+    ];
+    const fullHtml = await generate3InchBillHTML(order, cust, businessObj, allProds);
 
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -280,7 +290,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const handleSavePDFInvoice = async (order: SalesOrder) => {
     const cust = customers.find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
-    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, products);
+    const allProds = [
+      ...(Array.isArray(products) ? products : []),
+      ...dbStore.getProducts(businessId),
+      ...((dbStore as any).cache?.products || [])
+    ];
+    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
     
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -357,6 +372,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const products = dbStore.getProducts(businessId);
   const customers = dbStore.getCustomers(businessId);
   const allOrders = dbStore.getSalesOrders(businessId);
+  const currentBiz = useMemo(() => dbStore.getBusiness(businessId), [businessId]);
 
   const lowStockThreshold = useMemo(() => dbStore.getSettings(businessId).low_stock_limit, [businessId]);
   const lowStockCount = useMemo(() => products.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) <= lowStockThreshold).length, [products, lowStockThreshold]);
@@ -1873,7 +1889,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                     <td className="py-2.5 px-4 font-semibold text-slate-700 dark:text-slate-300 text-xs">
                       <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200/80 dark:border-slate-700 font-medium text-[11px] text-slate-700 dark:text-slate-300">
-                        📍 {o.area || 'Dahisar'}
+                        📍 {extractAreaZone(o.area, cust?.shipping_address, currentBiz?.area_zones)}
                       </span>
                     </td>
 

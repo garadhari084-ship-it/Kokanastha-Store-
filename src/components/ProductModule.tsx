@@ -34,11 +34,14 @@ import {
   Salad,
   Flame,
   Apple,
-  ExternalLink
+  ExternalLink,
+  Phone,
+  Save
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { dbStore, isComboProduct } from '../services/store';
 import { Product, Category, UserProfile, ComboItem, ComboHistoryLog } from '../types/erp';
+import { safeStorage } from '../utils/safeStorage';
 import { Camera } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
 import ReactBarcode from 'react-barcode';
@@ -396,6 +399,8 @@ export interface ThermalBarcodeStickerProps {
   expiryOn?: string;
   fssaiNumber?: string;
   address?: string;
+  phone?: string;
+  otherInfo?: string;
   ingredients?: string;
   orientation?: 'auto' | 'landscape' | 'portrait' | 'rotated90' | 'thermal-portrait-fix' | 'thermal-270-fix';
   mode?: 'preview' | 'print';
@@ -414,6 +419,8 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   expiryOn,
   fssaiNumber,
   address,
+  phone,
+  otherInfo,
   ingredients,
   orientation = 'auto',
   mode = 'preview',
@@ -430,7 +437,9 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   const netWeight = product.food_packaging?.net_weight || product.unit || (size === '100x100' ? '1000g' : size === '100x75' ? '500g' : size === '60x100' ? '500g' : size === '50x75' ? '250g' : '100g');
   
   const effectiveFssai = fssaiNumber || product.food_packaging?.fssai_license || (product.food_packaging as any)?.fssai_license_number || '11521018000123';
-  const effectiveAddress = address || product.food_packaging?.mfg_by || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092';
+  const effectivePhone = phone || (product.food_packaging as any)?.customer_care_phone || (product as any)?.phone || '';
+  const effectiveAddress = address || product.food_packaging?.mfg_by || '';
+  const effectiveOtherInfo = otherInfo || (product.food_packaging as any)?.other_info || '';
   const effectiveIngredients = ingredients || product.food_packaging?.ingredients || 'Roasted Rice Flour, Bengal Gram, Spices, Edible Oil, Salt';
 
   // Base preview pixel dimensions (width x height)
@@ -458,7 +467,7 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     '50x38': 'w-[189px] h-[143px] p-2',
     '50x50': 'w-[200px] h-[200px] p-2',
     '50x75': 'w-[200px] h-[280px] p-2',
-    '60x100': 'w-[240px] h-[400px] p-2.5',
+    '60x100': 'w-[240px] h-[400px] p-2',
     '100x60': 'w-[360px] h-[216px] p-2.5',
     '100x50': 'w-[360px] h-[180px] p-2.5',
     '100x75': 'w-[360px] h-[270px] p-2.5',
@@ -477,7 +486,7 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     if (targetSize === '50x25' || targetSize === '40x25') return valLen > 13 ? 0.92 : valLen > 10 ? 1.0 : 1.1;
     if (targetSize === '50x30' || targetSize === '50x38') return valLen > 13 ? 1.0 : valLen > 10 ? 1.1 : 1.2;
     if (targetSize === '50x50' || targetSize === '50x75') return valLen > 13 ? 0.95 : 1.05;
-    if (targetSize === '60x100') return valLen > 13 ? 1.5 : 1.75;
+    if (targetSize === '60x100') return valLen > 13 ? 1.3 : 1.45;
     if (targetSize === '100x60' || targetSize === '100x50' || targetSize === '100x75' || targetSize === '100x100') return valLen > 13 ? 1.5 : 1.8;
     return valLen > 12 ? 1.0 : 1.15;
   };
@@ -495,10 +504,10 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           value={barcodeValue} 
           height={h} 
           width={customW || barWidth}
-          fontSize={size === '60x100' ? 11 : size === '38x25' ? 7 : size === '50x25' || size === '40x25' ? 7.5 : 8}
+          fontSize={size === '60x100' ? 8.5 : size === '38x25' ? 7 : size === '50x25' || size === '40x25' ? 7.5 : 8}
           margin={0}
           textMargin={1.5}
-          fontOptions="bold"
+          fontOptions={size === '60x100' ? '' : 'bold'}
           font="monospace"
           displayValue={true}
           background="#ffffff"
@@ -699,69 +708,106 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
       return (
         <div 
           className={containerClasses} 
-          style={mode === 'print' ? { padding: '1mm', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start' } : {}}
+          style={mode === 'print' ? { padding: '1mm', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between' } : {}}
         >
-          <div className="w-full flex flex-col items-center border-b-2 border-black pb-1.5 shrink-0 text-black">
-            <span className="text-[14px] font-black uppercase text-center block w-full leading-tight mb-1 truncate tracking-tight">
-              {effectiveCompany}
-            </span>
-            <div className="flex items-center justify-center gap-4 w-full text-[10px] font-black font-mono">
-              <span className="shrink-0 bg-black text-white px-1.5 rounded-sm">SKU: {product.sku || 'SKU-001'}</span>
+          {/* 1. Header (Company, SKU, Veg & Weight) */}
+          <div className="w-full flex flex-col items-center border-b border-black pb-1 shrink-0 text-black">
+            {effectiveCompany ? (
+              <span className="text-[11px] font-normal uppercase text-center block w-full leading-tight mb-0.5 truncate tracking-normal">
+                {effectiveCompany}
+              </span>
+            ) : null}
+            <div className="flex items-center justify-between w-full px-1 text-[8px] font-normal font-mono">
+              <span className="shrink-0">SKU: {product.sku || 'SKU-001'}</span>
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="w-4 h-4 rounded-xs border-2 border-black flex items-center justify-center shrink-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border-2 border-black'}`} />
+                <span className="w-3.5 h-3.5 rounded-xs border border-black flex items-center justify-center shrink-0">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
                 </span>
-                <span className="text-[11px]">{netWeight}</span>
+                <span className="text-[8px] font-sans font-normal">Net Wt: {netWeight}</span>
               </div>
             </div>
           </div>
           
-          <span className="text-[16px] font-black uppercase tracking-tight leading-tight text-center block w-full my-1.5 shrink-0 text-black border-b border-black pb-1">
-            {product.name}
-          </span>
-
-          <div className="w-full flex justify-center shrink-0 my-1">
-            {renderBarcodeBox(48)}
+          {/* 2. Product Name - Clean, not bold */}
+          <div className="w-full text-center my-0.5 shrink-0 text-black border-b border-black pb-0.5">
+            <span className="text-[10px] font-normal uppercase tracking-normal leading-tight text-center block w-full truncate">
+              {product.name}
+            </span>
           </div>
 
-          {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
-          <div className="w-full text-left bg-white p-2 rounded border-2 border-black mt-1 mb-1.5 space-y-1.5 shrink-0 text-black">
-            <div className="text-[10px] font-black uppercase tracking-wider text-black border-b-2 border-black pb-1 flex justify-between items-center font-mono">
-              <span>FSSAI Lic: <b className="font-black font-mono text-black">{effectiveFssai}</b></span>
-              <span className="text-[8.5px] font-black text-black bg-white px-1.5 py-0.5 rounded border-2 border-black shrink-0">{isVeg ? '🌱 VEG' : 'NON-VEG'}</span>
-            </div>
-            <div className="text-[9.5px] leading-tight text-black pt-0.5 font-black line-clamp-2">
-              <b className="underline">Address:</b> {effectiveAddress}
-            </div>
-            <div className="text-[9.5px] leading-tight text-black font-black line-clamp-2">
-              <b className="underline">Ingredients:</b> {effectiveIngredients}
-            </div>
+          {/* 3. Barcode Box */}
+          <div className="w-full flex justify-center shrink-0 my-0.5">
+            {renderBarcodeBox(30)}
           </div>
 
-          {/* Detailed Nutrition Table for 60x100 - More spacious */}
-          <div className="w-full border-2 border-black text-[10px] text-left leading-tight mt-1 mb-1 rounded-xs overflow-hidden shrink-0 text-black">
-            <div className="bg-black text-white px-2 py-1 font-black text-[10px] flex justify-between">
+          {/* 4. UNDER BARCODE: NUTRITIONAL FACTS TABLE - Not bold, reduced size, correctly fitted */}
+          <div className="w-full border border-black text-[6.5px] text-left leading-tight my-0.5 rounded-xs overflow-hidden shrink-0 text-black font-normal">
+            <div className="bg-black text-white px-1.5 py-0.5 font-normal text-[6.5px] flex justify-between">
               <span>NUTRITIONAL FACTS</span>
               <span>Per {product.nutrition_facts?.serving_size || '100g'}</span>
             </div>
-            <div className="divide-y-2 divide-black bg-white text-black font-black">
-              <div className="flex justify-between px-2 py-0.8"><span>Energy</span><b>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</b></div>
-              <div className="flex justify-between px-2 py-0.8"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'} g</b></div>
-              <div className="flex justify-between px-2 py-0.8"><span>Carbs</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</b></div>
-              <div className="flex justify-between px-2 py-0.8"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
-              <div className="flex justify-between px-2 py-0.8"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '380'} mg</b></div>
+            <div className="divide-y divide-black/60 bg-white text-black font-normal">
+              <div className="flex justify-between px-1.5 py-0.3"><span>Energy / Calories</span><span>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</span></div>
+              <div className="flex justify-between px-1.5 py-0.3"><span>Protein</span><span>{product.nutrition_facts?.protein_g ?? '9.2'} g</span></div>
+              <div className="flex justify-between px-1.5 py-0.3"><span>Carbohydrates</span><span>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</span></div>
+              <div className="flex justify-between px-1.5 py-0.3"><span>Total Fat</span><span>{product.nutrition_facts?.fat_total_g ?? '18'} g</span></div>
+              <div className="flex justify-between px-1.5 py-0.3"><span>Sodium</span><span>{product.nutrition_facts?.sodium_mg ?? '380'} mg</span></div>
             </div>
           </div>
 
-          <div className="w-full text-[14px] font-black uppercase border-t-2 border-black pt-1.5 mt-1 shrink-0 text-black">
-            <div className="flex justify-between items-center w-full mb-1">
-              <span>MRP: <b className="text-[15px] bg-black text-white px-1 ml-1">₹{effectiveMrp}</b></span>
-              <span className="font-black text-black text-right">SALE: <b className="text-[18px] underline decoration-2">₹{effectiveSale}</b></span>
+          {/* 5. UNDER NUTRITIONAL FACTS: ITEMS & PRICE - Not bold, reduced size */}
+          <div className="w-full text-[8px] font-normal border-t border-b border-black py-0.5 my-0.5 shrink-0 text-black">
+            <div className="flex justify-between items-center w-full mb-0.5">
+              <span>MRP: ₹{effectiveMrp}</span>
+              <span className="text-right">SALE: ₹{effectiveSale}</span>
             </div>
-            <div className="flex justify-between items-center w-full text-[12px] font-black text-black mt-1 border-t-2 border-black pt-1.5">
-              <span>PKD: <b className="bg-black text-white px-1">{packedOn}</b></span>
-              <span className="text-right">{expiryOn ? <span>EXP: <b className="bg-black text-white px-1">{expiryOn}</b></span> : (product.food_packaging?.best_before_days ? `Best before ${product.food_packaging.best_before_days} days` : 'Best before 90 days')}</span>
+            <div className="flex justify-between items-center w-full text-[7px] font-normal text-black border-t border-black/30 pt-0.5">
+              <span>PKD: {packedOn}</span>
+              <span className="text-right">{expiryOn ? `EXP: ${expiryOn}` : (product.food_packaging?.best_before_days ? `Best: ${product.food_packaging.best_before_days}d` : 'Best before 90 days')}</span>
             </div>
+          </div>
+
+          {/* 6. REGULATORY & PRODUCT INFO - Not bold, reduced size, correctly fitted */}
+          <div className="w-full text-left bg-white p-1 rounded border border-black my-0.5 space-y-0.5 shrink-0 text-black text-[6.5px] font-normal leading-snug">
+            {/* Header: FSSAI License & Dietary Status */}
+            <div className="flex justify-between items-center border-b border-black/70 pb-0.5 text-[6.5px] font-normal">
+              <span>FSSAI Lic: <span className="font-mono">{effectiveFssai}</span></span>
+              <span className="text-[6px] px-1 py-0.2 rounded border border-black shrink-0 font-normal">
+                {isVeg ? '🌱 VEG' : 'NON-VEG'}
+              </span>
+            </div>
+
+            {/* Phone / Helpline */}
+            {effectivePhone ? (
+              <div className="flex items-start gap-1 text-[6.5px] font-normal">
+                <span className="text-black shrink-0">Phone / Helpline:</span>
+                <span className="font-mono">{effectivePhone}</span>
+              </div>
+            ) : null}
+
+            {/* Address */}
+            {effectiveAddress ? (
+              <div className="flex items-start gap-1 text-[6.5px] font-normal">
+                <span className="text-black shrink-0">Address:</span>
+                <span className="break-words line-clamp-2">{effectiveAddress}</span>
+              </div>
+            ) : null}
+
+            {/* Other Info */}
+            {effectiveOtherInfo ? (
+              <div className="flex items-start gap-1 text-[6.5px] font-normal">
+                <span className="text-black shrink-0">Other Info:</span>
+                <span className="break-words line-clamp-1">{effectiveOtherInfo}</span>
+              </div>
+            ) : null}
+
+            {/* Ingredients */}
+            {effectiveIngredients ? (
+              <div className="flex items-start gap-1 border-t border-black/30 pt-0.5 text-[6px] font-normal">
+                <span className="text-black shrink-0">Ingredients:</span>
+                <span className="break-words line-clamp-2">{effectiveIngredients}</span>
+              </div>
+            ) : null}
           </div>
         </div>
       );
@@ -793,40 +839,48 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
                 {product.name}
               </span>
               {renderBarcodeBox(28)}
-              <div className="w-full bg-white border border-black rounded p-1.5 space-y-1 text-left mt-1 text-black">
-                <div className="text-[8px] font-black text-black border-b border-black pb-0.5">
-                  FSSAI Lic: <b className="font-mono text-black">{effectiveFssai}</b>
+              <div className="w-full bg-white border border-black rounded p-1.5 space-y-0.5 text-left mt-1 text-black text-[7px] font-normal leading-tight">
+                <div className="border-b border-black/70 pb-0.5 flex justify-between items-center text-[7.5px]">
+                  <span>FSSAI Lic: <span className="font-mono">{effectiveFssai}</span></span>
+                  {effectivePhone ? <span>Ph: <span className="font-mono">{effectivePhone}</span></span> : null}
                 </div>
-                <div className="text-[7.5px] text-black leading-tight line-clamp-2">
-                  <b>Address:</b> {effectiveAddress}
-                </div>
+                {effectiveAddress ? (
+                  <div className="leading-tight line-clamp-2">
+                    <span>Address: </span><span>{effectiveAddress}</span>
+                  </div>
+                ) : null}
+                {effectiveOtherInfo ? (
+                  <div className="leading-tight line-clamp-1">
+                    <span>Other Info: </span><span>{effectiveOtherInfo}</span>
+                  </div>
+                ) : null}
               </div>
             </div>
 
             {/* Right: Nutrition & Pricing */}
             <div className="col-span-5 flex flex-col gap-1 text-black">
-              <div className="border border-black rounded overflow-hidden text-[7.5px] text-left text-black">
-                <div className="bg-black text-white px-1.5 py-0.5 font-black text-[8px] flex justify-between">
+              <div className="border border-black rounded overflow-hidden text-[7px] text-left text-black font-normal">
+                <div className="bg-black text-white px-1.5 py-0.5 font-normal text-[7px] flex justify-between">
                   <span>NUTRITION</span>
                   <span>(100g)</span>
                 </div>
-                <div className="divide-y divide-black bg-white text-black px-1.5 py-0.5">
-                  <div className="flex justify-between"><span>Energy</span><b>{product.nutrition_facts?.energy_kcal ?? '420'}</b></div>
-                  <div className="flex justify-between"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.2'}g</b></div>
-                  <div className="flex justify-between"><span>Carbs</span><b>{product.nutrition_facts?.carbohydrates_g ?? '58'}g</b></div>
-                  <div className="flex justify-between"><span>Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '18'}g</b></div>
+                <div className="divide-y divide-black bg-white text-black px-1.5 py-0.5 font-normal">
+                  <div className="flex justify-between"><span>Energy</span><span>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</span></div>
+                  <div className="flex justify-between"><span>Protein</span><span>{product.nutrition_facts?.protein_g ?? '9.2'}g</span></div>
+                  <div className="flex justify-between"><span>Carbs</span><span>{product.nutrition_facts?.carbohydrates_g ?? '58'}g</span></div>
+                  <div className="flex justify-between"><span>Fat</span><span>{product.nutrition_facts?.fat_total_g ?? '18'}g</span></div>
                 </div>
               </div>
-              <div className="bg-white border border-black rounded p-1.5 text-black">
-                <div className="flex justify-between items-center text-[9px] font-black">
+              <div className="bg-white border border-black rounded p-1 text-black font-normal">
+                <div className="flex justify-between items-center text-[8.5px] font-normal">
                   <span>MRP:</span>
                   <span>₹{effectiveMrp}</span>
                 </div>
-                <div className="flex justify-between items-center text-[11px] font-black text-black">
+                <div className="flex justify-between items-center text-[9.5px] font-normal text-black">
                   <span>SALE:</span>
                   <span>₹{effectiveSale}</span>
                 </div>
-                <div className="text-[8px] font-black mt-1 border-t border-black pt-1 flex justify-between">
+                <div className="text-[7px] font-normal mt-0.5 border-t border-black/40 pt-0.5 flex justify-between">
                   <span>PKD: {packedOn}</span>
                   <span>EXP: {expiryOn || '90D'}</span>
                 </div>
@@ -868,17 +922,27 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
                 {product.name}
               </span>
               {renderBarcodeBox(20)}
-              {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
-              <div className="w-full bg-white border border-black rounded p-1.5 space-y-0.5 text-left my-1 text-black">
-                <div className="text-[7.5px] font-black text-black border-b border-black pb-0.5 flex justify-between items-center">
-                  <span>FSSAI Lic. No: <b className="font-mono text-black">{effectiveFssai}</b></span>
+              {/* UNDER BARCODE: FSSAI NUMBER, PHONE, ADDRESS, OTHER INFO, INGREDIENTS */}
+              <div className="w-full bg-white border border-black rounded p-1 space-y-0.5 text-left my-1 text-black text-[6.5px] font-normal leading-tight">
+                <div className="border-b border-black/70 pb-0.5 flex justify-between items-center text-[7px]">
+                  <span>FSSAI Lic. No: <span className="font-mono">{effectiveFssai}</span></span>
+                  {effectivePhone ? <span>Ph: <span className="font-mono">{effectivePhone}</span></span> : null}
                 </div>
-                <div className="text-[7px] text-black leading-tight line-clamp-2">
-                  <b>Address:</b> {effectiveAddress}
-                </div>
-                <div className="text-[7px] text-black leading-tight line-clamp-2">
-                  <b>Ingredients:</b> {effectiveIngredients}
-                </div>
+                {effectiveAddress ? (
+                  <div className="line-clamp-2">
+                    <span>Address: </span><span>{effectiveAddress}</span>
+                  </div>
+                ) : null}
+                {effectiveOtherInfo ? (
+                  <div className="line-clamp-1">
+                    <span>Other Info: </span><span>{effectiveOtherInfo}</span>
+                  </div>
+                ) : null}
+                {effectiveIngredients ? (
+                  <div className="line-clamp-2">
+                    <span>Ingredients: </span><span>{effectiveIngredients}</span>
+                  </div>
+                ) : null}
               </div>
               <div className="text-[8px] font-black text-black w-full space-y-0.5 pt-0.5 border-t border-black">
                 <div className="flex justify-between"><span>MRP: <b>₹{effectiveMrp}</b></span> <span className="font-black text-black">SALE: <b>₹{effectiveSale}</b></span></div>
@@ -941,20 +1005,34 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
 
           {renderBarcodeBox(24)}
 
-          {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
-          <div className="w-full bg-white border border-black rounded p-1.5 space-y-0.5 text-left my-1 text-black shrink-0">
-            <div className="flex justify-between items-center text-[8.5px] font-black border-b border-black pb-0.5 text-black">
-              <span>FSSAI Lic. No: <b className="font-mono text-black">{effectiveFssai}</b></span>
-              <span className="text-[7.5px] bg-white text-black px-1.5 py-0.2 rounded border border-black font-black">
+          {/* UNDER BARCODE: FSSAI NUMBER, PHONE, ADDRESS, OTHER INFO, INGREDIENTS */}
+          <div className="w-full bg-white border border-black rounded p-1.5 space-y-0.5 text-left my-1 text-black shrink-0 text-[7.5px] font-normal leading-snug">
+            <div className="flex justify-between items-center border-b border-black/70 pb-0.5 text-[8px]">
+              <span>FSSAI Lic. No: <span className="font-mono">{effectiveFssai}</span></span>
+              <span className="text-[7px] bg-white text-black px-1.5 py-0.2 rounded border border-black font-normal">
                 {isVeg ? '🌱 100% Vegetarian' : 'Non-Vegetarian'}
               </span>
             </div>
-            <div className="text-[7.5px] text-black leading-tight">
-              <b>Packer & Mfg Address:</b> {effectiveAddress}
-            </div>
-            <div className="text-[7.5px] text-black leading-tight">
-              <b>Ingredients:</b> {effectiveIngredients}
-            </div>
+            {effectivePhone ? (
+              <div className="flex items-start gap-1">
+                <span>Phone / Helpline: </span><span className="font-mono">{effectivePhone}</span>
+              </div>
+            ) : null}
+            {effectiveAddress ? (
+              <div className="flex items-start gap-1">
+                <span>Packer & Mfg Address: </span><span>{effectiveAddress}</span>
+              </div>
+            ) : null}
+            {effectiveOtherInfo ? (
+              <div className="flex items-start gap-1">
+                <span>Other Info: </span><span>{effectiveOtherInfo}</span>
+              </div>
+            ) : null}
+            {effectiveIngredients ? (
+              <div className="flex items-start gap-1">
+                <span>Ingredients: </span><span>{effectiveIngredients}</span>
+              </div>
+            ) : null}
           </div>
 
           {/* Detailed Full Box Nutrition Table */}
@@ -1248,8 +1326,89 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [printExpiryOn, setPrintExpiryOn] = useState('');
   const [printCompanyName, setPrintCompanyName] = useState('');
   const [printFssaiNumber, setPrintFssaiNumber] = useState('');
+  const [printPhone, setPrintPhone] = useState('');
   const [printAddress, setPrintAddress] = useState('');
+  const [printOtherInfo, setPrintOtherInfo] = useState('');
   const [printIngredients, setPrintIngredients] = useState('');
+
+  const saveBarcodeDefaults = (updates: {
+    phone?: string;
+    address?: string;
+    other_info?: string;
+    fssai?: string;
+    ingredients?: string;
+    company_name?: string;
+    show_company?: boolean;
+    label_size?: any;
+  }) => {
+    let existingDefaults: any = {};
+    try {
+      const raw = safeStorage.getItem(`omnipack_barcode_defaults_${businessId}`);
+      if (raw) existingDefaults = JSON.parse(raw);
+    } catch (e) {}
+
+    const newDefaults = {
+      ...existingDefaults,
+      ...updates
+    };
+
+    safeStorage.setItem(`omnipack_barcode_defaults_${businessId}`, JSON.stringify(newDefaults));
+
+    const bizUpdates: any = {};
+    if (updates.phone !== undefined) {
+      bizUpdates.barcode_phone = updates.phone;
+      bizUpdates.mobile_number = updates.phone;
+    }
+    if (updates.address !== undefined) {
+      bizUpdates.barcode_address = updates.address;
+      bizUpdates.mfg_address = updates.address;
+    }
+    if (updates.other_info !== undefined) bizUpdates.barcode_other_info = updates.other_info;
+    if (updates.fssai !== undefined) {
+      bizUpdates.barcode_fssai = updates.fssai;
+      bizUpdates.fssai_number = updates.fssai;
+    }
+    if (updates.ingredients !== undefined) bizUpdates.barcode_ingredients = updates.ingredients;
+    if (updates.company_name !== undefined) bizUpdates.barcode_company_name = updates.company_name;
+    if (updates.show_company !== undefined) bizUpdates.barcode_show_company = updates.show_company;
+    if (updates.label_size !== undefined) bizUpdates.barcode_label_size = updates.label_size;
+
+    try {
+      dbStore.updateBusiness(businessId, bizUpdates);
+    } catch (e) {
+      console.warn('Failed to update business defaults', e);
+    }
+  };
+
+  const handleSaveAllBarcodeDefaults = () => {
+    saveBarcodeDefaults({
+      phone: printPhone,
+      address: printAddress,
+      other_info: printOtherInfo,
+      fssai: printFssaiNumber,
+      ingredients: printIngredients,
+      company_name: printCompanyName,
+      show_company: printIncludeCompanyName,
+      label_size: printLabelSize
+    });
+
+    if (printingBarcodeProduct) {
+      const updatedProduct = {
+        ...printingBarcodeProduct,
+        food_packaging: {
+          ...printingBarcodeProduct.food_packaging,
+          customer_care_phone: printPhone,
+          mfg_by: printAddress,
+          other_info: printOtherInfo,
+          fssai_license: printFssaiNumber,
+          ingredients: printIngredients
+        }
+      };
+      dbStore.updateProduct(printingBarcodeProduct.id, updatedProduct);
+    }
+
+    triggerToast('Barcode address, phone number, and other info saved! They will now always show in barcode stickers until you change them.', 'success');
+  };
 
   useEffect(() => {
     if (printingBarcodeProduct) {
@@ -1262,24 +1421,74 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       setPrintExpiryOn(expiryDate.toISOString().split('T')[0]);
       
       const currentBiz = dbStore.getBusiness(businessId);
-      setPrintCompanyName(currentBiz?.name || '');
+      
+      let savedDefaults: any = {};
+      try {
+        const raw = safeStorage.getItem(`omnipack_barcode_defaults_${businessId}`);
+        if (raw) savedDefaults = JSON.parse(raw);
+      } catch (e) {}
 
-      const initialFssai = printingBarcodeProduct.food_packaging?.fssai_license 
-        || (printingBarcodeProduct.food_packaging as any)?.fssai_license_number 
-        || currentBiz?.fssai_number 
-        || '11521018000123';
-      setPrintFssaiNumber(initialFssai);
+      // Company name & print company checkbox
+      const savedCompany = savedDefaults.company_name ?? currentBiz?.barcode_company_name ?? currentBiz?.name ?? '';
+      setPrintCompanyName(savedCompany);
+      if (typeof savedDefaults.show_company === 'boolean') {
+        setPrintIncludeCompanyName(savedDefaults.show_company);
+      } else if (typeof currentBiz?.barcode_show_company === 'boolean') {
+        setPrintIncludeCompanyName(currentBiz.barcode_show_company);
+      }
 
-      const initialAddress = printingBarcodeProduct.food_packaging?.mfg_by 
-        || currentBiz?.mfg_address
-        || currentBiz?.billing_address 
-        || currentBiz?.shipping_address 
-        || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092';
+      // Barcode Phone / Helpline (Priority: saved default > business barcode_phone > mobile/phone > product food packaging)
+      const initialPhone = 
+        savedDefaults.phone ||
+        currentBiz?.barcode_phone ||
+        (printingBarcodeProduct.food_packaging as any)?.customer_care_phone ||
+        currentBiz?.mobile_number ||
+        currentBiz?.phone ||
+        (printingBarcodeProduct as any)?.phone ||
+        '';
+      setPrintPhone(initialPhone);
+
+      // Barcode Address (Priority: saved default > business barcode_address > business mfg_address > product mfg_by > business address)
+      const initialAddress = 
+        savedDefaults.address ||
+        currentBiz?.barcode_address ||
+        currentBiz?.mfg_address ||
+        printingBarcodeProduct.food_packaging?.mfg_by ||
+        currentBiz?.billing_address || 
+        currentBiz?.shipping_address || 
+        'Shop 14, Station Road, Borivali West, Mumbai, MH 400092';
       setPrintAddress(initialAddress);
 
-      const initialIngredients = printingBarcodeProduct.food_packaging?.ingredients 
-        || 'Roasted Rice Flour, Bengal Gram, Spices, Edible Oil, Salt';
+      // Barcode Other Info (under phone & address)
+      const initialOtherInfo = 
+        savedDefaults.other_info ||
+        currentBiz?.barcode_other_info ||
+        (printingBarcodeProduct.food_packaging as any)?.other_info ||
+        '';
+      setPrintOtherInfo(initialOtherInfo);
+
+      // Barcode FSSAI
+      const initialFssai = 
+        savedDefaults.fssai ||
+        currentBiz?.barcode_fssai ||
+        printingBarcodeProduct.food_packaging?.fssai_license ||
+        (printingBarcodeProduct.food_packaging as any)?.fssai_license_number ||
+        currentBiz?.fssai_number || 
+        '11521018000123';
+      setPrintFssaiNumber(initialFssai);
+
+      // Ingredients
+      const initialIngredients = 
+        printingBarcodeProduct.food_packaging?.ingredients ||
+        savedDefaults.ingredients ||
+        currentBiz?.barcode_ingredients ||
+        'Roasted Rice Flour, Bengal Gram, Spices, Edible Oil, Salt';
       setPrintIngredients(initialIngredients);
+
+      // Label Size if saved
+      if (savedDefaults.label_size) {
+        setPrintLabelSize(savedDefaults.label_size);
+      }
 
       if (printingBarcodeProduct.nutrition_facts) {
         setPrintIncludeNutrition(true);
@@ -4870,7 +5079,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       packedOn={printPackedOn}
                       expiryOn={printExpiryOn}
                       fssaiNumber={printFssaiNumber}
+                      phone={printPhone}
                       address={printAddress}
+                      otherInfo={printOtherInfo}
                       ingredients={printIngredients}
                       orientation={printOrientation}
                       mode="preview"
@@ -4888,7 +5099,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       packedOn={printPackedOn}
                       expiryOn={printExpiryOn}
                       fssaiNumber={printFssaiNumber}
+                      phone={printPhone}
                       address={printAddress}
+                      otherInfo={printOtherInfo}
                       ingredients={printIngredients}
                       orientation={printOrientation}
                       mode="preview"
@@ -4908,7 +5121,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       packedOn={printPackedOn}
                       expiryOn={printExpiryOn}
                       fssaiNumber={printFssaiNumber}
+                      phone={printPhone}
                       address={printAddress}
+                      otherInfo={printOtherInfo}
                       ingredients={printIngredients}
                       orientation={printOrientation}
                       mode="preview"
@@ -5021,11 +5236,34 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Phone / Helpline</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveBarcodeDefaults({ phone: printPhone });
+                        triggerToast('Phone / Helpline saved as default.', 'success');
+                      }}
+                      className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
+                      title="Save this phone number as default for all barcode stickers"
+                    >
+                      Save as Default
+                    </button>
+                  </div>
+                  <input 
+                    type="text"
+                    value={printPhone}
+                    onChange={(e) => setPrintPhone(e.target.value)}
+                    placeholder="e.g. +91 9876543210 / 022-28901234"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-mono font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
                     <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">FSSAI License No.</label>
                     <button
                       type="button"
                       onClick={() => {
-                        dbStore.updateBusiness(businessId, { fssai_number: printFssaiNumber });
+                        saveBarcodeDefaults({ fssai: printFssaiNumber });
                         triggerToast('FSSAI Number saved as business default.', 'success');
                       }}
                       className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
@@ -5044,7 +5282,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 </div>
                 <div className="space-y-1 col-span-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Manufacturer / Facility Address</label>
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Barcode Address / Facility</label>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -5068,8 +5306,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          dbStore.updateBusiness(businessId, { mfg_address: printAddress });
-                          triggerToast('Address saved as global business default.', 'success');
+                          saveBarcodeDefaults({ address: printAddress });
+                          triggerToast('Barcode address saved as default.', 'success');
                         }}
                         className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer border-l border-slate-200 dark:border-slate-700 pl-2"
                         title="Save this address as the default for all future stickers"
@@ -5087,7 +5325,62 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   />
                 </div>
                 <div className="space-y-1 col-span-2">
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Ingredients List</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Other Info / Notes (Under Phone & Address in 60*100)</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveBarcodeDefaults({ other_info: printOtherInfo });
+                        triggerToast('Other info saved as default.', 'success');
+                      }}
+                      className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
+                      title="Save this info as default so it always appears under phone and address in 60*100"
+                    >
+                      Save as Default
+                    </button>
+                  </div>
+                  <input 
+                    type="text"
+                    value={printOtherInfo}
+                    onChange={(e) => setPrintOtherInfo(e.target.value)}
+                    placeholder="e.g. Email: care@kokanastha.com • Web: www.kokanastha.com • Support 10am-6pm"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
+                  />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Ingredients List</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!printingBarcodeProduct) return;
+                          const updated = {
+                            ...printingBarcodeProduct,
+                            food_packaging: {
+                              ...printingBarcodeProduct.food_packaging,
+                              ingredients: printIngredients
+                            }
+                          };
+                          dbStore.updateProduct(printingBarcodeProduct.id, updated);
+                          triggerToast('Ingredients saved to this product.', 'success');
+                        }}
+                        className="text-[9px] text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
+                      >
+                        Save to Product
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          saveBarcodeDefaults({ ingredients: printIngredients });
+                          triggerToast('Ingredients saved as default.', 'success');
+                        }}
+                        className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer border-l border-slate-200 dark:border-slate-700 pl-2"
+                      >
+                        Save as Default
+                      </button>
+                    </div>
+                  </div>
                   <input 
                     type="text"
                     value={printIngredients}
@@ -5095,6 +5388,25 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     placeholder="e.g. Roasted Rice Flour, Bengal Gram, Spices, Edible Oil, Salt"
                     className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                   />
+                </div>
+                {/* Permanent Save Action Bar */}
+                <div className="col-span-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-700/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 text-xs font-black text-emerald-900 dark:text-emerald-100">
+                      <span>💾 Save Barcode Address & Info as Default</span>
+                      <span className="text-[9px] bg-emerald-200 dark:bg-emerald-800 text-emerald-950 dark:text-emerald-100 px-2 py-0.5 rounded-full font-extrabold uppercase">Always Show</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium leading-relaxed">
+                      Saves your phone number, barcode address, other info, and FSSAI so they will <b>always show in 60*100 and barcode stickers</b> until you change them.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveAllBarcodeDefaults}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-extrabold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                  >
+                    <span>Save All Barcode Info</span>
+                  </button>
                 </div>
                 <div className="space-y-1 col-span-2 sm:col-span-1">
                   <div className="flex items-center justify-between">
@@ -5200,7 +5512,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                   packedOn={printPackedOn}
                                   expiryOn={printExpiryOn}
                                   fssaiNumber={printFssaiNumber}
+                                  phone={printPhone}
                                   address={printAddress}
+                                  otherInfo={printOtherInfo}
                                   ingredients={printIngredients}
                                   orientation={printOrientation}
                                   mode="print"
@@ -5238,7 +5552,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                             packedOn={printPackedOn}
                             expiryOn={printExpiryOn}
                             fssaiNumber={printFssaiNumber}
+                            phone={printPhone}
                             address={printAddress}
+                            otherInfo={printOtherInfo}
                             ingredients={printIngredients}
                             orientation={printOrientation}
                             mode="print"

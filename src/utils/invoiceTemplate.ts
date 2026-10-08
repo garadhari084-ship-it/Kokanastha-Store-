@@ -4,6 +4,7 @@ import { formatOrderTime } from './formatters';
 import { urlToBase64 } from './imageToBase64';
 import { calculateOrderSavings, isLoyalMember } from './pricing';
 import { dbStore } from '../services/store';
+import { safeStorage } from './safeStorage';
 
 export function numberToWordsIndian(amount: number): string {
   if (!amount || amount <= 0) return 'Zero Rupees only';
@@ -32,9 +33,34 @@ export async function generateBillOfSupplyHTML(
   businessObj?: Business,
   products: Product[] = []
 ): Promise<string> {
-  const items = order.items || [];
+  const allAvailableProds = [
+    ...(Array.isArray(products) ? products : []),
+    ...dbStore.getProducts(order.business_id || businessObj?.id || ''),
+    ...((dbStore as any).cache?.products || [])
+  ];
+
+  let rawItems = order.items || (order as any).order_items || (order as any).orderItems || (order as any).sales_order_items;
+  if (typeof rawItems === 'string') {
+    try { rawItems = JSON.parse(rawItems); } catch(e) { rawItems = []; }
+  }
+  let items = Array.isArray(rawItems) ? rawItems : [];
+  if (items.length === 0 && (order.id || order.order_number)) {
+    const cachedOrder = dbStore.getSalesOrders(order.business_id || businessObj?.id || '').find(o => (order.id && o.id === order.id) || (order.order_number && o.order_number === order.order_number));
+    if (cachedOrder && Array.isArray(cachedOrder.items) && cachedOrder.items.length > 0) {
+      items = cachedOrder.items;
+    }
+  }
+  if (items.length === 0 && (order.id || order.order_number)) {
+    try {
+      const rawSales = JSON.parse(safeStorage.getItem('omnipack_erp_sales') || '[]');
+      const match = rawSales.find((o: any) => (order.id && o.id === order.id) || (order.order_number && o.order_number === order.order_number));
+      if (match && Array.isArray(match.items) && match.items.length > 0) {
+        items = match.items;
+      }
+    } catch(e) {}
+  }
   const logoBase64 = businessObj?.logo_url ? await urlToBase64(businessObj.logo_url) : "";
-  const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
+  const subTotal = items.reduce((sum, it) => sum + ((Number(it.qty) || 1) * (Number(it.selling_price) || 0)), 0);
   const discount = order.discount_amount || 0;
   // If there's a discount, the logic for delivery/tax needs to be careful.
   const additionalCharges = order.additional_charges || 0;
@@ -47,17 +73,17 @@ export async function generateBillOfSupplyHTML(
   const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
 
-  const savingsData = calculateOrderSavings(order.items || [], products);
+  const savingsData = calculateOrderSavings(items, allAvailableProds);
   const isLoyal = isLoyalMember(cust);
   
   let loyaltyMessage = "";
-  const loyalTier = cust?.loyalty_tier || 'Silver';
+  const loyalTier = cust?.loyalty_tier && cust.loyalty_tier !== 'None' ? `${cust.loyalty_tier} ` : '';
   if (isLoyal) {
     loyaltyMessage = `<div class="savings-banner" style="background: #f8fafc; border: 1px solid #e2e8f0; color: #1e293b; padding: 12px; border-radius: 6px; margin-bottom: 15px;">
       <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
         <span style="font-size: 14pt;">⭐</span>
         <div style="text-align: center;">
-          <strong style="text-transform: uppercase; letter-spacing: 1px;">Valued ${loyalTier} Member</strong><br/>
+          <strong style="text-transform: uppercase; letter-spacing: 1px;">Valued ${loyalTier}Member</strong><br/>
           <span style="font-size: 8.5pt; color: #475569;">As a loyal member, you enjoy exclusive benefits, prioritized support, and special pricing. Thank you for your continued trust!</span>
         </div>
         <span style="font-size: 14pt;">⭐</span>
@@ -93,10 +119,6 @@ export async function generateBillOfSupplyHTML(
     bAddress += `<br/>FSSAI No: <strong>${businessObj.fssai_number}</strong>`;
   }
 
-  const allAvailableProds = (products && products.length > 0)
-    ? products
-    : dbStore.getProducts(order.business_id || businessObj?.id || '');
-
   // Real UPI QR Code and Bill QR Code parameters
   const upiId = businessObj?.upi_id || '9820769697@okicici';
   const upiString = buildUpiPayString({
@@ -115,12 +137,16 @@ export async function generateBillOfSupplyHTML(
     gstin: businessObj?.gstin,
     upiId,
     items: items.map(it => {
-      const p = allAvailableProds.find(prod => prod.id === it.product_id);
+      const p = allAvailableProds.find(prod => 
+        prod.id === it.product_id || 
+        ((it as any).barcode && prod.barcode === (it as any).barcode) || 
+        ((it as any).product_name && prod.name === (it as any).product_name)
+      );
       return {
-        name: (it as any).product_name || p?.name || 'Faral Item',
+        name: (it as any).product_name || (it as any).name || p?.name || 'Faral Item',
         qty: it.qty,
         unit_price: it.selling_price || 0,
-        total_price: it.qty * (it.selling_price || 0)
+        total_price: (it as any).total_price || (it.qty * (it.selling_price || 0))
       };
     }),
     paymentMode
@@ -139,19 +165,25 @@ export async function generateBillOfSupplyHTML(
       <td colspan="7" style="padding: 16px; text-align: center; color: #64748b; font-style: italic;">No line items recorded for this order.</td>
     </tr>
   ` : items.map((it, idx) => {
-    const p = allAvailableProds.find(prod => prod.id === it.product_id);
-    const itemCode = p?.barcode || p?.sku || p?.hsn_code || '';
-    const itemName = (it as any).product_name || p?.name || 'Faral Item';
-    const priceUnit = it.selling_price || 0;
-    const finalRate = it.selling_price || 0;
-    const itemAmount = (it.qty || 1) * (it.selling_price || 0);
+    const p = allAvailableProds.find(prod => 
+      prod.id === it.product_id || 
+      ((it as any).barcode && prod.barcode === (it as any).barcode) || 
+      ((it as any).sku && prod.sku === (it as any).sku) || 
+      ((it as any).product_name && prod.name === (it as any).product_name)
+    );
+    const itemCode = (it as any).barcode || (it as any).sku || (it as any).item_code || p?.barcode || p?.sku || p?.hsn_code || '';
+    const itemName = (it as any).product_name || (it as any).name || (it as any).title || p?.name || 'Product Item';
+    const priceUnit = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
+    const finalRate = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
+    const qty = Math.max(1, Number(it.qty) || Number((it as any).quantity) || 1);
+    const itemAmount = qty * finalRate;
 
     return `
       <tr>
         <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: center;">${idx + 1}</td>
         <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; font-weight: bold; text-transform: uppercase;">${itemName}</td>
         <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: center; font-family: monospace; color: #475569;">${itemCode}</td>
-        <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: center; font-weight: bold;">${it.qty}</td>
+        <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: center; font-weight: bold;">${qty}</td>
         <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">₹ ${priceUnit.toFixed(2)}</td>
         <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">${finalRate.toFixed(2)}</td>
         <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold;">₹ ${itemAmount.toFixed(2)}</td>
@@ -603,11 +635,43 @@ export async function generate3InchBillHTML(
   });
   const invoiceNo = order.order_number;
 
+  const allAvailableProds = [
+    ...(Array.isArray(products) ? products : []),
+    ...dbStore.getProducts(order.business_id || businessObj?.id || ''),
+    ...((dbStore as any).cache?.products || [])
+  ];
+
+  let rawItems = order.items || order.order_items || order.orderItems || order.sales_order_items;
+  if (typeof rawItems === 'string') {
+    try { rawItems = JSON.parse(rawItems); } catch(e) { rawItems = []; }
+  }
+  let items = Array.isArray(rawItems) ? rawItems : [];
+  if (items.length === 0 && (order.id || order.order_number)) {
+    const cachedOrder = dbStore.getSalesOrders(order.business_id || businessObj?.id || '').find(o => (order.id && o.id === order.id) || (order.order_number && o.order_number === order.order_number));
+    if (cachedOrder && Array.isArray(cachedOrder.items) && cachedOrder.items.length > 0) {
+      items = cachedOrder.items;
+    }
+  }
+  if (items.length === 0 && (order.id || order.order_number)) {
+    try {
+      const rawSales = JSON.parse(safeStorage.getItem('omnipack_erp_sales') || '[]');
+      const match = rawSales.find((o: any) => (order.id && o.id === order.id) || (order.order_number && o.order_number === order.order_number));
+      if (match && Array.isArray(match.items) && match.items.length > 0) {
+        items = match.items;
+      }
+    } catch(e) {}
+  }
+
   let totalQty = 0;
   let itemsHtml = "";
-  (order.items || []).forEach((it: any, index: number) => {
-    const p = products.find((prod) => prod.id === it.product_id);
-    const itemName = p?.name || "Unknown Item";
+  items.forEach((it: any, index: number) => {
+    const p = allAvailableProds.find((prod) => 
+      prod.id === it.product_id ||
+      (it.barcode && prod.barcode === it.barcode) ||
+      (it.sku && prod.sku === it.sku) ||
+      (it.product_name && prod.name === it.product_name)
+    );
+    const itemName = it.product_name || it.name || it.title || p?.name || "Product Item";
     const qty = it.qty || 1;
     const price = it.selling_price || 0;
     const amount = qty * price;
@@ -626,7 +690,7 @@ export async function generate3InchBillHTML(
     `;
   });
 
-  const subTotal = (order.items || []).reduce((sum: number, it: any) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
+  const subTotal = items.reduce((sum: number, it: any) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
   const discount = order.discount_amount || 0;
   const additionalCharges = order.additional_charges || 0;
   const deliveryCharges = order.delivery_charges || 0;

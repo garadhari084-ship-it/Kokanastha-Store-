@@ -54,7 +54,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   const [formCreditLimit, setFormCreditLimit] = useState<number>(0);
   const [formImageUrl, setFormImageUrl] = useState('');
   const [formIsLoyalMember, setFormIsLoyalMember] = useState<boolean>(false);
-  const [formLoyaltyTier, setFormLoyaltyTier] = useState<string>('');
+  const [formLoyaltyTier, setFormLoyaltyTier] = useState<string>('None');
   const [formLoyaltyPlan, setFormLoyaltyPlan] = useState<string>('');
   const [formLoyaltyStartDate, setFormLoyaltyStartDate] = useState<string>('');
   const [formLoyaltyEndDate, setFormLoyaltyEndDate] = useState<string>('');
@@ -399,7 +399,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormCreditLimit(0);
     setFormImageUrl('');
     setFormIsLoyalMember(false);
-    setFormLoyaltyTier('');
+    setFormLoyaltyTier('None');
     setFormLoyaltyPlan('');
     setFormLoyaltyStartDate('');
     setFormLoyaltyEndDate('');
@@ -422,7 +422,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     setFormCreditLimit(cust.credit_limit);
     setFormImageUrl(cust.image_url || '');
     setFormIsLoyalMember(cust.is_loyal_member || false);
-    setFormLoyaltyTier(cust.loyalty_tier || '');
+    setFormLoyaltyTier(cust.loyalty_tier || 'None');
     setFormLoyaltyPlan(cust.loyalty_plan || '');
     setFormLoyaltyStartDate(cust.loyalty_start_date || '');
     setFormLoyaltyEndDate(cust.loyalty_end_date || '');
@@ -454,7 +454,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           phone: cleanPhone,
           credit_limit: formCreditLimit,
           is_loyal_member: formIsLoyalMember,
-          loyalty_tier: formLoyaltyTier || undefined,
+          loyalty_tier: (formLoyaltyTier as any) || 'None',
           loyalty_plan: formLoyaltyPlan || undefined,
           loyalty_start_date: formLoyaltyStartDate || undefined,
           loyalty_end_date: formLoyaltyEndDate || undefined,
@@ -475,7 +475,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
           phone: cleanPhone,
           credit_limit: formCreditLimit,
           is_loyal_member: formIsLoyalMember,
-          loyalty_tier: formLoyaltyTier || undefined,
+          loyalty_tier: (formLoyaltyTier as any) || 'None',
           loyalty_plan: formLoyaltyPlan || undefined,
           loyalty_start_date: formLoyaltyStartDate || undefined,
           loyalty_end_date: formLoyaltyEndDate || undefined,
@@ -891,7 +891,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                               }`}>
                                 {cust.group}
                               </span>
-                              {cust.loyalty_tier && (
+                              {cust.loyalty_tier && cust.loyalty_tier !== 'None' && (
                                 <span className="text-[8px] font-bold px-1.5 py-0.2 rounded-full shrink-0 bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300">
                                   {cust.loyalty_tier}
                                 </span>
@@ -1096,13 +1096,13 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Loyalty Tier (Override)</label>
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Loyalty Tier</label>
                   <select 
-                    value={formLoyaltyTier}
+                    value={formLoyaltyTier || 'None'}
                     onChange={(e) => setFormLoyaltyTier(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                   >
-                    <option value="">Auto (Spend-based)</option>
+                    <option value="None">None</option>
                     <option value="Silver">Silver</option>
                     <option value="Gold">Gold</option>
                     <option value="Platinum">Platinum</option>

@@ -6,6 +6,7 @@ import { buildUpiPayString, buildBillVerificationString, generateQRCodeDataUrl }
 import { formatOrderTime } from '../utils/formatters';
 import { calculateOrderSavings } from '../utils/pricing';
 import { dbStore } from '../services/store';
+import { safeStorage } from '../utils/safeStorage';
 
 interface BillOfSupplyViewProps {
   order: SalesOrder;
@@ -23,12 +24,33 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const cur = businessObj?.currency_default;
   const currencySymbol = cur ? (cur.includes(' - ') ? cur.split(' - ')[0].trim() : cur.trim()) : '₹';
 
-  const allAvailableProds = (products && products.length > 0)
-    ? products
-    : dbStore.getProducts(order.business_id || businessObj?.id || '');
+  const allAvailableProds = [
+    ...(Array.isArray(products) ? products : []),
+    ...dbStore.getProducts(order.business_id || businessObj?.id || ''),
+    ...((dbStore as any).cache?.products || [])
+  ];
 
-  const items = order.items || [];
-  const subTotal = items.reduce((sum, it) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
+  let rawItems = order.items || (order as any).order_items || (order as any).orderItems || (order as any).sales_order_items;
+  if (typeof rawItems === 'string') {
+    try { rawItems = JSON.parse(rawItems); } catch(e) { rawItems = []; }
+  }
+  let items = Array.isArray(rawItems) ? rawItems : [];
+  if (items.length === 0 && (order.id || order.order_number)) {
+    const cachedOrder = dbStore.getSalesOrders(order.business_id || businessObj?.id || '').find(o => (order.id && o.id === order.id) || (order.order_number && o.order_number === order.order_number));
+    if (cachedOrder && Array.isArray(cachedOrder.items) && cachedOrder.items.length > 0) {
+      items = cachedOrder.items;
+    }
+  }
+  if (items.length === 0 && (order.id || order.order_number)) {
+    try {
+      const rawSales = JSON.parse(safeStorage.getItem('omnipack_erp_sales') || '[]');
+      const match = rawSales.find((o: any) => (order.id && o.id === order.id) || (order.order_number && o.order_number === order.order_number));
+      if (match && Array.isArray(match.items) && match.items.length > 0) {
+        items = match.items;
+      }
+    } catch(e) {}
+  }
+  const subTotal = items.reduce((sum, it) => sum + ((Number(it.qty) || 1) * (Number(it.selling_price) || 0)), 0);
   const discount = order.discount_amount || 0;
   
   const additionalCharges = order.additional_charges || 0;
@@ -72,12 +94,16 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
     gstin: businessObj?.gstin,
     upiId,
     items: items.map(it => {
-      const p = products.find(prod => prod.id === it.product_id);
+      const p = allAvailableProds.find(prod => 
+        prod.id === it.product_id || 
+        ((it as any).barcode && prod.barcode === (it as any).barcode) || 
+        ((it as any).product_name && prod.name === (it as any).product_name)
+      );
       return {
-        name: p?.name || 'Faral Item',
+        name: (it as any).product_name || (it as any).name || p?.name || 'Faral Item',
         qty: it.qty,
         unit_price: it.selling_price || 0,
-        total_price: it.total_price || (it.qty * (it.selling_price || 0))
+        total_price: (it as any).total_price || (it.qty * (it.selling_price || 0))
       };
     }),
     paymentMode
@@ -96,7 +122,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const ifscCode = businessObj?.ifsc_code || 'NKGS0000092';
   const accountHolder = businessObj?.account_holder || bName;
 
-  const savingsInfo = calculateOrderSavings(items, products);
+  const savingsInfo = calculateOrderSavings(items, allAvailableProds);
 
   return (
     <div className="bg-white text-slate-900 px-0.5 sm:px-1 py-6 sm:py-8 font-sans text-[11px] leading-relaxed shadow-lg max-w-2xl mx-auto rounded-xl border border-slate-200 print:border-none print:shadow-none print:max-w-none print:w-full print:p-0">
@@ -215,14 +241,19 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               </tr>
             ) : (
               items.map((it, idx) => {
-                const p = allAvailableProds.find(prod => prod.id === it.product_id);
-                const itemCode = p?.barcode || p?.sku || p?.hsn_code || '38655039462';
-                const itemName = (it as any).product_name || p?.name || 'Faral / Sweet Item';
-                const price = it.selling_price || 0;
+                const p = allAvailableProds.find(prod => 
+                  prod.id === it.product_id || 
+                  ((it as any).barcode && prod.barcode === (it as any).barcode) ||
+                  ((it as any).sku && prod.sku === (it as any).sku) ||
+                  ((it as any).product_name && prod.name === (it as any).product_name)
+                );
+                const itemCode = (it as any).barcode || (it as any).sku || (it as any).item_code || p?.barcode || p?.sku || p?.hsn_code || 'ITEM';
+                const itemName = (it as any).product_name || (it as any).name || (it as any).title || p?.name || 'Product Item';
+                const price = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
                 const normalRate = typeof it.normal_rate === 'number' && !isNaN(it.normal_rate) && it.normal_rate > 0 
                   ? it.normal_rate 
                   : (p ? (typeof p.selling_price === 'number' ? p.selling_price : price) : price);
-                const qty = it.qty || 1;
+                const qty = Math.max(1, Number(it.qty) || Number((it as any).quantity) || 1);
                 const amount = qty * price;
 
               return (

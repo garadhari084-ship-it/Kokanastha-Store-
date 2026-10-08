@@ -41,7 +41,7 @@ import {
   Undo2,
   Check
 } from 'lucide-react';
-import { dbStore } from '../services/store';
+import { dbStore, extractAreaZone } from '../services/store';
 import { SalesOrder, Customer, UserProfile, OrderStatus } from '../types/erp';
 import { TodayDeliveryModal } from './TodayDeliveryModal';
 
@@ -1783,7 +1783,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                     </td>
                     {activeView !== 'PackingCompleted' && (
                       <td className="py-2.5 px-3 font-bold text-slate-700 dark:text-slate-300">
-                        {o.area || 'Unknown'}
+                        {extractAreaZone(o.area, cust?.shipping_address)}
                       </td>
                     )}
                     {(activeView === 'PackingCompleted' || activeView === 'ReadyToDispatch' || activeView === 'Operations') && (

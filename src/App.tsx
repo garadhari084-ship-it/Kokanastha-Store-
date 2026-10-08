@@ -48,7 +48,7 @@ import { dbStore, isSameBusiness } from './services/store';
 import { safeStorage } from './utils/safeStorage';
 import { useNotificationSound } from './utils/useNotificationSound';
 import { UserProfile, Business, UserRole } from './types/erp';
-import { supabase, isSupabaseConfigured, fetchServerSupabaseConfig, saveSupabaseConfig } from './services/supabase';
+import { supabase, isSupabaseConfigured, fetchServerSupabaseConfig, saveSupabaseConfig, testSupabaseConnection, supabaseUrl, supabaseAnonKey } from './services/supabase';
 import { DatabaseConfigModal } from './components/DatabaseConfigModal';
 
 // Import Views
@@ -148,14 +148,67 @@ export default function App() {
       const currentRatio = window.devicePixelRatio || 1;
       const baseline = baselineRatioRef.current || 1;
       const relativeZoom = currentRatio / baseline;
-      setZoomFactor(1 / relativeZoom);
+      const targetZoom = 1 / relativeZoom;
+      setZoomFactor(targetZoom);
+      
+      // Apply zoom directly to the #root element so ALL content (including portals, modals, loading) is fixed
+      const root = document.getElementById('root');
+      if (root) {
+        root.style.zoom = `${targetZoom}`;
+      }
     };
     
     // Initial check
     handleResize();
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    
+    // Support visualViewport API for touchpad pinch-to-zoom gestures
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize);
+      window.visualViewport.addEventListener('scroll', handleResize);
+    }
+
+    // Shield 1: Prevent keyboard zoom shortcuts (Ctrl/Cmd +, -, 0)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+' || e.key === '-' || e.key === '0')) {
+        e.preventDefault();
+      }
+    };
+
+    // Shield 2: Prevent Ctrl + MouseWheel / touchpad pinch zoom
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+
+    // Shield 3: Prevent multi-touch pinch to zoom on touch screens
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true, passive: false });
+    window.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { capture: true, passive: false });
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleResize);
+        window.visualViewport.removeEventListener('scroll', handleResize);
+      }
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('wheel', handleWheel, { capture: true });
+      document.removeEventListener('touchmove', handleTouchMove, { capture: true });
+      
+      const root = document.getElementById('root');
+      if (root) {
+        root.style.zoom = '1';
+      }
+    };
   }, []);
 
   // Auth state
@@ -163,10 +216,64 @@ export default function App() {
   const [currentBusiness, setCurrentBusiness] = useState<Business | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [syncTick, setSyncTick] = useState(0);
+
+  // Database connection and application error tracking states
+  interface AppErrorDetail {
+    message: string;
+    filename?: string;
+    lineno?: number;
+    colno?: number;
+    stack?: string;
+    timestamp: string;
+  }
+  const [dbConnected, setDbConnected] = useState(true);
+  const [appErrors, setAppErrors] = useState<AppErrorDetail[]>([]);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+
+  useEffect(() => {
+    // 1. Check database connection
+    if (isSupabaseConfigured) {
+      testSupabaseConnection(supabaseUrl, supabaseAnonKey)
+        .then(res => setDbConnected(res.success))
+        .catch(() => setDbConnected(false));
+    } else {
+      setDbConnected(true); // Local storage DB is always connected
+    }
+
+    // 2. Add global error listeners to catch and count runtime errors with details
+    const handleError = (event: ErrorEvent) => {
+      const errorDetail: AppErrorDetail = {
+        message: event.message || 'Unknown runtime error',
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        stack: event.error?.stack,
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setAppErrors(prev => [...prev, errorDetail]);
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const errorDetail: AppErrorDetail = {
+        message: event.reason?.message || String(event.reason) || 'Unhandled promise rejection',
+        stack: event.reason?.stack,
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setAppErrors(prev => [...prev, errorDetail]);
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
   
   // Login flow states
-  const [emailInput, setEmailInput] = useState('admin@admin.com');
-  const [passwordInput, setPasswordInput] = useState('admin');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   
@@ -1101,25 +1208,6 @@ export default function App() {
     setTimeout(() => {
       try {
         let result = dbStore.login(email, pass, deviceId);
-        
-        // If login failed (e.g. user was not in cache yet), attempt to find or re-seed
-        if (!result.success) {
-          const profiles = dbStore.getUsers();
-          const found = profiles.find(u => u.email.toLowerCase() === email.toLowerCase());
-          if (!found && email === 'admin@admin.com') {
-            const biz = dbStore.getBusinesses()[0];
-            const newUser = dbStore.createUser({
-              id: 'a1111111-1111-1111-1111-111111111111',
-              email: 'admin@admin.com',
-              name: 'System Admin',
-              role: 'Super Admin',
-              business_id: biz.id,
-              active: true,
-              password_hash: 'admin'
-            });
-            result = { success: true, user: newUser, business: biz };
-          }
-        }
 
         if (result.success && result.user && result.business) {
           const newSessionToken = result.user.session_token || ('st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11));
@@ -1779,44 +1867,157 @@ export default function App() {
     const defaultLogoUrl = dbStore.getBusinesses()[0]?.logo_url || '/logo.png';
     const defaultCoverUrl = dbStore.getBusinesses()[0]?.login_cover_url;
     return (
-      <div className="min-h-screen w-full bg-slate-50 flex flex-col lg:flex-row select-none" id="login-screen-root" style={{ zoom: zoomFactor }}>
+      <div className="min-h-screen w-full bg-slate-50 flex flex-col lg:flex-row select-none" id="login-screen-root">
         {/* Left Side: Cover Photo / Graphic Showcase */}
-        <div className="hidden lg:flex lg:w-1/2 min-h-screen bg-slate-900 relative overflow-hidden items-center justify-center shrink-0">
+        <div className="hidden lg:flex lg:w-1/2 min-h-screen bg-slate-950 relative overflow-hidden items-center justify-center shrink-0 border-r border-slate-900">
           {defaultCoverUrl ? (
-            <div className="absolute inset-0 z-0 bg-slate-900">
+            <div className="absolute inset-0 z-0 bg-slate-950">
               <div 
-                className="w-full h-full bg-cover bg-center bg-no-repeat transition-all duration-300"
+                className="w-full h-full bg-cover bg-center bg-no-repeat transition-all duration-500 hover:scale-105"
                 style={{ backgroundImage: `url(${defaultCoverUrl})` }}
               ></div>
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-slate-950/30 pointer-events-none"></div>
+              {/* Very light premium overlay (10%) to keep the image bright and clear */}
+              <div className="absolute inset-0 bg-black/10 pointer-events-none z-10"></div>
             </div>
           ) : (
             <>
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-indigo-800 to-indigo-950 z-0"></div>
-              {/* Abstract background shapes */}
-              <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-30 z-0">
-                <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-indigo-500 blur-3xl"></div>
-                <div className="absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-indigo-400 blur-3xl"></div>
+              {/* Premium dark architectural gradient mesh */}
+              <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-[#0e172e] to-indigo-950 z-0"></div>
+              
+              {/* High-fidelity abstract vector grid background */}
+              <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:4rem_4rem] z-0"></div>
+              
+              {/* Ambient blur orbs for organic modern appearance */}
+              <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-40 z-0 pointer-events-none">
+                <div className="absolute -top-48 -right-48 w-[32rem] h-[32rem] rounded-full bg-indigo-500/10 blur-[100px] animate-pulse duration-[8000ms]"></div>
+                <div className="absolute bottom-20 -left-20 w-[24rem] h-[24rem] rounded-full bg-violet-600/15 blur-[120px] animate-pulse duration-[12000ms]"></div>
               </div>
+              {/* Very light premium overlay (10%) */}
+              <div className="absolute inset-0 bg-black/10 pointer-events-none z-10"></div>
             </>
           )}
 
-          {/* Bottom Overlay on Cover Photo */}
-          <div className="relative z-10 flex flex-col items-start justify-end p-8 h-full w-full pointer-events-none">
-            <div className="bg-slate-950/70 backdrop-blur-md p-5 rounded-2xl border border-white/10 max-w-lg shadow-2xl pointer-events-auto">
-              <h2 className="text-xl font-extrabold text-white tracking-tight mb-1">
-                Enterprise Store Operations
-              </h2>
-              <p className="text-slate-300 text-xs font-medium leading-relaxed">
-                Multi-Tenant ERP, Real-Time Sales, Inventory Control & Barcode Packing Verification System.
-              </p>
+          {/* Bottom Status Footer - very bottom and full width right to left and same row right side add more info */}
+          <div className="absolute bottom-0 left-0 right-0 z-20 w-full bg-transparent py-4 px-6 sm:px-8 flex items-center justify-between select-none">
+            <div className="flex items-center gap-2 text-xs font-black text-slate-900">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse shadow-[0_0_8px_rgba(5,150,105,0.7)]"></span>
+              <span>All Operational Hubs Active</span>
+            </div>
+            <div className="flex items-center gap-4 text-xs font-bold font-mono text-slate-900">
+              {/* Database Status Indicator */}
+              <div className="flex items-center gap-1.5">
+                <span>Database:</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${dbConnected ? 'bg-emerald-600 shadow-[0_0_6px_rgba(5,150,105,0.5)]' : 'bg-rose-600 animate-pulse shadow-[0_0_6px_rgba(220,38,38,0.5)]'}`}></span>
+                <span className={dbConnected ? 'text-emerald-800' : 'text-rose-800 font-extrabold'}>
+                  {dbConnected ? 'Connected' : 'Disconnected'}
+                </span>
+              </div>
+              
+              <span className="text-slate-900/30">|</span>
+              
+              {/* Application Error Counter and Dot */}
+              <button 
+                onClick={() => setShowErrorModal(true)}
+                className="flex items-center gap-1.5 hover:opacity-80 active:scale-95 transition-all cursor-pointer focus:outline-none"
+                title="Click to view detailed error logs"
+              >
+                <span>Errors:</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${appErrors.length === 0 ? 'bg-emerald-600 shadow-[0_0_6px_rgba(5,150,105,0.5)]' : 'bg-rose-600 animate-pulse shadow-[0_0_8px_rgba(220,38,38,0.8)]'}`}></span>
+                <span className={appErrors.length === 0 ? 'text-emerald-800 font-bold' : 'text-rose-800 font-extrabold'}>
+                  {appErrors.length}
+                </span>
+              </button>
             </div>
           </div>
           
-          {/* Version badge */}
-          <div className="absolute top-6 left-6 text-white/80 text-xs font-mono z-10 bg-slate-950/50 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10">
-            v2.4.0 (Build 2026)
+          {/* Version badge - Very top left, background dark black, text bold, showing only V 2.4.0.1 */}
+          <div className="absolute top-2 left-2 text-white text-[11px] font-bold font-mono z-20 bg-black px-3 py-1.5 border border-white/20 rounded shadow-lg tracking-wider">
+            V 2.4.0.1
           </div>
+
+          {/* Captured Error Details Modal */}
+          {showErrorModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[80vh] select-text">
+                <div className="bg-slate-900 p-4 sm:p-5 text-white flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="text-rose-500 animate-pulse" size={22} />
+                    <h3 className="font-bold text-base">Captured Application Errors</h3>
+                  </div>
+                  <button 
+                    onClick={() => setShowErrorModal(false)}
+                    className="text-slate-400 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-lg cursor-pointer"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto flex-1 bg-slate-50 space-y-4 custom-scrollbar">
+                  {appErrors.length === 0 ? (
+                    <div className="text-center py-10">
+                      <div className="inline-flex p-3 bg-emerald-50 rounded-full text-emerald-500 mb-2">
+                        <ShieldCheck size={32} />
+                      </div>
+                      <h4 className="font-bold text-slate-800">No errors detected!</h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Everything is running nominal and the local connection is highly stable.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-500 font-medium pb-1 border-b border-slate-200">
+                        Showing {appErrors.length} captured background exceptions:
+                      </p>
+                      {appErrors.map((err, index) => (
+                        <div key={index} className="bg-white p-4 rounded-xl border border-rose-100 shadow-sm space-y-2">
+                          <div className="flex justify-between items-start gap-3">
+                            <span className="text-xs font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-100 break-all leading-tight">
+                              {err.message}
+                            </span>
+                            <span className="text-[10px] font-bold font-mono text-slate-400 shrink-0">
+                              {err.timestamp}
+                            </span>
+                          </div>
+                          
+                          {(err.filename || err.lineno) && (
+                            <div className="text-[10px] text-slate-500 font-mono">
+                              Source: {err.filename?.split('/').pop()}:{err.lineno}:{err.colno}
+                            </div>
+                          )}
+                          
+                          {err.stack && (
+                            <details className="mt-2 text-[10px] font-mono text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100 overflow-x-auto max-h-[150px] scrollbar-thin">
+                              <summary className="cursor-pointer font-bold text-slate-500 hover:text-slate-800 select-none pb-1">
+                                Show stack trace
+                              </summary>
+                              <pre className="whitespace-pre overflow-x-auto pt-1 leading-relaxed">{err.stack}</pre>
+                            </details>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="bg-slate-100 p-4 border-t border-slate-200 flex justify-end gap-2.5">
+                  {appErrors.length > 0 && (
+                    <button
+                      onClick={() => setAppErrors([])}
+                      className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-all border border-rose-200 cursor-pointer"
+                    >
+                      Clear Log
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowErrorModal(false)}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Side: Logo & Login Form / Password Reset */}
@@ -2180,7 +2381,7 @@ export default function App() {
 
   // Main system portal dashboard layout
   return (
-    <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 flex font-sans antialiased text-slate-800 dark:text-slate-100" id="portal-root" style={{ zoom: zoomFactor }}>
+    <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 flex font-sans antialiased text-slate-800 dark:text-slate-100" id="portal-root">
       
       {/* Mobile/Tablet Backdrop Overlay */}
       {isMobileMenuOpen && (

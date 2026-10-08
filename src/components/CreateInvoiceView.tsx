@@ -1037,8 +1037,9 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
           </div>
 
           {/* Card B: Product Line Items & Scan Bar */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
-            <div className="px-4 py-3 bg-slate-50/80 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3">
+          {/* Changing overflow-hidden to overflow-visible so product dropdown is never cut off/clipped */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-visible">
+            <div className="px-4 py-3 bg-slate-50/80 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3 rounded-t-2xl">
               <div className="flex items-center gap-2 min-w-[200px]">
                 <div className="h-2 w-2 rounded-full bg-indigo-500 shrink-0"></div>
                 <h2 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">
@@ -1149,8 +1150,8 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
             </div>
 
             <div className="p-4 space-y-3">
-              {/* Manual Row Picker Bar */}
-              <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border-2 border-slate-300 dark:border-slate-600/80 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+              {/* Manual Row Picker Bar - using relative z-30 to prevent sibling components like the data table from clipping or overlapping on top of the absolute SKU dropdown */}
+              <div className="relative z-30 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border-2 border-slate-300 dark:border-slate-600/80 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
                 {/* SKU Dropdown */}
                 <div className="sm:col-span-5 space-y-1">
                   <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">

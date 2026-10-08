@@ -241,22 +241,52 @@ export default function App() {
     }
 
     // 2. Add global error listeners to catch and count runtime errors with details
+    // Ignore development-specific environment errors such as Vite HMR / WebSocket client connection disconnects
+    const isViteOrHmrError = (msg: string, file?: string, stack?: string) => {
+      const m = String(msg || '').toLowerCase();
+      const f = String(file || '').toLowerCase();
+      const s = String(stack || '').toLowerCase();
+      return (
+        m.includes('websocket') ||
+        m.includes('vite') ||
+        m.includes('hmr') ||
+        f.includes('vite') ||
+        f.includes('hmr') ||
+        s.includes('websocket') ||
+        s.includes('vite') ||
+        s.includes('hmr')
+      );
+    };
+
     const handleError = (event: ErrorEvent) => {
+      const msg = event.message || 'Unknown runtime error';
+      const file = event.filename || '';
+      const stack = event.error?.stack || '';
+      if (isViteOrHmrError(msg, file, stack)) {
+        return; // Ignore dev socket errors gracefully
+      }
+
       const errorDetail: AppErrorDetail = {
-        message: event.message || 'Unknown runtime error',
-        filename: event.filename,
+        message: msg,
+        filename: file,
         lineno: event.lineno,
         colno: event.colno,
-        stack: event.error?.stack,
+        stack,
         timestamp: new Date().toLocaleTimeString()
       };
       setAppErrors(prev => [...prev, errorDetail]);
     };
 
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const msg = event.reason?.message || String(event.reason) || 'Unhandled promise rejection';
+      const stack = event.reason?.stack || '';
+      if (isViteOrHmrError(msg, undefined, stack)) {
+        return; // Ignore dev socket rejections gracefully
+      }
+
       const errorDetail: AppErrorDetail = {
-        message: event.reason?.message || String(event.reason) || 'Unhandled promise rejection',
-        stack: event.reason?.stack,
+        message: msg,
+        stack,
         timestamp: new Date().toLocaleTimeString()
       };
       setAppErrors(prev => [...prev, errorDetail]);

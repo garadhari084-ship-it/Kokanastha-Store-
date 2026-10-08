@@ -758,6 +758,22 @@ class ERPStorage {
       safeStorage.setItem(tierMigrationKey, 'true');
     }
 
+    // Points enforcement migration: Force 0 points for any customer whose tier is None or is not a loyal member
+    if (Array.isArray(this.cache.customers) && this.cache.customers.length > 0) {
+      let changed = false;
+      this.cache.customers.forEach(c => {
+        if (!c.loyalty_tier || c.loyalty_tier === 'None' || !c.is_loyal_member) {
+          if (c.loyalty_points !== 0) {
+            c.loyalty_points = 0;
+            changed = true;
+          }
+        }
+      });
+      if (changed) {
+        this.save('customers', this.cache.customers);
+      }
+    }
+
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         this.bc = new BroadcastChannel('omnipack_erp_sync_channel');
@@ -2617,6 +2633,11 @@ class ERPStorage {
       if (normName) seenNames.add(normName);
       if (normPhone && normPhone.length === 10) seenPhones.add(normPhone);
 
+      // Force 0 points for 'None' tier or non-loyal members
+      if (!cust.loyalty_tier || cust.loyalty_tier === 'None' || !cust.is_loyal_member) {
+        cust.loyalty_points = 0;
+      }
+
       uniqueCustomers.push(cust);
     }
 
@@ -2641,7 +2662,9 @@ class ERPStorage {
     }
 
     const config = this.getLoyaltyConfig(cust.business_id);
-    const welcomeBonus = config?.welcome_bonus_points || 50;
+    const welcomeBonus = (cust.loyalty_tier && cust.loyalty_tier !== 'None') 
+      ? (config?.welcome_bonus_points || 50) 
+      : 0;
 
     const newCust: Customer = {
       ...cust,
@@ -2702,32 +2725,39 @@ class ERPStorage {
     if (uniqueToCreate.length === 0) return [];
 
     const config = this.getLoyaltyConfig(bizId);
-    const welcomeBonus = config?.welcome_bonus_points || 50;
     const now = new Date().toISOString();
 
-    const newCustomers: Customer[] = uniqueToCreate.map(cust => ({
-      ...cust,
-      id: crypto.randomUUID(),
-      outstanding_amount: 0,
-      loyalty_points: welcomeBonus,
-      lifetime_spend: 0,
-      loyalty_tier: cust.loyalty_tier || 'None',
-      created_at: now
-    }));
+    const newCustomers: Customer[] = uniqueToCreate.map(cust => {
+      const welcomeBonus = (cust.loyalty_tier && cust.loyalty_tier !== 'None')
+        ? (config?.welcome_bonus_points || 50)
+        : 0;
+      return {
+        ...cust,
+        id: crypto.randomUUID(),
+        outstanding_amount: 0,
+        loyalty_points: welcomeBonus,
+        lifetime_spend: 0,
+        loyalty_tier: cust.loyalty_tier || 'None',
+        created_at: now
+      };
+    });
 
     this.cache.customers.push(...newCustomers);
     this.save('customers', newCustomers);
 
-    if (welcomeBonus > 0) {
-      const logs = newCustomers.map(c => ({
+    const logs = newCustomers
+      .filter(c => c.loyalty_points > 0)
+      .map(c => ({
         id: crypto.randomUUID(),
         customer_id: c.id,
-        points: welcomeBonus,
+        points: c.loyalty_points,
         type: 'Bonus' as const,
         notes: 'Welcome registration loyalty bonus points',
         created_at: now,
         business_id: c.business_id
       }));
+
+    if (logs.length > 0) {
       this.cache.loyaltyLogs.push(...logs);
       this.save('loyaltyLogs', logs);
     }

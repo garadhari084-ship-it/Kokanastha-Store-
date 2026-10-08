@@ -15,15 +15,72 @@
     <div id="root"></div>
     <div id="error-log" style="color: red; padding: 0; font-family: monospace; white-space: pre-wrap; z-index: 999999; position: relative;"></div>
     <script>
+      // Monkey-patch WebSocket to prevent HMR errors in proxied environments
+      (function() {
+        var OrigWS = window.WebSocket;
+        if (OrigWS) {
+          window.WebSocket = function(url, protocols) {
+            try {
+              var ws = new OrigWS(url, protocols);
+              ws.addEventListener('error', function(e) {
+                if (url && (url.indexOf('vite') !== -1 || url.indexOf('hmr') !== -1 || url.indexOf('dev') !== -1 || url.indexOf('ais-dev') !== -1)) {
+                  e.stopImmediatePropagation && e.stopImmediatePropagation();
+                  e.stopPropagation && e.stopPropagation();
+                }
+              }, { capture: true });
+              return ws;
+            } catch (err) {
+              return {};
+            }
+          };
+          window.WebSocket.prototype = OrigWS.prototype;
+          for (var key in OrigWS) {
+            if (Object.prototype.hasOwnProperty.call(OrigWS, key)) {
+              window.WebSocket[key] = OrigWS[key];
+            }
+          }
+        }
+
+        // Intercept console.error to silence "WebSocket closed without opened" and related noise
+        var originalConsoleError = console.error;
+        console.error = function() {
+          var msg = Array.prototype.slice.call(arguments).map(function(arg) { return String(arg); }).join(' ');
+          if (
+            msg.indexOf('WebSocket closed') !== -1 || 
+            msg.indexOf('WebSocket connection') !== -1 || 
+            msg.indexOf('WebSocket is already') !== -1 ||
+            msg.indexOf('without opened') !== -1 ||
+            msg.indexOf('[vite] Connection failed') !== -1
+          ) {
+            return; // swallow dev environment socket noise
+          }
+          return originalConsoleError.apply(console, arguments);
+        };
+      })();
+
       window.addEventListener("error", function(e) {
         var msg = e.error ? e.error.stack || e.error.message : e.message || "";
-        if (msg.indexOf("WebSocket") !== -1 || msg.indexOf("ws://") !== -1 || msg.indexOf("wss://") !== -1) return;
+        if (
+          msg.indexOf("WebSocket") !== -1 || 
+          msg.indexOf("ws://") !== -1 || 
+          msg.indexOf("wss://") !== -1 ||
+          msg.indexOf("without opened") !== -1
+        ) {
+          e.preventDefault && e.preventDefault();
+          return;
+        }
         var el = document.getElementById("error-log");
         if (el) el.innerText += msg + "\n";
       });
+
       window.addEventListener("unhandledrejection", function(e) {
         var reason = e.reason ? (e.reason.stack || e.reason.message || String(e.reason)) : String(e);
-        if (reason.indexOf("WebSocket") !== -1 || reason.indexOf("ws://") !== -1 || reason.indexOf("wss://") !== -1) {
+        if (
+          reason.indexOf("WebSocket") !== -1 || 
+          reason.indexOf("ws://") !== -1 || 
+          reason.indexOf("wss://") !== -1 ||
+          reason.indexOf("without opened") !== -1
+        ) {
           e.preventDefault && e.preventDefault();
           return;
         }

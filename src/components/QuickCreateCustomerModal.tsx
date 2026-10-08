@@ -126,6 +126,11 @@ export const QuickCreateCustomerModal: React.FC<QuickCreateCustomerModalProps> =
       return;
     }
 
+    if (isLoyalMember && (!loyaltyTier || loyaltyTier === 'None' || loyaltyTier === '')) {
+      triggerToast('Please select a valid loyalty tier (Silver, Gold, or Platinum) when loyal membership is enabled.', 'error');
+      return;
+    }
+
     try {
       const finalShipping = isSameShipping ? cleanBilling : (shippingAddress.trim() || cleanBilling);
       const newCustomer = dbStore.createCustomer({
@@ -389,21 +394,39 @@ export const QuickCreateCustomerModal: React.FC<QuickCreateCustomerModalProps> =
                   <input
                     type="checkbox"
                     checked={isLoyalMember}
-                    onChange={(e) => setIsLoyalMember(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsLoyalMember(checked);
+                      if (checked && (loyaltyTier === 'None' || !loyaltyTier)) {
+                        setLoyaltyTier('');
+                      }
+                    }}
                     className="h-4 w-4 text-amber-500 rounded cursor-pointer"
                   />
                   <span>Enroll as Member</span>
                 </label>
                 {isLoyalMember && (
                   <select
-                    value={loyaltyTier}
+                    value={loyaltyTier || ''}
                     onChange={(e) => setLoyaltyTier(e.target.value)}
+                    required={isLoyalMember}
                     className="px-2.5 py-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs rounded-lg border border-amber-300 dark:border-amber-700 font-bold"
                   >
-                    <option value="None">None</option>
-                    <option value="Silver">Silver Tier</option>
-                    <option value="Gold">Gold Tier (LMR)</option>
-                    <option value="Platinum">Platinum Tier (LMR)</option>
+                    {isLoyalMember ? (
+                      <>
+                        <option value="">-- Choose Tier * --</option>
+                        <option value="Silver">Silver Tier</option>
+                        <option value="Gold">Gold Tier (LMR)</option>
+                        <option value="Platinum">Platinum Tier (LMR)</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="None">None</option>
+                        <option value="Silver">Silver Tier</option>
+                        <option value="Gold">Gold Tier (LMR)</option>
+                        <option value="Platinum">Platinum Tier (LMR)</option>
+                      </>
+                    )}
                   </select>
                 )}
               </div>

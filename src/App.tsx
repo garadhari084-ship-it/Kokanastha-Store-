@@ -250,11 +250,15 @@ export default function App() {
         m.includes('websocket') ||
         m.includes('vite') ||
         m.includes('hmr') ||
+        m.includes('without opened') ||
+        m.includes('closed without opened') ||
         f.includes('vite') ||
         f.includes('hmr') ||
         s.includes('websocket') ||
         s.includes('vite') ||
-        s.includes('hmr')
+        s.includes('hmr') ||
+        s.includes('without opened') ||
+        s.includes('closed without opened')
       );
     };
 
@@ -696,8 +700,26 @@ export default function App() {
         let localSessionToken = '';
         if (savedSession) {
           try {
-            localSessionToken = JSON.parse(savedSession).sessionToken || '';
-          } catch (e) {}
+            const parsed = JSON.parse(savedSession);
+            localSessionToken = parsed.sessionToken || '';
+            const { userId, businessId, mode } = parsed;
+            let user = dbStore.getUserById(userId);
+            if (!user) {
+              user = dbStore.getUsers(businessId).find(u => u.id === userId) || dbStore.getUsers().find(u => u.id === userId);
+            }
+            const biz = dbStore.getBusiness(businessId) || dbStore.getBusinesses()[0];
+            if (user && biz) {
+              dbStore.registerDeviceSession(user.id, deviceId, localSessionToken || user.session_token || '', biz.id);
+              setCurrentUser(user);
+              setCurrentBusiness(biz);
+              setDbMode(mode === 'supabase' ? 'supabase' : 'local');
+              
+              // Blazing fast UI load! Immediately mount the dashboard with cached local state
+              setIsInitializing(false);
+            }
+          } catch (e) {
+            console.error("Instant session parse error:", e);
+          }
         }
         
         if (!isSupabaseConfigured) {
@@ -712,14 +734,14 @@ export default function App() {
         }
 
         if (isSupabaseConfigured && supabase) {
-          // Sync public business info (logo, cover, QR) so login screen shows uploaded images
+          // Sync ONLY businesses table first so logo and cover images load instantly on login screen (blazing fast!)
           try {
-            await dbStore.syncFromSupabase();
+            await dbStore.syncFromSupabase(undefined, 'businesses');
           } catch (syncErr) {
-            console.warn("Public business sync notice:", syncErr);
+            console.warn("Businesses sync notice:", syncErr);
           }
 
-          // Try supabase session
+          // Try supabase session asynchronously to avoid blocking the main thread or page load
           try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session && session.user) {
@@ -732,13 +754,17 @@ export default function App() {
               if (dbProfile) {
                 dbStore.registerDeviceSession(dbProfile.id, deviceId, localSessionToken || dbProfile.session_token || '', dbProfile.business_id);
                 setCurrentUser(dbProfile as UserProfile);
-                await dbStore.syncFromSupabase(dbProfile.business_id);
                 const biz = dbStore.getBusiness(dbProfile.business_id) || dbStore.getBusinesses()[0];
                 setCurrentBusiness(biz);
                 setDbMode('supabase');
                 setIsInitializing(false);
                 didFinish = true;
                 clearTimeout(safetyTimer);
+                
+                // Fetch rest of tables in background so UI remains perfectly responsive and fast
+                dbStore.syncFromSupabase(dbProfile.business_id).then(() => {
+                  setSyncTick(prev => prev + 1);
+                });
                 return;
               }
             }

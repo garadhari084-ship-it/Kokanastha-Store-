@@ -238,6 +238,11 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
     e.preventDefault();
     if (!selectedCustomerForMembership) return;
 
+    if (membershipIsActive && (!membershipTier || membershipTier === 'None' || membershipTier === '')) {
+      triggerToast('Please select a valid loyalty tier (Silver, Gold, or Platinum) when membership is enabled.', 'error');
+      return;
+    }
+
     const oldTier = selectedCustomerForMembership.loyalty_tier || 'None';
     const newTier = (membershipTier as any) || 'None';
     const tierChanged = oldTier !== newTier;
@@ -2220,7 +2225,15 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setMembershipIsActive(prev => !prev)}
+                    onClick={() => {
+                      setMembershipIsActive(prev => {
+                        const next = !prev;
+                        if (next && (membershipTier === 'None' || !membershipTier)) {
+                          setMembershipTier('');
+                        }
+                        return next;
+                      });
+                    }}
                     className={`group relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:ring-offset-1 ${membershipIsActive ? 'bg-emerald-600' : 'bg-slate-200 dark:bg-slate-700'}`}
                   >
                     <span className="sr-only">Loyalty Status</span>
@@ -2281,14 +2294,26 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                     <div className="flex-1 flex flex-col p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
                       <label className="text-xs font-bold text-slate-900 dark:text-white block mb-1.5">Loyalty Tier</label>
                       <select 
-                        value={membershipTier || 'None'}
+                        value={membershipTier || ''}
                         onChange={(e) => setMembershipTier(e.target.value)}
+                        required={membershipIsActive}
                         className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden text-slate-700 dark:text-slate-300"
                       >
-                        <option value="None">None</option>
-                        <option value="Silver">Silver</option>
-                        <option value="Gold">Gold</option>
-                        <option value="Platinum">Platinum</option>
+                        {membershipIsActive ? (
+                          <>
+                            <option value="">-- Choose Tier (Required) * --</option>
+                            <option value="Silver">Silver</option>
+                            <option value="Gold">Gold</option>
+                            <option value="Platinum">Platinum</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="None">None</option>
+                            <option value="Silver">Silver</option>
+                            <option value="Gold">Gold</option>
+                            <option value="Platinum">Platinum</option>
+                          </>
+                        )}
                       </select>
                     </div>
 

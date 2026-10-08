@@ -440,6 +440,11 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
       return;
     }
 
+    if (formIsLoyalMember && (!formLoyaltyTier || formLoyaltyTier === 'None' || formLoyaltyTier === '')) {
+      triggerToast('Please select a valid loyalty tier (Silver, Gold, or Platinum) when loyal membership is enabled.', 'error');
+      return;
+    }
+
     try {
       if (editingCustomer) {
         dbStore.updateCustomer(editingCustomer.id, {
@@ -1096,16 +1101,30 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase">Loyalty Tier</label>
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">
+                    Loyalty Tier {formIsLoyalMember ? '*' : ''}
+                  </label>
                   <select 
-                    value={formLoyaltyTier || 'None'}
+                    value={formLoyaltyTier || ''}
                     onChange={(e) => setFormLoyaltyTier(e.target.value)}
+                    required={formIsLoyalMember}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                   >
-                    <option value="None">None</option>
-                    <option value="Silver">Silver</option>
-                    <option value="Gold">Gold</option>
-                    <option value="Platinum">Platinum</option>
+                    {formIsLoyalMember ? (
+                      <>
+                        <option value="">-- Choose Tier (Required) * --</option>
+                        <option value="Silver">Silver</option>
+                        <option value="Gold">Gold</option>
+                        <option value="Platinum">Platinum</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="None">None</option>
+                        <option value="Silver">Silver</option>
+                        <option value="Gold">Gold</option>
+                        <option value="Platinum">Platinum</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -1151,7 +1170,13 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                     <input 
                       type="checkbox" 
                       checked={formIsLoyalMember} 
-                      onChange={(e) => setFormIsLoyalMember(e.target.checked)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormIsLoyalMember(checked);
+                        if (checked && (formLoyaltyTier === 'None' || !formLoyaltyTier)) {
+                          setFormLoyaltyTier('');
+                        }
+                      }}
                       className="sr-only peer" 
                     />
                     <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>

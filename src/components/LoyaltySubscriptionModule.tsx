@@ -397,6 +397,25 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
     setIsBonusDispatchModalOpen(false);
   };
 
+  const handleResetAllTiersToNone = () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to reset all current customer loyalty tiers to None? You can change individual tiers anytime.'
+    );
+    if (!confirmed) return;
+
+    const count = dbStore.resetAllCustomerTiersToNone(businessId);
+    dbStore.logActivity(
+      user.id,
+      user.name,
+      user.role,
+      'Reset Loyalty Tiers',
+      `Reset all customer loyalty tiers to None (${count} customers updated)`,
+      businessId
+    );
+    setSyncTick(prev => prev + 1);
+    triggerToast(`Successfully reset all current customers' loyalty tier to None (${count} customers updated).`, 'success');
+  };
+
   // Subscription Item Operations
   const handleAddSubItem = () => {
     if (!selectedProdForSub) return;
@@ -757,6 +776,14 @@ export const LoyaltySubscriptionModule: React.FC<LoyaltySubscriptionModuleProps>
                 >
                   <Settings size={15} />
                   Configure Rules
+                </button>
+                <button
+                  onClick={handleResetAllTiersToNone}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer border border-slate-200 dark:border-slate-700"
+                  title="Reset all customer loyalty tiers to None"
+                >
+                  <RefreshCw size={14} />
+                  Reset All Tiers to None
                 </button>
               </div>
             </div>

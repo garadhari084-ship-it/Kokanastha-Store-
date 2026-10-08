@@ -745,6 +745,19 @@ class ERPStorage {
     this.draftReservations = this.load('draftReservations', []);
     this.activeDeviceSessions = this.load('deviceSessions', []);
 
+    // One-time migration: Reset all current customers' loyalty tier to 'None'
+    const tierMigrationKey = 'omnipack_erp_tier_reset_none_v2';
+    if (safeStorage.getItem(tierMigrationKey) !== 'true') {
+      if (Array.isArray(this.cache.customers) && this.cache.customers.length > 0) {
+        this.cache.customers.forEach(c => {
+          c.loyalty_tier = 'None';
+          c.loyalty_tier_override = 'None';
+        });
+        this.save('customers', this.cache.customers);
+      }
+      safeStorage.setItem(tierMigrationKey, 'true');
+    }
+
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         this.bc = new BroadcastChannel('omnipack_erp_sync_channel');
@@ -815,6 +828,19 @@ class ERPStorage {
       comboLogs: this.load('comboLogs', [])
     };
     this.draftReservations = this.load('draftReservations', []);
+
+    // Reset all current customers' loyalty tier to 'None' if needed
+    const tierMigrationKey = 'omnipack_erp_tier_reset_none_v2';
+    if (safeStorage.getItem(tierMigrationKey) !== 'true') {
+      if (Array.isArray(this.cache.customers) && this.cache.customers.length > 0) {
+        this.cache.customers.forEach(c => {
+          c.loyalty_tier = 'None';
+          c.loyalty_tier_override = 'None';
+        });
+        this.save('customers', this.cache.customers);
+      }
+      safeStorage.setItem(tierMigrationKey, 'true');
+    }
     this.notify();
   }
 
@@ -1033,7 +1059,7 @@ class ERPStorage {
                  ...remoteCust,
                  area: remoteCust.area || localCust?.area || undefined,
                  loyalty_points: typeof remoteCust.loyalty_points === 'number' ? remoteCust.loyalty_points : (localCust?.loyalty_points || 0),
-                 loyalty_tier: remoteCust.loyalty_tier || localCust?.loyalty_tier || 'None',
+                 loyalty_tier: (localCust?.loyalty_tier === 'None' ? 'None' : (remoteCust.loyalty_tier && remoteCust.loyalty_tier !== 'Silver' ? remoteCust.loyalty_tier : (localCust?.loyalty_tier || 'None'))),
                  lifetime_spend: typeof remoteCust.lifetime_spend === 'number' ? remoteCust.lifetime_spend : (localCust?.lifetime_spend || 0)
                };
              });
@@ -2727,6 +2753,22 @@ class ERPStorage {
       return true;
     }
     return false;
+  }
+
+  public resetAllCustomerTiersToNone(businessId?: string): number {
+    let count = 0;
+    if (Array.isArray(this.cache.customers)) {
+      this.cache.customers.forEach(c => {
+        if (!businessId || isSameBusiness(c.business_id, businessId)) {
+          c.loyalty_tier = 'None';
+          c.loyalty_tier_override = 'None';
+          count++;
+        }
+      });
+      this.save('customers', this.cache.customers);
+      this.notify();
+    }
+    return count;
   }
 
   // ==================== LOYALTY & SUBSCRIPTION OPERATIONS ====================

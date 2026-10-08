@@ -139,6 +139,25 @@ export default function App() {
   // Main content ref for scroll tracking
   const mainContentRef = useRef<HTMLElement | null>(null);
 
+  // Track device pixel ratio to maintain perfect visual 100% size regardless of browser zoom in or zoom out
+  const baselineRatioRef = useRef(window.devicePixelRatio || 1);
+  const [zoomFactor, setZoomFactor] = useState(1);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const currentRatio = window.devicePixelRatio || 1;
+      const baseline = baselineRatioRef.current || 1;
+      const relativeZoom = currentRatio / baseline;
+      setZoomFactor(1 / relativeZoom);
+    };
+    
+    // Initial check
+    handleResize();
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Auth state
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [currentBusiness, setCurrentBusiness] = useState<Business | null>(null);
@@ -1760,13 +1779,13 @@ export default function App() {
     const defaultLogoUrl = dbStore.getBusinesses()[0]?.logo_url || '/logo.png';
     const defaultCoverUrl = dbStore.getBusinesses()[0]?.login_cover_url;
     return (
-      <div className="min-h-screen w-full bg-slate-50 flex flex-col lg:flex-row select-none" id="login-screen-root">
+      <div className="min-h-screen w-full bg-slate-50 flex flex-col lg:flex-row select-none" id="login-screen-root" style={{ zoom: zoomFactor }}>
         {/* Left Side: Cover Photo / Graphic Showcase */}
-        <div className="hidden lg:flex lg:w-1/2 h-full bg-slate-900 relative overflow-hidden items-center justify-center p-8 shrink-0">
+        <div className="hidden lg:flex lg:w-1/2 min-h-screen bg-slate-900 relative overflow-hidden items-center justify-center shrink-0">
           {defaultCoverUrl ? (
-            <div className="absolute inset-0 z-0 flex items-center justify-center p-8 bg-slate-900">
+            <div className="absolute inset-0 z-0 bg-slate-900">
               <div 
-                className="w-full h-full bg-contain bg-center bg-no-repeat transition-all duration-300"
+                className="w-full h-full bg-cover bg-center bg-no-repeat transition-all duration-300"
                 style={{ backgroundImage: `url(${defaultCoverUrl})` }}
               ></div>
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-slate-950/30 pointer-events-none"></div>
@@ -1836,36 +1855,6 @@ export default function App() {
                 </div>
 
                 <div className="space-y-4 sm:space-y-6">
-                  {/* Database Connection Status Card */}
-                  <div className={`p-4 rounded-xl text-xs border shadow-sm ${
-                    isSupabaseConfigured 
-                      ? 'bg-emerald-50/90 border-emerald-200 text-emerald-900' 
-                      : 'bg-amber-50 border-amber-200 text-amber-900'
-                  }`}>
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <div className="flex items-center gap-2 font-bold">
-                        <div className={`w-2.5 h-2.5 rounded-full ${isSupabaseConfigured ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-amber-500 animate-pulse'}`}></div>
-                        <span>{isSupabaseConfigured ? 'Connected to Cloud Database' : 'Database Not Connected'}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowDbConfigModal(true)}
-                        className={`px-2.5 py-1 rounded-lg font-bold text-[11px] shadow-sm cursor-pointer transition-all ${
-                          isSupabaseConfigured
-                            ? 'bg-white hover:bg-emerald-100/80 text-emerald-800 border border-emerald-300'
-                            : 'bg-amber-600 hover:bg-amber-700 text-white'
-                        }`}
-                      >
-                        {isSupabaseConfigured ? 'Database Settings' : 'Connect Database'}
-                      </button>
-                    </div>
-                    <p className="text-[11px] leading-relaxed font-medium opacity-90">
-                      {isSupabaseConfigured
-                        ? 'All store records (sales, purchases, inventory, accounts) are saved directly in your Supabase PostgreSQL cloud database.'
-                        : 'Connect your Supabase database to save all store data in the cloud database instead of local storage. No .env file required.'}
-                    </p>
-                  </div>
-
                   {authError && (
                     <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex flex-col gap-2 shadow-sm">
                       <div className="flex items-start gap-2.5">
@@ -1942,63 +1931,6 @@ export default function App() {
                     </button>
                   </form>
 
-                  {/* 1-Click Instant Login for Easy Access */}
-                  <div className="pt-3 space-y-3">
-                    <button
-                      type="button"
-                      onClick={() => handleQuickLogin('admin@admin.com', 'admin')}
-                      disabled={isLoggingIn}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      <Sparkles size={16} className="text-emerald-200" />
-                      <span>⚡ 1-Click Instant Login (Super Admin)</span>
-                    </button>
-
-                    <div className="pt-2 border-t border-slate-100">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 text-center">
-                        Quick Demo Role Sign In
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleQuickLogin('admin@admin.com', 'admin')}
-                          className="px-2 py-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 rounded-lg text-[10px] font-bold transition-all border border-slate-200 text-center cursor-pointer"
-                        >
-                          👑 Admin
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleQuickLogin('sales@kokanastha.com', 'sales')}
-                          className="px-2 py-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 rounded-lg text-[10px] font-bold transition-all border border-slate-200 text-center cursor-pointer"
-                        >
-                          🛒 Sales
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleQuickLogin('pack@kokanastha.com', 'pack')}
-                          className="px-2 py-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 rounded-lg text-[10px] font-bold transition-all border border-slate-200 text-center cursor-pointer"
-                        >
-                          📦 Packing
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="pt-1 text-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          safeStorage.removeItem('omnipack_session');
-                          safeStorage.removeItem('omnipack_erp_categories');
-                          safeStorage.removeItem('omnipack_erp_profiles');
-                          safeStorage.removeItem('omnipack_erp_products');
-                          handleQuickLogin('admin@admin.com', 'admin');
-                        }}
-                        className="text-[10.5px] text-slate-400 hover:text-indigo-600 underline font-medium cursor-pointer transition-colors"
-                      >
-                        Reset Storage & Launch Clean System
-                      </button>
-                    </div>
-                  </div>
                 </div>
               </>
             ) : resetStep === 'email' ? (
@@ -2248,7 +2180,7 @@ export default function App() {
 
   // Main system portal dashboard layout
   return (
-    <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 flex font-sans antialiased text-slate-800 dark:text-slate-100" id="portal-root">
+    <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 flex font-sans antialiased text-slate-800 dark:text-slate-100" id="portal-root" style={{ zoom: zoomFactor }}>
       
       {/* Mobile/Tablet Backdrop Overlay */}
       {isMobileMenuOpen && (

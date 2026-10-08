@@ -2771,6 +2771,10 @@ class ERPStorage {
     return count;
   }
 
+  public resetAllCustomersTierToNone(businessId?: string): number {
+    return this.resetAllCustomerTiersToNone(businessId);
+  }
+
   // ==================== LOYALTY & SUBSCRIPTION OPERATIONS ====================
   public getLoyaltyConfig(businessId: string): LoyaltyConfig {
     if (this.cache.loyaltyConfigs) {

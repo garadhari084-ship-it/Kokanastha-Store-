@@ -436,10 +436,15 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   const isVeg = product.food_packaging?.dietary_type ? product.food_packaging.dietary_type === 'veg' : product.food_packaging?.is_vegetarian !== false;
   const netWeight = product.food_packaging?.net_weight || product.unit || (size === '100x100' ? '1000g' : size === '100x75' ? '500g' : size === '60x100' ? '500g' : size === '50x75' ? '250g' : '100g');
   
-  const effectiveFssai = fssaiNumber || product.food_packaging?.fssai_license || (product.food_packaging as any)?.fssai_license_number || '11521018000123';
-  const effectivePhone = phone || (product.food_packaging as any)?.customer_care_phone || (product as any)?.phone || '';
-  const effectiveAddress = address || product.food_packaging?.mfg_by || '';
-  const effectiveOtherInfo = otherInfo || (product.food_packaging as any)?.other_info || '';
+  // Business fallback from dbStore if not passed in props
+  const biz = product?.business_id ? dbStore.getBusiness(product.business_id) : undefined;
+  const bizPhone = (biz?.barcode_phone || (biz as any)?.mobile_number || biz?.phone || '').trim();
+  const bizAddress = (biz?.barcode_address || biz?.mfg_address || biz?.billing_address || biz?.shipping_address || '').trim();
+
+  const effectiveFssai = fssaiNumber || product.food_packaging?.fssai_license || (product.food_packaging as any)?.fssai_license_number || biz?.fssai_number || (biz as any)?.barcode_fssai || '11521018000123';
+  const effectivePhone = phone || (product.food_packaging as any)?.customer_care_phone || (product as any)?.phone || bizPhone || '';
+  const effectiveAddress = address || product.food_packaging?.mfg_by || bizAddress || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092';
+  const effectiveOtherInfo = otherInfo || (product.food_packaging as any)?.other_info || (biz as any)?.barcode_other_info || '';
   const effectiveIngredients = ingredients || product.food_packaging?.ingredients || 'Roasted Rice Flour, Bengal Gram, Spices, Edible Oil, Salt';
 
   // Base preview pixel dimensions (width x height)
@@ -475,28 +480,31 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     'standard': 'w-[220px] p-3'
   };
 
+  const isTallStacked = ['50x75', '100x75', '100x100', '50x50'].includes(size);
+  const flexJustify = isTallStacked ? 'justify-start' : 'justify-between';
+
   const containerClasses = mode === 'preview'
-    ? `${previewSizeClasses[size] || 'w-[189px] h-[95px] p-1.5'} bg-white rounded-md ${boxBorder ? 'border-[1.5px] border-black' : 'border-2 border-indigo-400 dark:border-indigo-500'} shadow-md flex flex-col justify-between items-center text-center overflow-hidden font-sans select-none relative shrink-0 text-black`
-    : `w-full h-full p-[0.8mm] bg-white flex flex-col justify-between items-center text-center overflow-hidden font-sans text-black box-border ${boxBorder ? 'border-[1px] border-black rounded-[2px]' : ''}`;
+    ? `${previewSizeClasses[size] || 'w-[189px] h-[95px] p-1.5'} bg-white rounded-md ${boxBorder ? 'border-[1.5px] border-black' : 'border-2 border-indigo-400 dark:border-indigo-500'} shadow-md flex flex-col ${flexJustify} items-center text-center overflow-hidden font-sans select-none relative shrink-0 text-black`
+    : `w-full h-full p-[0.8mm] bg-white flex flex-col ${flexJustify} items-center text-center overflow-hidden font-sans text-black box-border ${boxBorder ? 'border-[1px] border-black rounded-[2px]' : ''}`;
 
   const valLen = String(barcodeValue).length;
   // Calibrated bar module width to ensure barcode never exceeds box or bleeds
   const getBarWidth = (targetSize: string) => {
-    if (targetSize === '38x25') return valLen > 12 ? 0.88 : valLen > 8 ? 0.95 : 1.05;
-    if (targetSize === '50x25' || targetSize === '40x25') return valLen > 13 ? 0.92 : valLen > 10 ? 1.0 : 1.1;
-    if (targetSize === '50x30' || targetSize === '50x38') return valLen > 13 ? 1.0 : valLen > 10 ? 1.1 : 1.2;
-    if (targetSize === '50x50' || targetSize === '50x75') return valLen > 13 ? 0.95 : 1.05;
-    if (targetSize === '60x100') return valLen > 13 ? 1.3 : 1.45;
-    if (targetSize === '100x60' || targetSize === '100x50' || targetSize === '100x75' || targetSize === '100x100') return valLen > 13 ? 1.5 : 1.8;
-    return valLen > 12 ? 1.0 : 1.15;
+    if (targetSize === '38x25') return valLen > 12 ? 0.85 : valLen > 8 ? 0.92 : 1.0;
+    if (targetSize === '50x25' || targetSize === '40x25') return valLen > 13 ? 0.88 : valLen > 10 ? 0.95 : 1.05;
+    if (targetSize === '50x30' || targetSize === '50x38') return valLen > 13 ? 0.95 : valLen > 10 ? 1.05 : 1.15;
+    if (targetSize === '50x50' || targetSize === '50x75') return valLen > 13 ? 0.92 : 1.0;
+    if (targetSize === '60x100') return valLen > 14 ? 1.05 : valLen > 11 ? 1.15 : 1.25;
+    if (targetSize === '100x60' || targetSize === '100x50' || targetSize === '100x75' || targetSize === '100x100') return valLen > 13 ? 1.4 : 1.6;
+    return valLen > 12 ? 0.95 : 1.1;
   };
   const barWidth = getBarWidth(size);
 
   // Dedicated Boxed Barcode with guaranteed white quiet zone margin
   const renderBarcodeBox = (h: number, customW?: number) => (
-    <div className="w-full flex items-center justify-center my-0.5 shrink-0" style={{ margin: '1px 0' }}>
+    <div className="w-full flex items-center justify-center shrink-0 my-0.5" style={{ margin: '1px 0' }}>
       <div 
-        className={`barcode-inner-box bg-white flex flex-col items-center justify-center w-[96%] max-w-full ${barcodeFrame ? 'border-[1px] border-black rounded-[2px] px-2 py-0.5' : 'px-1.5 py-0.5'}`}
+        className={`barcode-inner-box bg-white flex flex-col items-center justify-center w-[98%] max-w-full ${barcodeFrame ? 'border-[1px] border-black rounded-[2px] px-1 py-0.5' : 'px-1 py-0.5'}`}
         style={{ backgroundColor: '#ffffff', boxSizing: 'border-box' }}
       >
         <ReactBarcode 
@@ -506,8 +514,10 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           width={customW || barWidth}
           fontSize={size === '60x100' ? 8.5 : size === '38x25' ? 7 : size === '50x25' || size === '40x25' ? 7.5 : 8}
           margin={0}
+          marginTop={1}
+          marginBottom={2}
           textMargin={1.5}
-          fontOptions={size === '60x100' ? '' : 'bold'}
+          fontOptions="bold"
           font="monospace"
           displayValue={true}
           background="#ffffff"
@@ -707,107 +717,245 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     if (size === '60x100') {
       return (
         <div 
-          className={containerClasses} 
-          style={mode === 'print' ? { padding: '1mm', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between' } : {}}
+          className={`${containerClasses} sticker-60x100`}
+          data-size="60x100" 
+          style={{
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            color: '#000000',
+            ...(mode === 'print' 
+              ? { 
+                  padding: '1.2mm 1.2mm', 
+                  width: '100%', 
+                  height: '100%', 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  justifyContent: 'space-between', 
+                  boxSizing: 'border-box',
+                  overflow: 'hidden'
+                } 
+              : { 
+                  justifyContent: 'space-between', 
+                  padding: '6px 7px', 
+                  height: '100%', 
+                  minHeight: '395px' 
+                }
+            )
+          }}
         >
-          {/* 1. Header (Company, SKU, Veg & Weight) */}
-          <div className="w-full flex flex-col items-center border-b border-black pb-1 shrink-0 text-black">
+          {/* 1. Header (Brand Name, SKU, Dietary Symbol & Net Weight) */}
+          <div className="w-full flex flex-col items-center border-b-[1.5px] border-black pb-1 shrink-0 text-black">
             {effectiveCompany ? (
-              <span className="text-[11px] font-normal uppercase text-center block w-full leading-tight mb-0.5 truncate tracking-normal">
+              <span className="text-[11px] font-black uppercase text-center block w-full leading-tight mb-0.5 tracking-wider truncate text-black">
                 {effectiveCompany}
               </span>
             ) : null}
-            <div className="flex items-center justify-between w-full px-1 text-[8px] font-normal font-mono">
-              <span className="shrink-0">SKU: {product.sku || 'SKU-001'}</span>
+            <div className="flex items-center justify-between w-full px-0.5 text-[8.5px] font-bold text-black leading-none">
+              <span className="shrink-0 font-mono font-bold text-black">SKU: {product.sku || 'SKU-001'}</span>
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="w-3.5 h-3.5 rounded-xs border border-black flex items-center justify-center shrink-0">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
+                <span 
+                  className="w-3.5 h-3.5 rounded-xs border border-black flex items-center justify-center shrink-0 bg-white"
+                  style={{
+                    width: '13px',
+                    height: '13px',
+                    minWidth: '13px',
+                    minHeight: '13px',
+                    border: '1.2px solid #000000',
+                    borderRadius: '2px',
+                    backgroundColor: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxSizing: 'border-box',
+                    flexShrink: 0
+                  }}
+                >
+                  <span 
+                    className="w-1.5 h-1.5 rounded-full shrink-0 bg-black" 
+                    style={{
+                      width: '6.5px',
+                      height: '6.5px',
+                      minWidth: '6.5px',
+                      minHeight: '6.5px',
+                      borderRadius: '50%',
+                      backgroundColor: isVeg ? '#000000' : 'transparent',
+                      border: isVeg ? 'none' : '1px solid #000000',
+                      WebkitPrintColorAdjust: 'exact',
+                      printColorAdjust: 'exact',
+                      display: 'block',
+                      flexShrink: 0
+                    }}
+                  />
                 </span>
-                <span className="text-[8px] font-sans font-normal">Net Wt: {netWeight}</span>
+                <span 
+                  className="text-[8px] font-black bg-black text-white px-1.5 py-0.5 rounded-xs border border-black uppercase tracking-tight flex items-center"
+                  style={{ backgroundColor: '#000000', color: '#ffffff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+                >
+                  {netWeight || 'Pkt'}
+                </span>
               </div>
             </div>
           </div>
           
-          {/* 2. Product Name - Clean, not bold */}
-          <div className="w-full text-center my-0.5 shrink-0 text-black border-b border-black pb-0.5">
-            <span className="text-[10px] font-normal uppercase tracking-normal leading-tight text-center block w-full truncate">
+          {/* 2. Product Name & Title */}
+          <div className="w-full text-center shrink-0 text-black border-b-[1.5px] border-black py-1 bg-white">
+            <span className="text-[12px] font-black uppercase tracking-tight leading-tight text-center block w-full px-0.5 line-clamp-2 text-black">
               {product.name}
             </span>
           </div>
 
-          {/* 3. Barcode Box */}
-          <div className="w-full flex justify-center shrink-0 my-0.5">
-            {renderBarcodeBox(30)}
+          {/* 3. Barcode Box - Scannable & Bold Monospace Digits */}
+          <div className="w-full flex justify-center shrink-0 border-b-[1.5px] border-black pb-1">
+            {renderBarcodeBox(20)}
           </div>
 
-          {/* 4. UNDER BARCODE: NUTRITIONAL FACTS TABLE - Not bold, reduced size, correctly fitted */}
-          <div className="w-full border border-black text-[6.5px] text-left leading-tight my-0.5 rounded-xs overflow-hidden shrink-0 text-black font-normal">
-            <div className="bg-black text-white px-1.5 py-0.5 font-normal text-[6.5px] flex justify-between">
-              <span>NUTRITIONAL FACTS</span>
-              <span>Per {product.nutrition_facts?.serving_size || '100g'}</span>
-            </div>
-            <div className="divide-y divide-black/60 bg-white text-black font-normal">
-              <div className="flex justify-between px-1.5 py-0.3"><span>Energy / Calories</span><span>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</span></div>
-              <div className="flex justify-between px-1.5 py-0.3"><span>Protein</span><span>{product.nutrition_facts?.protein_g ?? '9.2'} g</span></div>
-              <div className="flex justify-between px-1.5 py-0.3"><span>Carbohydrates</span><span>{product.nutrition_facts?.carbohydrates_g ?? '58'} g</span></div>
-              <div className="flex justify-between px-1.5 py-0.3"><span>Total Fat</span><span>{product.nutrition_facts?.fat_total_g ?? '18'} g</span></div>
-              <div className="flex justify-between px-1.5 py-0.3"><span>Sodium</span><span>{product.nutrition_facts?.sodium_mg ?? '380'} mg</span></div>
-            </div>
-          </div>
-
-          {/* 5. UNDER NUTRITIONAL FACTS: ITEMS & PRICE - Not bold, reduced size */}
-          <div className="w-full text-[8px] font-normal border-t border-b border-black py-0.5 my-0.5 shrink-0 text-black">
-            <div className="flex justify-between items-center w-full mb-0.5">
-              <span>MRP: ₹{effectiveMrp}</span>
-              <span className="text-right">SALE: ₹{effectiveSale}</span>
-            </div>
-            <div className="flex justify-between items-center w-full text-[7px] font-normal text-black border-t border-black/30 pt-0.5">
-              <span>PKD: {packedOn}</span>
-              <span className="text-right">{expiryOn ? `EXP: ${expiryOn}` : (product.food_packaging?.best_before_days ? `Best: ${product.food_packaging.best_before_days}d` : 'Best before 90 days')}</span>
-            </div>
-          </div>
-
-          {/* 6. REGULATORY & PRODUCT INFO - Not bold, reduced size, correctly fitted */}
-          <div className="w-full text-left bg-white p-1 rounded border border-black my-0.5 space-y-0.5 shrink-0 text-black text-[6.5px] font-normal leading-snug">
-            {/* Header: FSSAI License & Dietary Status */}
-            <div className="flex justify-between items-center border-b border-black/70 pb-0.5 text-[6.5px] font-normal">
-              <span>FSSAI Lic: <span className="font-mono">{effectiveFssai}</span></span>
-              <span className="text-[6px] px-1 py-0.2 rounded border border-black shrink-0 font-normal">
-                {isVeg ? '🌱 VEG' : 'NON-VEG'}
+          {/* 4. Commercial Pricing (Batch & Dates row removed per user request) */}
+          <div className="w-full border-[1.5px] border-black rounded-xs overflow-hidden shrink-0 text-black bg-white">
+            <div className="flex justify-between items-center w-full px-2 py-1 bg-white leading-tight">
+              <span className="text-[9.5px] font-bold text-black">
+                MRP (Incl. taxes): <span className="line-through font-extrabold text-[10.5px]">₹{effectiveMrp}</span>
+              </span>
+              <span className="text-[12.5px] font-black text-black tracking-tight">
+                SALE: ₹{effectiveSale}
               </span>
             </div>
+          </div>
 
-            {/* Phone / Helpline */}
-            {effectivePhone ? (
-              <div className="flex items-start gap-1 text-[6.5px] font-normal">
-                <span className="text-black shrink-0">Phone / Helpline:</span>
-                <span className="font-mono">{effectivePhone}</span>
+          {/* 5. NUTRITIONAL INFORMATION TABLE - Single Line Header */}
+          <div className="w-full border-[1.5px] border-black rounded-xs overflow-hidden shrink-0 text-black bg-white">
+            <div 
+              className="bg-black text-white px-2 py-0.5 text-[7.5px] font-black flex justify-between items-center tracking-tight border-b border-black whitespace-nowrap overflow-hidden"
+              style={{ backgroundColor: '#000000', color: '#ffffff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+            >
+              <span className="font-black text-white uppercase tracking-tight text-[7.5px] whitespace-nowrap" style={{ color: '#ffffff' }}>NUTRITIONAL INFORMATION</span>
+              <span className="font-bold text-[7px] text-white opacity-95 shrink-0 ml-1 whitespace-nowrap" style={{ color: '#ffffff' }}>Per {product.nutrition_facts?.serving_size || '100g'} Approx.</span>
+            </div>
+            <div className="bg-white text-black text-[8px]">
+              <div className="flex justify-between items-center px-2 py-[2px] border-b border-black leading-tight">
+                <span className="text-black">Energy / Calories</span>
+                <span className="font-black font-mono text-black">{product.nutrition_facts?.energy_kcal ?? '420'} kcal</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-[2px] border-b border-black leading-tight">
+                <span className="text-black">Protein</span>
+                <span className="font-black font-mono text-black">{product.nutrition_facts?.protein_g ?? '9.2'} g</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-[2px] border-b border-black leading-tight">
+                <span className="text-black">Carbohydrates</span>
+                <span className="font-black font-mono text-black">{product.nutrition_facts?.carbohydrates_g ?? '58.0'} g</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-[2px] border-b border-black leading-tight">
+                <span className="text-black">Total Fat</span>
+                <span className="font-black font-mono text-black">{product.nutrition_facts?.fat_total_g ?? '18.0'} g</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-[2px] border-b border-black leading-tight">
+                <span className="text-black">Dietary Fibre</span>
+                <span className="font-black font-mono text-black">{product.nutrition_facts?.dietary_fiber_g ?? '4.5'} g</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-[2px] leading-tight">
+                <span className="text-black">Sodium</span>
+                <span className="font-black font-mono text-black">{product.nutrition_facts?.sodium_mg ?? '380'} mg</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 6. FSSAI & 100% VEG BADGE */}
+          <div className="w-full text-left bg-white rounded-xs border-[1.5px] border-black overflow-hidden shrink-0 text-black text-[8px]">
+            <div className="flex justify-between items-center px-2 py-1 bg-white">
+              <div className="flex items-center gap-1.5 min-w-0 pr-1">
+                <span className="font-black text-[8px] shrink-0 text-black">FSSAI Lic No:</span>
+                <span className="font-mono font-bold text-[8.5px] text-black tracking-tight">{effectiveFssai}</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                <span 
+                  className="w-3.5 h-3.5 rounded-xs border border-black flex items-center justify-center shrink-0 bg-white"
+                  style={{
+                    width: '13px',
+                    height: '13px',
+                    minWidth: '13px',
+                    minHeight: '13px',
+                    border: '1.2px solid #000000',
+                    borderRadius: '2px',
+                    backgroundColor: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxSizing: 'border-box',
+                    flexShrink: 0
+                  }}
+                >
+                  <span 
+                    className="w-1.5 h-1.5 rounded-full shrink-0 bg-black" 
+                    style={{
+                      width: '6.5px',
+                      height: '6.5px',
+                      minWidth: '6.5px',
+                      minHeight: '6.5px',
+                      borderRadius: '50%',
+                      backgroundColor: isVeg ? '#000000' : 'transparent',
+                      border: isVeg ? 'none' : '1px solid #000000',
+                      WebkitPrintColorAdjust: 'exact',
+                      printColorAdjust: 'exact',
+                      display: 'block',
+                      flexShrink: 0
+                    }}
+                  />
+                </span>
+                <span className="text-[7.5px] font-black text-black uppercase tracking-tight">
+                  {isVeg ? '100% VEG' : 'NON-VEG'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 7. MANUFACTURER, PACKER & CUSTOMER CARE */}
+          <div className="w-full text-left bg-white rounded-xs border-[1.5px] border-black overflow-hidden shrink-0 text-black text-[8px]">
+            {/* Address & Facility (Mob number removed per user request) */}
+            {effectiveAddress ? (
+              <div className="px-2 py-0.5 border-b border-black leading-tight bg-white text-black">
+                <span className="font-black text-[8px] uppercase text-black block mb-0.5">Mfg & Packed By:</span>
+                <div className="font-medium text-[7.5px] leading-tight break-words text-black">
+                  {effectiveAddress}
+                </div>
               </div>
             ) : null}
 
-            {/* Address */}
-            {effectiveAddress ? (
-              <div className="flex items-start gap-1 text-[6.5px] font-normal">
-                <span className="text-black shrink-0">Address:</span>
-                <span className="break-words line-clamp-2">{effectiveAddress}</span>
+            {/* Helpline / Customer Care Row */}
+            {effectivePhone ? (
+              <div className="flex items-center justify-between px-2 py-0.5 border-b border-black leading-tight bg-white text-black">
+                <span className="font-black text-[8px] text-black uppercase">Customer Care / Helpline:</span>
+                <span className="font-mono font-bold text-[8.5px] text-black">{effectivePhone}</span>
+              </div>
+            ) : null}
+
+            {/* Ingredients & Allergen Declaration */}
+            {effectiveIngredients ? (
+              <div className={`px-2 py-0.5 leading-tight text-[7.5px] bg-white text-black ${effectiveOtherInfo ? 'border-b border-black' : ''}`}>
+                <div>
+                  <span className="font-black text-black">Ingredients: </span>
+                  <span className="font-medium break-words text-black">{effectiveIngredients}</span>
+                </div>
+                <div className="mt-0.5 text-[7px] text-black font-medium">
+                  <span className="font-bold">Allergen Advice: </span>
+                  <span>Handled in a facility that also packs cereals, nuts & milk solids.</span>
+                </div>
               </div>
             ) : null}
 
             {/* Other Info */}
             {effectiveOtherInfo ? (
-              <div className="flex items-start gap-1 text-[6.5px] font-normal">
-                <span className="text-black shrink-0">Other Info:</span>
-                <span className="break-words line-clamp-1">{effectiveOtherInfo}</span>
+              <div className="px-2 py-0.5 text-[7.5px] text-black leading-tight bg-white">
+                <span className="font-black text-black">Other Info: </span>
+                <span className="break-words text-black">{effectiveOtherInfo}</span>
               </div>
             ) : null}
+          </div>
 
-            {/* Ingredients */}
-            {effectiveIngredients ? (
-              <div className="flex items-start gap-1 border-t border-black/30 pt-0.5 text-[6px] font-normal">
-                <span className="text-black shrink-0">Ingredients:</span>
-                <span className="break-words line-clamp-2">{effectiveIngredients}</span>
-              </div>
-            ) : null}
+          {/* 8. COMPLIANCE & QUALITY FOOTER BAR */}
+          <div 
+            className="w-full bg-black text-white px-2 py-1 rounded-xs flex items-center justify-between text-[7.5px] font-bold shrink-0"
+            style={{ backgroundColor: '#000000', color: '#ffffff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+          >
+            <span className="uppercase tracking-wider">Country of Origin: India</span>
+            <span className="uppercase tracking-tight">100% Quality Assured</span>
           </div>
         </div>
       );
@@ -835,23 +983,23 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           <div className="w-full grid grid-cols-12 gap-3 my-1 items-start text-black">
             {/* Left: Product & Barcode */}
             <div className="col-span-7 flex flex-col items-start text-left">
-              <span className="text-[12px] font-black uppercase tracking-tight leading-tight w-full truncate mb-1 text-black">
+              <span className="text-[13px] font-black uppercase tracking-tight leading-tight w-full truncate mb-1 text-black">
                 {product.name}
               </span>
               {renderBarcodeBox(28)}
-              <div className="w-full bg-white border border-black rounded p-1.5 space-y-0.5 text-left mt-1 text-black text-[7px] font-normal leading-tight">
-                <div className="border-b border-black/70 pb-0.5 flex justify-between items-center text-[7.5px]">
-                  <span>FSSAI Lic: <span className="font-mono">{effectiveFssai}</span></span>
-                  {effectivePhone ? <span>Ph: <span className="font-mono">{effectivePhone}</span></span> : null}
+              <div className="w-full bg-white border border-black rounded p-1.5 space-y-1 text-left mt-1 text-black text-[7.5px] font-normal leading-tight">
+                <div className="border-b border-black pb-0.8 flex justify-between items-center text-[8px] font-bold text-black">
+                  <span>FSSAI Lic: <span className="font-mono font-black">{effectiveFssai}</span></span>
+                  {effectivePhone ? <span>Care: <span className="font-mono font-black">{effectivePhone}</span></span> : null}
                 </div>
                 {effectiveAddress ? (
-                  <div className="leading-tight line-clamp-2">
-                    <span>Address: </span><span>{effectiveAddress}</span>
+                  <div className={`leading-tight break-words text-black ${effectiveOtherInfo ? 'border-b border-black pb-0.8' : ''}`}>
+                    <span className="font-bold">Mfg By: </span><span>{effectiveAddress}</span>
                   </div>
                 ) : null}
                 {effectiveOtherInfo ? (
-                  <div className="leading-tight line-clamp-1">
-                    <span>Other Info: </span><span>{effectiveOtherInfo}</span>
+                  <div className="leading-tight break-words pt-0.5 text-black">
+                    <span className="font-bold">Info: </span><span>{effectiveOtherInfo}</span>
                   </div>
                 ) : null}
               </div>
@@ -859,28 +1007,28 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
 
             {/* Right: Nutrition & Pricing */}
             <div className="col-span-5 flex flex-col gap-1 text-black">
-              <div className="border border-black rounded overflow-hidden text-[7px] text-left text-black font-normal">
-                <div className="bg-black text-white px-1.5 py-0.5 font-normal text-[7px] flex justify-between">
+              <div className="border border-black rounded overflow-hidden text-[7.5px] text-left text-black font-normal">
+                <div className="bg-black text-white px-1.5 py-0.5 font-black text-[7.5px] flex justify-between">
                   <span>NUTRITION</span>
                   <span>(100g)</span>
                 </div>
-                <div className="divide-y divide-black bg-white text-black px-1.5 py-0.5 font-normal">
-                  <div className="flex justify-between"><span>Energy</span><span>{product.nutrition_facts?.energy_kcal ?? '420'} kcal</span></div>
-                  <div className="flex justify-between"><span>Protein</span><span>{product.nutrition_facts?.protein_g ?? '9.2'}g</span></div>
-                  <div className="flex justify-between"><span>Carbs</span><span>{product.nutrition_facts?.carbohydrates_g ?? '58'}g</span></div>
-                  <div className="flex justify-between"><span>Fat</span><span>{product.nutrition_facts?.fat_total_g ?? '18'}g</span></div>
+                <div className="bg-white text-black px-1.5 py-0.5 font-normal">
+                  <div className="flex justify-between border-b border-black py-0.5"><span>Energy</span><span className="font-bold font-mono">{product.nutrition_facts?.energy_kcal ?? '420'} kcal</span></div>
+                  <div className="flex justify-between border-b border-black py-0.5"><span>Protein</span><span className="font-bold font-mono">{product.nutrition_facts?.protein_g ?? '9.2'}g</span></div>
+                  <div className="flex justify-between border-b border-black py-0.5"><span>Carbs</span><span className="font-bold font-mono">{product.nutrition_facts?.carbohydrates_g ?? '58'}g</span></div>
+                  <div className="flex justify-between py-0.5"><span>Fat</span><span className="font-bold font-mono">{product.nutrition_facts?.fat_total_g ?? '18'}g</span></div>
                 </div>
               </div>
               <div className="bg-white border border-black rounded p-1 text-black font-normal">
-                <div className="flex justify-between items-center text-[8.5px] font-normal">
+                <div className="flex justify-between items-center text-[9px] font-bold text-black">
                   <span>MRP:</span>
-                  <span>₹{effectiveMrp}</span>
+                  <span className="line-through font-bold">₹{effectiveMrp}</span>
                 </div>
-                <div className="flex justify-between items-center text-[9.5px] font-normal text-black">
+                <div className="flex justify-between items-center text-[11px] font-black text-black">
                   <span>SALE:</span>
-                  <span>₹{effectiveSale}</span>
+                  <span className="font-black text-black">₹{effectiveSale}</span>
                 </div>
-                <div className="text-[7px] font-normal mt-0.5 border-t border-black/40 pt-0.5 flex justify-between">
+                <div className="text-[7.5px] font-bold mt-0.5 border-t border-black pt-0.5 flex justify-between text-black">
                   <span>PKD: {packedOn}</span>
                   <span>EXP: {expiryOn || '90D'}</span>
                 </div>
@@ -918,56 +1066,56 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           <div className="w-full grid grid-cols-2 gap-2 my-1 items-start text-black">
             {/* Left: Product & Barcode in the Box */}
             <div className="flex flex-col items-center justify-start text-left">
-              <span className="text-[11px] font-black uppercase tracking-tight leading-tight w-full truncate mb-0.5 text-black">
+              <span className="text-[12px] font-black uppercase tracking-tight leading-tight w-full truncate mb-0.5 text-black">
                 {product.name}
               </span>
               {renderBarcodeBox(20)}
               {/* UNDER BARCODE: FSSAI NUMBER, PHONE, ADDRESS, OTHER INFO, INGREDIENTS */}
-              <div className="w-full bg-white border border-black rounded p-1 space-y-0.5 text-left my-1 text-black text-[6.5px] font-normal leading-tight">
-                <div className="border-b border-black/70 pb-0.5 flex justify-between items-center text-[7px]">
-                  <span>FSSAI Lic. No: <span className="font-mono">{effectiveFssai}</span></span>
-                  {effectivePhone ? <span>Ph: <span className="font-mono">{effectivePhone}</span></span> : null}
+              <div className="w-full bg-white border border-black rounded p-1 space-y-0.8 text-left my-1 text-black text-[7px] font-normal leading-tight">
+                <div className="border-b border-black pb-0.8 flex justify-between items-center text-[7.5px] font-bold text-black">
+                  <span>FSSAI Lic. No: <span className="font-mono font-black">{effectiveFssai}</span></span>
+                  {effectivePhone ? <span>Care: <span className="font-mono font-black">{effectivePhone}</span></span> : null}
                 </div>
                 {effectiveAddress ? (
-                  <div className="line-clamp-2">
-                    <span>Address: </span><span>{effectiveAddress}</span>
-                  </div>
-                ) : null}
-                {effectiveOtherInfo ? (
-                  <div className="line-clamp-1">
-                    <span>Other Info: </span><span>{effectiveOtherInfo}</span>
+                  <div className={`break-words text-black ${effectiveIngredients || effectiveOtherInfo ? 'border-b border-black pb-0.8' : ''}`}>
+                    <span className="font-bold">Mfg By: </span><span>{effectiveAddress}</span>
                   </div>
                 ) : null}
                 {effectiveIngredients ? (
-                  <div className="line-clamp-2">
-                    <span>Ingredients: </span><span>{effectiveIngredients}</span>
+                  <div className={`break-words text-black ${effectiveOtherInfo ? 'border-b border-black pb-0.8' : ''}`}>
+                    <span className="font-bold">Ingredients: </span><span>{effectiveIngredients}</span>
+                  </div>
+                ) : null}
+                {effectiveOtherInfo ? (
+                  <div className="break-words pt-0.5 text-black">
+                    <span className="font-bold">Other Info: </span><span>{effectiveOtherInfo}</span>
                   </div>
                 ) : null}
               </div>
-              <div className="text-[8px] font-black text-black w-full space-y-0.5 pt-0.5 border-t border-black">
-                <div className="flex justify-between"><span>MRP: <b>₹{effectiveMrp}</b></span> <span className="font-black text-black">SALE: <b>₹{effectiveSale}</b></span></div>
-                <div className="flex justify-between text-[7px] text-black font-bold"><span>PKD: {packedOn}</span> <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best: 90 Days'}</span></div>
+              <div className="text-[8.5px] font-black text-black w-full space-y-0.5 pt-0.5 border-t border-black">
+                <div className="flex justify-between"><span>MRP: <b className="line-through font-bold">₹{effectiveMrp}</b></span> <span className="font-black text-black">SALE: <b className="font-black text-black text-[9.5px]">₹{effectiveSale}</b></span></div>
+                <div className="flex justify-between text-[7.5px] text-black font-bold"><span>PKD: {packedOn}</span> <span>{expiryOn ? `EXP: ${expiryOn}` : 'Best: 90 Days'}</span></div>
               </div>
             </div>
 
             {/* Right: Nutrition Table */}
             <div className="border border-black rounded overflow-hidden text-[7px] text-left text-black">
-              <div className="bg-black text-white px-1.5 py-0.5 font-black text-[7.5px] flex justify-between">
+              <div className="bg-black text-white px-1.5 py-0.5 font-black text-[8px] flex justify-between">
                 <span>NUTRITIONAL INFORMATION</span>
                 <span>(Per 100g)</span>
               </div>
-              <div className="divide-y divide-black bg-white text-black px-1 py-0.5">
-                <div className="flex justify-between py-0.2"><span>Energy / Calories</span><b>{product.nutrition_facts?.energy_kcal ?? '460'} kcal</b></div>
-                <div className="flex justify-between py-0.2"><span>Protein</span><b>{product.nutrition_facts?.protein_g ?? '9.8'} g</b></div>
-                <div className="flex justify-between py-0.2"><span>Carbohydrates</span><b>{product.nutrition_facts?.carbohydrates_g ?? '64'} g</b></div>
-                <div className="flex justify-between py-0.2 text-[6.5px] pl-2 text-black"><span>- Added Sugars</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
-                <div className="flex justify-between py-0.2"><span>Total Fat</span><b>{product.nutrition_facts?.fat_total_g ?? '16'} g</b></div>
-                <div className="flex justify-between py-0.2"><span>Dietary Fiber</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '4.2'} g</b></div>
-                <div className="flex justify-between py-0.2"><span>Sodium</span><b>{product.nutrition_facts?.sodium_mg ?? '310'} mg</b></div>
+              <div className="bg-white text-black px-1 py-0.5">
+                <div className="flex justify-between border-b border-black py-0.5"><span>Energy / Calories</span><b className="font-mono">{product.nutrition_facts?.energy_kcal ?? '460'} kcal</b></div>
+                <div className="flex justify-between border-b border-black py-0.5"><span>Protein</span><b className="font-mono">{product.nutrition_facts?.protein_g ?? '9.8'} g</b></div>
+                <div className="flex justify-between border-b border-black py-0.5"><span>Carbohydrates</span><b className="font-mono">{product.nutrition_facts?.carbohydrates_g ?? '64'} g</b></div>
+                <div className="flex justify-between border-b border-black py-0.5 text-[6.5px] pl-2 text-black"><span>- Added Sugars</span><b className="font-mono">{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
+                <div className="flex justify-between border-b border-black py-0.5"><span>Total Fat</span><b className="font-mono">{product.nutrition_facts?.fat_total_g ?? '16'} g</b></div>
+                <div className="flex justify-between border-b border-black py-0.5"><span>Dietary Fiber</span><b className="font-mono">{product.nutrition_facts?.dietary_fiber_g ?? '4.2'} g</b></div>
+                <div className="flex justify-between py-0.5"><span>Sodium</span><b className="font-mono">{product.nutrition_facts?.sodium_mg ?? '310'} mg</b></div>
               </div>
-              <div className="bg-white p-1 text-[6.5px] text-black border-t border-black font-bold">
+              <div className="bg-white p-1 text-[7px] text-black border-t border-black font-bold">
                 <div>Store in airtight container after opening.</div>
-                <div>Customer Care: <b>ops@kokanasthafaral.com</b></div>
+                <div>Customer Care: <b>{effectivePhone || 'ops@kokanasthafaral.com'}</b></div>
               </div>
             </div>
           </div>
@@ -999,38 +1147,38 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
             </div>
           </div>
 
-          <span className="text-[13px] font-black uppercase tracking-tight leading-tight w-full my-0.5 truncate shrink-0 text-black">
+          <span className="text-[14px] font-black uppercase tracking-tight leading-tight w-full my-0.5 truncate shrink-0 text-black">
             {product.name}
           </span>
 
           {renderBarcodeBox(24)}
 
           {/* UNDER BARCODE: FSSAI NUMBER, PHONE, ADDRESS, OTHER INFO, INGREDIENTS */}
-          <div className="w-full bg-white border border-black rounded p-1.5 space-y-0.5 text-left my-1 text-black shrink-0 text-[7.5px] font-normal leading-snug">
-            <div className="flex justify-between items-center border-b border-black/70 pb-0.5 text-[8px]">
-              <span>FSSAI Lic. No: <span className="font-mono">{effectiveFssai}</span></span>
-              <span className="text-[7px] bg-white text-black px-1.5 py-0.2 rounded border border-black font-normal">
+          <div className="w-full bg-white border border-black rounded p-1.5 space-y-1 text-left my-1 text-black shrink-0 text-[8px] font-normal leading-snug">
+            <div className="flex justify-between items-center border-b border-black pb-0.8 text-[8.5px] font-bold">
+              <span>FSSAI Lic. No: <span className="font-mono font-black">{effectiveFssai}</span></span>
+              <span className="text-[7.5px] bg-white text-black px-1.5 py-0.2 rounded border border-black font-bold">
                 {isVeg ? '🌱 100% Vegetarian' : 'Non-Vegetarian'}
               </span>
             </div>
             {effectivePhone ? (
-              <div className="flex items-start gap-1">
-                <span>Phone / Helpline: </span><span className="font-mono">{effectivePhone}</span>
+              <div className="flex items-start gap-1 border-b border-black pb-0.8">
+                <span className="font-bold">Customer Care / Helpline: </span><span className="font-mono font-black">{effectivePhone}</span>
               </div>
             ) : null}
             {effectiveAddress ? (
-              <div className="flex items-start gap-1">
-                <span>Packer & Mfg Address: </span><span>{effectiveAddress}</span>
-              </div>
-            ) : null}
-            {effectiveOtherInfo ? (
-              <div className="flex items-start gap-1">
-                <span>Other Info: </span><span>{effectiveOtherInfo}</span>
+              <div className={`flex items-start gap-1 ${effectiveIngredients || effectiveOtherInfo ? 'border-b border-black pb-0.8' : ''}`}>
+                <span className="font-bold">Packer & Mfg Address: </span><span>{effectiveAddress}</span>
               </div>
             ) : null}
             {effectiveIngredients ? (
-              <div className="flex items-start gap-1">
-                <span>Ingredients: </span><span>{effectiveIngredients}</span>
+              <div className={`flex items-start gap-1 ${effectiveOtherInfo ? 'border-b border-black pb-0.8' : ''}`}>
+                <span className="font-bold">Ingredients: </span><span>{effectiveIngredients}</span>
+              </div>
+            ) : null}
+            {effectiveOtherInfo ? (
+              <div className="flex items-start gap-1 pt-0.5">
+                <span className="font-bold">Other Info: </span><span>{effectiveOtherInfo}</span>
               </div>
             ) : null}
           </div>
@@ -1043,26 +1191,26 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
             </div>
             <div className="grid grid-cols-2 divide-x divide-black bg-white text-black p-1 gap-x-2">
               <div className="space-y-0.5">
-                <div className="flex justify-between"><span>Energy (Calories):</span><b>{product.nutrition_facts?.energy_kcal ?? '480'} kcal</b></div>
-                <div className="flex justify-between"><span>Total Protein:</span><b>{product.nutrition_facts?.protein_g ?? '11'} g</b></div>
-                <div className="flex justify-between"><span>Carbohydrates:</span><b>{product.nutrition_facts?.carbohydrates_g ?? '62'} g</b></div>
-                <div className="flex justify-between text-black pl-1 text-[6.5px]"><span>- Added Sugars:</span><b>{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
+                <div className="flex justify-between border-b border-black/40 pb-0.5"><span>Energy (Calories):</span><b className="font-mono">{product.nutrition_facts?.energy_kcal ?? '480'} kcal</b></div>
+                <div className="flex justify-between border-b border-black/40 pb-0.5"><span>Total Protein:</span><b className="font-mono">{product.nutrition_facts?.protein_g ?? '11'} g</b></div>
+                <div className="flex justify-between border-b border-black/40 pb-0.5"><span>Carbohydrates:</span><b className="font-mono">{product.nutrition_facts?.carbohydrates_g ?? '62'} g</b></div>
+                <div className="flex justify-between text-black pl-1 text-[6.5px]"><span>- Added Sugars:</span><b className="font-mono">{product.nutrition_facts?.added_sugars_g ?? '0'} g</b></div>
               </div>
               <div className="space-y-0.5 pl-1.5">
-                <div className="flex justify-between"><span>Total Fat:</span><b>{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
-                <div className="flex justify-between text-black pl-1 text-[6.5px]"><span>- Saturated Fat:</span><b>{product.nutrition_facts?.saturated_fat_g ?? '4.5'} g</b></div>
-                <div className="flex justify-between"><span>Dietary Fiber:</span><b>{product.nutrition_facts?.dietary_fiber_g ?? '5.0'} g</b></div>
-                <div className="flex justify-between"><span>Sodium:</span><b>{product.nutrition_facts?.sodium_mg ?? '320'} mg</b></div>
+                <div className="flex justify-between border-b border-black/40 pb-0.5"><span>Total Fat:</span><b className="font-mono">{product.nutrition_facts?.fat_total_g ?? '18'} g</b></div>
+                <div className="flex justify-between border-b border-black/40 pb-0.5 text-black pl-1 text-[6.5px]"><span>- Saturated Fat:</span><b className="font-mono">{product.nutrition_facts?.saturated_fat_g ?? '4.5'} g</b></div>
+                <div className="flex justify-between border-b border-black/40 pb-0.5"><span>Dietary Fiber:</span><b className="font-mono">{product.nutrition_facts?.dietary_fiber_g ?? '5.0'} g</b></div>
+                <div className="flex justify-between"><span>Sodium:</span><b className="font-mono">{product.nutrition_facts?.sodium_mg ?? '320'} mg</b></div>
               </div>
             </div>
           </div>
 
-          <div className="w-full text-[8px] font-black uppercase border-t border-black pt-1 shrink-0 text-black">
-            <div className="flex justify-between items-center text-[10px]">
+          <div className="w-full text-[8.5px] font-black uppercase border-t border-black pt-1 shrink-0 text-black">
+            <div className="flex justify-between items-center text-[11px]">
               <div>MRP: <b className="text-black line-through">₹{effectiveMrp}</b></div>
               <div>SPECIAL OFFER: <b className="text-black text-sm font-black">₹{effectiveSale}</b></div>
             </div>
-            <div className="flex justify-between text-[7px] text-black mt-0.5 font-bold">
+            <div className="flex justify-between text-[7.5px] text-black mt-0.5 font-bold">
               <span>PKD DATE: {packedOn}</span>
               <span>EXPIRY DATE: {expiryOn || 'Best before 90 days from packing'}</span>
             </div>
@@ -1078,19 +1226,19 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           {/* Top Header */}
           <div className="w-full flex justify-between items-center border-b border-black pb-0.5 shrink-0 text-black">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-wider">{effectiveCompany}</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-black">{effectiveCompany}</span>
               <span className="text-[7.5px] font-mono bg-white px-1 py-0.2 rounded border border-black font-bold">SKU: {product.sku || 'SKU-001'}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-xs border border-black flex items-center justify-center shrink-0">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isVeg ? 'bg-black' : 'bg-transparent border border-black'}`} />
               </span>
-              <span className="text-[8.5px] font-black">{netWeight}</span>
+              <span className="text-[8.5px] font-black text-black">{netWeight}</span>
             </div>
           </div>
 
           {/* Product Name */}
-          <span className="text-[11px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 shrink-0 text-black">
+          <span className="text-[12px] font-black uppercase tracking-tight leading-tight truncate w-full my-0.5 shrink-0 text-black">
             {product.name}
           </span>
 
@@ -1099,31 +1247,33 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
             <div className="col-span-7 flex flex-col items-center text-left">
               {renderBarcodeBox(18)}
               {/* UNDER BARCODE: FSSAI NUMBER, ADDRESS, INGREDIENTS */}
-              <div className="w-full mt-1 bg-white p-1 rounded border border-black text-left space-y-0.5 text-black">
-                <div className="text-[7px] font-black text-black flex items-center justify-between">
+              <div className="w-full mt-1 bg-white p-1 rounded border border-black text-left space-y-0.8 text-black">
+                <div className="text-[7.5px] font-black text-black flex items-center justify-between border-b border-black pb-0.5">
                   <span>FSSAI Lic. No: <b className="font-mono text-black">{effectiveFssai}</b></span>
                 </div>
-                <div className="text-[6.5px] text-black leading-tight line-clamp-1">
+                <div className={`text-[7px] text-black leading-tight line-clamp-1 ${effectiveIngredients ? 'border-b border-black pb-0.5' : ''}`}>
                   <b>Address:</b> {effectiveAddress}
                 </div>
-                <div className="text-[6.5px] text-black leading-tight line-clamp-1">
-                  <b>Ingredients:</b> {effectiveIngredients}
-                </div>
+                {effectiveIngredients ? (
+                  <div className="text-[7px] text-black leading-tight line-clamp-1">
+                    <b>Ingredients:</b> {effectiveIngredients}
+                  </div>
+                ) : null}
               </div>
             </div>
 
             <div className="col-span-5 flex flex-col justify-between h-full border-l border-black pl-1.5 text-left text-black">
               <div className="bg-white p-1 rounded border border-black space-y-0.5">
-                <div className="flex justify-between items-center text-[7.5px]">
-                  <span className="font-bold">MRP:</span>
+                <div className="flex justify-between items-center text-[8px] font-bold text-black">
+                  <span>MRP:</span>
                   <span className="line-through font-bold">₹{effectiveMrp}</span>
                 </div>
-                <div className="flex justify-between items-center text-[8.5px]">
-                  <span className="font-black">SALE:</span>
-                  <span className="font-black text-[10px]">₹{effectiveSale}</span>
+                <div className="flex justify-between items-center text-[9px] font-black text-black">
+                  <span>SALE:</span>
+                  <span className="font-black text-[11px] text-black">₹{effectiveSale}</span>
                 </div>
               </div>
-              <div className="text-[6.5px] text-black space-y-0.5 pt-0.5 font-bold">
+              <div className="text-[7px] text-black space-y-0.5 pt-0.5 font-bold">
                 <div><b>PKD:</b> {packedOn}</div>
                 <div><b>EXP:</b> {expiryOn || 'Best before 90 days'}</div>
                 <div className="font-black truncate">Mfg: {effectiveCompany}</div>
@@ -1437,25 +1587,35 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         setPrintIncludeCompanyName(currentBiz.barcode_show_company);
       }
 
-      // Barcode Phone / Helpline (Priority: saved default > business barcode_phone > mobile/phone > product food packaging)
-      const initialPhone = 
-        savedDefaults.phone ||
+      // Barcode Phone / Helpline (Priority: saved default if not empty > business settings phone/mobile > product food packaging)
+      const settingsPhone = (
         currentBiz?.barcode_phone ||
-        (printingBarcodeProduct.food_packaging as any)?.customer_care_phone ||
-        currentBiz?.mobile_number ||
+        (currentBiz as any)?.mobile_number ||
         currentBiz?.phone ||
+        ''
+      ).trim();
+
+      const initialPhone = 
+        (savedDefaults.phone && savedDefaults.phone.trim().length > 0 ? savedDefaults.phone.trim() : '') ||
+        settingsPhone ||
+        (printingBarcodeProduct.food_packaging as any)?.customer_care_phone ||
         (printingBarcodeProduct as any)?.phone ||
         '';
       setPrintPhone(initialPhone);
 
-      // Barcode Address (Priority: saved default > business barcode_address > business mfg_address > product mfg_by > business address)
-      const initialAddress = 
-        savedDefaults.address ||
+      // Barcode Address (Priority: saved default if not empty > business settings address > product mfg_by)
+      const settingsAddress = (
         currentBiz?.barcode_address ||
         currentBiz?.mfg_address ||
-        printingBarcodeProduct.food_packaging?.mfg_by ||
         currentBiz?.billing_address || 
         currentBiz?.shipping_address || 
+        ''
+      ).trim();
+
+      const initialAddress = 
+        (savedDefaults.address && savedDefaults.address.trim().length > 0 ? savedDefaults.address.trim() : '') ||
+        settingsAddress ||
+        printingBarcodeProduct.food_packaging?.mfg_by ||
         'Shop 14, Station Road, Borivali West, Mumbai, MH 400092';
       setPrintAddress(initialAddress);
 
@@ -2599,10 +2759,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     html {
       background: white;
       color: #000000;
-      font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
       margin: 0;
       padding: 0;
-      text-rendering: optimizeLegibility !important;
+      text-rendering: geometricPrecision !important;
       -webkit-font-smoothing: antialiased !important;
       -moz-osx-font-smoothing: grayscale !important;
       font-smoothing: antialiased !important;
@@ -2660,17 +2820,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         width: 100% !important;
         height: auto !important;
         min-height: 0 !important;
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: center !important;
+        display: block !important;
         overflow: visible !important;
       }
       .barcode-print-portal {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: center !important;
+        display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
         margin: 0 !important;
@@ -2682,6 +2836,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       }
       .barcode-print-portal * {
         visibility: visible !important;
+      }
+      .border, [class*="border"] {
+        border-color: #000000 !important;
+      }
+      .border-b, [class*="border-b"] {
+        border-bottom-color: #000000 !important;
+      }
+      .border-t, [class*="border-t"] {
+        border-top-color: #000000 !important;
       }
     }
 
@@ -2811,7 +2974,13 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         width: ${pageDims.pageWidthMm} !important;
         height: ${pageDims.pageHeightMm} !important;
         border-bottom: none !important;
-        margin: 0 !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: flex-start !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
       }
     }
     .barcode-print-row:last-child {
@@ -2827,7 +2996,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       border: none !important;
       display: flex !important;
       flex-direction: column !important;
-      justify-content: center !important;
+      justify-content: flex-start !important;
       align-items: center !important;
       text-align: center !important;
       overflow: hidden !important;
@@ -2841,12 +3010,23 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     }
     @media print {
       .barcode-label-sticker {
-        width: ${pageDims.baseDims.stickerWidthMm} !important;
-        height: ${pageDims.baseDims.stickerHeightMm} !important;
+        width: ${printLabelsPerRow === 2 ? `calc(${pageDims.baseDims.stickerWidthMm} - 1mm)` : `calc(${pageDims.pageWidthMm} - 1mm)`} !important;
+        height: calc(${pageDims.baseDims.stickerHeightMm} - 1.2mm) !important;
+        max-height: calc(${pageDims.baseDims.stickerHeightMm} - 1.2mm) !important;
+        margin: 0.6mm auto !important;
+        padding: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+        text-align: center !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
         /* Print Rotation Fix */
         ${pageDims.isRotated ? `
-          width: ${pageDims.baseDims.stickerHeightMm} !important;
-          height: ${pageDims.baseDims.stickerWidthMm} !important;
+          width: calc(${pageDims.baseDims.stickerHeightMm} - 1.2mm) !important;
+          height: calc(${pageDims.baseDims.stickerWidthMm} - 1mm) !important;
+          max-height: calc(${pageDims.baseDims.stickerWidthMm} - 1mm) !important;
           transform: rotate(${pageDims.rotationDeg}deg) !important;
           transform-origin: center !important;
         ` : ''}
@@ -2867,8 +3047,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       shape-rendering: geometricPrecision !important;
     }
     .barcode-label-sticker svg text {
-      font-family: "Courier New", Courier, monospace !important;
-      font-weight: 900 !important;
+      fill: #000000 !important;
+      color: #000000 !important;
+      font-family: monospace, "Courier New", Courier !important;
+      font-size: 8.5px !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.04em !important;
     }
     .barcode-inner-box {
       background-color: #ffffff !important;
@@ -2876,21 +3060,34 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     }
 
     /* Embedded Standard Utilities for Crisp Thermal Printing */
-    .text-\\[6px\\] { font-size: 6px !important; line-height: 1.1 !important; }
-    .text-\\[6\\.5px\\] { font-size: 6.5px !important; line-height: 1.1 !important; }
-    .text-\\[7px\\] { font-size: 7px !important; line-height: 1.1 !important; }
-    .text-\\[7\\.5px\\] { font-size: 7.5px !important; line-height: 1.1 !important; }
-    .text-\\[8px\\] { font-size: 8px !important; line-height: 1.15 !important; }
-    .text-\\[8\\.5px\\] { font-size: 8.5px !important; line-height: 1.15 !important; }
-    .text-\\[9px\\] { font-size: 9px !important; line-height: 1.2 !important; }
-    .text-\\[10px\\] { font-size: 10px !important; line-height: 1.2 !important; }
-    .text-\\[11px\\] { font-size: 11px !important; line-height: 1.2 !important; }
-    .text-\\[12px\\] { font-size: 12px !important; line-height: 1.2 !important; }
-    .text-\\[13px\\] { font-size: 13px !important; line-height: 1.2 !important; }
-    .text-\\[14px\\] { font-size: 14px !important; line-height: 1.2 !important; }
-    .text-\\[15px\\] { font-size: 15px !important; line-height: 1.2 !important; }
+    *, html, body, .barcode-print-portal, .barcode-label-sticker, table, tr, td, th, div, span, p, b, strong {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+      color: #000000 !important;
+      text-rendering: geometricPrecision !important;
+      -webkit-font-smoothing: antialiased !important;
+    }
+    .text-\\[6px\\] { font-size: 6px !important; line-height: 1.15 !important; }
+    .text-\\[6\\.5px\\] { font-size: 6.5px !important; line-height: 1.15 !important; }
+    .text-\\[7px\\] { font-size: 7px !important; line-height: 1.15 !important; }
+    .text-\\[7\\.5px\\] { font-size: 7.5px !important; line-height: 1.15 !important; }
+    .text-\\[8px\\] { font-size: 8px !important; line-height: 1.2 !important; }
+    .text-\\[8\\.5px\\] { font-size: 8.5px !important; line-height: 1.2 !important; }
+    .text-\\[9px\\] { font-size: 9px !important; line-height: 1.25 !important; }
+    .text-\\[9\\.5px\\] { font-size: 9.5px !important; line-height: 1.25 !important; }
+    .text-\\[10px\\] { font-size: 10px !important; line-height: 1.25 !important; }
+    .text-\\[10\\.5px\\] { font-size: 10.5px !important; line-height: 1.3 !important; }
+    .text-\\[11px\\] { font-size: 11px !important; line-height: 1.3 !important; }
+    .text-\\[11\\.5px\\] { font-size: 11.5px !important; line-height: 1.3 !important; }
+    .text-\\[12px\\] { font-size: 12px !important; line-height: 1.3 !important; }
+    .text-\\[12\\.5px\\] { font-size: 12.5px !important; line-height: 1.3 !important; }
+    .text-\\[13px\\] { font-size: 13px !important; line-height: 1.3 !important; }
+    .text-\\[13\\.5px\\] { font-size: 13.5px !important; line-height: 1.3 !important; }
+    .text-\\[14px\\] { font-size: 14px !important; line-height: 1.3 !important; }
+    .text-\\[14\\.5px\\] { font-size: 14.5px !important; line-height: 1.3 !important; }
+    .text-\\[15px\\] { font-size: 15px !important; line-height: 1.3 !important; }
     .bg-black { background-color: #000000 !important; color: #ffffff !important; }
     .text-white { color: #ffffff !important; }
+    .max-w-\\[120px\\] { max-width: 120px !important; }
     .max-w-\\[125px\\] { max-width: 125px !important; }
     .max-w-\\[130px\\] { max-width: 130px !important; }
     .w-full { width: 100% !important; }
@@ -2899,7 +3096,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     .flex-col { flex-direction: column !important; }
     .flex-row { flex-direction: row !important; }
     .justify-between { justify-content: space-between !important; }
+    .justify-start { justify-content: flex-start !important; }
     .justify-center { justify-content: center !important; }
+    .barcode-label-sticker > div { justify-content: flex-start !important; }
+    .barcode-label-sticker > div.sticker-60x100,
+    .barcode-label-sticker > div[data-size="60x100"] {
+      justify-content: space-between !important;
+      height: 100% !important;
+      box-sizing: border-box !important;
+    }
     .items-center { align-items: center !important; }
     .items-start { align-items: flex-start !important; }
     .items-end { align-items: flex-end !important; }
@@ -2918,12 +3123,20 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     .gap-0\\.5 { gap: 2px !important; }
     .gap-1 { gap: 4px !important; }
     .gap-1\\.5 { gap: 6px !important; }
+    .gap-2 { gap: 8px !important; }
     .gap-3 { gap: 12px !important; }
+    .my-0\\.5 { margin-top: 2px !important; margin-bottom: 2px !important; }
+    .my-1 { margin-top: 4px !important; margin-bottom: 4px !important; }
     .my-1\\.5 { margin-top: 6px !important; margin-bottom: 6px !important; }
     .my-2 { margin-top: 8px !important; margin-bottom: 8px !important; }
-    .py-0\\.8 { padding-top: 3.2px !important; padding-bottom: 3.2px !important; }
+    .mt-0\\.5 { margin-top: 2px !important; }
+    .mt-1 { margin-top: 4px !important; }
     .mt-1\\.5 { margin-top: 6px !important; }
     .mt-auto { margin-top: auto !important; }
+    .mb-0\\.5 { margin-bottom: 2px !important; }
+    .mb-1 { margin-bottom: 4px !important; }
+    .mb-1\\.5 { margin-bottom: 6px !important; }
+    .mb-2 { margin-bottom: 8px !important; }
     .p-0\\.5 { padding: 2px !important; }
     .p-1 { padding: 4px !important; }
     .p-1\\.5 { padding: 6px !important; }
@@ -2934,63 +3147,94 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     .px-1 { padding-left: 4px !important; padding-right: 4px !important; }
     .px-1\\.5 { padding-left: 6px !important; padding-right: 6px !important; }
     .px-2 { padding-left: 8px !important; padding-right: 8px !important; }
+    .px-2\\.5 { padding-left: 10px !important; padding-right: 10px !important; }
+    .py-0\\.2 { padding-top: 1px !important; padding-bottom: 1px !important; }
     .py-0\\.5 { padding-top: 2px !important; padding-bottom: 2px !important; }
-    .py-0\\.6 { padding-top: 2.4px !important; padding-bottom: 2.4px !important; }
+    .py-0\\.8 { padding-top: 3.2px !important; padding-bottom: 3.2px !important; }
     .py-1 { padding-top: 4px !important; padding-bottom: 4px !important; }
+    .py-1\\.2 { padding-top: 4.8px !important; padding-bottom: 4.8px !important; }
+    .py-1\\.5 { padding-top: 6px !important; padding-bottom: 6px !important; }
+    .py-2 { padding-top: 8px !important; padding-bottom: 8px !important; }
     .pb-0\\.5 { padding-bottom: 2px !important; }
+    .pb-0\\.8 { padding-bottom: 3.2px !important; }
     .pb-1 { padding-bottom: 4px !important; }
     .pt-0\\.5 { padding-top: 2px !important; }
     .pt-1 { padding-top: 4px !important; }
-    .my-0\\.5 { margin-top: 2px !important; margin-bottom: 2px !important; }
-    .my-1 { margin-top: 4px !important; margin-bottom: 4px !important; }
-    .mb-0\\.5 { margin-bottom: 2px !important; }
-    .mb-1 { margin-bottom: 4px !important; }
-    .mb-1\\.5 { margin-bottom: 6px !important; }
-    .mb-2 { margin-bottom: 8px !important; }
-    .mb-3 { margin-bottom: 12px !important; }
-    .mb-4 { margin-bottom: 16px !important; }
+    .pl-1 { padding-left: 4px !important; }
+    .pl-1\\.5 { padding-left: 6px !important; }
+    .pl-2 { padding-left: 8px !important; }
+    .space-y-0\\.5 > :not([hidden]) ~ :not([hidden]) { margin-top: 2px !important; }
+    .space-y-0\\.8 > :not([hidden]) ~ :not([hidden]) { margin-top: 3.2px !important; }
+    .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 4px !important; }
     .border { border: 1px solid #000000 !important; }
     .border-b { border-bottom: 1px solid #000000 !important; }
-    .border-b-\\[1\\.2px\\] { border-bottom: 1.2px solid #000000 !important; }
     .border-t { border-top: 1px solid #000000 !important; }
-    .border-t-\\[1\\.5px\\] { border-top: 1.5px solid #000000 !important; }
     .border-l { border-left: 1px solid #000000 !important; }
     .border-r { border-right: 1px solid #000000 !important; }
+    .border-y { border-top: 1px solid #000000 !important; border-bottom: 1px solid #000000 !important; }
+    .border-\\[1px\\] { border: 1px solid #000000 !important; }
+    .border-\\[1\\.2px\\] { border: 1.2px solid #000000 !important; }
+    .border-\\[1\\.5px\\] { border: 1.5px solid #000000 !important; }
+    .border-b-\\[1\\.2px\\] { border-bottom: 1.2px solid #000000 !important; }
+    .border-b-\\[1\\.5px\\] { border-bottom: 1.5px solid #000000 !important; }
+    .border-t-\\[1\\.2px\\] { border-top: 1.2px solid #000000 !important; }
+    .border-t-\\[1\\.5px\\] { border-top: 1.5px solid #000000 !important; }
+    .border-y-\\[1\\.5px\\] { border-top: 1.5px solid #000000 !important; border-bottom: 1.5px solid #000000 !important; }
+    .border-2 { border: 2px solid #000000 !important; }
     .border-b-2 { border-bottom: 2px solid #000000 !important; }
     .border-t-2 { border-top: 2px solid #000000 !important; }
     .border-black { border-color: #000000 !important; }
-    .border-\\[1\\.2px\\] { border: 1.2px solid #000000 !important; }
     .border-slate-300, .border-slate-400, .border-slate-600, .border-slate-700, .border-slate-800, .border-slate-900 { border-color: #000000 !important; }
-    .barcode-print-portal .border { border: 1px solid #000000 !important; }
-    .barcode-print-portal .border-b { border-bottom: 1px solid #000000 !important; }
-    .barcode-print-portal .border-t { border-top: 1px solid #000000 !important; }
-    .barcode-print-portal .border-l { border-left: 1px solid #000000 !important; }
-    .barcode-print-portal .border-r { border-right: 1px solid #000000 !important; }
-    .barcode-print-portal .divide-y-\\[1\\.2px\\] > :not([hidden]) ~ :not([hidden]) { border-color: #000000 !important; border-top-width: 1.2px !important; }
-    .barcode-print-portal .divide-black > :not([hidden]) ~ :not([hidden]) { border-color: #000000 !important; }
-    .barcode-print-portal .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: #000000 !important; }
+    .divide-y > :not([hidden]) ~ :not([hidden]) { border-top: 1px solid #000000 !important; }
+    .divide-y-2 > :not([hidden]) ~ :not([hidden]) { border-top: 2px solid #000000 !important; }
+    .divide-black > :not([hidden]) ~ :not([hidden]) { border-color: #000000 !important; }
+    .divide-x > :not([hidden]) ~ :not([hidden]) { border-left: 1px solid #000000 !important; }
     .bg-white { background-color: #ffffff !important; }
+    .bg-black { background-color: #000000 !important; color: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .text-white { color: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .bg-black span, .bg-black div, .bg-black p, .bg-black b, .bg-black strong, .bg-black * { color: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .bg-slate-50, .bg-slate-100 { background-color: #ffffff !important; }
     .text-black { color: #000000 !important; }
     .text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600, .text-slate-500, .text-slate-400, .text-indigo-700, .text-indigo-600, .text-emerald-700, .text-emerald-600 { color: #000000 !important; }
-    .border-emerald-600 { border-color: #000000 !important; }
-    .border-rose-600 { border-color: #000000 !important; }
-    .bg-emerald-600 { background-color: #000000 !important; }
-    .bg-rose-600 { background-color: #000000 !important; }
+    .border-emerald-600, .border-rose-600 { border-color: #000000 !important; }
+    .bg-emerald-600, .bg-rose-600 { background-color: #000000 !important; }
     .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important; }
-    .font-sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important; }
+    .font-sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important; }
+    .font-normal { font-weight: 400 !important; }
+    .font-medium { font-weight: 500 !important; }
+    .font-semibold { font-weight: 600 !important; }
     .font-bold { font-weight: 700 !important; }
+    .font-extrabold { font-weight: 800 !important; }
     .font-black { font-weight: 900 !important; }
     .uppercase { text-transform: uppercase !important; }
+    .line-through { text-decoration: line-through !important; }
+    .break-words { overflow-wrap: break-word !important; word-break: break-word !important; }
+    .overflow-hidden { overflow: hidden !important; }
+    .line-clamp-1 { display: -webkit-box !important; -webkit-line-clamp: 1 !important; -webkit-box-orient: vertical !important; overflow: hidden !important; }
+    .line-clamp-2 { display: -webkit-box !important; -webkit-line-clamp: 2 !important; -webkit-box-orient: vertical !important; overflow: hidden !important; }
     .rounded { border-radius: 4px !important; }
     .rounded-xs { border-radius: 2px !important; }
     .rounded-md { border-radius: 6px !important; }
     .rounded-full { border-radius: 9999px !important; }
     .leading-none { line-height: 1 !important; }
     .leading-tight { line-height: 1.25 !important; }
+    .leading-snug { line-height: 1.35 !important; }
+    .leading-relaxed { line-height: 1.5 !important; }
     .tracking-tight { letter-spacing: -0.025em !important; }
+    .tracking-wide { letter-spacing: 0.025em !important; }
     .tracking-wider { letter-spacing: 0.05em !important; }
     .box-border { box-sizing: border-box !important; }
+    .w-1\.5 { width: 6px !important; }
+    .h-1\.5 { height: 6px !important; }
+    .w-2 { width: 8px !important; }
+    .h-2 { height: 8px !important; }
+    .w-2\.5 { width: 10px !important; }
+    .h-2\.5 { height: 10px !important; }
+    .w-3 { width: 12px !important; }
+    .h-3 { height: 12px !important; }
+    .w-3\.5 { width: 14px !important; }
+    .h-3\.5 { height: 14px !important; }
+    .whitespace-nowrap { white-space: nowrap !important; }
   </style>
 </head>
 <body>
@@ -4594,7 +4838,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 border: none !important;
                 display: flex !important;
                 flex-direction: column !important;
-                justify-content: center !important;
+                justify-content: flex-start !important;
                 align-items: center !important;
                 text-align: center !important;
                 overflow: hidden !important;
@@ -4606,9 +4850,26 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
               }
+              .barcode-label-sticker > div {
+                justify-content: flex-start !important;
+              }
+              .barcode-label-sticker > div.sticker-60x100,
+              .barcode-label-sticker > div[data-size="60x100"] {
+                justify-content: space-between !important;
+                height: 100% !important;
+                box-sizing: border-box !important;
+              }
+              .justify-start {
+                justify-content: flex-start !important;
+              }
               
               .barcode-label-sticker * {
                 color: #000000 !important;
+              }
+              .bg-black, .bg-black *, .text-white {
+                color: #ffffff !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
               }
 
               /* Barcode crisp rendering */
@@ -4649,10 +4910,23 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               .text-white { color: #ffffff !important; }
               .max-w-\\[125px\\] { max-width: 125px !important; }
               .max-w-\\[130px\\] { max-width: 130px !important; }
+              .w-1\\.5 { width: 6px !important; }
+              .h-1\\.5 { height: 6px !important; }
+              .w-2 { width: 8px !important; }
+              .h-2 { height: 8px !important; }
+              .w-2\\.5 { width: 10px !important; }
+              .h-2\\.5 { height: 10px !important; }
+              .w-3 { width: 12px !important; }
+              .h-3 { height: 12px !important; }
+              .w-3\\.5 { width: 14px !important; }
+              .h-3\\.5 { height: 14px !important; }
+              .rounded-full { border-radius: 9999px !important; }
+              .rounded-xs { border-radius: 2px !important; }
+              .whitespace-nowrap { white-space: nowrap !important; }
             }
           `}</style>
 
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in duration-150 my-auto border border-slate-200 dark:border-slate-800 flex flex-col max-h-[92vh]">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-5xl lg:max-w-6xl overflow-hidden shadow-2xl animate-in zoom-in duration-150 my-auto border border-slate-200 dark:border-slate-800 flex flex-col max-h-[94vh]">
             <div className="bg-slate-950 text-white px-5 py-3 flex items-center justify-between shrink-0 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-lg bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
@@ -4753,7 +5027,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         {LABEL_SIZE_INFO[printLabelSize] ? `${LABEL_SIZE_INFO[printLabelSize].label} (${LABEL_SIZE_INFO[printLabelSize].desc})` : printLabelSize}
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                       {[
                         { id: '50x25', label: '50 × 25 mm', desc: 'Standard 2"x1"' },
                         { id: '38x25', label: '38 × 25 mm', desc: '1.5"x1" Compact' },

@@ -367,8 +367,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         tax_rate_default: Number(taxRateDefault),
         billing_address: billingAddress.trim(),
         mfg_address: mfgAddress.trim(),
-        barcode_phone: barcodePhone.trim(),
-        barcode_address: barcodeAddress.trim(),
+        barcode_phone: (barcodePhone.trim() || mobileNumber.trim() || business?.phone || '').trim(),
+        barcode_address: (barcodeAddress.trim() || mfgAddress.trim() || billingAddress.trim()).trim(),
         barcode_other_info: barcodeOtherInfo.trim(),
         logo_url: logoUrl,
         login_cover_url: loginCoverUrl,
@@ -400,10 +400,12 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         let existingDefaults: any = {};
         const raw = safeStorage.getItem(`omnipack_barcode_defaults_${businessId}`);
         if (raw) existingDefaults = JSON.parse(raw);
+        const resolvedBarcodePhone = (barcodePhone.trim() || mobileNumber.trim() || business?.phone || '').trim();
+        const resolvedBarcodeAddress = (barcodeAddress.trim() || mfgAddress.trim() || billingAddress.trim()).trim();
         safeStorage.setItem(`omnipack_barcode_defaults_${businessId}`, JSON.stringify({
           ...existingDefaults,
-          phone: barcodePhone.trim(),
-          address: barcodeAddress.trim(),
+          phone: resolvedBarcodePhone,
+          address: resolvedBarcodeAddress,
           other_info: barcodeOtherInfo.trim()
         }));
       } catch (e) {}

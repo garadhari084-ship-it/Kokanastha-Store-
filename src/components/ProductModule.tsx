@@ -769,22 +769,10 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
                     flexShrink: 0
                   }}
                 >
-                  <span 
-                    className="w-1.5 h-1.5 rounded-full shrink-0 bg-black" 
-                    style={{
-                      width: '6.5px',
-                      height: '6.5px',
-                      minWidth: '6.5px',
-                      minHeight: '6.5px',
-                      borderRadius: '50%',
-                      backgroundColor: isVeg ? '#000000' : 'transparent',
-                      border: isVeg ? 'none' : '1px solid #000000',
-                      WebkitPrintColorAdjust: 'exact',
-                      printColorAdjust: 'exact',
-                      display: 'block',
-                      flexShrink: 0
-                    }}
-                  />
+                  <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" style={{ display: 'block', margin: '0 auto', flexShrink: 0 }}>
+                    <circle cx="4" cy="4" r={isVeg ? "3.2" : "0"} fill="#000000" stroke="#000000" strokeWidth="0.8" />
+                    {!isVeg && <circle cx="4" cy="4" r="3.2" fill="none" stroke="#000000" strokeWidth="0.8" />}
+                  </svg>
                 </span>
                 <span 
                   className="text-[8px] font-black bg-black text-white px-1.5 py-0.5 rounded-xs border border-black uppercase tracking-tight flex items-center"
@@ -882,22 +870,10 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
                     flexShrink: 0
                   }}
                 >
-                  <span 
-                    className="w-1.5 h-1.5 rounded-full shrink-0 bg-black" 
-                    style={{
-                      width: '6.5px',
-                      height: '6.5px',
-                      minWidth: '6.5px',
-                      minHeight: '6.5px',
-                      borderRadius: '50%',
-                      backgroundColor: isVeg ? '#000000' : 'transparent',
-                      border: isVeg ? 'none' : '1px solid #000000',
-                      WebkitPrintColorAdjust: 'exact',
-                      printColorAdjust: 'exact',
-                      display: 'block',
-                      flexShrink: 0
-                    }}
-                  />
+                  <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" style={{ display: 'block', margin: '0 auto', flexShrink: 0 }}>
+                    <circle cx="4" cy="4" r={isVeg ? "3.2" : "0"} fill="#000000" stroke="#000000" strokeWidth="0.8" />
+                    {!isVeg && <circle cx="4" cy="4" r="3.2" fill="none" stroke="#000000" strokeWidth="0.8" />}
+                  </svg>
                 </span>
                 <span className="text-[7.5px] font-black text-black uppercase tracking-tight">
                   {isVeg ? '100% VEG' : 'NON-VEG'}
@@ -1313,44 +1289,102 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
     // 11. 50x25 mm Standard Retail Label (Standard 2"x1" Thermal Sticker Roll - Double Line / 2-Up)
     if (size === '50x25') {
       return (
-        <div className={containerClasses} style={{ width: '100%', height: '100%', padding: '0.8mm', boxSizing: 'border-box' }}>
-          {/* Top Brand / Company Header with optional Net Wt / Unit */}
-          <div className="w-full text-black shrink-0" style={{ width: '100%', flexShrink: 0 }}>
+        <div 
+          className={`${containerClasses} sticker-50x25`}
+          data-size="50x25" 
+          style={{
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            color: '#000000',
+            ...(mode === 'print' 
+              ? { 
+                  padding: '1mm 1.2mm', 
+                  width: '100%', 
+                  height: '100%', 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  justifyContent: 'space-between', 
+                  boxSizing: 'border-box',
+                  overflow: 'hidden'
+                } 
+              : { 
+                  justifyContent: 'space-between', 
+                  padding: '4px 5px', 
+                  height: '100%', 
+                  minHeight: '83px' 
+                }
+            )
+          }}
+        >
+          {/* 1. Header (Brand Name, SKU, Dietary Symbol & Net Weight/Pkt badge) */}
+          <div className="w-full flex flex-col items-center border-b-[0.5px] border-black pb-0.5 shrink-0 text-black leading-none">
             {effectiveCompany ? (
-              <div className="flex justify-between items-center px-0.5 leading-none mb-0.5" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1px' }}>
-                <span className="text-[7.5px] font-black uppercase tracking-wider truncate max-w-[125px]" style={{ fontSize: '7.5px', fontWeight: 900, textTransform: 'uppercase', maxWidth: '125px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {effectiveCompany}
-                </span>
-                {netWeight && (
-                  <span className="text-[6.5px] font-black uppercase bg-black text-white px-1 py-0.2 rounded-xs shrink-0" style={{ fontSize: '6.5px', fontWeight: 900, backgroundColor: '#000000', color: '#ffffff', padding: '1px 3px', borderRadius: '2px', flexShrink: 0 }}>
-                    {netWeight}
-                  </span>
-                )}
-              </div>
+              <span className="text-[7.5px] font-black uppercase tracking-wider truncate text-black block mb-0.5 leading-none">
+                {effectiveCompany}
+              </span>
             ) : null}
-            <div className="text-[8.5px] font-black uppercase tracking-tight leading-none truncate w-full px-0.5 border-b border-black pb-0.5 flex justify-between items-center" style={{ fontSize: effectiveCompany ? '8px' : '9px', fontWeight: 900, textTransform: 'uppercase', width: '100%', borderBottom: '1px solid #000000', paddingBottom: '1px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="truncate" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</span>
-              {!effectiveCompany && netWeight && (
-                <span className="text-[6.5px] font-black uppercase bg-black text-white px-1 py-0.2 rounded-xs shrink-0 ml-1" style={{ fontSize: '6.5px', fontWeight: 900, backgroundColor: '#000000', color: '#ffffff', padding: '1px 3px', borderRadius: '2px', flexShrink: 0 }}>
-                  {netWeight}
+            <div className="flex items-center justify-between w-full px-0.5 text-[6px] font-bold text-black leading-none">
+              <span className="shrink-0 font-mono font-bold text-[6px] text-black">SKU: {product.sku || 'SKU-001'}</span>
+              <div className="flex items-center gap-1 shrink-0">
+                <span 
+                  className="w-2.5 h-2.5 rounded-xs border border-black flex items-center justify-center shrink-0 bg-white"
+                  style={{
+                    width: '9px',
+                    height: '9px',
+                    minWidth: '9px',
+                    minHeight: '9px',
+                    border: '0.8px solid #000000',
+                    borderRadius: '1px',
+                    backgroundColor: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxSizing: 'border-box',
+                    flexShrink: 0
+                  }}
+                >
+                  <svg width="6" height="6" viewBox="0 0 8 8" className="shrink-0" style={{ display: 'block', margin: '0 auto', flexShrink: 0 }}>
+                    <circle cx="4" cy="4" r={isVeg ? "3.2" : "0"} fill="#000000" stroke="#000000" strokeWidth="0.8" />
+                    {!isVeg && <circle cx="4" cy="4" r="3.2" fill="none" stroke="#000000" strokeWidth="0.8" />}
+                  </svg>
                 </span>
-              )}
+                <span 
+                  className="text-[6px] font-black bg-black text-white px-1 py-0.2 rounded-xs border border-black uppercase tracking-tight flex items-center leading-none"
+                  style={{ backgroundColor: '#000000', color: '#ffffff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+                >
+                  {netWeight || 'Pkt'}
+                </span>
+              </div>
             </div>
           </div>
           
-          {/* CENTER: Barcode in the Box */}
-          {renderBarcodeBox(effectiveCompany ? 13 : 15)}
+          {/* 2. Product Name */}
+          <div className="w-full text-center shrink-0 text-black border-b-[0.5px] border-black py-0.5 bg-white leading-none">
+            <span className="text-[8.5px] font-black uppercase tracking-tight leading-none text-center block w-full px-0.2 line-clamp-1 text-black">
+              {product.name}
+            </span>
+          </div>
 
-          {/* Bottom Pricing & Packaging Info */}
-          <div className="w-full text-[7.5px] font-black leading-none pt-0.5 uppercase border-t border-black text-black shrink-0" style={{ width: '100%', borderTop: '1px solid #000000', paddingTop: '1px', flexShrink: 0 }}>
-            <div className="flex justify-between items-center px-0.5 mb-0.5" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1px' }}>
-              <span style={{ fontSize: '7.5px', fontWeight: 900 }}>MRP: <b style={{ fontWeight: 900 }}>₹{effectiveMrp}</b></span>
-              <span className="font-black text-black text-[8px]" style={{ fontSize: '8px', fontWeight: 900, color: '#000000' }}>SALE: ₹{effectiveSale}</span>
+          {/* 3. Barcode Box - Scannable & Bold Monospace Digits */}
+          <div className="w-full flex justify-center shrink-0 border-b-[0.5px] border-black pb-0.5">
+            {renderBarcodeBox(mode === 'print' ? 14 : 16)}
+          </div>
+
+          {/* 4. Commercial Pricing Box (matches 60x100 style!) */}
+          <div className="w-full border-[0.5px] border-black rounded-xs overflow-hidden shrink-0 text-black bg-white">
+            <div className="flex justify-between items-center w-full px-1 py-0.5 bg-white leading-none">
+              <span className="text-[6.5px] font-bold text-black leading-none">
+                MRP: <span className="line-through font-extrabold text-[7px]">₹{effectiveMrp}</span>
+              </span>
+              <span className="text-[8px] font-black text-black tracking-tight leading-none">
+                SALE: ₹{effectiveSale}
+              </span>
             </div>
-            <div className="flex justify-between items-center px-0.5 text-[6.5px] font-bold text-black" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '6.5px', fontWeight: 700, color: '#000000' }}>
-              <span>PKD: {packedOn}</span>
-              <span>{expiryOn ? `EXP: ${expiryOn}` : (product.food_packaging?.best_before_days ? `BEST: ${product.food_packaging.best_before_days}D` : 'BEST: 90 DAYS')}</span>
-            </div>
+          </div>
+
+          {/* 5. PKD & EXP Dates */}
+          <div className="w-full text-[5.5px] font-black text-black shrink-0 flex justify-between px-0.5 mt-0.5 leading-none">
+            <span>PKD: {packedOn}</span>
+            {expiryOn && <span>EXP: {expiryOn}</span>}
           </div>
         </div>
       );
@@ -1648,6 +1682,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       // Label Size if saved
       if (savedDefaults.label_size) {
         setPrintLabelSize(savedDefaults.label_size);
+        if (savedDefaults.label_size === '50x25') {
+          setPrintLabelsPerRow(2);
+          setPrintOrientation('landscape');
+        }
       }
 
       if (printingBarcodeProduct.nutrition_facts) {
@@ -2991,7 +3029,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
     .barcode-label-sticker {
       box-sizing: border-box !important;
-      margin: 0 !important;
+      margin: 0.6mm auto !important;
       padding: 0 !important;
       border: none !important;
       display: flex !important;
@@ -3004,13 +3042,17 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       color: #000000 !important;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
-      /* Screen Dimensions */
-      width: ${printLabelsPerRow === 2 ? pageDims.baseDims.stickerWidthMm : (pageDims.isRotated ? pageDims.pageHeightMm : pageDims.pageWidthMm)} !important;
-      height: ${pageDims.isRotated ? pageDims.pageWidthMm : pageDims.pageHeightMm} !important;
+      /* Screen Dimensions updated to match printing boundaries */
+      width: ${printLabelsPerRow === 2 && !pageDims.isRotated 
+        ? `calc(${pageDims.baseDims.stickerWidthMm} - 1mm)` 
+        : `calc(${pageDims.pageWidthMm} - 1mm)`} !important;
+      height: calc(${pageDims.baseDims.stickerHeightMm} - 1.2mm) !important;
     }
     @media print {
       .barcode-label-sticker {
-        width: ${printLabelsPerRow === 2 ? `calc(${pageDims.baseDims.stickerWidthMm} - 1mm)` : `calc(${pageDims.pageWidthMm} - 1mm)`} !important;
+        width: ${printLabelsPerRow === 2 && !pageDims.isRotated 
+          ? `calc(${pageDims.baseDims.stickerWidthMm} - 1mm)` 
+          : `calc(${pageDims.pageWidthMm} - 1mm)`} !important;
         height: calc(${pageDims.baseDims.stickerHeightMm} - 1.2mm) !important;
         max-height: calc(${pageDims.baseDims.stickerHeightMm} - 1.2mm) !important;
         margin: 0.6mm auto !important;
@@ -3066,6 +3108,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       text-rendering: geometricPrecision !important;
       -webkit-font-smoothing: antialiased !important;
     }
+    .text-\\[2px\\] { font-size: 2px !important; line-height: 1 !important; }
+    .text-\\[2\\.5px\\] { font-size: 2.5px !important; line-height: 1 !important; }
+    .text-\\[2\\.8px\\] { font-size: 2.8px !important; line-height: 1 !important; }
+    .text-\\[3px\\] { font-size: 3px !important; line-height: 1 !important; }
+    .text-\\[3\\.5px\\] { font-size: 3.5px !important; line-height: 1.05 !important; }
+    .text-\\[4px\\] { font-size: 4px !important; line-height: 1.05 !important; }
+    .text-\\[4\\.5px\\] { font-size: 4.5px !important; line-height: 1.1 !important; }
+    .text-\\[5px\\] { font-size: 5px !important; line-height: 1.1 !important; }
+    .text-\\[5\\.5px\\] { font-size: 5.5px !important; line-height: 1.1 !important; }
     .text-\\[6px\\] { font-size: 6px !important; line-height: 1.15 !important; }
     .text-\\[6\\.5px\\] { font-size: 6.5px !important; line-height: 1.15 !important; }
     .text-\\[7px\\] { font-size: 7px !important; line-height: 1.15 !important; }
@@ -3100,7 +3151,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     .justify-center { justify-content: center !important; }
     .barcode-label-sticker > div { justify-content: flex-start !important; }
     .barcode-label-sticker > div.sticker-60x100,
-    .barcode-label-sticker > div[data-size="60x100"] {
+    .barcode-label-sticker > div[data-size="60x100"],
+    .barcode-label-sticker > div.sticker-50x25,
+    .barcode-label-sticker > div[data-size="50x25"] {
       justify-content: space-between !important;
       height: 100% !important;
       box-sizing: border-box !important;
@@ -4828,12 +4881,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               }
               
               .barcode-label-sticker {
-                width: ${printLabelsPerRow === 2 && !getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).isRotated ? getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm : getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} !important;
-                height: ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm} !important;
-                max-width: ${printLabelsPerRow === 2 && !getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).isRotated ? getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm : getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} !important;
-                max-height: ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm} !important;
-                box-sizing: border-box !important;
-                margin: 0 !important;
+                width: ${printLabelsPerRow === 2 && !getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).isRotated 
+                  ? `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm} - 1mm)` 
+                  : `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} - 1mm)`} !important;
+                height: calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm} - 1.2mm) !important;
+                max-width: ${printLabelsPerRow === 2 && !getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).isRotated 
+                  ? `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm} - 1mm)` 
+                  : `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} - 1mm)`} !important;
+                max-height: calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm} - 1.2mm) !important;
+                margin: 0.6mm auto !important;
                 padding: 0 !important;
                 border: none !important;
                 display: flex !important;
@@ -4849,12 +4905,23 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
+                box-sizing: border-box !important;
+                ${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).isRotated ? `
+                  width: calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerHeightMm} - 1.2mm) !important;
+                  height: calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm} - 1mm) !important;
+                  max-width: calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerHeightMm} - 1.2mm) !important;
+                  max-height: calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm} - 1mm) !important;
+                  transform: rotate(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).rotationDeg}deg) !important;
+                  transform-origin: center !important;
+                ` : ''}
               }
               .barcode-label-sticker > div {
                 justify-content: flex-start !important;
               }
               .barcode-label-sticker > div.sticker-60x100,
-              .barcode-label-sticker > div[data-size="60x100"] {
+              .barcode-label-sticker > div[data-size="60x100"],
+              .barcode-label-sticker > div.sticker-50x25,
+              .barcode-label-sticker > div[data-size="50x25"] {
                 justify-content: space-between !important;
                 height: 100% !important;
                 box-sizing: border-box !important;
@@ -4896,6 +4963,15 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 box-sizing: border-box !important;
               }
 
+              .text-\\[2px\\] { font-size: 2px !important; line-height: 1 !important; }
+              .text-\\[2\\.5px\\] { font-size: 2.5px !important; line-height: 1 !important; }
+              .text-\\[2\\.8px\\] { font-size: 2.8px !important; line-height: 1 !important; }
+              .text-\\[3px\\] { font-size: 3px !important; line-height: 1 !important; }
+              .text-\\[3\\.5px\\] { font-size: 3.5px !important; line-height: 1.05 !important; }
+              .text-\\[4px\\] { font-size: 4px !important; line-height: 1.05 !important; }
+              .text-\\[4\\.5px\\] { font-size: 4.5px !important; line-height: 1.1 !important; }
+              .text-\\[5px\\] { font-size: 5px !important; line-height: 1.1 !important; }
+              .text-\\[5\\.5px\\] { font-size: 5.5px !important; line-height: 1.1 !important; }
               .text-\\[6px\\] { font-size: 6px !important; line-height: 1.1 !important; }
               .text-\\[6\\.5px\\] { font-size: 6.5px !important; line-height: 1.1 !important; }
               .text-\\[7px\\] { font-size: 7px !important; line-height: 1.1 !important; }
@@ -5050,6 +5126,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                             if (['50x50', '50x75', '60x100', '100x60', '100x50', '100x75', '100x100'].includes(sz.id)) {
                               setPrintIncludeNutrition(true);
                               setPrintLabelsPerRow(1);
+                            }
+                            if (sz.id === '50x25') {
+                              setPrintLabelsPerRow(2);
+                              setPrintOrientation('landscape');
                             }
                           }}
                           className={`py-1.5 px-2 rounded-lg text-left transition-all cursor-pointer flex flex-col ${

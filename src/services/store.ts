@@ -1009,7 +1009,19 @@ class ERPStorage {
                itemsByOrder[item.sales_order_id].push(item);
              });
 
-             const mergedSales = (data || []).map((so: any) => {
+             const deletedSalesIds = this.getDeletedSalesOrderIds();
+
+             // Exclude any orders that were permanently deleted
+             const validRemoteData = (data || []).filter((so: any) => {
+               if (deletedSalesIds.has(so.id) || (so.order_number && deletedSalesIds.has(so.order_number))) {
+                 // Trigger background purge in Supabase if a deleted order was returned
+                 this.syncToSupabase('sales', null, true, so.id);
+                 return false;
+               }
+               return true;
+             });
+
+             const mergedSales = validRemoteData.map((so: any) => {
                const existingSO = (this.cache.sales || []).find(s => s.id === so.id);
                if (existingSO && this.pendingUploads.has(existingSO.id)) return existingSO;
                if (so.status === 'Cancelled' && so.dispatch_notes?.includes('[SYSTEM_RETURNED]')) {
@@ -1057,16 +1069,20 @@ class ERPStorage {
                };
              });
 
-             // Preserve pending offline sales
-             const pendingOfflineSales = (this.cache.sales || []).filter(s => this.pendingUploads.has(s.id));
+             // Preserve pending offline sales ONLY if not deleted
+             const pendingOfflineSales = (this.cache.sales || []).filter(s => 
+               this.pendingUploads.has(s.id) && !deletedSalesIds.has(s.id) && (!s.order_number || !deletedSalesIds.has(s.order_number))
+             );
              pendingOfflineSales.forEach(pos => {
                if (!mergedSales.some(s => s.id === pos.id)) {
                  mergedSales.push(pos);
                }
              });
 
-             this.cache.sales = mergedSales;
-             safeStorage.setItem('omnipack_erp_sales', JSON.stringify(mergedSales));
+             // Purge any deleted sales orders
+             const finalMergedSales = mergedSales.filter(s => !deletedSalesIds.has(s.id) && (!s.order_number || !deletedSalesIds.has(s.order_number)));
+             this.cache.sales = finalMergedSales;
+             safeStorage.setItem('omnipack_erp_sales', JSON.stringify(finalMergedSales));
           } else if (key === 'customers') {
              const mergedCustomers = (data || []).map((remoteCust: any) => {
                const localCust = (this.cache.customers || []).find(c => c.id === remoteCust.id);
@@ -1243,7 +1259,7 @@ class ERPStorage {
     }
   }
 
-  private async syncToSupabase(key: keyof typeof this.cache, dataItem: any, isDelete = false, deleteId?: string) {
+  private async syncToSupabase(key: keyof typeof this.cache, dataItem: any, isDelete = false, deleteId?: string, secondaryDeleteKey?: string) {
     if (!isSupabaseConfigured || !supabase) return;
     try {
     
@@ -1313,22 +1329,126 @@ class ERPStorage {
     if (isDelete && deleteId) {
        const finalDeleteId = legacyIdMap[deleteId] || deleteId;
        
+       let activeBusinessId: string | null = null;
+       try {
+           const sess = JSON.parse(safeStorage.getItem('omnipack_session') || '{}');
+           if (sess.businessId) activeBusinessId = sess.businessId;
+       } catch (e) {}
+
        // Handle manual cascading deletes for products to avoid foreign key errors in Supabase
        if (tableName === 'products') {
          try {
            await supabase.from('stock_logs').delete().eq('product_id', finalDeleteId);
            await supabase.from('combo_history_logs').delete().eq('combo_id', finalDeleteId);
          } catch (e) {
-           console.warn('Cascading delete warning:', e);
+           console.warn('Cascading delete warning for products:', e);
          }
        }
 
-       const { error } = await supabase.from(tableName).delete().eq(tableName === 'business_settings' ? 'business_id' : 'id', finalDeleteId);
-       if (error) {
-         if (error.code === 'PGRST205') return; // Ignore missing table
-         console.warn(`Supabase delete error on ${tableName}:`, JSON.stringify(error));
-         return error;
+       // Handle manual cascading deletes for sales_orders to ensure permanent database deletion
+       if (tableName === 'sales_orders') {
+         try {
+           const orderNum = secondaryDeleteKey || (deleteId !== finalDeleteId ? deleteId : undefined);
+           const targetUuids: string[] = [];
+
+           if (isValidUUID(finalDeleteId)) {
+             targetUuids.push(finalDeleteId);
+           }
+
+           // Query Supabase to find exact matching order UUIDs by ID or order_number
+           try {
+             let q = supabase.from('sales_orders').select('id, order_number');
+             if (isValidUUID(finalDeleteId) && orderNum) {
+               q = q.or(`id.eq.${finalDeleteId},order_number.eq.${orderNum}`);
+             } else if (isValidUUID(finalDeleteId)) {
+               q = q.eq('id', finalDeleteId);
+             } else if (orderNum) {
+               q = q.eq('order_number', orderNum);
+             } else {
+               q = q.eq('order_number', deleteId);
+             }
+             const { data: foundOrders } = await q;
+             if (foundOrders && foundOrders.length > 0) {
+               foundOrders.forEach((fo: any) => {
+                 if (fo.id && isValidUUID(fo.id) && !targetUuids.includes(fo.id)) {
+                   targetUuids.push(fo.id);
+                 }
+               });
+             }
+           } catch (findErr) {
+             console.warn('Lookup error on sales_orders for deletion:', findErr);
+           }
+
+           // Clean up all related tables using all collected target UUIDs
+           for (const uid of targetUuids) {
+             // 1. Delete associated line items
+             await supabase.from('sales_order_items').delete().eq('sales_order_id', uid);
+
+             // 2. Delete packing scan logs and packing sessions
+             const { data: pSessions } = await supabase.from('packing_sessions').select('id').eq('order_id', uid);
+             if (pSessions && pSessions.length > 0) {
+               const pSessionIds = pSessions.map((ps: any) => ps.id).filter(Boolean);
+               if (pSessionIds.length > 0) {
+                 await supabase.from('packing_scan_logs').delete().in('packing_session_id', pSessionIds);
+               }
+             }
+             await supabase.from('packing_sessions').delete().eq('order_id', uid);
+
+             // 3. Delete loyalty logs for this order
+             await supabase.from('loyalty_logs').delete().eq('order_id', uid);
+
+             // 4. Unlink subscriptions
+             await supabase.from('customer_subscriptions').update({ last_order_id: null }).eq('last_order_id', uid);
+
+             // 5. Delete the sales_order itself by UUID
+             await supabase.from('sales_orders').delete().eq('id', uid);
+           }
+
+           // Also directly delete by order_number if present
+           if (orderNum) {
+             await supabase.from('sales_orders').delete().eq('order_number', orderNum);
+           }
+           if (deleteId && !isValidUUID(deleteId)) {
+             await supabase.from('sales_orders').delete().eq('order_number', deleteId);
+           }
+         } catch (cascadeErr) {
+           console.warn('Cascading delete warning for sales_orders:', cascadeErr);
+         }
        }
+
+       if (tableName !== 'sales_orders') {
+         const { error } = await supabase.from(tableName).delete().eq(tableName === 'business_settings' ? 'business_id' : 'id', finalDeleteId);
+         if (error) {
+           if (error.code === 'PGRST205') return; // Ignore missing table
+           console.warn(`Supabase delete error on ${tableName}:`, JSON.stringify(error));
+           return error;
+         }
+       }
+
+       // Clear pending uploads
+       this.pendingUploads.delete(finalDeleteId);
+       this.pendingUploads.delete(deleteId);
+       if (secondaryDeleteKey) {
+         this.pendingUploads.delete(secondaryDeleteKey);
+       }
+
+       // Broadcast delete to other clients
+       if (activeBusinessId && this.realtimeChannel) {
+         this.realtimeChannel.send({
+           type: 'broadcast',
+           event: 'sync_update',
+           payload: {
+             businessId: activeBusinessId,
+             key,
+             table: tableName,
+             action: 'delete',
+             id: finalDeleteId,
+             secondaryId: secondaryDeleteKey,
+             timestamp: Date.now()
+           }
+         }).catch(() => {});
+       }
+       return;
     } else if (dataItem) {
        if (Array.isArray(dataItem) && dataItem.length === 0) return;
        
@@ -1689,8 +1809,8 @@ class ERPStorage {
     }
   }
 
-  private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string) {
-    this.syncToSupabase(key, dataItem, isDelete, deleteId);
+  private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string, secondaryDeleteKey?: string) {
+    this.syncToSupabase(key, dataItem, isDelete, deleteId, secondaryDeleteKey);
     try {
       const cacheVal = this.cache[key];
       const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
@@ -3755,14 +3875,35 @@ class ERPStorage {
     }
   }
 
+  // ==================== DELETED INVOICES PERSISTENCE ====================
+  public getDeletedSalesOrderIds(): Set<string> {
+    try {
+      const stored = JSON.parse(safeStorage.getItem('omnipack_erp_deleted_sales_ids') || '[]');
+      return new Set(Array.isArray(stored) ? stored : []);
+    } catch (e) {
+      return new Set();
+    }
+  }
+
+  public recordDeletedSalesOrderId(id: string): void {
+    if (!id) return;
+    try {
+      const set = this.getDeletedSalesOrderIds();
+      set.add(id);
+      const arr = Array.from(set).slice(-2000);
+      safeStorage.setItem('omnipack_erp_deleted_sales_ids', JSON.stringify(arr));
+    } catch (e) {}
+  }
+
   // Sales Order Operations
   public getSalesOrders(businessId: string): SalesOrder[] {
     const customers = this.getCustomers(businessId);
     const customerMap = new Map(customers.map(c => [c.id, c]));
+    const deletedSalesIds = this.getDeletedSalesOrderIds();
 
     return dedupeById(
       (this.cache.sales || [])
-        .filter(s => isSameBusiness(s.business_id, businessId))
+        .filter(s => isSameBusiness(s.business_id, businessId) && !deletedSalesIds.has(s.id) && (!s.order_number || !deletedSalesIds.has(s.order_number)))
         .map(s => {
           const cust = customerMap.get(s.customer_id);
           const resolvedArea = extractAreaZone(s.area, cust?.shipping_address || (s as any).shipping_address || cust?.area);
@@ -3919,19 +4060,102 @@ class ERPStorage {
     return newSO;
   }
 
-  public deleteSalesOrder(id: string): boolean {
-    const index = this.cache.sales.findIndex(s => s.id === id);
-    if (index !== -1) {
-      const order = this.cache.sales[index];
-      // Return stock if order was active (not already cancelled)
+  public async deleteSalesOrder(id: string): Promise<boolean> {
+    const cleanId = (id || '').trim();
+    if (!cleanId) return false;
+
+    const index = this.cache.sales.findIndex(s => 
+      s.id === cleanId || 
+      s.order_number === cleanId || 
+      s.order_number?.toLowerCase() === cleanId.toLowerCase()
+    );
+
+    const order = index !== -1 ? this.cache.sales[index] : null;
+    const orderId = order ? order.id : cleanId;
+    const orderNumber = order ? order.order_number : (cleanId !== orderId ? cleanId : undefined);
+
+    if (order) {
+      // 1. Return stock if order was active (not already cancelled/returned)
       this.syncOrderStock({ ...order, status: 'Cancelled' }, order.status);
 
+      // 2. Adjust customer outstanding debt and lifetime spend
+      const unpaidBalance = Math.max(0, (order.total_amount || 0) - (order.paid_amount || 0));
+      if (order.customer_id && order.customer_id !== 'WALK_IN') {
+        const cust = this.cache.customers.find(c => c.id === order.customer_id);
+        if (cust) {
+          const updates: Partial<Customer> = {};
+          if (unpaidBalance > 0 && typeof cust.outstanding_amount === 'number') {
+            updates.outstanding_amount = Math.max(0, cust.outstanding_amount - unpaidBalance);
+          }
+          if (order.total_amount > 0 && typeof cust.lifetime_spend === 'number') {
+            updates.lifetime_spend = Math.max(0, cust.lifetime_spend - order.total_amount);
+          }
+          if (Object.keys(updates).length > 0) {
+            this.updateCustomer(cust.id, updates);
+          }
+        }
+      }
+
+      // 3. Remove any loyalty logs linked to this order and reverse customer points if needed
+      if (this.cache.loyaltyLogs) {
+        const orderLogs = this.cache.loyaltyLogs.filter(l => l.order_id === orderId || (orderNumber && l.order_id === orderNumber));
+        orderLogs.forEach(l => {
+          if (l.customer_id && l.points) {
+            const cust = this.cache.customers.find(c => c.id === l.customer_id);
+            if (cust) {
+              const adjusted = Math.max(0, (cust.loyalty_points || 0) - (l.type === 'Earned' ? l.points : -l.points));
+              this.updateCustomer(cust.id, { loyalty_points: adjusted });
+            }
+          }
+        });
+        this.cache.loyaltyLogs = this.cache.loyaltyLogs.filter(l => l.order_id !== orderId && (!orderNumber || l.order_id !== orderNumber));
+        safeStorage.setItem('omnipack_erp_loyaltyLogs', JSON.stringify(this.cache.loyaltyLogs));
+      }
+
+      // 4. Remove any packing sessions linked to this order locally
+      if (this.cache.packingSessions) {
+        this.cache.packingSessions = this.cache.packingSessions.filter(p => p.order_id !== orderId && (!orderNumber || p.order_id !== orderNumber));
+        safeStorage.setItem('omnipack_erp_packingSessions', JSON.stringify(this.cache.packingSessions));
+      }
+
+      // 5. Release draft reservation if any
+      if (orderNumber) {
+        this.releaseDraftReservationByInvoice(orderNumber);
+      }
+
+      // 6. Splice from local cache
       this.cache.sales.splice(index, 1);
-      this.save('sales', null, true, id);
-      this.notify();
-      return true;
     }
-    return false;
+
+    // 7. Record in persistent deleted set (both ID, order number, and cleanId)
+    this.recordDeletedSalesOrderId(orderId);
+    if (orderNumber) {
+      this.recordDeletedSalesOrderId(orderNumber);
+    }
+    this.recordDeletedSalesOrderId(cleanId);
+
+    // 8. Remove from pending uploads so it never gets uploaded or restored
+    this.pendingUploads.delete(orderId);
+    this.pendingUploads.delete(cleanId);
+    if (orderNumber) {
+      this.pendingUploads.delete(orderNumber);
+    }
+
+    // 9. Persist deleted state to local storage
+    safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
+
+    // 10. Permanently purge from database (Supabase & broadcast to all connected devices)
+    try {
+      this.save('sales', null, true, orderId, orderNumber);
+      if (isSupabaseConfigured && supabase) {
+        await this.syncToSupabase('sales', null, true, orderId, orderNumber);
+      }
+    } catch (dbErr) {
+      console.warn("Database deletion error:", dbErr);
+    }
+
+    this.notify();
+    return true;
   }
 
   public updateSalesOrder(id: string, updates: Partial<SalesOrder>): SalesOrder {

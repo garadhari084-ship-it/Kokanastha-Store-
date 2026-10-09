@@ -1504,12 +1504,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setInvoiceToDelete({ id: orderId, orderNumber });
   };
 
-  const confirmDeleteInvoice = () => {
+  const confirmDeleteInvoice = async () => {
     if (!invoiceToDelete) return;
     try {
-      dbStore.deleteSalesOrder(invoiceToDelete.id);
-      dbStore.logActivity(user.id, user.name, user.role, 'Delete Invoice', `Deleted invoice ${invoiceToDelete.orderNumber}`, businessId);
-      triggerToast(`Invoice ${invoiceToDelete.orderNumber} deleted successfully.`, 'success');
+      await dbStore.deleteSalesOrder(invoiceToDelete.id);
+      dbStore.logActivity(user.id, user.name, user.role, 'Delete Invoice', `Permanently deleted invoice ${invoiceToDelete.orderNumber}`, businessId);
+      triggerToast(`Invoice ${invoiceToDelete.orderNumber} permanently deleted from database.`, 'success');
       setOrders(dbStore.getSalesOrders(businessId));
       setViewingInvoiceOrder(null);
       setInvoiceToDelete(null);

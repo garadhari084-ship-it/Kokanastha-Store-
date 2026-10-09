@@ -186,10 +186,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [invoiceToDelete, setInvoiceToDelete] = useState<SalesOrder | null>(null);
   const [invoiceToEdit, setInvoiceToEdit] = useState<SalesOrder | null>(null);
 
-  const handleDeleteInvoiceConfirm = (id: string, orderNumber: string) => {
-    dbStore.deleteSalesOrder(id);
-    triggerToast(`Invoice ${orderNumber} deleted successfully.`, 'success');
-    setInvoiceToDelete(null);
+  const handleDeleteInvoiceConfirm = async (id: string, orderNumber: string) => {
+    try {
+      await dbStore.deleteSalesOrder(id);
+      dbStore.logActivity(user.id, user.name, user.role, 'Delete Invoice', `Permanently deleted invoice ${orderNumber}`, businessId);
+      triggerToast(`Invoice ${orderNumber} permanently deleted from database.`, 'success');
+      setInvoiceToDelete(null);
+    } catch (err: any) {
+      triggerToast(err.message || 'Failed to delete invoice.', 'error');
+    }
   };
 
   const handleEditInvoiceConfirm = (order: SalesOrder) => {
@@ -2567,12 +2572,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="grid grid-cols-3 gap-2">
                   {user.role === 'Super Admin' ? (
                     <button 
-                      onClick={() => {
+                      onClick={async () => {
                         if (window.confirm(`Are you sure you want to permanently delete Order #${viewingInvoiceOrder.order_number}?`)) {
-                          dbStore.deleteSalesOrder(viewingInvoiceOrder.id);
-                          dbStore.logActivity(user.id, user.name, user.role, 'Delete Order', `Deleted order #${viewingInvoiceOrder.order_number}`, businessId);
-                          triggerToast(`Order #${viewingInvoiceOrder.order_number} successfully deleted.`, 'info');
-                          setViewingInvoiceOrder(null);
+                          try {
+                            await dbStore.deleteSalesOrder(viewingInvoiceOrder.id);
+                            dbStore.logActivity(user.id, user.name, user.role, 'Delete Order', `Permanently deleted order #${viewingInvoiceOrder.order_number}`, businessId);
+                            triggerToast(`Order #${viewingInvoiceOrder.order_number} permanently deleted from database.`, 'info');
+                            setViewingInvoiceOrder(null);
+                          } catch (err: any) {
+                            triggerToast(err.message || 'Failed to delete order.', 'error');
+                          }
                         }
                       }}
                       className="py-2 px-2 bg-rose-100 dark:bg-rose-950/60 hover:bg-rose-200 dark:hover:bg-rose-900/80 text-rose-700 dark:text-rose-300 rounded-xl text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5 transition"

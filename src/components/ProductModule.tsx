@@ -198,6 +198,217 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
   );
 };
 
+interface SearchableProductSelectForComboProps {
+  products: Product[];
+  value: string;
+  onChange: (productId: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+const SearchableProductSelectForCombo: React.FC<SearchableProductSelectForComboProps> = ({
+  products,
+  value,
+  onChange,
+  placeholder = "-- Search or select available product --",
+  disabled = false
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedProduct = products.find(p => p.id === value);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && searchInputRef.current) {
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    }
+  }, [isOpen]);
+
+  const regularProducts = products.filter(p => !isComboProduct(p));
+
+  const filteredProducts = regularProducts.filter(p => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      p.name.toLowerCase().includes(q) ||
+      (p.sku && p.sku.toLowerCase().includes(q)) ||
+      (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+      (p.brand && p.brand.toLowerCase().includes(q))
+    );
+  });
+
+  const handleSelect = (prodId: string) => {
+    onChange(prodId);
+    setSearchQuery('');
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative w-full" ref={wrapperRef}>
+      <div
+        onClick={() => {
+          if (!disabled) setIsOpen(!isOpen);
+        }}
+        className={`w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-300 dark:border-slate-700 flex items-center justify-between cursor-pointer hover:border-purple-400 dark:hover:border-purple-500 transition-colors shadow-2xs ${
+          isOpen ? 'ring-2 ring-purple-500/20 border-purple-500' : ''
+        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      >
+        <div className="flex-1 truncate flex items-center gap-2">
+          <Package size={13} className="text-purple-600 shrink-0" />
+          {selectedProduct ? (
+            <div className="flex items-center gap-2 truncate">
+              <span className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                {selectedProduct.name}
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                ({selectedProduct.sku})
+              </span>
+              <span className="text-purple-600 dark:text-purple-400 font-bold shrink-0">
+                ₹{selectedProduct.selling_price}
+              </span>
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 border ${
+                  selectedProduct.current_stock > 0
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                    : 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                }`}
+              >
+                Stock: {selectedProduct.current_stock} {selectedProduct.unit}
+                {selectedProduct.current_stock <= 0 ? ' (Negative Allowed)' : ''}
+              </span>
+            </div>
+          ) : (
+            <span className="text-slate-400 font-medium">{placeholder}</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0 ml-2">
+          {selectedProduct && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+                setSearchQuery('');
+              }}
+              className="p-0.5 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+              title="Clear selection"
+            >
+              <X size={13} />
+            </button>
+          )}
+          <ChevronDown
+            size={14}
+            className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
+        </div>
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-2 space-y-2 animate-in fade-in zoom-in-95 duration-100 max-h-72 flex flex-col">
+          {/* Search Input */}
+          <div className="relative flex items-center shrink-0">
+            <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search product by Name, SKU, Barcode, Brand..."
+              className="w-full pl-8 pr-7 py-1.5 bg-slate-100 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:border-purple-500 dark:text-white"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          {/* Products List */}
+          <div className="overflow-y-auto space-y-1 text-[11px] custom-scrollbar flex-1 max-h-56 pr-0.5">
+            {filteredProducts.length > 0 ? (
+              filteredProducts.map((p) => {
+                const isSelected = p.id === value;
+                const isOutOfStock = p.current_stock <= 0;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleSelect(p.id)}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg font-medium flex items-center justify-between gap-2 transition-colors cursor-pointer border ${
+                      isSelected
+                        ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800'
+                        : isOutOfStock
+                        ? 'bg-amber-50/40 dark:bg-amber-950/20 text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-amber-950/40 border-slate-100 dark:border-slate-800'
+                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border-transparent'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-[11px] text-slate-900 dark:text-slate-100 truncate">
+                          {p.name}
+                        </span>
+                        {p.brand && (
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-mono">
+                            {p.brand}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2 mt-0.5">
+                        <span>SKU: {p.sku}</span>
+                        <span>•</span>
+                        <span className="text-purple-600 dark:text-purple-400 font-bold">₹{p.selling_price}</span>
+                        <span>•</span>
+                        <span>Cost: ₹{p.purchase_price}</span>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2 text-right">
+                      <span
+                        className={`text-[9px] px-2 py-0.5 rounded font-black border ${
+                          p.current_stock > 0
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800'
+                            : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800'
+                        }`}
+                      >
+                        {p.current_stock > 0
+                          ? `Stock: ${p.current_stock} ${p.unit}`
+                          : `Stock: ${p.current_stock} ${p.unit} (Negative Allowed)`}
+                      </span>
+                      {isSelected && <Check size={14} className="text-purple-600 dark:text-purple-400" />}
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="py-6 text-center text-slate-400 text-[11px]">
+                <Package size={20} className="mx-auto mb-1 opacity-40" />
+                No regular products match "{searchQuery}"
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface ProductModuleProps {
   businessId: string;
   user: UserProfile;
@@ -1987,7 +2198,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
     const openingStockVal = formOpeningStock !== '' && !isNaN(Number(formOpeningStock)) ? Number(formOpeningStock) : 0;
 
-    // Validate component product stock availability
+    // Validate component product existence (out of stock and negative stock are allowed)
+    let hasNegativeComponents = false;
     for (const ci of comboItems) {
       const prod = products.find(p => p.id === ci.product_id);
       if (!prod) {
@@ -2000,14 +2212,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         : openingStockVal;
       
       const totalReqQty = ci.qty * stockToAllocate;
-
-      if (prod.current_stock <= 0 && totalReqQty > 0) {
-        triggerToast(`Cannot create combo box. "${prod.name}" is out of stock (Available: 0 ${prod.unit}).`, 'error');
-        return;
-      }
-      if (totalReqQty > prod.current_stock) {
-        triggerToast(`Cannot allocate stock for ${openingStockVal} combo box(es). "${prod.name}" has only ${prod.current_stock} ${prod.unit} available in stock (Required: ${totalReqQty} ${prod.unit}).`, 'error');
-        return;
+      if (totalReqQty > 0 && prod.current_stock < totalReqQty) {
+        hasNegativeComponents = true;
       }
     }
 
@@ -2046,7 +2252,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           combo_items: comboItems
         }, user.name);
 
-        triggerToast(`Combo Box "${formName}" updated successfully.`, 'success');
+        triggerToast(`Combo Box "${formName}" updated successfully.${hasNegativeComponents ? ' (Note: Component stock reduced to negative)' : ''}`, 'success');
         setSelectedType('Combo');
       } else {
         dbStore.createComboBox({
@@ -2076,7 +2282,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           combo_items: comboItems
         }, user.name);
 
-        triggerToast(`New Combo Box "${formName}" created and added to catalog.`, 'success');
+        triggerToast(`New Combo Box "${formName}" created and added to catalog.${hasNegativeComponents ? ' (Component stock reduced to negative)' : ''}`, 'success');
         setSelectedType('Combo');
       }
 
@@ -3449,7 +3655,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       const matchesStock = 
         selectedStockStatus === 'All' ||
         (selectedStockStatus === 'Low' && p.current_stock > 0 && p.current_stock <= lowLimit) ||
-        (selectedStockStatus === 'Out' && p.current_stock === 0) ||
+        (selectedStockStatus === 'Out' && p.current_stock <= 0) ||
         (selectedStockStatus === 'Healthy' && p.current_stock > lowLimit);
 
       const matchesType = 
@@ -3760,6 +3966,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
             ) : (
               paginatedProducts.map((prod) => {
                 const category = categories.find(c => c.id === prod.category_id);
+                const isNegative = prod.current_stock < 0;
                 const isOut = prod.current_stock === 0;
                 const lowLimit = dbStore.getSettings(businessId).low_stock_limit || 10;
                 const isLow = prod.current_stock > 0 && prod.current_stock <= lowLimit;
@@ -3823,16 +4030,20 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     <td className="py-2 px-3">
                       <div className="flex flex-col items-start gap-1">
                         <div className="flex items-center gap-1.5">
-                          <span className={`font-black text-[12px] ${isOut ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          <span className={`font-black text-[12px] ${isNegative ? 'text-rose-600 bg-rose-50 dark:bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-300 dark:border-rose-800' : isOut ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-emerald-600'}`}>
                             {prod.current_stock}
                           </span>
                           <span className="text-[9px] text-slate-500 font-bold">{prod.unit}</span>
                         </div>
-                        {isComboProduct(prod) && (
+                        {isNegative ? (
+                          <span className="text-[8px] font-black text-rose-500 uppercase tracking-wider">
+                            Negative Stock
+                          </span>
+                        ) : isComboProduct(prod) ? (
                           <span className="text-[8px] font-bold text-purple-600 uppercase">
                             Packed Stock
                           </span>
-                        )}
+                        ) : null}
                       </div>
                     </td>
                     <td className="py-2 px-3 text-right">
@@ -4269,32 +4480,16 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   </span>
                 </div>
 
-                {/* Dropdown Product Quick-Add Bar */}
+                {/* Dropdown Product Quick-Add Bar with Search Option */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xs">
                   <div className="flex-1 space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Select Available Product *</label>
-                    <select 
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Select Available Product (Search Option Included) *</label>
+                    <SearchableProductSelectForCombo
+                      products={products}
                       value={selectedDropdownProdId}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val) {
-                          const selectedProd = products.find(p => p.id === val);
-                          if (selectedProd && selectedProd.current_stock <= 0) {
-                            triggerToast(`"${selectedProd.name}" is OUT OF STOCK! (Available stock: 0 ${selectedProd.unit})`, 'error');
-                            return;
-                          }
-                        }
-                        setSelectedDropdownProdId(val);
-                      }}
-                      className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden text-slate-800 dark:text-slate-100"
-                    >
-                      <option value="">-- Select Regular Product from Dropdown --</option>
-                      {products.filter(p => !isComboProduct(p)).map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} (SKU: {p.sku}) — ₹{p.selling_price} | Available Stock: {p.current_stock} {p.unit}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(val) => setSelectedDropdownProdId(val)}
+                      placeholder="-- Type name, SKU, or barcode to search product --"
+                    />
                   </div>
 
                   <div className="w-full sm:w-24 space-y-1">
@@ -4304,7 +4499,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       min="1"
                       value={selectedDropdownQty}
                       onChange={(e) => setSelectedDropdownQty(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold text-center rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden text-slate-800 dark:text-slate-100"
+                      className="w-full px-2 py-2 bg-slate-50 dark:bg-slate-800 text-[11px] font-bold text-center rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden text-slate-800 dark:text-slate-100"
                     />
                   </div>
 
@@ -4313,7 +4508,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       type="button"
                       onClick={() => {
                         if (!selectedDropdownProdId) {
-                          triggerToast('Please select a product from the dropdown list', 'warning');
+                          triggerToast('Please search or select a product from the dropdown list', 'warning');
                           return;
                         }
 
@@ -4323,28 +4518,26 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                           return;
                         }
 
-                        if (selProd.current_stock <= 0) {
-                          triggerToast(`Cannot add "${selProd.name}" — Product is OUT OF STOCK! (Available stock: 0 ${selProd.unit})`, 'error');
-                          return;
-                        }
-
                         const existingIndex = comboItems.findIndex(ci => ci.product_id === selectedDropdownProdId);
                         const existingQty = existingIndex >= 0 ? comboItems[existingIndex].qty : 0;
                         const totalRequested = existingQty + selectedDropdownQty;
-
-                        if (totalRequested > selProd.current_stock) {
-                          triggerToast(`Cannot add ${selectedDropdownQty} units. Only ${selProd.current_stock} ${selProd.unit} available in stock for "${selProd.name}"!`, 'error');
-                          return;
-                        }
 
                         if (existingIndex >= 0) {
                           const updated = [...comboItems];
                           updated[existingIndex].qty = totalRequested;
                           setComboItems(updated);
-                          triggerToast(`Updated "${selProd.name}" quantity to ${totalRequested}`, 'info');
+                          if (selProd.current_stock <= 0) {
+                            triggerToast(`Updated "${selProd.name}" quantity to ${totalRequested}. (Product is out of stock: negative stock allowed)`, 'info');
+                          } else {
+                            triggerToast(`Updated "${selProd.name}" quantity to ${totalRequested}`, 'info');
+                          }
                         } else {
                           setComboItems([...comboItems, { product_id: selectedDropdownProdId, qty: selectedDropdownQty }]);
-                          triggerToast(`Added ${selectedDropdownQty} x "${selProd.name}" to combo bundle`, 'success');
+                          if (selProd.current_stock <= 0) {
+                            triggerToast(`Added ${selectedDropdownQty} x "${selProd.name}" to combo bundle. (Out of stock: negative stock allowed)`, 'success');
+                          } else {
+                            triggerToast(`Added ${selectedDropdownQty} x "${selProd.name}" to combo bundle`, 'success');
+                          }
                         }
                         setSelectedDropdownProdId('');
                         setSelectedDropdownQty(1);
@@ -4365,9 +4558,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        const avail = products.filter(p => !isComboProduct(p) && p.current_stock > 0 && !comboItems.some(ci => ci.product_id === p.id));
+                        const avail = products.filter(p => !isComboProduct(p) && !comboItems.some(ci => ci.product_id === p.id));
                         if (avail.length === 0) {
-                          triggerToast('No in-stock regular products available to add.', 'warning');
+                          triggerToast('All available regular products have already been added to this combo.', 'warning');
                           return;
                         }
                         setComboItems([...comboItems, { product_id: avail[0].id, qty: 1 }]);
@@ -4380,7 +4573,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
                   {comboItems.length === 0 ? (
                     <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-center text-[11px] text-slate-500">
-                      No products added to combo yet. Select a product from the dropdown above and click "+ Add to Combo".
+                      No products added to combo yet. Select or search a product from the dropdown above and click "+ Add to Combo".
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
@@ -4396,36 +4589,19 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                 {idx + 1}
                               </span>
 
-                              {/* Dropdown to change product */}
-                              <select
-                                value={ci.product_id}
-                                onChange={(e) => {
-                                  const targetId = e.target.value;
-                                  const targetProd = products.find(p => p.id === targetId);
-                                  if (targetProd && targetProd.current_stock <= 0) {
-                                    triggerToast(`"${targetProd.name}" is OUT OF STOCK! (Available stock: 0 ${targetProd.unit})`, 'error');
-                                    return;
-                                  }
-                                  if (targetProd && ci.qty > targetProd.current_stock) {
-                                    triggerToast(`Quantity adjusted to available stock (${targetProd.current_stock} ${targetProd.unit}) for "${targetProd.name}".`, 'warning');
+                              {/* Searchable dropdown to change component product */}
+                              <div className="flex-1 min-w-0">
+                                <SearchableProductSelectForCombo
+                                  products={products}
+                                  value={ci.product_id}
+                                  onChange={(targetId) => {
+                                    if (!targetId) return;
                                     const updated = [...comboItems];
                                     updated[idx].product_id = targetId;
-                                    updated[idx].qty = targetProd.current_stock;
                                     setComboItems(updated);
-                                    return;
-                                  }
-                                  const updated = [...comboItems];
-                                  updated[idx].product_id = targetId;
-                                  setComboItems(updated);
-                                }}
-                                className="w-full bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold rounded-lg border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-hidden truncate"
-                              >
-                                {products.filter(p => !isComboProduct(p)).map(p => (
-                                  <option key={p.id} value={p.id}>
-                                    {p.name} (SKU: {p.sku} | Available Stock: {p.current_stock} {p.unit} | Cost: ₹{p.purchase_price})
-                                  </option>
-                                ))}
-                              </select>
+                                  }}
+                                />
+                              </div>
                             </div>
 
                             <div className="flex items-center gap-3 justify-between sm:justify-end shrink-0">
@@ -4443,13 +4619,6 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                   value={ci.qty}
                                   onChange={(e) => {
                                     const newQty = parseInt(e.target.value) || 1;
-                                    if (prod && newQty > prod.current_stock) {
-                                      triggerToast(`Cannot set ${newQty} units. Only ${prod.current_stock} ${prod.unit} available in stock for "${prod.name}"!`, 'error');
-                                      const updated = [...comboItems];
-                                      updated[idx].qty = Math.max(1, prod.current_stock);
-                                      setComboItems(updated);
-                                      return;
-                                    }
                                     const updated = [...comboItems];
                                     updated[idx].qty = Math.max(1, newQty);
                                     setComboItems(updated);

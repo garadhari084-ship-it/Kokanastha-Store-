@@ -325,8 +325,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   
   // Theme & Language Settings (Dashboard UI Match)
   type ColorTheme = 'midnight-gold' | 'emerald-pro' | 'royal-sapphire' | 'titanium-dark';
-      const [timeHorizon, setTimeHorizon] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('today');
-  const [bookingFilter, setBookingFilter] = useState<'all' | 'regular' | 'festive'>('all');
+  const [timeHorizon, setTimeHorizon] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('all');
+  const [bookingFilter, setBookingFilter] = useState<'all' | 'advance' | 'festive' | 'regular'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isTopFilterMenuOpen, setIsTopFilterMenuOpen] = useState(false);
   const topFilterRef = useRef<HTMLDivElement>(null);
@@ -821,7 +821,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       if (isCreateModalOpenRef.current && !editingOrderId && draftSessionIdRef.current) {
         const activeRes = dbStore.getActiveDraftReservations(businessId).find(r => r.id === draftSessionIdRef.current);
         if (activeRes && activeRes.invoiceNumber) {
-          setCustomInvoiceNumber(activeRes.invoiceNumber);
+          setCustomInvoiceNumber(prev => (prev !== activeRes.invoiceNumber ? activeRes.invoiceNumber : prev));
         }
       }
     });
@@ -926,14 +926,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const lastHandledTsRef = useRef<number | string | null>(null);
 
   useEffect(() => {
-    const handleGlobalCreateOrder = () => {
-      handleOpenAddModal();
-    };
-    window.addEventListener('open-create-order', handleGlobalCreateOrder);
-    return () => window.removeEventListener('open-create-order', handleGlobalCreateOrder);
-  }, [businessId, user]);
-
-  useEffect(() => {
     const currentTs = deepLinkData?._ts || (deepLinkData?.openAddModal ? 'add' : (deepLinkData?.orderId ? `order-${deepLinkData.orderId}` : null));
     if (deepLinkData?.openAddModal || (openAddModalInitially && !deepLinkData && lastHandledTsRef.current === null)) {
       if (currentTs && lastHandledTsRef.current === currentTs) return;
@@ -948,6 +940,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       } else {
         handleOpenAddModal();
       }
+      onClearDeepLink?.();
     } else if (deepLinkData?.orderId) {
       if (currentTs && lastHandledTsRef.current === currentTs) return;
       lastHandledTsRef.current = currentTs;
@@ -955,8 +948,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       if (orderToView) {
         setViewingInvoiceOrder(orderToView);
       }
+      onClearDeepLink?.();
     }
-  }, [deepLinkData, openAddModalInitially, selectedOrderIdInitially, orders]);
+  }, [deepLinkData, openAddModalInitially, selectedOrderIdInitially, orders, onClearDeepLink]);
 
   const handleAddLineItem = () => {
     if (!rowProductId) {
@@ -1438,6 +1432,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       }
 
       setOrders(dbStore.getSalesOrders(businessId));
+      // Guarantee newly created/updated order is immediately visible: no one is missing or hide!
+      setTimeHorizon('all');
+      setBookingFilter('all');
+      setStatusFilter('all');
+      setSearchQuery('');
       
       // Ensure payment confirmation popup is not displayed after completing invoice
       setIsPaymentModalOpen(false);
@@ -1642,8 +1641,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const horizonOrders = useMemo(() => {
     return orders.filter(o => {
       if (!isOrderInTimeHorizon(o, timeHorizon)) return false;
-      if (bookingFilter === 'regular' && o.festive_booking) return false;
+      if (bookingFilter === 'regular' && (o.festive_booking || o.advance_booking)) return false;
       if (bookingFilter === 'festive' && !o.festive_booking) return false;
+      if (bookingFilter === 'advance' && !o.advance_booking) return false;
       return true;
     });
   }, [orders, timeHorizon, bookingFilter]);
@@ -1707,6 +1707,16 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         icon={FileText}
         rightContent={
           <div className="flex items-center gap-3">
+            {/* Create Order Button */}
+            <button
+              onClick={handleOpenAddModal}
+              className="h-8 px-3.5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl font-black text-[11px] transition cursor-pointer shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+              title="Create New Sales Order / Invoice"
+            >
+              <PlusCircle size={15} />
+              <span>+ Create Order</span>
+            </button>
+
             {/* Top Time Filter Dropdown */}
             <div className="relative shrink-0" ref={topFilterRef}>
               <button 
@@ -1903,22 +1913,37 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
             })}
           </div>
 
-          {/* Booking Type Filter Chip */}
-          <div className="flex items-center gap-1.5">
+          {/* Booking Type Filter Chips */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">Booking:</span>
-            <button
-              onClick={() => setBookingFilter(prev => prev === 'all' ? 'regular' : prev === 'regular' ? 'festive' : 'all')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition cursor-pointer border ${
-                bookingFilter === 'regular'
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : bookingFilter === 'festive'
-                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-black'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-              }`}
-            >
-              <Sparkles size={13} className={bookingFilter === 'festive' ? 'text-slate-950' : bookingFilter === 'regular' ? 'text-white' : 'text-amber-500'} />
-              <span className="uppercase">{bookingFilter}</span>
-            </button>
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'advance', label: `Advance (${orders.filter(o => o.advance_booking).length})` },
+              { id: 'festive', label: `Festive (${orders.filter(o => o.festive_booking).length})` },
+              { id: 'regular', label: `Standard (${orders.filter(o => !o.advance_booking && !o.festive_booking).length})` },
+            ].map(bChip => {
+              const isActive = bookingFilter === bChip.id;
+              return (
+                <button
+                  key={bChip.id}
+                  onClick={() => setBookingFilter(bChip.id as any)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition cursor-pointer border ${
+                    isActive
+                      ? bChip.id === 'festive'
+                        ? 'bg-amber-500 text-slate-950 border-amber-500 font-black'
+                        : bChip.id === 'advance'
+                        ? 'bg-indigo-600 text-white border-indigo-600 font-extrabold'
+                        : bChip.id === 'regular'
+                        ? 'bg-sky-600 text-white border-sky-600'
+                        : 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-slate-900 dark:border-slate-100'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {bChip.id === 'festive' && <Sparkles size={11} className={isActive ? 'text-slate-950' : 'text-amber-500'} />}
+                  <span>{bChip.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -2121,15 +2146,30 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
             {filteredOrders.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-slate-400 font-medium">
-                  <div className="flex flex-col items-center justify-center gap-1.5">
+                <td colSpan={9} className="text-center py-12 text-slate-400 font-medium">
+                  <div className="flex flex-col items-center justify-center gap-2">
                     <ShoppingBag size={28} className="text-slate-300 dark:text-slate-600" />
-                    <p className="font-bold text-slate-600 dark:text-slate-300 text-xs">
-                      No orders found.
+                    <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">
+                      {orders.length === 0 ? 'No orders created yet.' : 'No orders match current filter.'}
                     </p>
-                    <p className="text-[11px] text-slate-400">
-                      Try switching to "All Time" or reset your search & area filters to see more orders.
+                    <p className="text-[11px] text-slate-500 max-w-sm">
+                      {orders.length === 0 
+                        ? 'Click "+ Create Order" to place your first invoice or booking.'
+                        : `You have ${orders.length} total orders in the database. Reset filters to see all of them.`}
                     </p>
+                    {orders.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setTimeHorizon('all');
+                          setBookingFilter('all');
+                          setStatusFilter('all');
+                          setSearchQuery('');
+                        }}
+                        className="mt-1 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black transition cursor-pointer shadow-xs"
+                      >
+                        Show All Orders & Bookings ({orders.length})
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

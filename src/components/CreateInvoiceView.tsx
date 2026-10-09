@@ -547,7 +547,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   };
 
   return (
-    <div className="w-full space-y-4 animate-in fade-in duration-150 pb-12">
+    <div className="w-full space-y-4 pb-12">
       {/* 1. TOP COMMAND BAR WITH INVOICE #, CUSTOMER & BOOKING TYPE */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs p-3">
         <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-2.5">

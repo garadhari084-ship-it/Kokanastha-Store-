@@ -502,63 +502,68 @@ export function isOrderInTimeHorizon(
   const yesterdayDate = new Date(year, month, date - 1);
   const yesterdayStr = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
 
-  // Normalize order date to YYYY-MM-DD
-  let rawDateStr = '';
-  if (order.order_date) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(order.order_date)) {
-      rawDateStr = order.order_date;
-    } else {
-      const d = new Date(order.order_date);
+  // Helper to extract clean YYYY-MM-DD from various date string formats
+  const extractDateStr = (dateVal?: string | null): string => {
+    if (!dateVal) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) return dateVal;
+    try {
+      const d = new Date(dateVal);
       if (!isNaN(d.getTime())) {
-        rawDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      } else {
-        rawDateStr = order.order_date.split('T')[0];
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       }
+      return dateVal.split('T')[0] || '';
+    } catch (_) {
+      return '';
     }
-  } else if (order.created_at) {
-    const d = new Date(order.created_at);
-    if (!isNaN(d.getTime())) {
-      rawDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    } else {
-      rawDateStr = order.created_at.split('T')[0];
-    }
-  }
+  };
 
-  if (!rawDateStr) {
-    return horizon === 'today';
+  const orderDateStr = extractDateStr(order.order_date);
+  const createdDateStr = extractDateStr(order.created_at);
+  const deliveryDateStr = extractDateStr(order.delivery_date);
+
+  // Candidate dates associated with this order (order date, creation timestamp, or scheduled delivery date)
+  const candidateDates = Array.from(new Set([orderDateStr, createdDateStr, deliveryDateStr].filter(Boolean)));
+
+  if (candidateDates.length === 0) {
+    return true; // Don't hide if date cannot be resolved
   }
 
   if (horizon === 'custom') {
     if (!customStartDate || !customEndDate) return true;
-    return rawDateStr >= customStartDate && rawDateStr <= customEndDate;
+    return candidateDates.some(d => d >= customStartDate && d <= customEndDate);
   }
 
   if (horizon === 'today') {
-    return rawDateStr === todayStr;
+    return candidateDates.includes(todayStr);
   }
 
   if (horizon === 'yesterday') {
-    return rawDateStr === yesterdayStr;
+    return candidateDates.includes(yesterdayStr);
   }
 
-  const parts = rawDateStr.split('-');
-  if (parts.length < 3) return true;
-  const oYear = parseInt(parts[0], 10);
-  const oMonth = parseInt(parts[1], 10) - 1;
-  const oDay = parseInt(parts[2], 10);
-
-  const orderDateObj = new Date(oYear, oMonth, oDay);
   const todayObj = new Date(year, month, date);
 
-  const diffMs = todayObj.getTime() - orderDateObj.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const checkDaysRange = (maxDays: number) => {
+    return candidateDates.some(dStr => {
+      const parts = dStr.split('-');
+      if (parts.length < 3) return true;
+      const oYear = parseInt(parts[0], 10);
+      const oMonth = parseInt(parts[1], 10) - 1;
+      const oDay = parseInt(parts[2], 10);
+      const oDateObj = new Date(oYear, oMonth, oDay);
+      const diffMs = todayObj.getTime() - oDateObj.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      // Include past orders within range or upcoming scheduled orders within range
+      return diffDays >= -maxDays && diffDays <= maxDays;
+    });
+  };
 
   if (horizon === '7days') {
-    return diffDays >= 0 && diffDays < 7;
+    return checkDaysRange(7);
   }
 
   if (horizon === '30days') {
-    return diffDays >= 0 && diffDays < 30;
+    return checkDaysRange(30);
   }
 
   return true;

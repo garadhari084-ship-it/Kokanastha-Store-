@@ -967,20 +967,18 @@ export default function App() {
         });
     }
 
-    // High-frequency live polling fallback (every 4 seconds) ensuring any activity on another device is displayed live without refresh
+    // Live polling fallback ensuring background sync without forcing whole-tree flashing
     const liveSyncInterval = setInterval(() => {
       const sessionData = safeStorage.getItem('omnipack_session');
       if (sessionData && isSupabaseConfigured && supabase) {
         try {
           const { businessId } = JSON.parse(sessionData);
           if (businessId) {
-            dbStore.syncFromSupabase(businessId, 'sales_orders').then(() => {
-              setSyncTick(prev => prev + 1);
-            }).catch(() => {});
+            dbStore.syncFromSupabase(businessId, 'sales_orders').catch(() => {});
           }
         } catch(e) {}
       }
-    }, 4000);
+    }, 8000);
 
     // Cross-tab BroadcastChannel listener for immediate local synchronization
     let localBc: BroadcastChannel | null = null;

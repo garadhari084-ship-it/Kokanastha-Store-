@@ -98,6 +98,7 @@ const InboxModule = lazyWithReload(() => import('./components/InboxModule').then
 const LoyaltySubscriptionModule = lazyWithReload(() => import('./components/LoyaltySubscriptionModule').then(m => ({ default: m.LoyaltySubscriptionModule })));
 const ItemStockLiveReportModule = lazyWithReload(() => import('./components/ItemStockLiveReportModule').then(m => ({ default: m.ItemStockLiveReportModule })));
 const PublicInvoiceView = lazyWithReload(() => import('./components/PublicInvoiceView').then(m => ({ default: m.PublicInvoiceView })));
+const PublicProductView = lazyWithReload(() => import('./components/PublicProductView').then(m => ({ default: m.PublicProductView })));
 
 interface Toast {
   id: string;
@@ -511,6 +512,27 @@ export default function App() {
       }
     } catch (e) {
       console.error('Error parsing URL for invoice:', e);
+    }
+    return null;
+  });
+
+  // Public Product Deep Link (When scanned via Camera, Google Lens, QR code, or Barcode search)
+  const [publicProductQuery, setPublicProductQuery] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const queryString = window.location.search || (window.location.hash.includes('?') ? window.location.hash.substring(window.location.hash.indexOf('?')) : '');
+      const searchParams = new URLSearchParams(queryString);
+      const rawProd = searchParams.get('prod') || searchParams.get('product') || searchParams.get('p') || searchParams.get('scan') || searchParams.get('barcode') || searchParams.get('item');
+      if (rawProd) {
+        return rawProd.trim();
+      }
+
+      const pathMatches = window.location.pathname.match(/\/(?:prod|product|p|verify|item)\/(.+)/);
+      if (pathMatches && pathMatches[1]) {
+        return decodeURIComponent(pathMatches[1]).trim();
+      }
+    } catch (e) {
+      console.error('Error parsing URL for product:', e);
     }
     return null;
   });
@@ -1905,6 +1927,16 @@ export default function App() {
       <PublicInvoiceView
         orderNumber={publicInvoiceNum}
         onGoToLogin={() => setPublicInvoiceNum(null)}
+      />
+    );
+  }
+
+  // Render Public Product Information & Verification view if requested via QR scan or URL
+  if (publicProductQuery) {
+    return (
+      <PublicProductView
+        barcodeOrSku={publicProductQuery}
+        onGoToLogin={() => setPublicProductQuery(null)}
       />
     );
   }

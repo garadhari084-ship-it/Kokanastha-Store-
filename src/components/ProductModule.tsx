@@ -513,7 +513,7 @@ export const LABEL_SIZE_INFO: Record<string, { label: string; desc: string; defa
   '50x38': { label: '50 × 38 mm', desc: '2"x1.5" Large MRP/Exp', defaultPerRow: 2 },
   '50x50': { label: '50 × 50 mm', desc: '2"x2" Food & Nutrition', defaultPerRow: 1 },
   '50x75': { label: '50 × 75 mm', desc: '2"x3" Food Master', defaultPerRow: 1 },
-  '60x100': { label: '60 × 100 mm', desc: '2.4"x4" Tall Master', defaultPerRow: 1 },
+  '60x100': { label: '60 × 100 mm', desc: '2.4"x4" Tall Master (1-Up Vertical)', defaultPerRow: 1 },
   '100x60': { label: '100 × 60 mm', desc: '4"x2.4" Horizontal Master', defaultPerRow: 1 },
   '100x50': { label: '100 × 50 mm', desc: '4"x2" Box / Pack', defaultPerRow: 1 },
   '100x75': { label: '100 × 75 mm', desc: '4"x3" Kokanastha Nutri', defaultPerRow: 1 },
@@ -617,6 +617,7 @@ export interface ThermalBarcodeStickerProps {
   mode?: 'preview' | 'print';
   boxBorder?: boolean;
   barcodeFrame?: boolean;
+  barcodeOffsetMm?: number;
 }
 
 export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
@@ -636,7 +637,8 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   orientation = 'auto',
   mode = 'preview',
   boxBorder = true,
-  barcodeFrame = true
+  barcodeFrame = true,
+  barcodeOffsetMm = 0
 }) => {
   const barcodeValue = product.barcode || product.sku || '12345678';
   const effectiveCompany = showCompanyName && companyName && companyName.trim().length > 0 
@@ -676,7 +678,7 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   };
 
   const previewSizeClasses: Record<string, string> = {
-    '50x25': 'w-[189px] h-[95px] p-1.5',
+    '50x25': 'w-[189px] h-[95px] p-1',
     '40x25': 'w-[189px] h-[95px] p-1.5',
     '38x25': 'w-[144px] h-[95px] p-1',
     '50x30': 'w-[189px] h-[113px] p-1.5',
@@ -702,7 +704,13 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   // Calibrated bar module width to ensure barcode never exceeds box or bleeds
   const getBarWidth = (targetSize: string) => {
     if (targetSize === '38x25') return valLen > 12 ? 0.85 : valLen > 8 ? 0.92 : 1.0;
-    if (targetSize === '50x25' || targetSize === '40x25') return valLen > 13 ? 0.88 : valLen > 10 ? 0.95 : 1.05;
+    if (targetSize === '50x25') {
+      if (valLen > 15) return 0.95;
+      if (valLen > 12) return 1.15;
+      if (valLen > 8) return 1.25;
+      return 1.38;
+    }
+    if (targetSize === '40x25') return valLen > 13 ? 0.88 : valLen > 10 ? 0.95 : 1.05;
     if (targetSize === '50x30' || targetSize === '50x38') return valLen > 13 ? 0.95 : valLen > 10 ? 1.05 : 1.15;
     if (targetSize === '50x50' || targetSize === '50x75') return valLen > 13 ? 0.92 : 1.0;
     if (targetSize === '60x100') return valLen > 14 ? 1.05 : valLen > 11 ? 1.15 : 1.25;
@@ -711,24 +719,33 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   };
   const barWidth = getBarWidth(size);
 
-  // Dedicated Boxed Barcode with guaranteed white quiet zone margin
+  // Dedicated Boxed Barcode with guaranteed white quiet zone margin and safe digit clearance
   const renderBarcodeBox = (h: number, customW?: number) => (
-    <div className="w-full flex items-center justify-center shrink-0 my-0.5" style={{ margin: '1px 0' }}>
+    <div 
+      className="w-full flex items-center justify-center shrink-0" 
+      style={{ 
+        margin: size === '50x25' ? '0' : '1px 0', 
+        textAlign: 'center',
+        ...(barcodeOffsetMm && barcodeOffsetMm !== 0 ? { transform: `translateX(${barcodeOffsetMm}mm)` } : {})
+      }}
+    >
       <div 
-        className={`barcode-inner-box bg-white flex flex-col items-center justify-center w-[98%] max-w-full ${barcodeFrame ? 'border-[1px] border-black rounded-[2px] px-1 py-0.5' : 'px-1 py-0.5'}`}
-        style={{ backgroundColor: '#ffffff', boxSizing: 'border-box' }}
+        className="barcode-inner-box bg-white flex flex-col items-center justify-center w-full max-w-full"
+        style={{ backgroundColor: '#ffffff', boxSizing: 'border-box', margin: '0 auto', textAlign: 'center', overflow: 'visible' }}
       >
         <ReactBarcode 
           renderer="svg"
-          value={barcodeValue} 
+          value={String(barcodeValue || '12345678').trim()} 
           height={h} 
           width={customW || barWidth}
-          fontSize={size === '60x100' ? 8.5 : size === '38x25' ? 7 : size === '50x25' || size === '40x25' ? 7.5 : 8}
+          fontSize={size === '60x100' ? 8.5 : size === '38x25' ? 7 : size === '50x25' ? 7.2 : size === '40x25' ? 7.5 : 8}
           margin={0}
-          marginTop={1}
-          marginBottom={2}
-          textMargin={1.5}
-          fontOptions="bold"
+          marginLeft={size === '50x25' ? 6 : 8}
+          marginRight={size === '50x25' ? 6 : 8}
+          marginTop={0}
+          marginBottom={size === '50x25' ? 5 : 3}
+          textMargin={2}
+          fontOptions={size === '50x25' ? undefined : 'bold'}
           font="monospace"
           displayValue={true}
           background="#ffffff"
@@ -1007,15 +1024,19 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
             {renderBarcodeBox(20)}
           </div>
 
-          {/* 4. Commercial Pricing (Batch & Dates row removed per user request) */}
+          {/* 4. Commercial Pricing & Dates (MRP clean without strikethrough/erasing, PKD & EXP under MRP) */}
           <div className="w-full border-[1.5px] border-black rounded-xs overflow-hidden shrink-0 text-black bg-white">
-            <div className="flex justify-between items-center w-full px-2 py-1 bg-white leading-tight">
-              <span className="text-[9.5px] font-bold text-black">
-                MRP (Incl. taxes): <span className="line-through font-extrabold text-[10.5px]">₹{effectiveMrp}</span>
+            <div className="flex justify-between items-center w-full px-2 py-0.8 bg-white border-b border-black leading-tight">
+              <span className="text-[10px] font-bold text-black">
+                MRP (Incl. taxes): <span className="font-black text-[11.5px] text-black">₹{effectiveMrp}</span>
               </span>
               <span className="text-[12.5px] font-black text-black tracking-tight">
                 SALE: ₹{effectiveSale}
               </span>
+            </div>
+            <div className="flex justify-between items-center w-full px-2 py-0.5 text-[8px] font-bold text-black bg-white leading-tight">
+              <span>PKD: {packedOn}</span>
+              <span>{expiryOn ? `EXP: ${expiryOn}` : 'BEST BEFORE 12M'}</span>
             </div>
           </div>
 
@@ -1506,9 +1527,10 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           style={{
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
             color: '#000000',
+            fontWeight: 400,
             ...(mode === 'print' 
               ? { 
-                  padding: '1mm 1.2mm', 
+                  padding: '0.4mm 0.6mm', 
                   width: '100%', 
                   height: '100%', 
                   display: 'flex', 
@@ -1519,83 +1541,107 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
                 } 
               : { 
                   justifyContent: 'space-between', 
-                  padding: '4px 5px', 
+                  padding: '2px 3px', 
                   height: '100%', 
-                  minHeight: '83px' 
+                  minHeight: '88px',
+                  maxHeight: '94px',
+                  boxSizing: 'border-box',
+                  overflow: 'hidden'
                 }
             )
           }}
         >
           {/* 1. Header (Brand Name, SKU, Dietary Symbol & Net Weight/Pkt badge) */}
-          <div className="w-full flex flex-col items-center border-b-[0.5px] border-black pb-0.5 shrink-0 text-black leading-none">
-            {effectiveCompany ? (
-              <span className="text-[7.5px] font-black uppercase tracking-wider truncate text-black block mb-0.5 leading-none">
-                {effectiveCompany}
+          <div 
+            className="w-full flex items-center justify-between border-b border-black pb-0.5 shrink-0 text-black leading-none font-normal px-0.5"
+            style={{ borderBottom: '1px solid #000000', boxSizing: 'border-box' }}
+          >
+            <div className="flex items-center gap-1 min-w-0 truncate">
+              {effectiveCompany ? (
+                <span className="text-[7px] font-bold uppercase tracking-wider truncate text-black block leading-none">
+                  {effectiveCompany}
+                </span>
+              ) : null}
+              <span className="shrink-0 font-mono font-normal text-[5.5px] text-black">{product.sku ? `SKU: ${product.sku}` : ''}</span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <span 
+                className="w-2 h-2 rounded-xs border border-black flex items-center justify-center shrink-0 bg-white"
+                style={{
+                  width: '7.5px',
+                  height: '7.5px',
+                  minWidth: '7.5px',
+                  minHeight: '7.5px',
+                  border: '0.8px solid #000000',
+                  borderRadius: '1px',
+                  backgroundColor: '#ffffff',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxSizing: 'border-box',
+                  flexShrink: 0
+                }}
+              >
+                <svg width="4.5" height="4.5" viewBox="0 0 8 8" className="shrink-0" style={{ display: 'block', margin: '0 auto', flexShrink: 0 }}>
+                  <circle cx="4" cy="4" r={isVeg ? "3.2" : "0"} fill="#000000" stroke="#000000" strokeWidth="0.8" />
+                  {!isVeg && <circle cx="4" cy="4" r="3.2" fill="none" stroke="#000000" strokeWidth="0.8" />}
+                </svg>
               </span>
-            ) : null}
-            <div className="flex items-center justify-between w-full px-0.5 text-[6px] font-bold text-black leading-none">
-              <span className="shrink-0 font-mono font-bold text-[6px] text-black">SKU: {product.sku || 'SKU-001'}</span>
-              <div className="flex items-center gap-1 shrink-0">
-                <span 
-                  className="w-2.5 h-2.5 rounded-xs border border-black flex items-center justify-center shrink-0 bg-white"
-                  style={{
-                    width: '9px',
-                    height: '9px',
-                    minWidth: '9px',
-                    minHeight: '9px',
-                    border: '0.8px solid #000000',
-                    borderRadius: '1px',
-                    backgroundColor: '#ffffff',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxSizing: 'border-box',
-                    flexShrink: 0
-                  }}
-                >
-                  <svg width="6" height="6" viewBox="0 0 8 8" className="shrink-0" style={{ display: 'block', margin: '0 auto', flexShrink: 0 }}>
-                    <circle cx="4" cy="4" r={isVeg ? "3.2" : "0"} fill="#000000" stroke="#000000" strokeWidth="0.8" />
-                    {!isVeg && <circle cx="4" cy="4" r="3.2" fill="none" stroke="#000000" strokeWidth="0.8" />}
-                  </svg>
-                </span>
-                <span 
-                  className="text-[6px] font-black bg-black text-white px-1 py-0.2 rounded-xs border border-black uppercase tracking-tight flex items-center leading-none"
-                  style={{ backgroundColor: '#000000', color: '#ffffff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
-                >
-                  {netWeight || 'Pkt'}
-                </span>
-              </div>
+              <span 
+                className="text-[5.5px] font-bold bg-black text-white px-1 py-0.2 rounded-xs border border-black uppercase tracking-tight flex items-center leading-none"
+                style={{ backgroundColor: '#000000', color: '#ffffff', border: '0.8px solid #000000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+              >
+                {netWeight || 'Pkt'}
+              </span>
             </div>
           </div>
           
-          {/* 2. Product Name */}
-          <div className="w-full text-center shrink-0 text-black border-b-[0.5px] border-black py-0.5 bg-white leading-none">
-            <span className="text-[8.5px] font-black uppercase tracking-tight leading-none text-center block w-full px-0.2 line-clamp-1 text-black">
+          {/* 2. Product Name - Bold */}
+          <div 
+            className="w-full text-center shrink-0 text-black border-b border-black py-0.5 bg-white leading-none"
+            style={{ borderBottom: '1px solid #000000', boxSizing: 'border-box' }}
+          >
+            <span className="text-[8.5px] font-bold uppercase tracking-tight leading-none text-center block w-full px-0.2 line-clamp-1 text-black">
               {product.name}
             </span>
           </div>
 
-          {/* 3. Barcode Box - Scannable & Bold Monospace Digits */}
-          <div className="w-full flex justify-center shrink-0 border-b-[0.5px] border-black pb-0.5">
-            {renderBarcodeBox(mode === 'print' ? 14 : 16)}
+          {/* 3. Barcode Box - Scannable with Solid Border-b Under Barcode */}
+          <div 
+            className="w-full flex justify-center items-center shrink-0 border-b border-black py-0.5"
+            style={{ borderBottom: '1px solid #000000', boxSizing: 'border-box', textAlign: 'center' }}
+          >
+            {renderBarcodeBox(mode === 'print' ? 9.5 : 10.5)}
           </div>
 
-          {/* 4. Commercial Pricing Box (matches 60x100 style!) */}
-          <div className="w-full border-[0.5px] border-black rounded-xs overflow-hidden shrink-0 text-black bg-white">
-            <div className="flex justify-between items-center w-full px-1 py-0.5 bg-white leading-none">
-              <span className="text-[6.5px] font-bold text-black leading-none">
-                MRP: <span className="line-through font-extrabold text-[7px]">₹{effectiveMrp}</span>
+          {/* 4. Commercial Pricing Box (MRP and SALE BOLD with PKD & EXP inside without ANY cut!) */}
+          <div 
+            className="w-full border border-black rounded-xs overflow-hidden shrink-0 text-black bg-white"
+            style={{ 
+              border: '1px solid #000000', 
+              borderRadius: '2px', 
+              boxSizing: 'border-box',
+              WebkitPrintColorAdjust: 'exact',
+              printColorAdjust: 'exact'
+            }}
+          >
+            {/* MRP & SALE: Both BOLD and Prominent */}
+            <div 
+              className="flex justify-between items-center w-full px-1.5 py-0.5 bg-white border-b border-black leading-none"
+              style={{ borderBottom: '0.8px solid #000000', boxSizing: 'border-box' }}
+            >
+              <span className="text-[8.5px] font-black text-black leading-none">
+                MRP: ₹{effectiveMrp}
               </span>
-              <span className="text-[8px] font-black text-black tracking-tight leading-none">
+              <span className="text-[9px] font-black text-black tracking-tight leading-none">
                 SALE: ₹{effectiveSale}
               </span>
             </div>
-          </div>
-
-          {/* 5. PKD & EXP Dates */}
-          <div className="w-full text-[5.5px] font-black text-black shrink-0 flex justify-between px-0.5 mt-0.5 leading-none">
-            <span>PKD: {packedOn}</span>
-            {expiryOn && <span>EXP: {expiryOn}</span>}
+            {/* PKD & EXP Dates: Guaranteed inside the box, never cut off! */}
+            <div className="flex justify-between items-center w-full px-1.5 py-0.5 text-[6.5px] font-bold text-black bg-white leading-none">
+              <span>PKD: {packedOn}</span>
+              {expiryOn ? <span>EXP: {expiryOn}</span> : <span>BEST BEFORE 12M</span>}
+            </div>
           </div>
         </div>
       );
@@ -1710,6 +1756,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [printLabelSize, setPrintLabelSize] = useState<'50x25' | '50x38' | '38x25' | '40x25' | '50x30' | '50x50' | '50x75' | '60x100' | '100x50' | '100x75' | '100x100' | 'standard'>('50x25');
   const [printLabelsPerRow, setPrintLabelsPerRow] = useState<1 | 2>(2);
   const [printOrientation, setPrintOrientation] = useState<'auto' | 'landscape' | 'portrait' | 'rotated90' | 'thermal-portrait-fix' | 'thermal-270-fix'>('landscape');
+  const [printHorizontalOffsetMm, setPrintHorizontalOffsetMm] = useState<number>(0);
+  const [printAlignmentTarget, setPrintAlignmentTarget] = useState<'barcode' | 'all'>('barcode');
   const [printBoxBorder, setPrintBoxBorder] = useState(true);
   const [printBarcodeFrame, setPrintBarcodeFrame] = useState(true);
   const [showPrintHelp, setShowPrintHelp] = useState(false);
@@ -1735,6 +1783,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     company_name?: string;
     show_company?: boolean;
     label_size?: any;
+    horizontal_offset_mm?: number;
+    alignment_target?: 'barcode' | 'all';
   }) => {
     let existingDefaults: any = {};
     try {
@@ -1784,7 +1834,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       ingredients: printIngredients,
       company_name: printCompanyName,
       show_company: printIncludeCompanyName,
-      label_size: printLabelSize
+      label_size: printLabelSize,
+      horizontal_offset_mm: printHorizontalOffsetMm,
+      alignment_target: printAlignmentTarget
     });
 
     if (printingBarcodeProduct) {
@@ -1896,7 +1948,19 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         if (savedDefaults.label_size === '50x25') {
           setPrintLabelsPerRow(2);
           setPrintOrientation('landscape');
+        } else if (savedDefaults.label_size === '60x100') {
+          setPrintLabelsPerRow(1);
+          setPrintOrientation('portrait');
+          setPrintIncludeNutrition(true);
         }
+      }
+
+      if (savedDefaults.horizontal_offset_mm !== undefined) {
+        setPrintHorizontalOffsetMm(Number(savedDefaults.horizontal_offset_mm));
+      }
+
+      if (savedDefaults.alignment_target) {
+        setPrintAlignmentTarget(savedDefaults.alignment_target);
       }
 
       if (printingBarcodeProduct.nutrition_facts) {
@@ -3207,10 +3271,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       break-inside: avoid !important;
       margin: 0 auto !important;
       padding: 0 !important;
-      overflow: hidden !important;
+      overflow: visible !important;
       box-sizing: border-box !important;
       background: #ffffff !important;
       border-bottom: 1px dashed #cbd5e1;
+      ${printAlignmentTarget === 'all' && printHorizontalOffsetMm !== 0 ? `transform: translateX(${printHorizontalOffsetMm}mm) !important;` : ''}
     }
     @media print {
       .barcode-print-row {
@@ -3221,10 +3286,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         margin: 0 auto !important;
         padding: 0 !important;
         display: flex !important;
-        justify-content: center !important;
-        align-items: flex-start !important;
+        justify-content: ${printLabelsPerRow === 2 ? 'space-around' : 'center'} !important;
+        align-items: center !important;
         box-sizing: border-box !important;
-        overflow: hidden !important;
+        overflow: visible !important;
+        ${printAlignmentTarget === 'all' && printHorizontalOffsetMm !== 0 ? `transform: translateX(${printHorizontalOffsetMm}mm) !important;` : ''}
       }
     }
     .barcode-print-row:last-child {
@@ -3235,12 +3301,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
 
     .barcode-label-sticker {
       box-sizing: border-box !important;
-      margin: 0.6mm auto !important;
+      margin: 0 auto !important;
       padding: 0 !important;
       border: none !important;
       display: flex !important;
       flex-direction: column !important;
-      justify-content: flex-start !important;
+      justifyContent: flex-start !important;
       align-items: center !important;
       text-align: center !important;
       overflow: hidden !important;
@@ -3251,17 +3317,17 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       /* Screen Dimensions updated to match printing boundaries */
       width: ${printLabelsPerRow === 2 && !pageDims.isRotated 
         ? `calc(${pageDims.baseDims.stickerWidthMm} - 1mm)` 
-        : `calc(${pageDims.pageWidthMm} - 1mm)`} !important;
+        : `calc(${pageDims.pageWidthMm} - 1.2mm)`} !important;
       height: calc(${pageDims.baseDims.stickerHeightMm} - 1.2mm) !important;
     }
     @media print {
       .barcode-label-sticker {
         width: ${printLabelsPerRow === 2 && !pageDims.isRotated 
           ? `calc(${pageDims.baseDims.stickerWidthMm} - 1mm)` 
-          : `calc(${pageDims.pageWidthMm} - 1mm)`} !important;
+          : `calc(${pageDims.pageWidthMm} - 1.2mm)`} !important;
         height: calc(${pageDims.baseDims.stickerHeightMm} - 1.2mm) !important;
         max-height: calc(${pageDims.baseDims.stickerHeightMm} - 1.2mm) !important;
-        margin: 0.6mm auto !important;
+        margin: 0 auto !important;
         padding: 0 !important;
         display: flex !important;
         flex-direction: column !important;
@@ -3289,17 +3355,17 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       display: block !important;
       margin: 0 auto !important;
       max-width: 100% !important;
-      height: auto !important;
       background-color: #ffffff !important;
-      image-rendering: auto !important;
-      shape-rendering: geometricPrecision !important;
+      image-rendering: -webkit-optimize-contrast !important;
+      image-rendering: crisp-edges !important;
+      image-rendering: pixelated !important;
+      shape-rendering: crispEdges !important;
+      overflow: visible !important;
     }
     .barcode-label-sticker svg text {
       fill: #000000 !important;
       color: #000000 !important;
       font-family: monospace, "Courier New", Courier !important;
-      font-size: 8.5px !important;
-      font-weight: 700 !important;
       letter-spacing: 0.04em !important;
     }
     .barcode-inner-box {
@@ -3425,13 +3491,23 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     .space-y-0\\.5 > :not([hidden]) ~ :not([hidden]) { margin-top: 2px !important; }
     .space-y-0\\.8 > :not([hidden]) ~ :not([hidden]) { margin-top: 3.2px !important; }
     .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 4px !important; }
-    .border { border: 1px solid #000000 !important; }
+    .border, [class*="border"] { border-color: #000000 !important; }
+    .border, [class~="border"] { border: 1px solid #000000 !important; }
+    .border-b, [class~="border-b"], [class*="border-b"] { border-bottom-color: #000000 !important; }
+    .border-t, [class~="border-t"], [class*="border-t"] { border-top-color: #000000 !important; }
+    .border-l, [class~="border-l"], [class*="border-l"] { border-left-color: #000000 !important; }
+    .border-r, [class~="border-r"], [class*="border-r"] { border-right-color: #000000 !important; }
     .border-b { border-bottom: 1px solid #000000 !important; }
     .border-t { border-top: 1px solid #000000 !important; }
     .border-l { border-left: 1px solid #000000 !important; }
     .border-r { border-right: 1px solid #000000 !important; }
     .border-y { border-top: 1px solid #000000 !important; border-bottom: 1px solid #000000 !important; }
-    .border-\\[1px\\] { border: 1px solid #000000 !important; }
+    .border-\\[0\\.5px\\], [class*="border-[0.5px]"] { border: 1px solid #000000 !important; }
+    .border-b-\\[0\\.5px\\], [class*="border-b-[0.5px]"] { border-bottom: 1px solid #000000 !important; }
+    .border-t-\\[0\\.5px\\], [class*="border-t-[0.5px]"] { border-top: 1px solid #000000 !important; }
+    .border-\\[1px\\], [class*="border-[1px]"] { border: 1px solid #000000 !important; }
+    .border-b-\\[1px\\], [class*="border-b-[1px]"] { border-bottom: 1px solid #000000 !important; }
+    .border-t-\\[1px\\], [class*="border-t-[1px]"] { border-top: 1px solid #000000 !important; }
     .border-\\[1\\.2px\\] { border: 1.2px solid #000000 !important; }
     .border-\\[1\\.5px\\] { border: 1.5px solid #000000 !important; }
     .border-b-\\[1\\.2px\\] { border-bottom: 1.2px solid #000000 !important; }
@@ -3507,6 +3583,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           <span class="popup-badge badge-nota4">✅ Paper Size: ${pageDims.pageWidthMm} × ${pageDims.pageHeightMm} (Not A4)</span>
           <span class="popup-badge badge-box">📦 Box Border: ${printBoxBorder ? 'Active' : 'Off'}</span>
           <span class="popup-badge badge-box">🔲 Barcode Box: ${printBarcodeFrame ? 'Active' : 'Off'}</span>
+          ${printHorizontalOffsetMm !== 0 ? `<span class="popup-badge badge-orient" style="background: #1e3a8a; color: #93c5fd; border: 1px solid #3b82f6;">📐 Alignment Offset: ${printHorizontalOffsetMm > 0 ? `+${printHorizontalOffsetMm}` : printHorizontalOffsetMm}mm</span>` : ''}
         </div>
         <div style="display: flex; align-items: center; gap: 10px;">
           <button class="btn-print" onclick="try{document.title='\u200B';if(window.opener&&window.opener.document)window.opener.document.title='\u200B';}catch(e){}window.print()">
@@ -3530,11 +3607,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 6px; margin-top: 4px;">
         <div style="background: #fef2f2; color: #991b1b; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #f87171; display: flex; align-items: center; gap: 8px;">
           <span style="font-size: 14px;">🚫</span>
-          <span><b>To Remove App Name ("Kokanastha Operation") & Date:</b> In Chrome Print Dialog ➔ Click <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b> & set <b>Margins: "None"</b>.</span>
+          <span><b>To Remove App Name & Fix 3mm Right Shift:</b> In Chrome Print Dialog ➔ Click <b>More settings</b> ➔ <b>UNCHECK "Headers and footers"</b> & set <b>Margins: "None"</b>. (Default margins shift print 3mm to the right).</span>
         </div>
         <div style="background: #eff6ff; color: #1e40af; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid #60a5fa; display: flex; align-items: center; gap: 8px;">
           <span style="font-size: 14px;">📐</span>
-          <span><b>Horizontal Print Fix:</b> In Chrome Print Dialog ➔ Set <b>Layout to "LANDSCAPE"</b>. This ensures stickers print <b>HORIZONTALLY</b> and fit the box perfectly! (Paper size: "${pageDims.pageWidthMm} × ${pageDims.pageHeightMm}").</span>
+          <span><b>Horizontal Print Fix:</b> In Chrome Print Dialog ➔ Set <b>Layout to "LANDSCAPE"</b> for wide rolls (50×25mm) or <b>"PORTRAIT"</b> for tall rolls (60×100mm). This ensures stickers fit inside the box perfectly without any cut!</span>
         </div>
       </div>
     </div>
@@ -5041,7 +5118,8 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 box-sizing: border-box !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                overflow: hidden !important;
+                overflow: visible !important;
+                ${printAlignmentTarget === 'all' && printHorizontalOffsetMm !== 0 ? `transform: translateX(${printHorizontalOffsetMm}mm) !important;` : ''}
               }
 
               .barcode-print-row:last-child {
@@ -5115,11 +5193,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 display: block !important;
                 margin: 0 auto !important;
                 max-width: 100% !important;
-                height: auto !important;
                 background-color: #ffffff !important;
                 image-rendering: -webkit-optimize-contrast !important;
                 image-rendering: crisp-edges !important;
                 image-rendering: pixelated !important;
+                shape-rendering: crispEdges !important;
               }
 
               .barcode-label-sticker svg text {
@@ -5292,11 +5370,14 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                           type="button"
                           onClick={() => {
                             setPrintLabelSize(sz.id as any);
-                            if (['50x50', '50x75', '60x100', '100x60', '100x50', '100x75', '100x100'].includes(sz.id)) {
+                            if (sz.id === '60x100') {
+                              setPrintLabelsPerRow(1);
+                              setPrintOrientation('portrait');
+                              setPrintIncludeNutrition(true);
+                            } else if (['50x50', '50x75', '100x60', '100x50', '100x75', '100x100'].includes(sz.id)) {
                               setPrintIncludeNutrition(true);
                               setPrintLabelsPerRow(1);
-                            }
-                            if (sz.id === '50x25') {
+                            } else if (sz.id === '50x25') {
                               setPrintLabelsPerRow(2);
                               setPrintOrientation('landscape');
                             }
@@ -5418,6 +5499,113 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                         <span className="text-[10px] font-bold">⬇ Vertical</span>
                         <span className={`text-[8px] ${printOrientation === 'portrait' ? 'text-indigo-100' : 'text-slate-400'}`}>Tall Feed</span>
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Horizontal Alignment Calibration (Fix Chrome 3mm Shift / Printer Margins) */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                        <span>📐 Horizontal Print Alignment (Left / Right Offset)</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full ${
+                          printHorizontalOffsetMm === 0 
+                            ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200' 
+                            : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                        }`}>
+                          {printHorizontalOffsetMm === 0 ? 'Centered (0mm)' : printHorizontalOffsetMm > 0 ? `+${printHorizontalOffsetMm}mm Right` : `${printHorizontalOffsetMm}mm Left`}
+                        </span>
+                      </label>
+                      <span className="text-[9px] text-slate-500 font-mono">Compensates Chrome margins</span>
+                    </div>
+
+                    {/* Alignment Target: Barcode Only (Safe - Never cuts outer border) vs Entire Label */}
+                    <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-lg border border-slate-200 dark:border-slate-700">
+                      <span className="text-[9.5px] font-bold text-slate-600 dark:text-slate-300 pl-1 shrink-0">Shift Target:</span>
+                      <button
+                        type="button"
+                        onClick={() => setPrintAlignmentTarget('barcode')}
+                        className={`flex-1 py-1 px-2 rounded-md text-[10px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          printAlignmentTarget === 'barcode'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                        }`}
+                        title="Recommended: Safely shifts barcode lines and number without cutting the outer label border"
+                      >
+                        <span>🎯 Barcode Only</span>
+                        <span className="text-[8px] opacity-80">(Safe • No Border Cut)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPrintAlignmentTarget('all')}
+                        className={`flex-1 py-1 px-2 rounded-md text-[10px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          printAlignmentTarget === 'all'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                        }`}
+                        title="Shifts entire sticker row"
+                      >
+                        <span>📦 Entire Label Box</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPrintHorizontalOffsetMm(-3)}
+                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          printHorizontalOffsetMm === -3
+                            ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/30'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-[10px] font-black">⬅ -3 mm Left</span>
+                        <span className={`text-[8px] ${printHorizontalOffsetMm === -3 ? 'text-blue-100' : 'text-slate-400'}`}>Fix Chrome Shift</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPrintHorizontalOffsetMm(0)}
+                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          printHorizontalOffsetMm === 0
+                            ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/30'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-[10px] font-black">🎯 0 mm Center</span>
+                        <span className={`text-[8px] ${printHorizontalOffsetMm === 0 ? 'text-blue-100' : 'text-slate-400'}`}>Default Center</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPrintHorizontalOffsetMm(3)}
+                        className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          printHorizontalOffsetMm === 3
+                            ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/30'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-[10px] font-black">➡ +3 mm Right</span>
+                        <span className={`text-[8px] ${printHorizontalOffsetMm === 3 ? 'text-blue-100' : 'text-slate-400'}`}>Shift Right</span>
+                      </button>
+                      <div className="flex items-center justify-center gap-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2">
+                        <button 
+                          type="button"
+                          onClick={() => setPrintHorizontalOffsetMm(prev => Math.max(-10, prev - 1))}
+                          className="text-[12px] font-black px-1.5 py-1 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 rounded cursor-pointer"
+                          title="Decrease 1mm"
+                        >
+                          -
+                        </button>
+                        <span className="text-[10px] font-mono font-bold text-slate-800 dark:text-slate-100 min-w-[28px] text-center">
+                          {printHorizontalOffsetMm > 0 ? `+${printHorizontalOffsetMm}` : printHorizontalOffsetMm}mm
+                        </span>
+                        <button 
+                          type="button"
+                          onClick={() => setPrintHorizontalOffsetMm(prev => Math.min(10, prev + 1))}
+                          className="text-[12px] font-black px-1.5 py-1 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 rounded cursor-pointer"
+                          title="Increase 1mm"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -5610,6 +5798,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       mode="preview"
                       boxBorder={printBoxBorder}
                       barcodeFrame={printBarcodeFrame}
+                      barcodeOffsetMm={printAlignmentTarget === 'barcode' ? printHorizontalOffsetMm : 0}
                     />
                     <div className="text-[9px] text-slate-500 font-bold px-0.5">2-Up</div>
                     <ThermalBarcodeSticker
@@ -5630,6 +5819,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       mode="preview"
                       boxBorder={printBoxBorder}
                       barcodeFrame={printBarcodeFrame}
+                      barcodeOffsetMm={printAlignmentTarget === 'barcode' ? printHorizontalOffsetMm : 0}
                     />
                   </div>
                 ) : (
@@ -5652,6 +5842,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       mode="preview"
                       boxBorder={printBoxBorder}
                       barcodeFrame={printBarcodeFrame}
+                      barcodeOffsetMm={printAlignmentTarget === 'barcode' ? printHorizontalOffsetMm : 0}
                     />
                   </div>
                 )}
@@ -6043,6 +6234,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                                   mode="print"
                                   boxBorder={printBoxBorder}
                                   barcodeFrame={printBarcodeFrame}
+                                  barcodeOffsetMm={printAlignmentTarget === 'barcode' ? printHorizontalOffsetMm : 0}
                                 />
                               </div>
                             ))}
@@ -6139,13 +6331,13 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     </p>
                   </div>
 
-                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200/90 dark:border-amber-800/60 shadow-2xs">
-                    <div className="font-black text-slate-900 dark:text-slate-100 text-[10.5px] flex items-center gap-1.5">
-                      <span className="w-4 h-4 rounded-full bg-amber-500 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">4</span>
-                      <span>Margins: None | Scale: 100%</span>
+                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border-2 border-emerald-500 dark:border-emerald-600 shadow-2xs">
+                    <div className="font-black text-emerald-700 dark:text-emerald-300 text-[10.5px] flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-emerald-600 text-white inline-flex items-center justify-center text-[9px] font-black shrink-0">4</span>
+                      <span>Margins: NONE (Fixes 3mm Shift)</span>
                     </div>
                     <p className="text-[9.5px] text-slate-700 dark:text-slate-300 mt-1 leading-tight">
-                      Set <b>Margins</b> to <b>None</b> and <b>Scale</b> to <b>100%</b>. This ensures the barcode printing fits perfectly on the 60x100mm sticker without any shrinking or off-center alignment.
+                      Chrome default margins shift the barcode <b>3mm to the right</b>! In Chrome Print, set <b>Margins to "None"</b> and <b>Scale to 100%</b>, or click our <b>⬅ -3mm Left</b> alignment button.
                     </p>
                   </div>
                 </div>
@@ -6154,6 +6346,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   <div className="mt-2.5 pt-2.5 border-t border-amber-200 dark:border-amber-800/60 text-[10.5px] text-amber-950 dark:text-amber-200 space-y-2 bg-amber-100/50 dark:bg-amber-900/30 p-2.5 rounded-lg">
                     <p className="font-bold">🔍 Thermal Roll FAQs & Driver Tips:</p>
                     <div className="space-y-1 text-[10px] leading-relaxed">
+                      <p>
+                        <b>Q: Why does the barcode in Chrome print preview move 3 mm right side?</b><br />
+                        Chrome print dialog defaults to <b>Margins: Default</b>, which automatically adds ~3mm unprintable margin on the left side of thermal rolls. To fix this, click <b>More settings ➔ set Margins to "None"</b>, or use our <b>⬅ -3 mm Left</b> offset button above.
+                      </p>
                       <p>
                         <b>Q: Why was it printing vertically instead of horizontally?</b><br />
                         Thermal label rolls (50×25mm or 104×25mm) are wide horizontal boxes. If Chrome's layout is set to Portrait, it rotates the label vertically. Selecting <b>Layout: LANDSCAPE</b> in Chrome print dialog ensures 100% horizontal printing that fits inside the box perfectly.

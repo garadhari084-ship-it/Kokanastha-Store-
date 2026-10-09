@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeScannerState, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { X, Camera, RefreshCw, AlertCircle, CheckCircle2, Volume2 } from 'lucide-react';
 
 interface BarcodeScannerProps {
@@ -50,12 +50,29 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose 
           // Camera permission or listing error
         }
 
-        const qrCode = new Html5Qrcode(scannerId);
+        const qrCode = new Html5Qrcode(scannerId, {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.CODE_93,
+            Html5QrcodeSupportedFormats.ITF,
+            Html5QrcodeSupportedFormats.QR_CODE
+          ],
+          verbose: false
+        });
         html5QrCodeRef.current = qrCode;
 
         const config = {
-          fps: 10,
-          qrbox: { width: 260, height: 260 }
+          fps: 15,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const w = Math.min(320, Math.floor(viewfinderWidth * 0.9));
+            const h = Math.min(180, Math.max(110, Math.floor(viewfinderHeight * 0.45)));
+            return { width: w, height: h };
+          }
         };
 
         const onScanSuccess = (decodedText: string) => {

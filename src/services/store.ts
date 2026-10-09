@@ -2036,6 +2036,42 @@ class ERPStorage {
     );
   }
 
+  public findProductByBarcodeOrSku(query: string): Product | undefined {
+    if (!query) return undefined;
+    const clean = query.trim().toLowerCase();
+    return this.cache.products.find(p => 
+      (p.barcode && p.barcode.trim().toLowerCase() === clean) ||
+      (p.sku && p.sku.trim().toLowerCase() === clean) ||
+      (p.id && p.id.toLowerCase() === clean) ||
+      (p.qr_code && p.qr_code.trim().toLowerCase() === clean)
+    );
+  }
+
+  public async fetchProductByBarcodeOrSku(query: string): Promise<Product | undefined> {
+    const local = this.findProductByBarcodeOrSku(query);
+    if (local) return local;
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data } = await supabase
+          .from('products')
+          .select('*')
+          .or(`barcode.eq.${query},sku.eq.${query},id.eq.${query}`)
+          .limit(1)
+          .maybeSingle();
+        if (data) {
+          return {
+            ...data,
+            cost_price: Number(data.cost_price || 0),
+            selling_price: Number(data.selling_price || 0),
+            mrp: Number(data.mrp || data.selling_price || 0),
+            current_stock: Number(data.current_stock || 0)
+          };
+        }
+      } catch (_) {}
+    }
+    return undefined;
+  }
+
   public createProduct(prod: Omit<Product, 'id' | 'created_at' | 'current_stock'>): Product {
     if (!prod.sku || prod.sku.trim() === '') {
       prod.sku = 'SKU-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();

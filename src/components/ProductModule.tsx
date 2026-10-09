@@ -644,8 +644,12 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   const effectiveCompany = showCompanyName && companyName && companyName.trim().length > 0 
     ? companyName.trim() 
     : '';
-  const effectiveMrp = mrp || product.mrp || product.selling_price || 0;
-  const effectiveSale = salePrice || product.selling_price || 0;
+  const effectiveMrp = (mrp !== undefined && mrp !== null) 
+    ? (mrp === '' ? '' : mrp) 
+    : (product.mrp !== undefined && product.mrp !== null ? product.mrp : (product.selling_price || 0));
+  const effectiveSale = (salePrice !== undefined && salePrice !== null) 
+    ? (salePrice === '' ? '' : salePrice) 
+    : (product.selling_price || 0);
   const isVeg = product.food_packaging?.dietary_type ? product.food_packaging.dietary_type === 'veg' : product.food_packaging?.is_vegetarian !== false;
   const netWeight = product.food_packaging?.net_weight || product.unit || (size === '100x100' ? '1000g' : size === '100x75' ? '500g' : size === '60x100' ? '500g' : size === '50x75' ? '250g' : '100g');
   
@@ -704,11 +708,8 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
   // Calibrated bar module width to ensure barcode never exceeds box or bleeds
   const getBarWidth = (targetSize: string) => {
     if (targetSize === '38x25') return valLen > 12 ? 0.85 : valLen > 8 ? 0.92 : 1.0;
-    if (targetSize === '50x25') {
-      if (valLen > 15) return 0.95;
-      if (valLen > 12) return 1.15;
-      if (valLen > 8) return 1.25;
-      return 1.38;
+    if (targetSize === '50x25' || targetSize === '60x100') {
+      return valLen > 14 ? 1.05 : valLen > 11 ? 1.15 : 1.25;
     }
     if (targetSize === '40x25') return valLen > 13 ? 0.88 : valLen > 10 ? 0.95 : 1.05;
     if (targetSize === '50x30' || targetSize === '50x38') return valLen > 13 ? 0.95 : valLen > 10 ? 1.05 : 1.15;
@@ -738,14 +739,14 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           value={String(barcodeValue || '12345678').trim()} 
           height={h} 
           width={customW || barWidth}
-          fontSize={size === '60x100' ? 8.5 : size === '38x25' ? 7 : size === '50x25' ? 7.2 : size === '40x25' ? 7.5 : 8}
+          fontSize={size === '60x100' || size === '50x25' ? 8.5 : size === '38x25' ? 7 : size === '40x25' ? 7.5 : 8}
           margin={0}
           marginLeft={size === '50x25' ? 6 : 8}
           marginRight={size === '50x25' ? 6 : 8}
           marginTop={0}
-          marginBottom={size === '50x25' ? 5 : 3}
+          marginBottom={2}
           textMargin={2}
-          fontOptions={size === '50x25' ? undefined : 'bold'}
+          fontOptions="bold"
           font="monospace"
           displayValue={true}
           background="#ffffff"
@@ -1028,10 +1029,14 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           <div className="w-full border-[1.5px] border-black rounded-xs overflow-hidden shrink-0 text-black bg-white">
             <div className="flex justify-between items-center w-full px-2 py-0.8 bg-white border-b border-black leading-tight">
               <span className="text-[10px] font-bold text-black">
-                MRP (Incl. taxes): <span className="font-black text-[11.5px] text-black">₹{effectiveMrp}</span>
+                {effectiveMrp !== '' ? (
+                  <>MRP (Incl. taxes): <span className="font-black text-[11.5px] text-black">₹{effectiveMrp}</span></>
+                ) : (
+                  <span className="font-bold text-[10px] text-slate-500 uppercase">MRP: N/A</span>
+                )}
               </span>
               <span className="text-[12.5px] font-black text-black tracking-tight">
-                SALE: ₹{effectiveSale}
+                {effectiveSale !== '' ? `SALE: ₹${effectiveSale}` : ''}
               </span>
             </div>
             <div className="flex justify-between items-center w-full px-2 py-0.5 text-[8px] font-bold text-black bg-white leading-tight">
@@ -1609,9 +1614,9 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           {/* 3. Barcode Box - Scannable with Solid Border-b Under Barcode */}
           <div 
             className="w-full flex justify-center items-center shrink-0 border-b border-black py-0.5"
-            style={{ borderBottom: '1px solid #000000', boxSizing: 'border-box', textAlign: 'center' }}
+            style={{ borderBottom: '1px solid #000000', boxSizing: 'border-box', textAlign: 'center', overflow: 'visible' }}
           >
-            {renderBarcodeBox(mode === 'print' ? 9.5 : 10.5)}
+            {renderBarcodeBox(mode === 'print' ? 10 : 12)}
           </div>
 
           {/* 4. Commercial Pricing Box (MRP and SALE BOLD with PKD & EXP inside without ANY cut!) */}
@@ -1631,10 +1636,10 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
               style={{ borderBottom: '0.8px solid #000000', boxSizing: 'border-box' }}
             >
               <span className="text-[8.5px] font-black text-black leading-none">
-                MRP: ₹{effectiveMrp}
+                {effectiveMrp !== '' ? `MRP: ₹${effectiveMrp}` : 'MRP: N/A'}
               </span>
               <span className="text-[9px] font-black text-black tracking-tight leading-none">
-                SALE: ₹{effectiveSale}
+                {effectiveSale !== '' ? `SALE: ₹${effectiveSale}` : ''}
               </span>
             </div>
             {/* PKD & EXP Dates: Guaranteed inside the box, never cut off! */}
@@ -1757,7 +1762,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [printLabelsPerRow, setPrintLabelsPerRow] = useState<1 | 2>(2);
   const [printOrientation, setPrintOrientation] = useState<'auto' | 'landscape' | 'portrait' | 'rotated90' | 'thermal-portrait-fix' | 'thermal-270-fix'>('landscape');
   const [printHorizontalOffsetMm, setPrintHorizontalOffsetMm] = useState<number>(0);
-  const [printAlignmentTarget, setPrintAlignmentTarget] = useState<'barcode' | 'all'>('barcode');
+  const [printAlignmentTarget, setPrintAlignmentTarget] = useState<'barcode' | 'all'>('all');
   const [printBoxBorder, setPrintBoxBorder] = useState(true);
   const [printBarcodeFrame, setPrintBarcodeFrame] = useState(true);
   const [showPrintHelp, setShowPrintHelp] = useState(false);
@@ -1948,10 +1953,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         if (savedDefaults.label_size === '50x25') {
           setPrintLabelsPerRow(2);
           setPrintOrientation('landscape');
+          setPrintAlignmentTarget('all');
         } else if (savedDefaults.label_size === '60x100') {
           setPrintLabelsPerRow(1);
           setPrintOrientation('portrait');
           setPrintIncludeNutrition(true);
+          setPrintAlignmentTarget('all');
         }
       }
 
@@ -2996,6 +3003,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setPrintLabelSize('60x100');
     setPrintLabelsPerRow(1);
     setPrintOrientation('portrait');
+    setPrintAlignmentTarget('all');
     setPrintIncludeCompanyName(false);
     setPrintLabelCount(prod.current_stock > 0 ? (prod.current_stock > 20 ? 20 : prod.current_stock) : 10);
     setPrintSalePrice(prod.selling_price !== undefined && prod.selling_price !== null ? prod.selling_price : '');
@@ -5118,8 +5126,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 box-sizing: border-box !important;
                 margin: 0 !important;
                 padding: 0 !important;
+                padding-left: ${printAlignmentTarget === 'all' && printHorizontalOffsetMm > 0 ? `${printHorizontalOffsetMm}mm` : '0'} !important;
+                padding-right: ${printAlignmentTarget === 'all' && printHorizontalOffsetMm < 0 ? `${Math.abs(printHorizontalOffsetMm)}mm` : '0'} !important;
                 overflow: visible !important;
-                ${printAlignmentTarget === 'all' && printHorizontalOffsetMm !== 0 ? `transform: translateX(${printHorizontalOffsetMm}mm) !important;` : ''}
               }
 
               .barcode-print-row:last-child {
@@ -5129,12 +5138,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
               
               .barcode-label-sticker {
                 width: ${printLabelsPerRow === 2 && !getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).isRotated 
-                  ? `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm} - 1mm)` 
-                  : `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} - 1mm)`} !important;
+                  ? `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm} - ${printAlignmentTarget === 'all' && printHorizontalOffsetMm !== 0 ? Math.abs(printHorizontalOffsetMm) + 1.2 : 1}mm)` 
+                  : `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} - ${printAlignmentTarget === 'all' && printHorizontalOffsetMm !== 0 ? Math.abs(printHorizontalOffsetMm) + 1.2 : 1}mm)`} !important;
                 height: calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm} - 1.2mm) !important;
                 max-width: ${printLabelsPerRow === 2 && !getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).isRotated 
-                  ? `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm} - 1mm)` 
-                  : `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} - 1mm)`} !important;
+                  ? `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).baseDims.stickerWidthMm} - ${printAlignmentTarget === 'all' && printHorizontalOffsetMm !== 0 ? Math.abs(printHorizontalOffsetMm) + 1.2 : 1}mm)` 
+                  : `calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageWidthMm} - ${printAlignmentTarget === 'all' && printHorizontalOffsetMm !== 0 ? Math.abs(printHorizontalOffsetMm) + 1.2 : 1}mm)`} !important;
                 max-height: calc(${getPrintPageDimensions(printLabelSize, printLabelsPerRow, printOrientation, printerType).pageHeightMm} - 1.2mm) !important;
                 margin: 0.6mm auto !important;
                 padding: 0 !important;
@@ -5144,7 +5153,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 justify-content: flex-start !important;
                 align-items: center !important;
                 text-align: center !important;
-                overflow: hidden !important;
+                overflow: visible !important;
                 background: #ffffff !important;
                 color: #000000 !important;
                 page-break-inside: avoid !important;
@@ -5374,12 +5383,14 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                               setPrintLabelsPerRow(1);
                               setPrintOrientation('portrait');
                               setPrintIncludeNutrition(true);
+                              setPrintAlignmentTarget('all');
                             } else if (['50x50', '50x75', '100x60', '100x50', '100x75', '100x100'].includes(sz.id)) {
                               setPrintIncludeNutrition(true);
                               setPrintLabelsPerRow(1);
                             } else if (sz.id === '50x25') {
                               setPrintLabelsPerRow(2);
                               setPrintOrientation('landscape');
+                              setPrintAlignmentTarget('all');
                             }
                           }}
                           className={`py-1.5 px-2 rounded-lg text-left transition-all cursor-pointer flex flex-col ${
@@ -5779,7 +5790,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 
                 {/* 2-Up Dual Sticker Row Preview */}
                 {printerType === 'thermal' && printLabelsPerRow === 2 ? (
-                  <div className="flex items-center gap-2 p-3 bg-slate-200 dark:bg-slate-900/60 rounded-xl border border-slate-300 dark:border-slate-700 overflow-x-auto max-w-full justify-center">
+                  <div 
+                    className="flex items-center gap-2 p-3 bg-slate-200 dark:bg-slate-900/60 rounded-xl border border-slate-300 dark:border-slate-700 overflow-x-auto max-w-full justify-center transition-transform duration-150"
+                    style={printAlignmentTarget === 'all' && printHorizontalOffsetMm !== 0 ? { transform: `translateX(${printHorizontalOffsetMm * 3.78}px)` } : undefined}
+                  >
                     <ThermalBarcodeSticker
                       product={printingBarcodeProduct}
                       size={printLabelSize}
@@ -5823,7 +5837,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                     />
                   </div>
                 ) : (
-                  <div className="p-3 bg-slate-200 dark:bg-slate-900/60 rounded-xl border border-slate-300 dark:border-slate-700 flex justify-center items-center overflow-x-auto max-w-full">
+                  <div 
+                    className="p-3 bg-slate-200 dark:bg-slate-900/60 rounded-xl border border-slate-300 dark:border-slate-700 flex justify-center items-center overflow-x-auto max-w-full transition-transform duration-150"
+                    style={printAlignmentTarget === 'all' && printHorizontalOffsetMm !== 0 ? { transform: `translateX(${printHorizontalOffsetMm * 3.78}px)` } : undefined}
+                  >
                     <ThermalBarcodeSticker
                       product={printingBarcodeProduct}
                       size={printLabelSize}

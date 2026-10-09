@@ -57,11 +57,14 @@ export const RightScrollWidget: React.FC<RightScrollWidgetProps> = ({
     const canScroll = maxScroll > 10 && trackHeight > 40;
 
     if (!canScroll || trackHeight <= 0) {
-      setThumbMetrics({
-        thumbTop: 0,
-        thumbHeight: trackHeight > 0 ? trackHeight : 30,
-        canScroll: false,
-        scrollProgress: 0,
+      setThumbMetrics(prev => {
+        if (!prev.canScroll && prev.thumbTop === 0 && prev.scrollProgress === 0) return prev;
+        return {
+          thumbTop: 0,
+          thumbHeight: trackHeight > 0 ? trackHeight : 30,
+          canScroll: false,
+          scrollProgress: 0,
+        };
       });
       return;
     }
@@ -71,12 +74,23 @@ export const RightScrollWidget: React.FC<RightScrollWidgetProps> = ({
     const availableTrack = trackHeight - rawThumbHeight;
     const scrollRatio = Math.max(0, Math.min(1, scrollTop / maxScroll));
     const thumbTop = scrollRatio * availableTrack;
+    const scrollProgress = Math.round(scrollRatio * 100);
 
-    setThumbMetrics({
-      thumbTop,
-      thumbHeight: rawThumbHeight,
-      canScroll: true,
-      scrollProgress: Math.round(scrollRatio * 100),
+    setThumbMetrics(prev => {
+      if (
+        prev.canScroll &&
+        Math.abs(prev.thumbTop - thumbTop) < 0.5 &&
+        Math.abs(prev.thumbHeight - rawThumbHeight) < 0.5 &&
+        prev.scrollProgress === scrollProgress
+      ) {
+        return prev;
+      }
+      return {
+        thumbTop,
+        thumbHeight: rawThumbHeight,
+        canScroll: true,
+        scrollProgress,
+      };
     });
   }, [getScrollContainer]);
 

@@ -972,6 +972,10 @@ class ERPStorage {
       return allRows;
     };
 
+       const prevSalesSig = (this.cache.sales || []).map(s => s.id + s.status + (s.total_amount || 0)).join(',');
+       const prevCustomersSig = (this.cache.customers || []).map(c => c.id + (c.outstanding_amount || 0)).join(',');
+       const prevProductsSig = (this.cache.products || []).map(p => p.id + (p.current_stock || 0)).join(',');
+
        const syncPromises = Object.entries(tables)
       .filter(([_, table]) => !targetTable || table === targetTable)
       .map(async ([key, table]) => {
@@ -1074,13 +1078,14 @@ class ERPStorage {
                };
              });
 
-             // Preserve pending offline sales ONLY if not deleted
-             const pendingOfflineSales = (this.cache.sales || []).filter(s => 
-               this.pendingUploads.has(s.id) && !deletedSalesIds.has(s.id) && (!s.order_number || !deletedSalesIds.has(s.order_number))
-             );
-             pendingOfflineSales.forEach(pos => {
-               if (!mergedSales.some(s => s.id === pos.id)) {
-                 mergedSales.push(pos);
+             // Preserve ALL existing sales orders in cache that are not explicitly deleted
+             // (Guarantees newly created orders, offline orders, or concurrent orders are NEVER lost or hidden!)
+             (this.cache.sales || []).forEach(localSO => {
+               if (localSO && !deletedSalesIds.has(localSO.id) && (!localSO.order_number || !deletedSalesIds.has(localSO.order_number))) {
+                 const alreadyMerged = mergedSales.some(s => s.id === localSO.id || (s.order_number && s.order_number === localSO.order_number));
+                 if (!alreadyMerged) {
+                   mergedSales.push(localSO);
+                 }
                }
              });
 
@@ -1258,7 +1263,13 @@ class ERPStorage {
 
     await Promise.all(syncPromises);
 
-    this.notify();
+    const newSalesSig = (this.cache.sales || []).map(s => s.id + s.status + (s.total_amount || 0)).join(',');
+    const newCustomersSig = (this.cache.customers || []).map(c => c.id + (c.outstanding_amount || 0)).join(',');
+    const newProductsSig = (this.cache.products || []).map(p => p.id + (p.current_stock || 0)).join(',');
+
+    if (prevSalesSig !== newSalesSig || prevCustomersSig !== newCustomersSig || prevProductsSig !== newProductsSig) {
+      this.notify();
+    }
     } catch (err) {
       console.warn('Supabase syncFromSupabase network error:', err);
     }

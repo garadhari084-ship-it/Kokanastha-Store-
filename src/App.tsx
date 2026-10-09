@@ -1344,6 +1344,10 @@ export default function App() {
     setIsMobileMenuOpen(false);
   };
 
+  const handleClearDeepLink = useCallback(() => {
+    setDeepLinkData(null);
+  }, []);
+
   const handlePackingAlertDismiss = (messageId?: string) => {
     if (messageId) {
       setDismissedAlertMsgIds(prev => Array.from(new Set([...prev, messageId])));
@@ -1760,7 +1764,7 @@ export default function App() {
             openAddModalInitially={deepLinkData?.openAddModal || false}
             selectedOrderIdInitially={deepLinkData?.orderId || null}
             deepLinkData={deepLinkData}
-            onClearDeepLink={() => setDeepLinkData(null)}
+            onClearDeepLink={handleClearDeepLink}
           />
         );
       case 'packing':

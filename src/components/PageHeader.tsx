@@ -13,6 +13,7 @@ interface PageHeaderProps {
   children?: React.ReactNode;
   bottomContent?: React.ReactNode;
   showThemeSelector?: boolean;
+  hideCreateOrderButton?: boolean;
 }
 
 export const PageHeader: React.FC<PageHeaderProps> = ({
@@ -24,7 +25,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   rightContent,
   children,
   bottomContent,
-  showThemeSelector = false
+  showThemeSelector = false,
+  hideCreateOrderButton = false
 }) => {
   const [selectedTheme, setSelectedTheme] = useState<ColorTheme>('midnight-gold');
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
@@ -135,13 +137,15 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             )}
 
             {/* Create Order Global Button */}
-            <button
-              onClick={() => window.dispatchEvent(new Event('open-create-order'))}
-              className="p-1.5 md:px-4 md:py-1.5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl font-extrabold text-[11px] md:text-[12px] transition cursor-pointer shadow-lg flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
-            >
-              <PlusCircle size={16} />
-              <span className="hidden md:inline-block">Create Order</span>
-            </button>
+            {!hideCreateOrderButton && (
+              <button
+                onClick={() => window.dispatchEvent(new Event('open-create-order'))}
+                className="p-1.5 md:px-4 md:py-1.5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl font-extrabold text-[11px] md:text-[12px] transition cursor-pointer shadow-lg flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+              >
+                <PlusCircle size={16} />
+                <span className="hidden md:inline-block">Create Order</span>
+              </button>
+            )}
           </div>
         </div>
 

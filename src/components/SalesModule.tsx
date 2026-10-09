@@ -813,9 +813,32 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
   useEffect(() => {
     return dbStore.subscribe(() => {
-      setOrders(dbStore.getSalesOrders(businessId));
-      setCustomers(dbStore.getCustomers(businessId));
-      setProducts(dbStore.getProducts(businessId));
+      const nextOrders = dbStore.getSalesOrders(businessId);
+      setOrders(prev => {
+        if (prev.length === nextOrders.length) {
+          const isSame = prev.every((o, idx) => o.id === nextOrders[idx]?.id && o.status === nextOrders[idx]?.status && o.total_amount === nextOrders[idx]?.total_amount && o.paid_amount === nextOrders[idx]?.paid_amount);
+          if (isSame) return prev;
+        }
+        return nextOrders;
+      });
+
+      const nextCusts = dbStore.getCustomers(businessId);
+      setCustomers(prev => {
+        if (prev.length === nextCusts.length) {
+          const isSame = prev.every((c, idx) => c.id === nextCusts[idx]?.id && c.name === nextCusts[idx]?.name && c.outstanding_amount === nextCusts[idx]?.outstanding_amount);
+          if (isSame) return prev;
+        }
+        return nextCusts;
+      });
+
+      const nextProds = dbStore.getProducts(businessId);
+      setProducts(prev => {
+        if (prev.length === nextProds.length) {
+          const isSame = prev.every((p, idx) => p.id === nextProds[idx]?.id && p.selling_price === nextProds[idx]?.selling_price && p.current_stock === nextProds[idx]?.current_stock);
+          if (isSame) return prev;
+        }
+        return nextProds;
+      });
 
       // Live synchronize invoice number if Create Order modal is actively open
       if (isCreateModalOpenRef.current && !editingOrderId && draftSessionIdRef.current) {
@@ -1705,6 +1728,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         title="Sales & Bookings Master"
         subtitle="Manage B2B/B2C pipelines, bulk orders, and corporate billing cycles"
         icon={FileText}
+        hideCreateOrderButton={true}
         rightContent={
           <div className="flex items-center gap-3">
             {/* Create Order Button */}

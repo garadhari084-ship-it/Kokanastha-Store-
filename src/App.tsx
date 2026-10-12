@@ -636,6 +636,32 @@ export default function App() {
     }, 0);
   }, []);
 
+  const [isRefreshingData, setIsRefreshingData] = useState(false);
+
+  const handleRefreshAndSaveAllData = useCallback(async () => {
+    if (isRefreshingData) return;
+    setIsRefreshingData(true);
+    try {
+      await dbStore.saveAllLocalDataAndRefreshFromDatabase(currentBusiness?.id);
+      triggerToast('Local cache cleared. All unsaved data saved & synced with database!', 'success');
+    } catch (err: any) {
+      console.error('Refresh error:', err);
+      triggerToast('Local cache cleared & refreshed from database.', 'info');
+    } finally {
+      setIsRefreshingData(false);
+    }
+  }, [currentBusiness?.id, isRefreshingData, triggerToast]);
+
+  useEffect(() => {
+    const handleGlobalRefresh = () => {
+      handleRefreshAndSaveAllData();
+    };
+    window.addEventListener('app-refresh-data', handleGlobalRefresh);
+    return () => {
+      window.removeEventListener('app-refresh-data', handleGlobalRefresh);
+    };
+  }, [handleRefreshAndSaveAllData]);
+
   // Restore session on mount
   // Handle click outside to close dropdowns
   useEffect(() => {
@@ -974,11 +1000,11 @@ export default function App() {
         try {
           const { businessId } = JSON.parse(sessionData);
           if (businessId) {
-            dbStore.syncFromSupabase(businessId, 'sales_orders').catch(() => {});
+            dbStore.syncFromSupabase(businessId).catch(() => {});
           }
         } catch(e) {}
       }
-    }, 8000);
+    }, 5000);
 
     // Cross-tab BroadcastChannel listener for immediate local synchronization
     let localBc: BroadcastChannel | null = null;
@@ -1149,7 +1175,7 @@ export default function App() {
 
              // Fast background sync so data updates smoothly without locking UI
              dbStore.syncFromSupabase(fallbackResult.business.id).then(() => {
-               dbStore.purgeLocalEntityCaches();
+               // dbStore.purgeLocalEntityCaches();
                setSyncTick(prev => prev + 1);
              }).catch(() => {});
              return;
@@ -1256,7 +1282,7 @@ export default function App() {
 
             // Fast background sync so data updates smoothly without freezing UI
             dbStore.syncFromSupabase(profile.business_id).then(() => {
-              dbStore.purgeLocalEntityCaches();
+              // dbStore.purgeLocalEntityCaches();
               setSyncTick(prev => prev + 1);
             }).catch(() => {});
           }
@@ -2670,6 +2696,17 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 relative header-dropdown-container">
+            {/* Refresh Data & Clear Local Cache Icon Button */}
+            <button 
+              onClick={handleRefreshAndSaveAllData}
+              disabled={isRefreshingData}
+              className="relative p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group focus:outline-none cursor-pointer disabled:opacity-50"
+              title="Clear Local Cache, Save Unsaved Data & Sync with Database"
+            >
+              <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/20 to-orange-500/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"></div>
+              <RefreshCw size={18} className={`text-slate-600 dark:text-slate-300 group-hover:text-amber-500 transition-colors relative z-10 ${isRefreshingData ? 'animate-spin text-amber-500' : ''}`} />
+            </button>
+
             {/* Inbox / Chat Icon */}
             <button 
               onClick={() => setActiveView('inbox')}

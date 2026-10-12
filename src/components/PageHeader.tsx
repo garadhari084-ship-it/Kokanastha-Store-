@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Palette, ChevronDown, PlusCircle } from 'lucide-react';
+import { Palette, ChevronDown, PlusCircle, RefreshCw } from 'lucide-react';
 
 export type ColorTheme = 'midnight-gold' | 'emerald-pro' | 'royal-sapphire' | 'titanium-dark';
 
@@ -30,7 +30,14 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 }) => {
   const [selectedTheme, setSelectedTheme] = useState<ColorTheme>('midnight-gold');
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleRefreshClick = () => {
+    setIsRefreshing(true);
+    window.dispatchEvent(new Event('app-refresh-data'));
+    setTimeout(() => setIsRefreshing(false), 1200);
+  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -104,6 +111,17 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           {/* Right side controls */}
           <div className="flex items-center justify-end gap-2 sm:gap-2.5 flex-wrap shrink-0 self-end ml-auto">
             {rightContent}
+
+            {/* Refresh Data & Clear Local Cache Icon Button */}
+            <button
+              onClick={handleRefreshClick}
+              disabled={isRefreshing}
+              className="p-1.5 md:px-3 md:py-1.5 bg-white/10 hover:bg-white/15 border border-white/20 text-slate-200 rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer min-w-[32px] shrink-0 active:scale-95 disabled:opacity-50"
+              title="Clear Local Cache, Save Unsaved Data & Refresh from Database"
+            >
+              <RefreshCw size={14} className={`text-amber-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline-block">Refresh Data</span>
+            </button>
 
             {/* Color Theme Selector */}
             {showThemeSelector && (

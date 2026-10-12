@@ -448,6 +448,19 @@ CREATE TABLE IF NOT EXISTS customer_subscriptions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Combo History Audit Logs
+CREATE TABLE IF NOT EXISTS combo_history_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    combo_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    combo_name VARCHAR(255) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    qty INTEGER NOT NULL DEFAULT 1,
+    user_name VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Ensure foreign key flexibilities and column definitions on customer_subscriptions and loyalty_logs
 DO $$ 
 BEGIN
@@ -642,6 +655,7 @@ ALTER TABLE loyalty_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loyalty_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customer_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE combo_history_logs ENABLE ROW LEVEL SECURITY;
 
 -- Helper function to extract current user's business_id from user metadata
 -- In production, Supabase sets business_id via auth.jwt() claims or user_profile query
@@ -699,6 +713,42 @@ CREATE POLICY tenant_isolation_business_settings ON business_settings
 CREATE POLICY tenant_isolation_loyalty_configs ON loyalty_configs
     FOR ALL USING (business_id = get_user_business_id());
 
+DROP POLICY IF EXISTS dev_public_businesses ON businesses;
+CREATE POLICY dev_public_businesses ON businesses FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_users_profiles ON users_profiles;
+CREATE POLICY dev_public_users_profiles ON users_profiles FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_categories ON categories;
+CREATE POLICY dev_public_categories ON categories FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_products ON products;
+CREATE POLICY dev_public_products ON products FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_customers ON customers;
+CREATE POLICY dev_public_customers ON customers FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_suppliers ON suppliers;
+CREATE POLICY dev_public_suppliers ON suppliers FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_purchase_orders ON purchase_orders;
+CREATE POLICY dev_public_purchase_orders ON purchase_orders FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_sales_orders ON sales_orders;
+CREATE POLICY dev_public_sales_orders ON sales_orders FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_stock_logs ON stock_logs;
+CREATE POLICY dev_public_stock_logs ON stock_logs FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_system_audit_logs ON system_audit_logs;
+CREATE POLICY dev_public_system_audit_logs ON system_audit_logs FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_business_settings ON business_settings;
+CREATE POLICY dev_public_business_settings ON business_settings FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_loyalty_configs ON loyalty_configs;
+CREATE POLICY dev_public_loyalty_configs ON loyalty_configs FOR ALL USING (true);
+
 DROP POLICY IF EXISTS dev_public_chat_messages ON chat_messages;
 CREATE POLICY dev_public_chat_messages ON chat_messages FOR ALL USING (true);
 
@@ -707,6 +757,9 @@ CREATE POLICY dev_public_loyalty_logs ON loyalty_logs FOR ALL USING (true);
 
 DROP POLICY IF EXISTS dev_public_customer_subscriptions ON customer_subscriptions;
 CREATE POLICY dev_public_customer_subscriptions ON customer_subscriptions FOR ALL USING (true);
+
+DROP POLICY IF EXISTS dev_public_combo_history_logs ON combo_history_logs;
+CREATE POLICY dev_public_combo_history_logs ON combo_history_logs FOR ALL USING (true);
 
 -- ====================================================================
 -- REALTIME SUBSCRIPTIONS
@@ -721,7 +774,7 @@ DECLARE
       'suppliers', 'purchase_orders', 'purchase_order_items', 'sales_orders', 
       'sales_order_items', 'packing_sessions', 'packing_scan_logs', 'stock_logs', 
       'system_audit_logs', 'chat_messages', 'business_settings', 'loyalty_configs', 
-      'loyalty_logs', 'customer_subscriptions'
+      'loyalty_logs', 'customer_subscriptions', 'combo_history_logs'
     ];
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN

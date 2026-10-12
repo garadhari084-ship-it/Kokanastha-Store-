@@ -711,13 +711,7 @@ class ERPStorage {
       } else {
         cacheArr.unshift(record);
       }
-      if (!this.isCloudSessionActive()) {
-        try {
-          safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
-        } catch (_) {}
-      } else {
-        safeStorage.removeItem(`omnipack_erp_${key}`);
-      }
+      safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
       this.notify();
     }
   }
@@ -729,13 +723,7 @@ class ERPStorage {
       const idx = cacheArr.findIndex((item: any) => item.id === id);
       if (idx !== -1) {
         cacheArr.splice(idx, 1);
-        if (!this.isCloudSessionActive()) {
-          try {
-            safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
-          } catch (_) {}
-        } else {
-          safeStorage.removeItem(`omnipack_erp_${key}`);
-        }
+        safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
         this.notify();
       }
     }
@@ -780,12 +768,12 @@ class ERPStorage {
     this.cache = {
       businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),
       profiles: this.load('profiles', PRE_SEEDED_PROFILES),
-      categories: this.load('categories', isInitialized ? [] : PRE_SEEDED_CATEGORIES),
-      products: this.load('products', isInitialized ? [] : PRE_SEEDED_PRODUCTS),
-      customers: this.load('customers', isInitialized ? [] : PRE_SEEDED_CUSTOMERS),
-      suppliers: this.load('suppliers', isInitialized ? [] : PRE_SEEDED_SUPPLIERS),
-      purchases: this.load('purchases', isInitialized ? [] : PRE_SEEDED_PURCHASES),
-      sales: this.load('sales', isInitialized ? [] : PRE_SEEDED_SALES),
+      categories: (() => { const lc = this.load('categories', []); return Array.isArray(lc) && lc.length > 0 ? lc : PRE_SEEDED_CATEGORIES; })(),
+      products: (() => { const lp = this.load('products', []); return Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PRODUCTS; })(),
+      customers: (() => { const lc = this.load('customers', []); return Array.isArray(lc) && lc.length > 0 ? lc : PRE_SEEDED_CUSTOMERS; })(),
+      suppliers: (() => { const ls = this.load('suppliers', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SUPPLIERS; })(),
+      purchases: (() => { const lp = this.load('purchases', []); return Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PURCHASES; })(),
+      sales: (() => { const ls = this.load('sales', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES; })(),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
       auditLogs: this.load('auditLogs', isInitialized ? [] : PRE_SEEDED_SYSTEM_AUDIT_LOGS),
@@ -881,12 +869,12 @@ class ERPStorage {
     this.cache = {
       businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),
       profiles: this.load('profiles', PRE_SEEDED_PROFILES),
-      categories: this.load('categories', isInitialized ? [] : PRE_SEEDED_CATEGORIES),
-      products: this.load('products', isInitialized ? [] : PRE_SEEDED_PRODUCTS),
-      customers: this.load('customers', isInitialized ? [] : PRE_SEEDED_CUSTOMERS),
-      suppliers: this.load('suppliers', isInitialized ? [] : PRE_SEEDED_SUPPLIERS),
-      purchases: this.load('purchases', isInitialized ? [] : PRE_SEEDED_PURCHASES),
-      sales: this.load('sales', isInitialized ? [] : PRE_SEEDED_SALES),
+      categories: (() => { const lc = this.load('categories', []); return Array.isArray(lc) && lc.length > 0 ? lc : PRE_SEEDED_CATEGORIES; })(),
+      products: (() => { const lp = this.load('products', []); return Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PRODUCTS; })(),
+      customers: (() => { const lc = this.load('customers', []); return Array.isArray(lc) && lc.length > 0 ? lc : PRE_SEEDED_CUSTOMERS; })(),
+      suppliers: (() => { const ls = this.load('suppliers', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SUPPLIERS; })(),
+      purchases: (() => { const lp = this.load('purchases', []); return Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PURCHASES; })(),
+      sales: (() => { const ls = this.load('sales', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES; })(),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
       auditLogs: this.load('auditLogs', isInitialized ? [] : PRE_SEEDED_SYSTEM_AUDIT_LOGS),
@@ -1000,31 +988,14 @@ class ERPStorage {
       if (this.knownMissingTables.has(tableName)) return [];
       let allRows: any[] = [];
       const normBId = bId ? normalizeBusinessId(bId) : undefined;
-      const validBId = normBId && isValidUUID(normBId) ? normBId : undefined;
 
       try {
-        let q = supabase.from(tableName).select('*').limit(2000);
-        if (validBId && tableName !== 'businesses' && tableName !== 'users_profiles' && tableName !== 'business_settings') {
-          q = q.or(`business_id.eq.${validBId},business_id.is.null`);
-        } else if (validBId && tableName === 'businesses') {
-          q = q.or(`id.eq.${validBId}`);
-        }
-
-        const { data, error } = await q;
+        const { data, error } = await supabase.from(tableName).select('*').limit(5000);
 
         if (error) {
           if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.toLowerCase().includes('does not exist')) {
             this.knownMissingTables.add(tableName);
             return [];
-          }
-          // If .or query failed due to schema difference, fallback to plain select once
-          const { data: fallbackData, error: fbErr } = await supabase.from(tableName).select('*').limit(2000);
-          if (fbErr && (fbErr.code === 'PGRST205' || fbErr.code === '42P01' || fbErr.message?.toLowerCase().includes('does not exist'))) {
-            this.knownMissingTables.add(tableName);
-            return [];
-          }
-          if (fallbackData) {
-            allRows = fallbackData;
           }
         } else if (data) {
           allRows = data;
@@ -1033,17 +1004,14 @@ class ERPStorage {
         console.warn(`Supabase fetchAllFromTable catch error on ${tableName}:`, err);
       }
 
-      // Normalize business_id on all fetched rows so they render under active business
+      // Normalize business_id on all fetched rows so ALL database records display in active business views
       if (normBId && allRows.length > 0) {
         allRows = allRows.map(row => {
           if (!row || typeof row !== 'object') return row;
           if (tableName === 'businesses') {
             return { ...row, id: normBId };
           }
-          if (!row.business_id || isSameBusiness(row.business_id, normBId)) {
-            return { ...row, business_id: normBId };
-          }
-          return row;
+          return { ...row, business_id: normBId };
         });
       }
 
@@ -1204,11 +1172,8 @@ class ERPStorage {
              // Purge any deleted sales orders
              const finalMergedSales = mergedSales.filter(s => s.id && !deletedSalesIds.has(s.id));
              this.cache.sales = finalMergedSales;
-             if (!this.isCloudSessionActive()) {
-               safeStorage.setItem('omnipack_erp_sales', JSON.stringify(finalMergedSales));
-             } else {
-               safeStorage.removeItem('omnipack_erp_sales');
-             }
+             safeStorage.setItem('omnipack_erp_sales', JSON.stringify(finalMergedSales));
+             
              this.notify();
           } else if (key === 'customers') {
              const mergedCustomers = (data || []).map((remoteCust: any) => {
@@ -1232,11 +1197,8 @@ class ERPStorage {
              });
 
              this.cache.customers = mergedCustomers;
-             if (!this.isCloudSessionActive()) {
-               safeStorage.setItem('omnipack_erp_customers', JSON.stringify(mergedCustomers));
-             } else {
-               safeStorage.removeItem('omnipack_erp_customers');
-             }
+             safeStorage.setItem('omnipack_erp_customers', JSON.stringify(mergedCustomers));
+             
              this.notify();
           } else if (key === 'purchases') {
              const itemsData = await fetchAllFromTable('purchase_order_items');
@@ -1265,11 +1227,8 @@ class ERPStorage {
              });
 
              this.cache.purchases = mergedPurchases;
-             if (!this.isCloudSessionActive()) {
-               safeStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
-             } else {
-               safeStorage.removeItem('omnipack_erp_purchases');
-             }
+             safeStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
+             
           } else if (key === 'products') {
              const mergedProducts = (data || []).map((remoteProd: any) => {
                const localProd = (this.cache.products || []).find(p => p.id === remoteProd.id);
@@ -1299,11 +1258,8 @@ class ERPStorage {
              });
 
              this.cache.products = mergedProducts;
-             if (!this.isCloudSessionActive()) {
-               safeStorage.setItem('omnipack_erp_products', JSON.stringify(mergedProducts));
-             } else {
-               safeStorage.removeItem('omnipack_erp_products');
-             }
+             safeStorage.setItem('omnipack_erp_products', JSON.stringify(mergedProducts));
+             
              this.notify();
           } else if (key === 'categories') {
              const mergedCategories = (data || []).map((remoteCat: any) => {
@@ -1324,11 +1280,8 @@ class ERPStorage {
              });
 
              this.cache.categories = mergedCategories;
-             if (!this.isCloudSessionActive()) {
-               safeStorage.setItem('omnipack_erp_categories', JSON.stringify(mergedCategories));
-             } else {
-               safeStorage.removeItem('omnipack_erp_categories');
-             }
+             safeStorage.setItem('omnipack_erp_categories', JSON.stringify(mergedCategories));
+             
           } else if (key === 'suppliers') {
              const mergedSuppliers = (data || []).map((remoteSup: any) => {
                const localSup = (this.cache.suppliers || []).find(s => s.id === remoteSup.id);
@@ -1348,11 +1301,8 @@ class ERPStorage {
              });
 
              this.cache.suppliers = mergedSuppliers;
-             if (!this.isCloudSessionActive()) {
-               safeStorage.setItem('omnipack_erp_suppliers', JSON.stringify(mergedSuppliers));
-             } else {
-               safeStorage.removeItem('omnipack_erp_suppliers');
-             }
+             safeStorage.setItem('omnipack_erp_suppliers', JSON.stringify(mergedSuppliers));
+             
           } else if (key === 'businesses') {
              const mergedBusinesses = (data || []).map((b: any) => {
                 const existing = (this.cache.businesses || []).find(eb => eb.id === b.id);
@@ -1392,11 +1342,8 @@ class ERPStorage {
              safeStorage.setItem('omnipack_erp_businesses', JSON.stringify(this.cache.businesses));
           } else {
              (this.cache as any)[key] = data;
-             if (!this.isCloudSessionActive()) {
-               safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
-             } else {
-               safeStorage.removeItem(`omnipack_erp_${key}`);
-             }
+             safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
+             
           }
        }
        } catch (tableErr) {
@@ -1407,11 +1354,7 @@ class ERPStorage {
     await Promise.all(syncPromises);
 
     // If user is authenticated in cloud session, ensure operational entities are not kept on local machine disk
-    try {
-      if (this.isCloudSessionActive()) {
-        this.purgeLocalEntityCaches();
-      }
-    } catch (_) {}
+    
 
     const newSalesSig = (this.cache.sales || []).map(s => s.id + s.status + (s.total_amount || 0)).join(',');
     const newCustomersSig = (this.cache.customers || []).map(c => c.id + (c.outstanding_amount || 0)).join(',');
@@ -1980,37 +1923,11 @@ class ERPStorage {
   private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string, secondaryDeleteKey?: string) {
     this.syncToSupabase(key, dataItem, isDelete, deleteId, secondaryDeleteKey);
     try {
-      // When user is authenticated with Supabase, all activity is saved ONLY in Supabase DB
-      const isCloudSession = this.isCloudSessionActive();
-
-      // When user is logged in to Supabase, any activity (create order, add product, customer, etc.)
-      // is saved ONLY in Supabase database and NOT persisted on the local machine disk.
-      const operationalKeys: (keyof typeof this.cache)[] = [
-        'sales',
-        'products',
-        'customers',
-        'purchases',
-        'categories',
-        'suppliers',
-        'stockLogs',
-        'auditLogs',
-        'packingSessions',
-        'messages',
-        'loyaltyLogs',
-        'subscriptions',
-        'comboLogs'
-      ];
-
-      if (isCloudSession && operationalKeys.includes(key)) {
-        // Remove from local storage to keep disk clean; memory cache retains live state for instant UI response
-        safeStorage.removeItem(`omnipack_erp_${key}`);
-      } else {
-        const cacheVal = this.cache[key];
-        const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
-          ? cacheVal.slice(0, 50)
-          : cacheVal;
-        safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
-      }
+      const cacheVal = this.cache[key];
+      const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
+        ? cacheVal.slice(0, 50)
+        : cacheVal;
+      safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
     } catch (e) {
       console.warn(`Error saving state for key ${key}`, e);
     }
@@ -2221,10 +2138,18 @@ class ERPStorage {
   // Product Operations
   public getProducts(businessId: string): Product[] {
     return dedupeById(
-      this.cache.products
-        .filter(p => isSameBusiness(p.business_id, businessId))
+      (this.cache.products || [])
+        .filter(p => p && (p.id || p.name))
         .map(p => ({
           ...p,
+          id: p.id || crypto.randomUUID(),
+          name: p.name || 'Unnamed Product',
+          sku: String(p.sku || ''),
+          barcode: String(p.barcode || ''),
+          current_stock: Number(p.current_stock || 0),
+          purchase_price: Number(p.purchase_price || 0),
+          selling_price: Number(p.selling_price || 0),
+          business_id: businessId,
           is_combo: isComboProduct(p)
         }))
     );
@@ -2435,20 +2360,14 @@ class ERPStorage {
       this.cache.stockLogs = this.cache.stockLogs.filter(log => 
         log.product_id !== lookupId && (!legacyId || log.product_id !== legacyId)
       );
-      if (!this.isCloudSessionActive()) {
-        safeStorage.setItem('omnipack_erp_stockLogs', JSON.stringify(this.cache.stockLogs));
-      } else {
-        safeStorage.removeItem('omnipack_erp_stockLogs');
-      }
+      safeStorage.setItem('omnipack_erp_stockLogs', JSON.stringify(this.cache.stockLogs));
+      
       
       this.cache.comboLogs = (this.cache.comboLogs || []).filter((log: any) => 
         log.combo_id !== lookupId && (!legacyId || log.combo_id !== legacyId)
       );
-      if (!this.isCloudSessionActive()) {
-        safeStorage.setItem('omnipack_erp_comboLogs', JSON.stringify(this.cache.comboLogs));
-      } else {
-        safeStorage.removeItem('omnipack_erp_comboLogs');
-      }
+      safeStorage.setItem('omnipack_erp_comboLogs', JSON.stringify(this.cache.comboLogs));
+      
       
       this.save('products', null, true, lookupId);
       this.notify();
@@ -4385,21 +4304,15 @@ class ERPStorage {
           }
         });
         this.cache.loyaltyLogs = this.cache.loyaltyLogs.filter(l => l.order_id !== orderId && (!orderNumber || l.order_id !== orderNumber));
-        if (!this.isCloudSessionActive()) {
-          safeStorage.setItem('omnipack_erp_loyaltyLogs', JSON.stringify(this.cache.loyaltyLogs));
-        } else {
-          safeStorage.removeItem('omnipack_erp_loyaltyLogs');
-        }
+        safeStorage.setItem('omnipack_erp_loyaltyLogs', JSON.stringify(this.cache.loyaltyLogs));
+        
       }
 
       // 4. Remove any packing sessions linked to this order locally
       if (this.cache.packingSessions) {
         this.cache.packingSessions = this.cache.packingSessions.filter(p => p.order_id !== orderId && (!orderNumber || p.order_id !== orderNumber));
-        if (!this.isCloudSessionActive()) {
-          safeStorage.setItem('omnipack_erp_packingSessions', JSON.stringify(this.cache.packingSessions));
-        } else {
-          safeStorage.removeItem('omnipack_erp_packingSessions');
-        }
+        safeStorage.setItem('omnipack_erp_packingSessions', JSON.stringify(this.cache.packingSessions));
+        
       }
 
       // 5. Release draft reservation if any
@@ -4427,11 +4340,8 @@ class ERPStorage {
     }
 
     // 9. Persist deleted state to local storage
-    if (!this.isCloudSessionActive()) {
-      safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
-    } else {
-      safeStorage.removeItem('omnipack_erp_sales');
-    }
+    safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
+    
 
     // 10. Permanently purge from database (Supabase & broadcast to all connected devices)
     try {
@@ -5097,6 +5007,68 @@ class ERPStorage {
     };
     this.draftReservations = [];
     this.pendingUploads.clear();
+    this.notify();
+  }
+
+  public async saveAllLocalDataAndRefreshFromDatabase(businessId?: string) {
+    const normBId = businessId ? normalizeBusinessId(businessId) : undefined;
+
+    // 1. Save all current local data items to Supabase database if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const syncPromises: Promise<any>[] = [];
+        
+        // Save products
+        (this.cache.products || []).forEach(p => {
+          if (p && p.id && p.name) syncPromises.push(this.syncToSupabase('products', p));
+        });
+        
+        // Save customers
+        (this.cache.customers || []).forEach(c => {
+          if (c && c.id && c.name) syncPromises.push(this.syncToSupabase('customers', c));
+        });
+
+        // Save sales
+        (this.cache.sales || []).forEach(s => {
+          if (s && s.id && s.order_number) syncPromises.push(this.syncToSupabase('sales', s));
+        });
+
+        // Save categories
+        (this.cache.categories || []).forEach(cat => {
+          if (cat && cat.id && cat.name) syncPromises.push(this.syncToSupabase('categories', cat));
+        });
+
+        // Save suppliers
+        (this.cache.suppliers || []).forEach(sup => {
+          if (sup && sup.id && sup.name) syncPromises.push(this.syncToSupabase('suppliers', sup));
+        });
+
+        // Save purchases
+        (this.cache.purchases || []).forEach(pur => {
+          if (pur && pur.id) syncPromises.push(this.syncToSupabase('purchases', pur));
+        });
+
+        // Save stock logs
+        (this.cache.stockLogs || []).forEach(sl => {
+          if (sl && sl.id) syncPromises.push(this.syncToSupabase('stockLogs', sl));
+        });
+
+        await Promise.allSettled(syncPromises);
+      } catch (e) {
+        console.warn('Error syncing local data to database before refresh:', e);
+      }
+    }
+
+    // 2. Clear local storage cache
+    this.clearLocalCacheOnly();
+
+    // 3. Fetch fresh data from Supabase database into application memory
+    if (isSupabaseConfigured && supabase) {
+      await this.syncFromSupabase(normBId);
+    } else {
+      this.reloadFromLocalStorage();
+    }
+
     this.notify();
   }
 

@@ -2535,7 +2535,33 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       };
 
       if (editingProduct) {
-        dbStore.updateProduct(editingProduct.id, {
+        // Calculate stock adjustment FIRST if requested in the Edit modal
+        let updatedStock: number | undefined = undefined;
+        let changeQty = 0;
+        let logType: StockLog['type'] = 'Adjustment';
+
+        if (formStockAdjustmentMode !== 'none' && formStockAdjustmentQty !== '' && !isNaN(Number(formStockAdjustmentQty))) {
+          const qtyVal = Number(formStockAdjustmentQty);
+          const freshProd = dbStore.getProducts(businessId).find(p => p.id === editingProduct.id);
+          const currentStock = freshProd?.current_stock ?? editingProduct.current_stock ?? 0;
+
+          if (formStockAdjustmentMode === 'add' && qtyVal > 0) {
+            changeQty = qtyVal;
+            logType = 'In';
+          } else if (formStockAdjustmentMode === 'reduce' && qtyVal > 0) {
+            changeQty = -qtyVal;
+            logType = 'Out';
+          } else if (formStockAdjustmentMode === 'set') {
+            changeQty = qtyVal - currentStock;
+            logType = 'Adjustment';
+          }
+
+          if (changeQty !== 0) {
+            updatedStock = currentStock + changeQty;
+          }
+        }
+
+        const productUpdates: Partial<Product> = {
           name: formName.trim(),
           sku: skuVal,
           barcode: barcodeVal,
@@ -2560,48 +2586,35 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
           selling_unit: formSellingUnit,
           pack_size: Number(formPackSize) || undefined,
           auto_conversion: formAutoConversion
-        });
+        };
+
+        if (updatedStock !== undefined) {
+          productUpdates.current_stock = updatedStock;
+        }
+
+        dbStore.updateProduct(editingProduct.id, productUpdates);
 
         dbStore.logActivity(user.id, user.name, user.role, 'Update Product', `Updated product metadata for SKU: ${formSku}`, businessId);
 
-        // Process stock adjustment if requested in the Edit modal
-        if (formStockAdjustmentMode !== 'none' && formStockAdjustmentQty !== '' && !isNaN(Number(formStockAdjustmentQty))) {
-          const qtyVal = Number(formStockAdjustmentQty);
-          let changeQty = 0;
-          let logType: StockLog['type'] = 'Adjustment';
-          const freshProd = dbStore.getProducts(businessId).find(p => p.id === editingProduct.id);
-          const currentStock = freshProd?.current_stock ?? editingProduct.current_stock ?? 0;
-
-          if (formStockAdjustmentMode === 'add' && qtyVal > 0) {
-            changeQty = qtyVal;
-            logType = 'In';
-          } else if (formStockAdjustmentMode === 'reduce' && qtyVal > 0) {
-            changeQty = -qtyVal;
-            logType = 'Out';
-          } else if (formStockAdjustmentMode === 'set') {
-            changeQty = qtyVal - currentStock;
-            logType = 'Adjustment';
-          }
-
-          if (changeQty !== 0) {
-            const noteText = formStockAdjustmentNote.trim() || `Manual stock update via Edit Product: ${formStockAdjustmentMode} ${qtyVal}`;
-            dbStore.addStockLog(
-              editingProduct.id,
-              changeQty,
-              logType,
-              noteText,
-              user.id,
-              businessId
-            );
-            dbStore.logActivity(
-              user.id,
-              user.name,
-              user.role,
-              'Stock Change',
-              `Stock ${changeQty > 0 ? '+' : ''}${changeQty} (${logType}) for ${formName.trim()} via Edit Product popup`,
-              businessId
-            );
-          }
+        if (changeQty !== 0) {
+          const noteText = formStockAdjustmentNote.trim() || `Manual stock update via Edit Product: ${formStockAdjustmentMode} ${formStockAdjustmentQty}`;
+          dbStore.addStockLog(
+            editingProduct.id,
+            changeQty,
+            logType,
+            noteText,
+            user.id,
+            businessId,
+            true
+          );
+          dbStore.logActivity(
+            user.id,
+            user.name,
+            user.role,
+            'Stock Change',
+            `Stock ${changeQty > 0 ? '+' : ''}${changeQty} (${logType}) for ${formName.trim()} via Edit Product popup`,
+            businessId
+          );
         }
 
         triggerToast('Product details updated successfully.', 'success');
@@ -4288,33 +4301,6 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                             {prod.current_stock}
                           </button>
                           <span className="text-[9px] text-slate-500 font-bold">{prod.unit}</span>
-                          
-                          {user.role !== 'Viewer' && !isComboProduct(prod) && (
-                            <div className="flex items-center gap-1 ml-1">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleQuickAddStock(prod, 1);
-                                }}
-                                className="w-5 h-5 rounded bg-emerald-100 hover:bg-emerald-600 text-emerald-800 hover:text-white dark:bg-emerald-950/60 dark:hover:bg-emerald-600 dark:text-emerald-300 text-[11px] font-black flex items-center justify-center transition-colors border border-emerald-300 dark:border-emerald-800 shadow-2xs cursor-pointer active:scale-95"
-                                title="Quick Add +1 Stock"
-                              >
-                                +
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleQuickDeductStock(prod, 1);
-                                }}
-                                className="w-5 h-5 rounded bg-rose-100 hover:bg-rose-600 text-rose-800 hover:text-white dark:bg-rose-950/60 dark:hover:bg-rose-600 dark:text-rose-300 text-[11px] font-black flex items-center justify-center transition-colors border border-rose-300 dark:border-rose-800 shadow-2xs cursor-pointer active:scale-95"
-                                title="Quick Deduct -1 Stock"
-                              >
-                                -
-                              </button>
-                            </div>
-                          )}
                         </div>
                         {isNegative ? (
                           <span className="text-[8px] font-black text-rose-500 uppercase tracking-wider">

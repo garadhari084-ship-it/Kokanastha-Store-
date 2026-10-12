@@ -2263,7 +2263,9 @@ class ERPStorage {
   }
 
   public updateProduct(id: string, updates: Partial<Product>): Product {
-    const index = this.cache.products.findIndex(p => p.id === id);
+    const legacyIdMap: Record<string, string> = { 'p1': PROD_1_ID, 'p2': PROD_2_ID, 'p3': PROD_3_ID, 'p4': PROD_4_COMBO_ID };
+    const targetId = legacyIdMap[id] || id;
+    const index = this.cache.products.findIndex(p => p.id === targetId || p.id === id);
     if (index !== -1) {
       this.cache.products[index] = { ...this.cache.products[index], ...updates };
       this.save('products', this.cache.products[index]);
@@ -4489,7 +4491,8 @@ class ERPStorage {
     type: StockLog['type'],
     notes: string,
     createdBy: string,
-    businessId: string
+    businessId: string,
+    skipProductStockUpdate = false
   ): StockLog {
     const normType = (type === 'Adjusted' ? 'Adjustment' : type) as StockLog['type'];
     const newLog: StockLog = {
@@ -4503,12 +4506,16 @@ class ERPStorage {
       business_id: businessId
     };
 
-    // Update product current stock level in memory cache
-    const productIndex = this.cache.products.findIndex(p => p.id === productId);
-    if (productIndex !== -1) {
-      this.cache.products[productIndex].current_stock = (this.cache.products[productIndex].current_stock || 0) + changeQty;
-      // Immediately save updated product to Supabase DB so it persists and broadcasts live to other users
-      this.save('products', this.cache.products[productIndex]);
+    if (!skipProductStockUpdate) {
+      const legacyIdMap: Record<string, string> = { 'p1': PROD_1_ID, 'p2': PROD_2_ID, 'p3': PROD_3_ID, 'p4': PROD_4_COMBO_ID };
+      const targetId = legacyIdMap[productId] || productId;
+      // Update product current stock level in memory cache
+      const productIndex = this.cache.products.findIndex(p => p.id === targetId || p.id === productId);
+      if (productIndex !== -1) {
+        this.cache.products[productIndex].current_stock = (this.cache.products[productIndex].current_stock || 0) + changeQty;
+        // Immediately save updated product to Supabase DB so it persists and broadcasts live to other users
+        this.save('products', this.cache.products[productIndex]);
+      }
     }
 
     this.cache.stockLogs.push(newLog);

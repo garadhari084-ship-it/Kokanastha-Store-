@@ -1136,7 +1136,6 @@ export default function App() {
              fallbackResult.user.session_token = newSessionToken;
              dbStore.updateUser(fallbackResult.user.id, { session_token: newSessionToken });
 
-             await dbStore.syncFromSupabase(fallbackResult.business.id);
              dbStore.registerDeviceSession(fallbackResult.user.id, deviceId, newSessionToken, fallbackResult.business.id);
              safeStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
              setCurrentUser(fallbackResult.user);
@@ -1144,8 +1143,15 @@ export default function App() {
              
              dbStore.broadcastForceLogout(fallbackResult.user.id, newSessionToken, deviceId);
              
+             // Instantly open dashboard in 0ms!
              setActiveView('dashboard');
              triggerToast(`Session Established. Welcome, ${fallbackResult.user.name}!`, 'success');
+
+             // Fast background sync so data updates smoothly without locking UI
+             dbStore.syncFromSupabase(fallbackResult.business.id).then(() => {
+               dbStore.purgeLocalEntityCaches();
+               setSyncTick(prev => prev + 1);
+             }).catch(() => {});
              return;
           }
           
@@ -1230,7 +1236,6 @@ export default function App() {
               await supabase.from('users_profiles').update({ session_token: newSessionToken }).eq('id', profile.id);
             } catch (_) {}
 
-            await dbStore.syncFromSupabase(profile.business_id);
             const biz = dbStore.getBusiness(profile.business_id) || dbStore.getBusinesses()[0];
             safeStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
             setCurrentUser(profile);
@@ -1245,8 +1250,15 @@ export default function App() {
               safeStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
             } catch(e) {}
             
+            // Instantly open dashboard in 0ms!
             setActiveView('dashboard');
             triggerToast(`Supabase Cloud Session Established. Welcome, ${profile.name}!`, 'success');
+
+            // Fast background sync so data updates smoothly without freezing UI
+            dbStore.syncFromSupabase(profile.business_id).then(() => {
+              dbStore.purgeLocalEntityCaches();
+              setSyncTick(prev => prev + 1);
+            }).catch(() => {});
           }
       } catch (err: any) {
         setAuthError(err.message || 'An unexpected error occurred during authentication.');
@@ -1413,8 +1425,15 @@ export default function App() {
     const handleOpenCreateOrder = () => {
       handleDeepLinkNavigate('sales', { openAddModal: true });
     };
+    const handleOpenDbConfig = () => {
+      setShowDbConfigModal(true);
+    };
     window.addEventListener('open-create-order', handleOpenCreateOrder);
-    return () => window.removeEventListener('open-create-order', handleOpenCreateOrder);
+    window.addEventListener('open-db-config', handleOpenDbConfig);
+    return () => {
+      window.removeEventListener('open-create-order', handleOpenCreateOrder);
+      window.removeEventListener('open-db-config', handleOpenDbConfig);
+    };
   }, []);
 
   // RBAC Permission Check list
@@ -2221,6 +2240,25 @@ export default function App() {
                       )}
                     </button>
                   </form>
+
+                  {/* Cloud Database Status Bar on Login */}
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => setShowDbConfigModal(true)}
+                      className="w-full py-2 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between text-slate-700 transition cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-amber-500 shadow-sm shadow-amber-500/50'}`} />
+                        <span className="text-[11px] font-bold">
+                          Database: {isSupabaseConfigured ? 'Supabase Connected' : 'Local Storage Sandbox'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-extrabold text-indigo-600 group-hover:underline">
+                        {isSupabaseConfigured ? 'Check / Configure' : 'Connect Cloud DB'}
+                      </span>
+                    </button>
+                  </div>
 
                 </div>
               </>

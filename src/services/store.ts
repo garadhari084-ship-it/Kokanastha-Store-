@@ -29,6 +29,11 @@ import {
   ActiveDeviceSession
 } from '../types/erp';
 
+export const isValidUUID = (val: any): boolean => {
+  if (typeof val !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+};
+
 // ====================================================================
 // INITIAL PRE-SEEDED SEED DATA FOR MULTI-TENANCY
 // ====================================================================
@@ -611,6 +616,7 @@ class ERPStorage {
   private listeners: (() => void)[] = [];
   private pendingUploads = new Set<string>();
   private realtimeChannel: any = null;
+  private knownMissingTables = new Set<string>();
   
   public setRealtimeChannel(channel: any) {
     this.realtimeChannel = channel;
@@ -652,6 +658,41 @@ class ERPStorage {
     }
   }
 
+  public purgeLocalEntityCaches(): void {
+    const keysToRemove = [
+      'omnipack_erp_sales',
+      'omnipack_erp_products',
+      'omnipack_erp_customers',
+      'omnipack_erp_categories',
+      'omnipack_erp_purchases',
+      'omnipack_erp_suppliers',
+      'omnipack_erp_stockLogs',
+      'omnipack_erp_auditLogs',
+      'omnipack_erp_packingSessions',
+      'omnipack_erp_messages',
+      'omnipack_erp_loyaltyLogs',
+      'omnipack_erp_subscriptions',
+      'omnipack_erp_comboLogs',
+      'omnipack_erp_draftReservations',
+      'omnipack_erp_deviceSessions',
+      'omnipack_erp_deleted_sales_ids',
+      'omnipack_read_notifications'
+    ];
+    keysToRemove.forEach(k => {
+      safeStorage.removeItem(k);
+    });
+  }
+
+  public isCloudSessionActive(): boolean {
+    if (!isSupabaseConfigured || !supabase) return false;
+    try {
+      const sess = JSON.parse(safeStorage.getItem('omnipack_session') || '{}');
+      return Boolean(sess && sess.userId);
+    } catch {
+      return false;
+    }
+  }
+
   public subscribe(listener: () => void) {
     this.listeners.push(listener);
     return () => { this.listeners = this.listeners.filter(l => l !== listener); };
@@ -670,9 +711,13 @@ class ERPStorage {
       } else {
         cacheArr.unshift(record);
       }
-      try {
-        safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
-      } catch (_) {}
+      if (!this.isCloudSessionActive()) {
+        try {
+          safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
+        } catch (_) {}
+      } else {
+        safeStorage.removeItem(`omnipack_erp_${key}`);
+      }
       this.notify();
     }
   }
@@ -684,9 +729,13 @@ class ERPStorage {
       const idx = cacheArr.findIndex((item: any) => item.id === id);
       if (idx !== -1) {
         cacheArr.splice(idx, 1);
-        try {
-          safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
-        } catch (_) {}
+        if (!this.isCloudSessionActive()) {
+          try {
+            safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
+          } catch (_) {}
+        } else {
+          safeStorage.removeItem(`omnipack_erp_${key}`);
+        }
         this.notify();
       }
     }
@@ -948,27 +997,56 @@ class ERPStorage {
     };
 
     const fetchAllFromTable = async (tableName: string, bId?: string) => {
+      if (this.knownMissingTables.has(tableName)) return [];
       let allRows: any[] = [];
-      let start = 0;
-      const CHUNK_SIZE = 200;
       const normBId = bId ? normalizeBusinessId(bId) : undefined;
-      while (true) {
-        let q = supabase.from(tableName).select('*').order(tableName === 'business_settings' || tableName === 'loyalty_configs' ? 'business_id' : 'id');
-        if (normBId && tableName !== 'businesses' && tableName !== 'users_profiles') {
-          q = q.eq('business_id', normBId);
-        } else if (normBId && tableName === 'businesses') {
-          q = q.eq('id', normBId);
+      const validBId = normBId && isValidUUID(normBId) ? normBId : undefined;
+
+      try {
+        let q = supabase.from(tableName).select('*').limit(2000);
+        if (validBId && tableName !== 'businesses' && tableName !== 'users_profiles' && tableName !== 'business_settings') {
+          q = q.or(`business_id.eq.${validBId},business_id.is.null`);
+        } else if (validBId && tableName === 'businesses') {
+          q = q.or(`id.eq.${validBId}`);
         }
-        q = q.range(start, start + CHUNK_SIZE - 1);
-        const { data: pageData, error: pageErr } = await q;
-        if (pageErr) {
-          console.warn(`Supabase fetchAllFromTable error on ${tableName}:`, pageErr);
-          break;
+
+        const { data, error } = await q;
+
+        if (error) {
+          if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.toLowerCase().includes('does not exist')) {
+            this.knownMissingTables.add(tableName);
+            return [];
+          }
+          // If .or query failed due to schema difference, fallback to plain select once
+          const { data: fallbackData, error: fbErr } = await supabase.from(tableName).select('*').limit(2000);
+          if (fbErr && (fbErr.code === 'PGRST205' || fbErr.code === '42P01' || fbErr.message?.toLowerCase().includes('does not exist'))) {
+            this.knownMissingTables.add(tableName);
+            return [];
+          }
+          if (fallbackData) {
+            allRows = fallbackData;
+          }
+        } else if (data) {
+          allRows = data;
         }
-        if (!pageData || pageData.length === 0) break;
-        allRows.push(...pageData);
-        start += pageData.length;
+      } catch (err) {
+        console.warn(`Supabase fetchAllFromTable catch error on ${tableName}:`, err);
       }
+
+      // Normalize business_id on all fetched rows so they render under active business
+      if (normBId && allRows.length > 0) {
+        allRows = allRows.map(row => {
+          if (!row || typeof row !== 'object') return row;
+          if (tableName === 'businesses') {
+            return { ...row, id: normBId };
+          }
+          if (!row.business_id || isSameBusiness(row.business_id, normBId)) {
+            return { ...row, business_id: normBId };
+          }
+          return row;
+        });
+      }
+
       return allRows;
     };
 
@@ -982,10 +1060,17 @@ class ERPStorage {
        try {
        const data = await fetchAllFromTable(table, businessId);
        if (data) {
+          const sess = JSON.parse(safeStorage.getItem('omnipack_session') || '{}');
+          const isCloudSession = isSupabaseConfigured && Boolean(supabase) && sess.userId && sess.mode === 'supabase';
+
           if (data.length === 0) {
              if (key !== 'businesses' && key !== 'profiles' && key !== 'settings' && key !== 'loyaltyConfigs') {
-                (this.cache as any)[key] = [];
-                safeStorage.setItem(`omnipack_erp_${key}`, '[]');
+                if (!Array.isArray((this.cache as any)[key])) {
+                  (this.cache as any)[key] = [];
+                  if (!isCloudSession) {
+                    safeStorage.setItem(`omnipack_erp_${key}`, '[]');
+                  }
+                }
              }
              return;
           }
@@ -1022,7 +1107,7 @@ class ERPStorage {
 
              // Exclude any orders that were permanently deleted
              const validRemoteData = (data || []).filter((so: any) => {
-               if (deletedSalesIds.has(so.id) || (so.order_number && deletedSalesIds.has(so.order_number))) {
+               if (so.id && deletedSalesIds.has(so.id)) {
                  // Trigger background purge in Supabase if a deleted order was returned
                  this.syncToSupabase('sales', null, true, so.id);
                  return false;
@@ -1031,7 +1116,7 @@ class ERPStorage {
              });
 
              const mergedSales = validRemoteData.map((so: any) => {
-               const existingSO = (this.cache.sales || []).find(s => s.id === so.id);
+               const existingSO = (this.cache.sales || []).find(s => s.id === so.id || (s.order_number && s.order_number === so.order_number));
                if (existingSO && this.pendingUploads.has(existingSO.id)) return existingSO;
                if (so.status === 'Cancelled' && so.dispatch_notes?.includes('[SYSTEM_RETURNED]')) {
                  so.status = 'Returned';
@@ -1068,9 +1153,36 @@ class ERPStorage {
                    scanned_qty: Math.max(existingScanned, remoteScanned)
                  };
                });
+               // Recover true customer name if missing or defaulted to Walk-in
+               let resolvedCustomerName = so.customer_name || existingSO?.customer_name;
+               if (!resolvedCustomerName || resolvedCustomerName === 'Walk-in Customer' || resolvedCustomerName === 'Customer') {
+                 const notesCandidate = so.dispatch_notes || so.payment_notes || existingSO?.dispatch_notes || existingSO?.payment_notes || '';
+                 const notesMatch = notesCandidate.match(/\[CUSTOMER:([^\]]+)\]/);
+                 if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim() !== 'Walk-in Customer') {
+                   resolvedCustomerName = notesMatch[1].trim();
+                 } else if (so.qr_code_data && so.qr_code_data.includes('|')) {
+                   const parts = so.qr_code_data.split('|');
+                   if (parts.length >= 3 && parts[2]?.trim() && parts[2].trim() !== 'Walk-in Customer' && parts[2].trim() !== 'Walk-in' && parts[2].trim() !== 'Customer') {
+                     resolvedCustomerName = parts[2].trim();
+                   }
+                 } else if (existingSO?.qr_code_data && existingSO.qr_code_data.includes('|')) {
+                   const parts = existingSO.qr_code_data.split('|');
+                   if (parts.length >= 3 && parts[2]?.trim() && parts[2].trim() !== 'Walk-in Customer' && parts[2].trim() !== 'Walk-in') {
+                     resolvedCustomerName = parts[2].trim();
+                   }
+                 }
+                 if (!resolvedCustomerName || resolvedCustomerName === 'Walk-in Customer') {
+                   const custObj = (this.cache.customers || []).find((c: any) => c.id === (so.customer_id || existingSO?.customer_id));
+                   if (custObj?.name && custObj.name !== 'Walk-in Customer') {
+                     resolvedCustomerName = custObj.name;
+                   }
+                 }
+               }
+
                return {
                  ...existingSO,
                  ...so,
+                 customer_name: resolvedCustomerName || existingSO?.customer_name || so.customer_name || undefined,
                  area: so.area || existingSO?.area || undefined,
                  channel: so.channel || existingSO?.channel || undefined,
                  time: so.time || existingSO?.time || undefined,
@@ -1081,7 +1193,7 @@ class ERPStorage {
              // Preserve ALL existing sales orders in cache that are not explicitly deleted
              // (Guarantees newly created orders, offline orders, or concurrent orders are NEVER lost or hidden!)
              (this.cache.sales || []).forEach(localSO => {
-               if (localSO && !deletedSalesIds.has(localSO.id) && (!localSO.order_number || !deletedSalesIds.has(localSO.order_number))) {
+               if (localSO && localSO.id && !deletedSalesIds.has(localSO.id)) {
                  const alreadyMerged = mergedSales.some(s => s.id === localSO.id || (s.order_number && s.order_number === localSO.order_number));
                  if (!alreadyMerged) {
                    mergedSales.push(localSO);
@@ -1090,9 +1202,14 @@ class ERPStorage {
              });
 
              // Purge any deleted sales orders
-             const finalMergedSales = mergedSales.filter(s => !deletedSalesIds.has(s.id) && (!s.order_number || !deletedSalesIds.has(s.order_number)));
+             const finalMergedSales = mergedSales.filter(s => s.id && !deletedSalesIds.has(s.id));
              this.cache.sales = finalMergedSales;
-             safeStorage.setItem('omnipack_erp_sales', JSON.stringify(finalMergedSales));
+             if (!this.isCloudSessionActive()) {
+               safeStorage.setItem('omnipack_erp_sales', JSON.stringify(finalMergedSales));
+             } else {
+               safeStorage.removeItem('omnipack_erp_sales');
+             }
+             this.notify();
           } else if (key === 'customers') {
              const mergedCustomers = (data || []).map((remoteCust: any) => {
                const localCust = (this.cache.customers || []).find(c => c.id === remoteCust.id);
@@ -1115,7 +1232,12 @@ class ERPStorage {
              });
 
              this.cache.customers = mergedCustomers;
-             safeStorage.setItem('omnipack_erp_customers', JSON.stringify(mergedCustomers));
+             if (!this.isCloudSessionActive()) {
+               safeStorage.setItem('omnipack_erp_customers', JSON.stringify(mergedCustomers));
+             } else {
+               safeStorage.removeItem('omnipack_erp_customers');
+             }
+             this.notify();
           } else if (key === 'purchases') {
              const itemsData = await fetchAllFromTable('purchase_order_items');
              const itemsByPO: Record<string, any[]> = {};
@@ -1143,7 +1265,11 @@ class ERPStorage {
              });
 
              this.cache.purchases = mergedPurchases;
-             safeStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
+             if (!this.isCloudSessionActive()) {
+               safeStorage.setItem('omnipack_erp_purchases', JSON.stringify(mergedPurchases));
+             } else {
+               safeStorage.removeItem('omnipack_erp_purchases');
+             }
           } else if (key === 'products') {
              const mergedProducts = (data || []).map((remoteProd: any) => {
                const localProd = (this.cache.products || []).find(p => p.id === remoteProd.id);
@@ -1173,7 +1299,12 @@ class ERPStorage {
              });
 
              this.cache.products = mergedProducts;
-             safeStorage.setItem('omnipack_erp_products', JSON.stringify(mergedProducts));
+             if (!this.isCloudSessionActive()) {
+               safeStorage.setItem('omnipack_erp_products', JSON.stringify(mergedProducts));
+             } else {
+               safeStorage.removeItem('omnipack_erp_products');
+             }
+             this.notify();
           } else if (key === 'categories') {
              const mergedCategories = (data || []).map((remoteCat: any) => {
                const localCat = (this.cache.categories || []).find(c => c.id === remoteCat.id);
@@ -1193,7 +1324,11 @@ class ERPStorage {
              });
 
              this.cache.categories = mergedCategories;
-             safeStorage.setItem('omnipack_erp_categories', JSON.stringify(mergedCategories));
+             if (!this.isCloudSessionActive()) {
+               safeStorage.setItem('omnipack_erp_categories', JSON.stringify(mergedCategories));
+             } else {
+               safeStorage.removeItem('omnipack_erp_categories');
+             }
           } else if (key === 'suppliers') {
              const mergedSuppliers = (data || []).map((remoteSup: any) => {
                const localSup = (this.cache.suppliers || []).find(s => s.id === remoteSup.id);
@@ -1213,7 +1348,11 @@ class ERPStorage {
              });
 
              this.cache.suppliers = mergedSuppliers;
-             safeStorage.setItem('omnipack_erp_suppliers', JSON.stringify(mergedSuppliers));
+             if (!this.isCloudSessionActive()) {
+               safeStorage.setItem('omnipack_erp_suppliers', JSON.stringify(mergedSuppliers));
+             } else {
+               safeStorage.removeItem('omnipack_erp_suppliers');
+             }
           } else if (key === 'businesses') {
              const mergedBusinesses = (data || []).map((b: any) => {
                 const existing = (this.cache.businesses || []).find(eb => eb.id === b.id);
@@ -1253,7 +1392,11 @@ class ERPStorage {
              safeStorage.setItem('omnipack_erp_businesses', JSON.stringify(this.cache.businesses));
           } else {
              (this.cache as any)[key] = data;
-             safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
+             if (!this.isCloudSessionActive()) {
+               safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
+             } else {
+               safeStorage.removeItem(`omnipack_erp_${key}`);
+             }
           }
        }
        } catch (tableErr) {
@@ -1262,6 +1405,13 @@ class ERPStorage {
     });
 
     await Promise.all(syncPromises);
+
+    // If user is authenticated in cloud session, ensure operational entities are not kept on local machine disk
+    try {
+      if (this.isCloudSessionActive()) {
+        this.purgeLocalEntityCaches();
+      }
+    } catch (_) {}
 
     const newSalesSig = (this.cache.sales || []).map(s => s.id + s.status + (s.total_amount || 0)).join(',');
     const newCustomersSig = (this.cache.customers || []).map(c => c.id + (c.outstanding_amount || 0)).join(',');
@@ -1555,8 +1705,8 @@ class ERPStorage {
                  clean.dispatch_notes = (clean.dispatch_notes || '') + ' [SYSTEM_RETURNED]';
                }
                clean.customer_id = sanitizeUUID(clean.customer_id, true);
-               if (clean.customer_id && Array.isArray(this.cache.customers) && !this.cache.customers.some((c: any) => c.id === clean.customer_id)) {
-                   clean.customer_id = null;
+               if (!clean.customer_name) {
+                   clean.customer_name = 'Walk-in Customer';
                }
                if (clean.items && Array.isArray(clean.items)) {
                    clean.items.forEach((i: any) => {
@@ -1594,7 +1744,9 @@ class ERPStorage {
            }
            if (tableName === 'stock_logs') {
                clean.product_id = sanitizeUUID(clean.product_id, false);
-               clean.created_by = sanitizeUUID(clean.created_by, true);
+               const validProfile = clean.created_by && this.cache.profiles.some(p => p.id === clean.created_by);
+               clean.created_by = validProfile ? clean.created_by : null;
+               if (clean.type === 'Adjusted') clean.type = 'Adjustment';
            }
            if (tableName === 'system_audit_logs') {
                clean.user_id = sanitizeUUID(clean.user_id, true);
@@ -1828,11 +1980,37 @@ class ERPStorage {
   private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string, secondaryDeleteKey?: string) {
     this.syncToSupabase(key, dataItem, isDelete, deleteId, secondaryDeleteKey);
     try {
-      const cacheVal = this.cache[key];
-      const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
-        ? cacheVal.slice(0, 50)
-        : cacheVal;
-      safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
+      // When user is authenticated with Supabase, all activity is saved ONLY in Supabase DB
+      const isCloudSession = this.isCloudSessionActive();
+
+      // When user is logged in to Supabase, any activity (create order, add product, customer, etc.)
+      // is saved ONLY in Supabase database and NOT persisted on the local machine disk.
+      const operationalKeys: (keyof typeof this.cache)[] = [
+        'sales',
+        'products',
+        'customers',
+        'purchases',
+        'categories',
+        'suppliers',
+        'stockLogs',
+        'auditLogs',
+        'packingSessions',
+        'messages',
+        'loyaltyLogs',
+        'subscriptions',
+        'comboLogs'
+      ];
+
+      if (isCloudSession && operationalKeys.includes(key)) {
+        // Remove from local storage to keep disk clean; memory cache retains live state for instant UI response
+        safeStorage.removeItem(`omnipack_erp_${key}`);
+      } else {
+        const cacheVal = this.cache[key];
+        const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
+          ? cacheVal.slice(0, 50)
+          : cacheVal;
+        safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
+      }
     } catch (e) {
       console.warn(`Error saving state for key ${key}`, e);
     }
@@ -2257,12 +2435,20 @@ class ERPStorage {
       this.cache.stockLogs = this.cache.stockLogs.filter(log => 
         log.product_id !== lookupId && (!legacyId || log.product_id !== legacyId)
       );
-      safeStorage.setItem('omnipack_erp_stockLogs', JSON.stringify(this.cache.stockLogs));
+      if (!this.isCloudSessionActive()) {
+        safeStorage.setItem('omnipack_erp_stockLogs', JSON.stringify(this.cache.stockLogs));
+      } else {
+        safeStorage.removeItem('omnipack_erp_stockLogs');
+      }
       
       this.cache.comboLogs = (this.cache.comboLogs || []).filter((log: any) => 
         log.combo_id !== lookupId && (!legacyId || log.combo_id !== legacyId)
       );
-      safeStorage.setItem('omnipack_erp_comboLogs', JSON.stringify(this.cache.comboLogs));
+      if (!this.isCloudSessionActive()) {
+        safeStorage.setItem('omnipack_erp_comboLogs', JSON.stringify(this.cache.comboLogs));
+      } else {
+        safeStorage.removeItem('omnipack_erp_comboLogs');
+      }
       
       this.save('products', null, true, lookupId);
       this.notify();
@@ -3931,14 +4117,16 @@ class ERPStorage {
   public getDeletedSalesOrderIds(): Set<string> {
     try {
       const stored = JSON.parse(safeStorage.getItem('omnipack_erp_deleted_sales_ids') || '[]');
-      return new Set(Array.isArray(stored) ? stored : []);
+      // MUST ONLY include valid UUIDs to prevent human-readable order numbers (e.g. INV-2026-01) from accidentally purging active orders
+      const validUuids = Array.isArray(stored) ? stored.filter((id: any) => typeof id === 'string' && isValidUUID(id)) : [];
+      return new Set(validUuids);
     } catch (e) {
       return new Set();
     }
   }
 
   public recordDeletedSalesOrderId(id: string): void {
-    if (!id) return;
+    if (!id || !isValidUUID(id)) return;
     try {
       const set = this.getDeletedSalesOrderIds();
       set.add(id);
@@ -3955,7 +4143,7 @@ class ERPStorage {
 
     return dedupeById(
       (this.cache.sales || [])
-        .filter(s => isSameBusiness(s.business_id, businessId) && !deletedSalesIds.has(s.id) && (!s.order_number || !deletedSalesIds.has(s.order_number)))
+        .filter(s => isSameBusiness(s.business_id, businessId) && (!s.id || !deletedSalesIds.has(s.id)))
         .map(s => {
           const cust = customerMap.get(s.customer_id);
           const resolvedArea = extractAreaZone(s.area, cust?.shipping_address || (s as any).shipping_address || cust?.area);
@@ -3972,10 +4160,35 @@ class ERPStorage {
             rawItems = [];
           }
 
+          // Recover true customer name from customerMap, all cached customers, [CUSTOMER:...] note tag, or qr_code_data
+          let resolvedCustomerName = s.customer_name;
+          if (!resolvedCustomerName || resolvedCustomerName === 'Walk-in Customer' || resolvedCustomerName === 'Customer') {
+            if (cust && cust.name && cust.name !== 'Walk-in Customer') {
+              resolvedCustomerName = cust.name;
+            } else {
+              const anyCust = (this.cache.customers || []).find(c => c.id === s.customer_id);
+              if (anyCust && anyCust.name && anyCust.name !== 'Walk-in Customer') {
+                resolvedCustomerName = anyCust.name;
+              }
+            }
+            if (!resolvedCustomerName || resolvedCustomerName === 'Walk-in Customer') {
+              const notesCandidate = s.dispatch_notes || s.payment_notes || '';
+              const notesMatch = notesCandidate.match(/\[CUSTOMER:([^\]]+)\]/);
+              if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim() !== 'Walk-in Customer') {
+                resolvedCustomerName = notesMatch[1].trim();
+              } else if (s.qr_code_data && s.qr_code_data.includes('|')) {
+                const parts = s.qr_code_data.split('|');
+                if (parts.length >= 3 && parts[2]?.trim() && parts[2].trim() !== 'Walk-in Customer' && parts[2].trim() !== 'Walk-in' && parts[2].trim() !== 'Customer') {
+                  resolvedCustomerName = parts[2].trim();
+                }
+              }
+            }
+          }
+
           return {
             ...s,
             area: resolvedArea,
-            customer_name: s.customer_name || cust?.name || 'Walk-in Customer',
+            customer_name: resolvedCustomerName || cust?.name || 'Walk-in Customer',
             items: rawItems.map((it: any) => ({
               ...it,
               scanned_qty: typeof it.scanned_qty === 'number' && !isNaN(it.scanned_qty) ? it.scanned_qty : 0
@@ -4076,12 +4289,23 @@ class ERPStorage {
     // Release any active draft reservation held for this invoice number
     this.releaseDraftReservationByInvoice(finalOrderNumber);
 
+    // Ensure newly created order is NOT marked as deleted
+    try {
+      const deletedSet = this.getDeletedSalesOrderIds();
+      if (deletedSet.has(finalOrderNumber)) {
+        deletedSet.delete(finalOrderNumber);
+        safeStorage.setItem('omnipack_erp_deleted_sales_ids', JSON.stringify(Array.from(deletedSet)));
+      }
+    } catch (_) {}
+
     const newSO: SalesOrder = {
       ...so,
       order_number: finalOrderNumber,
       paid_amount: numPaid,
       id: crypto.randomUUID(),
-      created_at: createdAtStr
+      created_at: createdAtStr,
+      customer_name: so.customer_name || 'Walk-in Customer',
+      dispatch_notes: `${so.dispatch_notes || ''} [CUSTOMER:${so.customer_name || 'Walk-in Customer'}]`.trim()
     };
 
     if (newSO.paid_amount > 0 && (!newSO.payment_history || newSO.payment_history.length === 0)) {
@@ -4161,13 +4385,21 @@ class ERPStorage {
           }
         });
         this.cache.loyaltyLogs = this.cache.loyaltyLogs.filter(l => l.order_id !== orderId && (!orderNumber || l.order_id !== orderNumber));
-        safeStorage.setItem('omnipack_erp_loyaltyLogs', JSON.stringify(this.cache.loyaltyLogs));
+        if (!this.isCloudSessionActive()) {
+          safeStorage.setItem('omnipack_erp_loyaltyLogs', JSON.stringify(this.cache.loyaltyLogs));
+        } else {
+          safeStorage.removeItem('omnipack_erp_loyaltyLogs');
+        }
       }
 
       // 4. Remove any packing sessions linked to this order locally
       if (this.cache.packingSessions) {
         this.cache.packingSessions = this.cache.packingSessions.filter(p => p.order_id !== orderId && (!orderNumber || p.order_id !== orderNumber));
-        safeStorage.setItem('omnipack_erp_packingSessions', JSON.stringify(this.cache.packingSessions));
+        if (!this.isCloudSessionActive()) {
+          safeStorage.setItem('omnipack_erp_packingSessions', JSON.stringify(this.cache.packingSessions));
+        } else {
+          safeStorage.removeItem('omnipack_erp_packingSessions');
+        }
       }
 
       // 5. Release draft reservation if any
@@ -4179,12 +4411,13 @@ class ERPStorage {
       this.cache.sales.splice(index, 1);
     }
 
-    // 7. Record in persistent deleted set (both ID, order number, and cleanId)
-    this.recordDeletedSalesOrderId(orderId);
-    if (orderNumber) {
-      this.recordDeletedSalesOrderId(orderNumber);
+    // 7. Record in persistent deleted set (ONLY valid UUIDs)
+    if (isValidUUID(orderId)) {
+      this.recordDeletedSalesOrderId(orderId);
     }
-    this.recordDeletedSalesOrderId(cleanId);
+    if (isValidUUID(cleanId)) {
+      this.recordDeletedSalesOrderId(cleanId);
+    }
 
     // 8. Remove from pending uploads so it never gets uploaded or restored
     this.pendingUploads.delete(orderId);
@@ -4194,7 +4427,11 @@ class ERPStorage {
     }
 
     // 9. Persist deleted state to local storage
-    safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
+    if (!this.isCloudSessionActive()) {
+      safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
+    } else {
+      safeStorage.removeItem('omnipack_erp_sales');
+    }
 
     // 10. Permanently purge from database (Supabase & broadcast to all connected devices)
     try {
@@ -4344,29 +4581,30 @@ class ERPStorage {
     createdBy: string,
     businessId: string
   ): StockLog {
+    const normType = (type === 'Adjusted' ? 'Adjustment' : type) as StockLog['type'];
     const newLog: StockLog = {
       id: crypto.randomUUID(),
       product_id: productId,
       change_qty: changeQty,
-      type,
+      type: normType,
       notes,
       created_by: createdBy,
       created_at: new Date().toISOString(),
       business_id: businessId
     };
 
-    // Update product current stock level in memory cache for immediate UI feedback.
-    // IMPORTANT: We DO NOT call this.save('products', ...) here because there is a 
-    // database trigger (trg_stock_logs_on_insert) in Supabase that automatically 
-    // updates the products table when a new stock_log is inserted. 
-    // Manual updates here would cause a double reduction/increase bug.
+    // Update product current stock level in memory cache
     const productIndex = this.cache.products.findIndex(p => p.id === productId);
     if (productIndex !== -1) {
-      this.cache.products[productIndex].current_stock += changeQty;
+      this.cache.products[productIndex].current_stock = (this.cache.products[productIndex].current_stock || 0) + changeQty;
+      // Immediately save updated product to Supabase DB so it persists and broadcasts live to other users
+      this.save('products', this.cache.products[productIndex]);
     }
 
     this.cache.stockLogs.push(newLog);
     this.save('stockLogs', newLog);
+    // Immediately notify all UI subscribers so UI reflects stock changes live
+    this.notify();
     return newLog;
   }
 
@@ -4375,6 +4613,7 @@ class ERPStorage {
     if (index !== -1) {
       const oldLog = this.cache.stockLogs[index];
       const newLog = { ...oldLog, ...updates };
+      if ((newLog as any).type === 'Adjusted') (newLog as any).type = 'Adjustment';
       
       const diffQty = (newLog.change_qty || 0) - (oldLog.change_qty || 0);
       
@@ -4384,7 +4623,8 @@ class ERPStorage {
       if (diffQty !== 0) {
         const productIndex = this.cache.products.findIndex(p => p.id === newLog.product_id);
         if (productIndex !== -1) {
-          this.cache.products[productIndex].current_stock += diffQty;
+          this.cache.products[productIndex].current_stock = (this.cache.products[productIndex].current_stock || 0) + diffQty;
+          this.save('products', this.cache.products[productIndex]);
         }
       }
       this.notify();

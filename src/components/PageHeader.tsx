@@ -104,7 +104,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           {/* Right side controls */}
           <div className="flex items-center justify-end gap-2 sm:gap-2.5 flex-wrap shrink-0 self-end ml-auto">
             {rightContent}
-            
+
             {/* Color Theme Selector */}
             {showThemeSelector && (
               <div className="relative shrink-0" ref={dropdownRef}>

@@ -36,11 +36,12 @@ import {
   Apple,
   ExternalLink,
   Phone,
-  Save
+  Save,
+  Minus
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { dbStore, isComboProduct } from '../services/store';
-import { Product, Category, UserProfile, ComboItem, ComboHistoryLog } from '../types/erp';
+import { Product, Category, UserProfile, ComboItem, ComboHistoryLog, StockLog } from '../types/erp';
 import { safeStorage } from '../utils/safeStorage';
 import { Camera } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
@@ -741,8 +742,8 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
           width={customW || barWidth}
           fontSize={size === '60x100' || size === '50x25' ? 8.5 : size === '38x25' ? 7 : size === '40x25' ? 7.5 : 8}
           margin={0}
-          marginLeft={size === '50x25' ? 6 : 8}
-          marginRight={size === '50x25' ? 6 : 8}
+          marginLeft={8}
+          marginRight={8}
           marginTop={0}
           marginBottom={2}
           textMargin={2}
@@ -1616,7 +1617,7 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
             className="w-full flex justify-center items-center shrink-0 border-b border-black py-0.5"
             style={{ borderBottom: '1px solid #000000', boxSizing: 'border-box', textAlign: 'center', overflow: 'visible' }}
           >
-            {renderBarcodeBox(mode === 'print' ? 10 : 12)}
+            {renderBarcodeBox(20)}
           </div>
 
           {/* 4. Commercial Pricing Box (MRP and SALE BOLD with PKD & EXP inside without ANY cut!) */}
@@ -1763,6 +1764,12 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [printOrientation, setPrintOrientation] = useState<'auto' | 'landscape' | 'portrait' | 'rotated90' | 'thermal-portrait-fix' | 'thermal-270-fix'>('landscape');
   const [printHorizontalOffsetMm, setPrintHorizontalOffsetMm] = useState<number>(0);
   const [printAlignmentTarget, setPrintAlignmentTarget] = useState<'barcode' | 'all'>('all');
+
+  useEffect(() => {
+    if (printLabelSize === '50x25' || printLabelSize === '60x100') {
+      setPrintAlignmentTarget('all');
+    }
+  }, [printLabelSize]);
   const [printBoxBorder, setPrintBoxBorder] = useState(true);
   const [printBarcodeFrame, setPrintBarcodeFrame] = useState(true);
   const [showPrintHelp, setShowPrintHelp] = useState(false);
@@ -1967,7 +1974,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       }
 
       if (savedDefaults.alignment_target) {
-        setPrintAlignmentTarget(savedDefaults.alignment_target);
+        if (savedDefaults.label_size === '50x25' || savedDefaults.label_size === '60x100' || printLabelSize === '50x25' || printLabelSize === '60x100') {
+          setPrintAlignmentTarget('all');
+        } else {
+          setPrintAlignmentTarget(savedDefaults.alignment_target);
+        }
       }
 
       if (printingBarcodeProduct.nutrition_facts) {
@@ -2047,6 +2058,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
   const [formRateDdr, setFormRateDdr] = useState<number | string>('');
   const [formMrp, setFormMrp] = useState<number | string>('');
   const [formOpeningStock, setFormOpeningStock] = useState<number | string>('');
+  const [formStockAdjustmentMode, setFormStockAdjustmentMode] = useState<'none' | 'add' | 'reduce' | 'set'>('none');
+  const [formStockAdjustmentQty, setFormStockAdjustmentQty] = useState<number | string>('');
+  const [formStockAdjustmentNote, setFormStockAdjustmentNote] = useState<string>('');
   const [formMinStock, setFormMinStock] = useState<number | string>('');
   const [formMaxStock, setFormMaxStock] = useState<number | string>('');
   const [formImage, setFormImage] = useState('');
@@ -2135,6 +2149,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormRateDdr('');
     setFormMrp('');
     setFormOpeningStock('');
+    setFormStockAdjustmentMode('none');
+    setFormStockAdjustmentQty('');
+    setFormStockAdjustmentNote('');
     setFormMinStock('');
     setFormMaxStock('');
     setFormImage('');
@@ -2189,6 +2206,9 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     setFormRateDdr(prod.rate_ddr ?? prod.selling_price);
     setFormMrp(prod.mrp);
     setFormOpeningStock(prod.opening_stock);
+    setFormStockAdjustmentMode('none');
+    setFormStockAdjustmentQty('');
+    setFormStockAdjustmentNote('');
     setFormMinStock(prod.minimum_stock);
     setFormMaxStock(prod.maximum_stock);
     setFormImage(prod.image_url);
@@ -2449,6 +2469,46 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         });
 
         dbStore.logActivity(user.id, user.name, user.role, 'Update Product', `Updated product metadata for SKU: ${formSku}`, businessId);
+
+        // Process stock adjustment if requested in the Edit modal
+        if (formStockAdjustmentMode !== 'none' && formStockAdjustmentQty !== '' && !isNaN(Number(formStockAdjustmentQty))) {
+          const qtyVal = Number(formStockAdjustmentQty);
+          let changeQty = 0;
+          let logType: StockLog['type'] = 'Adjustment';
+          const currentStock = editingProduct.current_stock ?? 0;
+
+          if (formStockAdjustmentMode === 'add' && qtyVal > 0) {
+            changeQty = qtyVal;
+            logType = 'In';
+          } else if (formStockAdjustmentMode === 'reduce' && qtyVal > 0) {
+            changeQty = -qtyVal;
+            logType = 'Out';
+          } else if (formStockAdjustmentMode === 'set') {
+            changeQty = qtyVal - currentStock;
+            logType = 'Adjustment';
+          }
+
+          if (changeQty !== 0) {
+            const noteText = formStockAdjustmentNote.trim() || `Manual stock update via Edit Product: ${formStockAdjustmentMode} ${qtyVal}`;
+            dbStore.addStockLog(
+              editingProduct.id,
+              changeQty,
+              logType,
+              noteText,
+              user.id,
+              businessId
+            );
+            dbStore.logActivity(
+              user.id,
+              user.name,
+              user.role,
+              'Stock Change',
+              `Stock ${changeQty > 0 ? '+' : ''}${changeQty} (${logType}) for ${formName.trim()} via Edit Product popup`,
+              businessId
+            );
+          }
+        }
+
         triggerToast('Product details updated successfully.', 'success');
       } else {
         dbStore.createProduct({
@@ -6711,7 +6771,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                   )}
                 </div>
 
-                {!editingProduct && (
+                {!editingProduct ? (
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Opening Loose Stock</label>
                     <input 
@@ -6721,6 +6781,137 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                       placeholder="10"
                       className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-hidden"
                     />
+                  </div>
+                ) : (
+                  <div className="md:col-span-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                    <div className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                            <Layers size={13} className="text-indigo-600 dark:text-indigo-400" />
+                            Inventory & Stock Management
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            (editingProduct.current_stock ?? 0) <= 0
+                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                          }`}>
+                            Current Stock: {editingProduct.current_stock ?? 0} {formUnit}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Initial Opening Stock: {editingProduct.opening_stock ?? 0}
+                        </div>
+                      </div>
+
+                      {/* Stock Adjustment Controls */}
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          Update Stock Level in this Product
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFormStockAdjustmentMode('none')}
+                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer flex items-center justify-center gap-1 ${
+                              formStockAdjustmentMode === 'none'
+                                ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-100 dark:text-slate-900'
+                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            No Change
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormStockAdjustmentMode('add')}
+                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer flex items-center justify-center gap-1 ${
+                              formStockAdjustmentMode === 'add'
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                : 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                            }`}
+                          >
+                            <Plus size={12} /> Add Stock (+)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormStockAdjustmentMode('reduce')}
+                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer flex items-center justify-center gap-1 ${
+                              formStockAdjustmentMode === 'reduce'
+                                ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                : 'bg-white dark:bg-slate-900 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+                            }`}
+                          >
+                            <Minus size={12} /> Deduct Stock (-)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormStockAdjustmentMode('set')}
+                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer flex items-center justify-center gap-1 ${
+                              formStockAdjustmentMode === 'set'
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                : 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30'
+                            }`}
+                          >
+                            Set Total Count (=)
+                          </button>
+                        </div>
+
+                        {formStockAdjustmentMode !== 'none' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 animate-in fade-in duration-150">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase">
+                                {formStockAdjustmentMode === 'add'
+                                  ? 'Quantity to Add (+)'
+                                  : formStockAdjustmentMode === 'reduce'
+                                  ? 'Quantity to Deduct (-)'
+                                  : 'New Total Stock Balance (=)'}
+                              </label>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={formStockAdjustmentMode === 'reduce' ? '1' : '0'}
+                                  value={formStockAdjustmentQty}
+                                  onChange={(e) => setFormStockAdjustmentQty(e.target.value)}
+                                  placeholder={
+                                    formStockAdjustmentMode === 'set'
+                                      ? `${editingProduct.current_stock ?? 0}`
+                                      : 'e.g. 50'
+                                  }
+                                  className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] font-bold rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden"
+                                />
+                                <span className="text-[10px] font-bold text-slate-500 shrink-0">
+                                  {formUnit}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase">
+                                Reason / Reference Note
+                              </label>
+                              <input
+                                type="text"
+                                value={formStockAdjustmentNote}
+                                onChange={(e) => setFormStockAdjustmentNote(e.target.value)}
+                                placeholder="e.g. Physical inventory count audit, stock received"
+                                className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 text-[11px] rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-hidden"
+                              />
+                            </div>
+                            {formStockAdjustmentQty !== '' && !isNaN(Number(formStockAdjustmentQty)) && (
+                              <div className="sm:col-span-2 text-[10px] font-semibold text-slate-500 bg-white/60 dark:bg-slate-900/60 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                💡 Resulting Stock Balance after Save: {' '}
+                                <b className="text-indigo-600 dark:text-indigo-400 font-extrabold text-[11px]">
+                                  {formStockAdjustmentMode === 'add'
+                                    ? (editingProduct.current_stock ?? 0) + Number(formStockAdjustmentQty)
+                                    : formStockAdjustmentMode === 'reduce'
+                                    ? (editingProduct.current_stock ?? 0) - Number(formStockAdjustmentQty)
+                                    : Number(formStockAdjustmentQty)} {formUnit}
+                                </b>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

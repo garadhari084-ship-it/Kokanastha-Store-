@@ -64,8 +64,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       return;
     }
 
-    // Negative mapping for Out/Damage/Transfer to represent actual deduction
-    const finalQty = (adjustType === 'In' || adjustType === 'Return') ? adjustQty : -adjustQty;
+    // Mapping for positive vs negative stock movements
+    const isPositive = adjustType === 'In' || adjustType === 'Return' || adjustType === ('Adjustment_Add' as any);
+    const finalQty = isPositive ? adjustQty : -adjustQty;
+    const rawType: StockLog['type'] = adjustType.startsWith('Adjustment') ? 'Adjustment' : (adjustType as StockLog['type']);
 
     const prod = products.find(p => p.id === selectedProductId);
     if (!prod) return;
@@ -80,15 +82,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         dbStore.updateStockLog(editingLogId, {
           product_id: selectedProductId,
           change_qty: finalQty,
-          type: adjustType,
-          notes: adjustNotes.trim() || `Manual inventory movement: ${adjustType}`
+          type: rawType,
+          notes: adjustNotes.trim() || `Manual inventory movement: ${rawType}`
         });
         dbStore.logActivity(
           user.id,
           user.name,
           user.role,
           'Edit Stock Change',
-          `Edited stock log for ${prod.name}: ${finalQty > 0 ? '+' : ''}${finalQty} (${adjustType})`,
+          `Edited stock log for ${prod.name}: ${finalQty > 0 ? '+' : ''}${finalQty} (${rawType})`,
           businessId
         );
         triggerToast(`Inventory stock log updated successfully.`, 'success');
@@ -97,8 +99,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         dbStore.addStockLog(
           selectedProductId,
           finalQty,
-          adjustType,
-          adjustNotes.trim() || `Manual inventory movement: ${adjustType}`,
+          rawType,
+          adjustNotes.trim() || `Manual inventory movement: ${rawType}`,
           user.id,
           businessId
         );
@@ -381,7 +383,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   >
                     <option value="In">Stock In (+)</option>
                     <option value="Out">Stock Out (-)</option>
-                    <option value="Adjustment">Adjustment (+/-)</option>
+                    <option value="Adjustment_Add">Stock Adjustment (Add +)</option>
+                    <option value="Adjustment_Deduct">Stock Adjustment (Deduct -)</option>
                     <option value="Transfer">Transfer (-)</option>
                     <option value="Damage">Damage / Scrap (-)</option>
                     <option value="Return">Customer Return (+)</option>

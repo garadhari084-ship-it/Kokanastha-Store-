@@ -390,7 +390,9 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   getSuggestedInvoiceNumber,
   recalculateOrderPrices
 }) => {
-  const selectedCust = customers.find(c => c.id === selectedCustomerId);
+  const selectedCust = customers.find(c => c.id === selectedCustomerId) || 
+                       dbStore.getCustomers(businessId).find(c => c.id === selectedCustomerId) || 
+                       (dbStore as any).cache?.customers?.find((c: any) => c.id === selectedCustomerId);
   const savingsInfo = calculateOrderSavings(orderItems, products);
   const totalItemQty = orderItems.reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
 
@@ -702,7 +704,6 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       onToggleAdvanceBooking(false);
                       onToggleFestiveBooking(false);
                       setIsFulfilledImmediately(true);
-                      setPaymentStatus('Paid');
                     } else {
                       onToggleAdvanceBooking(false);
                       onToggleFestiveBooking(false);
@@ -1637,11 +1638,18 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
               </div>
 
               {/* Settlement Section */}
-              <div className="space-y-2.5 pt-1">
+              <div className="space-y-2.5 pt-1" id="payment-status-section">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
-                    Payment Status *
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                      Payment Status <span className="text-rose-500">* (Mandatory)</span>
+                    </label>
+                    {!paymentStatus && (
+                      <span className="text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/60 px-2 py-0.5 rounded-full border border-rose-300 dark:border-rose-800 animate-pulse">
+                        * Required - Select Option
+                      </span>
+                    )}
+                  </div>
                   <DropdownField 
                     value={paymentStatus}
                     onChange={(val) => {
@@ -1659,7 +1667,8 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                         }
                       }
                     }}
-                    placeholder="-- Select Payment Status --"
+                    placeholder="-- Select Payment Status (Mandatory) --"
+                    className={!paymentStatus ? 'border-amber-500 dark:border-amber-500 ring-2 ring-amber-400/40 bg-amber-50/20' : ''}
                     options={[
                       { value: 'Paid', label: '✅ Fully Paid (Settled)' },
                       { value: 'Partial', label: '⏳ Partial / Advance Received' },
@@ -1735,7 +1744,15 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   <button 
                     type="button" 
                     disabled={isSubmitting}
-                    onClick={() => onSaveOrder('close')}
+                    onClick={() => {
+                      if (!paymentStatus) {
+                        triggerToast('Payment Status is mandatory! Please select Fully Paid, Partial, or Unpaid before saving.', 'error');
+                        const el = document.getElementById('payment-status-section');
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        return;
+                      }
+                      onSaveOrder('close');
+                    }}
                     className={`flex-1 py-3 text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 rounded-l-xl ${
                       isSubmitting 
                         ? 'bg-slate-700 cursor-not-allowed text-slate-400' 
@@ -1757,7 +1774,15 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     <div className="absolute bottom-full right-0 mb-2 w-52 bg-slate-800 text-slate-100 rounded-xl shadow-2xl border border-slate-700 overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-150">
                       <button 
                         type="button"
-                        onClick={() => onSaveOrder('print')}
+                        onClick={() => {
+                          if (!paymentStatus) {
+                            triggerToast('Payment Status is mandatory! Please select Fully Paid, Partial, or Unpaid before saving.', 'error');
+                            const el = document.getElementById('payment-status-section');
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            return;
+                          }
+                          onSaveOrder('print');
+                        }}
                         className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-slate-700 flex items-center justify-between transition cursor-pointer group"
                       >
                         <span className="group-hover:text-indigo-400">Save & Print Bill</span>
@@ -1765,7 +1790,15 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       </button>
                       <button 
                         type="button"
-                        onClick={() => onSaveOrder('share')}
+                        onClick={() => {
+                          if (!paymentStatus) {
+                            triggerToast('Payment Status is mandatory! Please select Fully Paid, Partial, or Unpaid before saving.', 'error');
+                            const el = document.getElementById('payment-status-section');
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            return;
+                          }
+                          onSaveOrder('share');
+                        }}
                         className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-slate-700 flex items-center justify-between border-t border-slate-700/60 transition cursor-pointer group"
                       >
                         <span className="group-hover:text-indigo-400">Save & WhatsApp Share</span>
@@ -1792,9 +1825,11 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       {/* ================= LIVE INVOICE PREVIEW & CONFIRMATION MODAL ================= */}
       {isPreviewModalOpen && (() => {
         const previewOrder = getPreviewOrder();
-        const custObj = customers.find(c => c.id === previewOrder.customer_id) || {
+        const custObj = customers.find(c => c.id === previewOrder.customer_id) || 
+                        dbStore.getCustomers(businessId).find(c => c.id === previewOrder.customer_id) || 
+                        (dbStore as any).cache?.customers?.find((c: any) => c.id === previewOrder.customer_id) || {
           id: selectedCustomerId,
-          name: selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer',
+          name: selectedCust?.name || (selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer'),
           billing_address: selectedCustomerAddress,
           phone: selectedCustomerPhone,
           shipping_address: selectedCustomerShippingAddress || selectedCustomerAddress

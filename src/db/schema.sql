@@ -351,7 +351,7 @@ CREATE TABLE IF NOT EXISTS stock_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     change_qty INTEGER NOT NULL, -- positive for stock-in, negative for stock-out
-    type VARCHAR(50) NOT NULL CHECK (type IN ('In', 'Out', 'Adjustment', 'Transfer', 'Damage', 'Return')),
+    type VARCHAR(50) NOT NULL CHECK (type IN ('In', 'Out', 'Adjustment', 'Adjusted', 'Transfer', 'Damage', 'Return')),
     notes TEXT,
     created_by UUID REFERENCES users_profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -608,12 +608,14 @@ CREATE OR REPLACE FUNCTION update_product_current_stock()
 RETURNS TRIGGER AS $$
 BEGIN
     UPDATE products
-    SET current_stock = current_stock + NEW.change_qty
+    SET current_stock = COALESCE(current_stock, 0) + NEW.change_qty,
+        updated_at = CURRENT_TIMESTAMP
     WHERE id = NEW.product_id;
     RETURN NEW;
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS trg_stock_logs_on_insert ON stock_logs;
 CREATE TRIGGER trg_stock_logs_on_insert
     AFTER INSERT ON stock_logs
     FOR EACH ROW

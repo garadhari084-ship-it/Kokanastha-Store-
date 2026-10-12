@@ -36,7 +36,6 @@ import { safeStorage } from '../utils/safeStorage';
 import { Business, UserProfile } from '../types/erp';
 import { compressImageFile } from '../utils/imageCompressor';
 import { uploadFileToSupabaseStorage, supabase, isSupabaseConfigured } from '../services/supabase';
-import { DatabaseConfigModal } from './DatabaseConfigModal';
 
 interface SettingsModuleProps {
   businessId: string;
@@ -52,7 +51,6 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [business, setBusiness] = useState<Business | null>(dbStore.getBusiness(businessId) || null);
 
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [showDbConfigModal, setShowDbConfigModal] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
   const [resetProgress, setResetProgress] = useState(0);
@@ -301,6 +299,21 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     }
   };
 
+  const handleClearLocalCache = async () => {
+    setIsSyncing(true);
+    try {
+      dbStore.purgeLocalEntityCaches();
+      if (isSupabaseConfigured && supabase) {
+        await dbStore.syncFromSupabase(businessId);
+      }
+      triggerToast('Local browser storage cache cleared successfully! Data refreshed from Supabase.', 'success');
+    } catch (e: any) {
+      triggerToast(e?.message || 'Failed to clear local cache.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleFactoryReset = () => {
     setResetPassword('');
     setIsResetting(false);
@@ -429,16 +442,20 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   return (
     <div className="space-y-6 max-w-full pb-12 px-0 font-sans text-slate-900 dark:text-slate-100 overflow-x-hidden" id="settings-module-root">
       <PageHeader
-        title="Tenant Settings & Cloud Control"
-        subtitle="Configure multi-tenant organization identities, Supabase PostgreSQL synchronization, dispatch zones, and API webhooks."
+        title="Tenant Settings & Preferences"
+        subtitle="Configure organization identities, dispatch zones, GST compliance, and system preferences."
         icon={Settings}
         rightContent={
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-bold uppercase tracking-wider">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              Tenant RLS Active
-            </span>
-          </div>
+          <button
+            type="button"
+            onClick={handleClearLocalCache}
+            disabled={isSyncing}
+            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
+            title="Clear local browser cache and reload fresh data from Supabase"
+          >
+            <RefreshCw size={13} className={isSyncing ? "animate-spin text-amber-400" : "text-amber-400"} />
+            <span>{isSyncing ? "Clearing..." : "Clear Cache"}</span>
+          </button>
         }
       />
 
@@ -1170,12 +1187,35 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
 
       </form>
 
-      {/* Cloud Database & Multi-Device Sync section hidden per user request */}
-
-      <DatabaseConfigModal
-        isOpen={showDbConfigModal}
-        onClose={() => setShowDbConfigModal(false)}
-      />
+      {/* Local Storage & Cache Maintenance Section */}
+      <div className="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                <Trash2 size={24} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Browser Storage & Cache Management</h3>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Purge all locally cached operational records (orders, products, customers) from this computer. Your live data remains securely stored in the Supabase cloud database.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearLocalCache}
+              disabled={isSyncing}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white active:scale-[0.99]"
+            >
+              <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
+              <span>{isSyncing ? "Clearing Cache..." : "Clear Cache"}</span>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Danger Zone for Super Admin */}
       {user.role === 'Super Admin' && (

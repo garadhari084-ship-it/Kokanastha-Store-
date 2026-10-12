@@ -381,7 +381,7 @@ export interface StockLog {
   id: string;
   product_id: string;
   change_qty: number;
-  type: 'In' | 'Out' | 'Adjusted' | 'Transfer' | 'Damage' | 'Return';
+  type: 'In' | 'Out' | 'Adjustment' | 'Adjusted' | 'Transfer' | 'Damage' | 'Return';
   notes: string;
   created_by: string;
   created_at: string;

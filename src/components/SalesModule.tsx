@@ -424,7 +424,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [isFulfilledImmediately, setIsFulfilledImmediately] = useState(false);
   const [isFestiveBooking, setIsFestiveBooking] = useState(false);
   const [deliveryType, setDeliveryType] = useState<string>('Self delivery');
-  const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partial' | 'Unpaid' | ''>('Paid');
+  const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partial' | 'Unpaid' | ''>('');
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [paidAmount, setPaidAmount] = useState<number | string>('');
   const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
@@ -532,9 +532,6 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setIsAdvanceBooking(isAdvance);
     setIsFestiveBooking(isFestive);
     setIsFulfilledImmediately(isDelivered);
-    if (isDelivered) {
-      setPaymentStatus('Paid');
-    }
     if (!editingOrderId && isCreateModalOpenRef.current && draftSessionIdRef.current) {
       const allocated = dbStore.reserveDraftInvoiceNumber(
         businessId,
@@ -753,7 +750,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setIsAdvanceBooking(false);
     setIsFulfilledImmediately(false);
     setIsFestiveBooking(false);
-    setPaymentStatus('Paid');
+    setPaymentStatus('');
     setPaymentMode('Cash');
     setPaidAmount('');
     setPointsToRedeem(0);
@@ -816,7 +813,14 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       const nextOrders = dbStore.getSalesOrders(businessId);
       setOrders(prev => {
         if (prev.length === nextOrders.length) {
-          const isSame = prev.every((o, idx) => o.id === nextOrders[idx]?.id && o.status === nextOrders[idx]?.status && o.total_amount === nextOrders[idx]?.total_amount && o.paid_amount === nextOrders[idx]?.paid_amount);
+          const isSame = prev.every((o, idx) => 
+            o.id === nextOrders[idx]?.id && 
+            o.order_number === nextOrders[idx]?.order_number &&
+            o.customer_name === nextOrders[idx]?.customer_name &&
+            o.status === nextOrders[idx]?.status && 
+            o.total_amount === nextOrders[idx]?.total_amount && 
+            o.paid_amount === nextOrders[idx]?.paid_amount
+          );
           if (isSame) return prev;
         }
         return nextOrders;
@@ -1168,8 +1172,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       return;
     }
 
-    if (paymentStatus === '') {
-      triggerToast('Please select a Payment Status (Paid, Partial, or Unpaid).', 'error');
+    if (!paymentStatus || paymentStatus === '') {
+      triggerToast('Payment Status is mandatory! Please select Fully Paid, Partial, or Unpaid before saving.', 'error');
       return;
     }
 
@@ -1235,7 +1239,9 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
          finalCustomerName = walkIn.name;
          finalCustomerArea = selectedArea || 'Dahisar';
       } else {
-         const cObj = customers.find(c => c.id === selectedCustomerId);
+         const cObj = customers.find(c => c.id === selectedCustomerId) || 
+                      dbStore.getCustomers(businessId).find(c => c.id === selectedCustomerId) || 
+                      (dbStore as any).cache.customers.find((c: any) => c.id === selectedCustomerId);
          if (cObj) {
             finalCustomerName = cObj.name;
             finalCustomerArea = selectedArea || (cObj.area && cObj.area !== 'Other' ? cObj.area : 'Dahisar');
@@ -1249,7 +1255,23 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 area: finalCustomerArea
               });
             }
+         } else if (selectedCustomerPhone.trim()) {
+           const phoneCust = (dbStore as any).cache.customers.find((c: any) => c.phone && c.phone === selectedCustomerPhone.trim());
+           if (phoneCust) {
+             finalCustomerName = phoneCust.name;
+             finalCustomerArea = selectedArea || phoneCust.area || 'Dahisar';
+           }
          }
+      }
+
+      // Safeguard finalCustomerName so it never stays blank
+      if (!finalCustomerName && selectedCustomerId && selectedCustomerId !== 'WALK_IN') {
+        const anyCust = dbStore.getCustomers(businessId).find(c => c.id === selectedCustomerId) || 
+                        (dbStore as any).cache?.customers?.find((c: any) => c.id === selectedCustomerId);
+        if (anyCust) finalCustomerName = anyCust.name;
+      }
+      if (!finalCustomerName) {
+        finalCustomerName = 'Walk-in Customer';
       }
 
       const cleanItems: SalesItem[] = itemsToProcess.map(it => {
@@ -1393,6 +1415,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           additional_charges_type: additionalChargeType,
           points_redeemed: actualRedeem,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${cleanItems.length} items`,
+          dispatch_notes: `[CUSTOMER:${finalCustomerName}]`,
           business_id: businessId
         });
 
@@ -1675,8 +1698,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const filteredOrders = useMemo(() => {
     return horizonOrders.filter(o => {
       if (statusFilter !== 'all' && o.status !== statusFilter) return false;
-      const cust = customers.find(c => c.id === o.customer_id);
-      const custName = o.customer_name || (cust ? cust.name : '');
+      const cust = customers.find(c => c.id === o.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === o.customer_id);
+      const custName = o.customer_name && o.customer_name !== 'Walk-in Customer' ? o.customer_name : (cust ? cust.name : (o.customer_name || ''));
       let query = searchQuery.toLowerCase().trim();
       
       // If the scanned text is a full URL from the Bill QR code, extract the order number
@@ -1990,8 +2013,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
             {filteredOrders.map((o) => {
-              const cust = customers.find(c => c.id === o.customer_id);
-              const custName = o.customer_name || (cust ? cust.name : 'Walk-in Customer');
+              const cust = customers.find(c => c.id === o.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === o.customer_id);
+              const custName = o.customer_name && o.customer_name !== 'Walk-in Customer' ? o.customer_name : (cust ? cust.name : (o.customer_name || 'Walk-in Customer'));
               const isSelected = selectedOrderIds.includes(o.id);
 
               return (

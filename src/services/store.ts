@@ -705,7 +705,11 @@ class ERPStorage {
     if (!record || !record.id) return;
     const cacheArr = (this.cache as any)[key];
     if (Array.isArray(cacheArr)) {
-      const idx = cacheArr.findIndex((item: any) => item.id === record.id);
+      const idx = cacheArr.findIndex((item: any) => 
+        item.id === record.id || 
+        (key === 'sales' && record.order_number && item.order_number === record.order_number) ||
+        (key === 'purchases' && record.po_number && item.po_number === record.po_number)
+      );
       if (idx !== -1) {
         cacheArr[idx] = { ...cacheArr[idx], ...record };
       } else {
@@ -1089,41 +1093,60 @@ class ERPStorage {
                if (so.status === 'Cancelled' && so.dispatch_notes?.includes('[SYSTEM_RETURNED]')) {
                  so.status = 'Returned';
                }
-               let localSavedItems: any[] = [];
-               if (!existingSO?.items || existingSO.items.length === 0) {
-                 try {
-                   const localSales = JSON.parse(safeStorage.getItem('omnipack_erp_sales') || '[]');
-                   const localMatch = localSales.find((ls: any) => ls.id === so.id);
-                   if (localMatch?.items && Array.isArray(localMatch.items) && localMatch.items.length > 0) {
-                     localSavedItems = localMatch.items;
-                   }
-                 } catch (e) {}
+
+               // Check if local version has been updated more recently than remote database record
+               const isLocalNewer = Boolean(existingSO?.updated_at && so.updated_at && (new Date(existingSO.updated_at).getTime() > new Date(so.updated_at).getTime()));
+
+               // Authoritative raw items resolution:
+               // 1. If local is newer, keep existingSO.items
+               // 2. Otherwise prefer sales_order_items table if present
+               // 3. Otherwise prefer so.items if array
+               // 4. Fallback to existingSO.items
+               const remoteTableItems = itemsByOrder[so.id];
+               const remoteJsonItems = Array.isArray(so.items) && so.items.length > 0 ? so.items : null;
+
+               let rawItems: any[] = [];
+               if (isLocalNewer && existingSO?.items && existingSO.items.length > 0) {
+                 rawItems = existingSO.items;
+               } else if (remoteTableItems && remoteTableItems.length > 0) {
+                 rawItems = remoteTableItems;
+               } else if (remoteJsonItems) {
+                 rawItems = remoteJsonItems;
+               } else if (existingSO?.items && existingSO.items.length > 0) {
+                 rawItems = existingSO.items;
+               } else {
+                 rawItems = Array.isArray(so.items) ? so.items : [];
                }
 
-               const hasRemoteItems = itemsByOrder[so.id] && itemsByOrder[so.id].length > 0;
-               const rawItems = hasRemoteItems 
-                 ? itemsByOrder[so.id] 
-                 : (existingSO?.items && existingSO.items.length > 0 
-                     ? existingSO.items 
-                     : (localSavedItems.length > 0 ? localSavedItems : (so.items || [])));
                const mergedItems = rawItems.map((rit: any) => {
-                 const existingItem = (existingSO?.items || localSavedItems)?.find((eit: any) => eit.product_id === rit.product_id || eit.id === rit.id);
+                 const existingItem = existingSO?.items?.find((eit: any) => eit.product_id === rit.product_id || eit.id === rit.id);
                  const existingScanned = typeof existingItem?.scanned_qty === 'number' && !isNaN(existingItem.scanned_qty) ? existingItem.scanned_qty : 0;
                  const remoteScanned = typeof rit.scanned_qty === 'number' && !isNaN(rit.scanned_qty) ? rit.scanned_qty : 0;
                  const prod = (this.cache.products || []).find((p: any) => p.id === rit.product_id);
                  return {
-                   ...existingItem,
-                   ...rit,
+                   id: rit.id || existingItem?.id || crypto.randomUUID(),
+                   product_id: rit.product_id,
                    product_name: rit.product_name || existingItem?.product_name || prod?.name || 'Product Item',
                    selling_price: typeof rit.selling_price === 'number' ? rit.selling_price : (existingItem?.selling_price || prod?.selling_price || 0),
                    qty: typeof rit.qty === 'number' && rit.qty > 0 ? rit.qty : (existingItem?.qty || 1),
                    gst_rate: typeof rit.gst_rate === 'number' ? rit.gst_rate : (existingItem?.gst_rate || prod?.gst_rate || 0),
-                   scanned_qty: Math.max(existingScanned, remoteScanned)
+                   scanned_qty: Math.max(existingScanned, remoteScanned),
+                   normal_rate: rit.normal_rate ?? existingItem?.normal_rate,
+                   rate_type: rit.rate_type ?? existingItem?.rate_type,
+                   rate_reason: rit.rate_reason ?? existingItem?.rate_reason,
+                   unit_savings: rit.unit_savings ?? existingItem?.unit_savings,
+                   is_overridden: rit.is_overridden ?? existingItem?.is_overridden
                  };
                });
+
                // Recover true customer name if missing or defaulted to Walk-in
-               let resolvedCustomerName = so.customer_name || existingSO?.customer_name;
-               if (!resolvedCustomerName || resolvedCustomerName === 'Walk-in Customer' || resolvedCustomerName === 'Customer') {
+               let resolvedCustomerName = so.customer_name;
+               const custObj = (this.cache.customers || []).find((c: any) => c.id === (so.customer_id || existingSO?.customer_id));
+               if (custObj && custObj.name && custObj.name !== 'Walk-in Customer') {
+                 resolvedCustomerName = custObj.name;
+               } else if (existingSO?.customer_name && existingSO.customer_name !== 'Walk-in Customer') {
+                 resolvedCustomerName = existingSO.customer_name;
+               } else if (!resolvedCustomerName || resolvedCustomerName === 'Walk-in Customer' || resolvedCustomerName === 'Customer') {
                  const notesCandidate = so.dispatch_notes || so.payment_notes || existingSO?.dispatch_notes || existingSO?.payment_notes || '';
                  const notesMatch = notesCandidate.match(/\[CUSTOMER:([^\]]+)\]/);
                  if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim() !== 'Walk-in Customer') {
@@ -1139,22 +1162,36 @@ class ERPStorage {
                      resolvedCustomerName = parts[2].trim();
                    }
                  }
-                 if (!resolvedCustomerName || resolvedCustomerName === 'Walk-in Customer') {
-                   const custObj = (this.cache.customers || []).find((c: any) => c.id === (so.customer_id || existingSO?.customer_id));
-                   if (custObj?.name && custObj.name !== 'Walk-in Customer') {
-                     resolvedCustomerName = custObj.name;
-                   }
-                 }
                }
+
+               const finalTotalAmount = typeof so.total_amount === 'number'
+                 ? so.total_amount
+                 : (so.total_amount !== undefined && so.total_amount !== null && !isNaN(Number(so.total_amount))
+                     ? Number(so.total_amount)
+                     : (existingSO?.total_amount || 0));
+
+               const finalPaidAmount = typeof so.paid_amount === 'number'
+                 ? so.paid_amount
+                 : (so.paid_amount !== undefined && so.paid_amount !== null && !isNaN(Number(so.paid_amount))
+                     ? Number(so.paid_amount)
+                     : (existingSO?.paid_amount || 0));
 
                return {
                  ...existingSO,
                  ...so,
-                 customer_name: resolvedCustomerName || existingSO?.customer_name || so.customer_name || undefined,
-                 area: so.area || existingSO?.area || undefined,
-                 channel: so.channel || existingSO?.channel || undefined,
+                 total_amount: isLocalNewer && existingSO?.total_amount !== undefined ? existingSO.total_amount : finalTotalAmount,
+                 paid_amount: isLocalNewer && existingSO?.paid_amount !== undefined ? existingSO.paid_amount : finalPaidAmount,
+                 payment_status: isLocalNewer && existingSO?.payment_status ? existingSO.payment_status : (so.payment_status || existingSO?.payment_status || 'Unpaid'),
+                 payment_mode: isLocalNewer && existingSO?.payment_mode ? existingSO.payment_mode : (so.payment_mode || existingSO?.payment_mode || 'Cash'),
+                 order_date: isLocalNewer && existingSO?.order_date ? existingSO.order_date : (so.order_date || existingSO?.order_date),
+                 delivery_date: isLocalNewer && existingSO?.delivery_date !== undefined ? existingSO.delivery_date : (so.delivery_date !== undefined ? so.delivery_date : existingSO?.delivery_date),
+                 customer_id: (so.customer_id && so.customer_id !== 'WALK_IN') ? so.customer_id : (existingSO?.customer_id || 'WALK_IN'),
+                 customer_name: resolvedCustomerName || existingSO?.customer_name || 'Walk-in Customer',
+                 area: so.area || existingSO?.area || 'Dahisar',
+                 channel: so.channel || existingSO?.channel || (resolvedCustomerName && resolvedCustomerName !== 'Walk-in Customer' ? 'Direct Order' : 'Walk-in'),
                  time: so.time || existingSO?.time || undefined,
-                 items: mergedItems
+                 items: mergedItems,
+                 updated_at: isLocalNewer ? existingSO?.updated_at : (so.updated_at || existingSO?.updated_at)
                };
              });
 
@@ -1662,8 +1699,17 @@ class ERPStorage {
                        delete si.is_overridden; delete si.normal_rate; delete si.rate_type; delete si.rate_reason; delete si.unit_savings; delete si.original_calc_price;
                        salesItems.push(si);
                    });
+                   clean.items = clean.items.map((i: any) => ({
+                       ...i,
+                       id: sanitizeUUID(i.id, false),
+                       product_id: sanitizeUUID(i.product_id, false),
+                       qty: Number(i.qty) || 1,
+                       selling_price: Number(i.selling_price) || 0,
+                       gst_rate: Number(i.gst_rate) || 0
+                   }));
+               } else {
+                   delete clean.items;
                }
-               delete clean.items;
            }
            if (tableName === 'purchase_orders') {
                clean.supplier_id = sanitizeUUID(clean.supplier_id, false);
@@ -1880,14 +1926,52 @@ class ERPStorage {
          return error;
        }
        
-       if (tableName === 'sales_orders' && salesItems.length > 0) {
-           const { error: err2 } = await supabase.from('sales_order_items').upsert(salesItems);
-           if (err2 && err2.code !== 'PGRST205') console.warn('Supabase sync error on sales_order_items:', JSON.stringify(err2));
-       }
+        if (tableName === 'sales_orders') {
+            const targetOrderId = (payload && !Array.isArray(payload) ? payload.id : undefined) || (dataItem && !Array.isArray(dataItem) ? dataItem.id : undefined);
+            if (targetOrderId) {
+                const { error: delErr } = await supabase.from('sales_order_items').delete().eq('sales_order_id', targetOrderId);
+                if (delErr && delErr.code !== 'PGRST205') console.warn('Supabase delete error on sales_order_items:', JSON.stringify(delErr));
+                if (salesItems.length > 0) {
+                    let { error: err2 } = await supabase.from('sales_order_items').insert(salesItems);
+                    if (err2 && err2.code === 'PGRST204') {
+                        const stripped = salesItems.map((item: any) => {
+                            const copy = { ...item };
+                            delete copy.product_name;
+                            return copy;
+                        });
+                        const retryRes = await supabase.from('sales_order_items').insert(stripped);
+                        err2 = retryRes.error;
+                    }
+                    if (err2 && err2.code !== 'PGRST205') console.warn('Supabase sync error on sales_order_items:', JSON.stringify(err2));
+                }
+            } else if (salesItems.length > 0) {
+                let { error: err2 } = await supabase.from('sales_order_items').upsert(salesItems);
+                if (err2 && err2.code === 'PGRST204') {
+                    const stripped = salesItems.map((item: any) => {
+                        const copy = { ...item };
+                        delete copy.product_name;
+                        return copy;
+                    });
+                    const retryRes = await supabase.from('sales_order_items').upsert(stripped);
+                    err2 = retryRes.error;
+                }
+                if (err2 && err2.code !== 'PGRST205') console.warn('Supabase sync error on sales_order_items:', JSON.stringify(err2));
+            }
+        }
        
-       if (tableName === 'purchase_orders' && purchaseItems.length > 0) {
-           const { error: err3 } = await supabase.from('purchase_order_items').upsert(purchaseItems);
-           if (err3 && err3.code !== 'PGRST205') console.warn('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
+       if (tableName === 'purchase_orders') {
+           const targetPoId = (payload && !Array.isArray(payload) ? payload.id : undefined) || (dataItem && !Array.isArray(dataItem) ? dataItem.id : undefined);
+           if (targetPoId) {
+               const { error: delErr } = await supabase.from('purchase_order_items').delete().eq('purchase_order_id', targetPoId);
+               if (delErr && delErr.code !== 'PGRST205') console.warn('Supabase delete error on purchase_order_items:', JSON.stringify(delErr));
+               if (purchaseItems.length > 0) {
+                   const { error: err3 } = await supabase.from('purchase_order_items').insert(purchaseItems);
+                   if (err3 && err3.code !== 'PGRST205') console.warn('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
+               }
+           } else if (purchaseItems.length > 0) {
+               const { error: err3 } = await supabase.from('purchase_order_items').upsert(purchaseItems);
+               if (err3 && err3.code !== 'PGRST205') console.warn('Supabase sync error on purchase_order_items:', JSON.stringify(err3));
+           }
        }
        
        if (dataItem) {
@@ -4360,18 +4444,67 @@ class ERPStorage {
   }
 
   public updateSalesOrder(id: string, updates: Partial<SalesOrder>): SalesOrder {
-    const index = this.cache.sales.findIndex(s => s.id === id);
+    const cleanId = (id || '').trim();
+    const index = this.cache.sales.findIndex(s => s.id === cleanId || s.order_number === cleanId);
     if (index !== -1) {
       const oldSO = this.cache.sales[index];
       const updatedPaidAmount = updates.paid_amount !== undefined 
         ? (typeof updates.paid_amount === 'number' ? updates.paid_amount : Number(updates.paid_amount) || 0) 
         : oldSO.paid_amount;
 
-      const newSO = { 
+      // Keep payment_history synchronized if paid_amount or payment_mode changed
+      let updatedPaymentHistory = updates.payment_history || oldSO.payment_history || [];
+      const newPaymentMode = updates.payment_mode || oldSO.payment_mode || 'Cash';
+      const newOrderDate = updates.order_date || oldSO.order_date || new Date().toISOString().split('T')[0];
+
+      if (updatedPaidAmount > 0) {
+        if (!updatedPaymentHistory || updatedPaymentHistory.length === 0) {
+          updatedPaymentHistory = [{
+            id: crypto.randomUUID(),
+            order_id: oldSO.id,
+            order_number: updates.order_number || oldSO.order_number,
+            type: 'Sales',
+            amount: updatedPaidAmount,
+            payment_mode: newPaymentMode,
+            bank_account: 'Main Cash / Bank Account',
+            payment_date: newOrderDate,
+            notes: 'Payment Recorded / Updated',
+            receipt_number: `RCT-${updates.order_number || oldSO.order_number}`,
+            collected_by: 'Staff',
+            business_id: oldSO.business_id,
+            created_at: new Date().toISOString()
+          }];
+        } else if (updates.paid_amount !== undefined || updates.payment_mode !== undefined) {
+          updatedPaymentHistory = updatedPaymentHistory.map((ph, idx) => {
+            if (idx === 0) {
+              return {
+                ...ph,
+                amount: updatedPaidAmount,
+                payment_mode: newPaymentMode,
+                payment_date: newOrderDate
+              };
+            }
+            return ph;
+          });
+        }
+      }
+
+      const updatedTotalAmount = typeof updates.total_amount === 'number'
+        ? updates.total_amount
+        : (updates.total_amount !== undefined && !isNaN(Number(updates.total_amount)) ? Number(updates.total_amount) : oldSO.total_amount);
+
+      const newSO: SalesOrder = { 
         ...oldSO, 
         ...updates, 
-        paid_amount: updatedPaidAmount 
+        total_amount: updatedTotalAmount,
+        paid_amount: updatedPaidAmount,
+        payment_history: updatedPaymentHistory,
+        is_updated: true,
+        updated_at: new Date().toISOString()
       };
+      if (updates.items && Array.isArray(updates.items)) {
+        newSO.items = updates.items;
+      }
       this.cache.sales[index] = newSO;
       this.save('sales', newSO);
       // Handle stock synchronization

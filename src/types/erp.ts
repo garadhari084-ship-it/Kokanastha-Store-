@@ -327,6 +327,7 @@ export interface SalesOrder {
   delivery_charges?: number;
   business_id: string;
   created_at: string;
+  updated_at?: string;
   qr_code_data: string; // Custom string packing verification scan
   delivery_partner?: string; // Rapido, Dunzo, Courier, In-House, etc.
   delivery_person_name?: string;

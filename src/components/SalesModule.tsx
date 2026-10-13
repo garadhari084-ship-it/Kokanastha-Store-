@@ -416,6 +416,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   }, [currentBiz?.tax_rate_default]);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState('WALK_IN');
+  const [selectedCustomerName, setSelectedCustomerName] = useState<string>('Walk-in Customer');
   const [selectedArea, setSelectedArea] = useState('Dahisar');
   const [orderDate, setOrderDate] = useState<string>(getLocalTodayDate);
   const [orderTime, setOrderTime] = useState<string>(getLocalCurrentTimeInput);
@@ -641,6 +642,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     const latestCustomers = dbStore.getCustomers(businessId);
     setCustomers(latestCustomers);
     setSelectedCustomerId(newCust.id);
+    setSelectedCustomerName(newCust.name);
     setSelectedCustomerPhone(newCust.phone || '');
     setSelectedCustomerAddress(newCust.billing_address || '');
     setSelectedCustomerShippingAddress(newCust.shipping_address || newCust.billing_address || '');
@@ -742,6 +744,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       setCustomInvoiceNumber(getSuggestedInvoiceNumber(false, false));
     }
     setSelectedCustomerId('WALK_IN');
+    setSelectedCustomerName('Walk-in Customer');
     setSelectedArea(biz?.default_dispatch_zone || 'Dahisar');
     setOrderDate(getLocalTodayDate());
     setOrderTime(getLocalCurrentTimeInput());
@@ -811,20 +814,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   useEffect(() => {
     return dbStore.subscribe(() => {
       const nextOrders = dbStore.getSalesOrders(businessId);
-      setOrders(prev => {
-        if (prev.length === nextOrders.length) {
-          const isSame = prev.every((o, idx) => 
-            o.id === nextOrders[idx]?.id && 
-            o.order_number === nextOrders[idx]?.order_number &&
-            o.customer_name === nextOrders[idx]?.customer_name &&
-            o.status === nextOrders[idx]?.status && 
-            o.total_amount === nextOrders[idx]?.total_amount && 
-            o.paid_amount === nextOrders[idx]?.paid_amount
-          );
-          if (isSame) return prev;
-        }
-        return nextOrders;
-      });
+      setOrders(nextOrders);
 
       const nextCusts = dbStore.getCustomers(businessId);
       setCustomers(prev => {
@@ -905,13 +895,20 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setCustomInvoiceNumber(order.order_number);
     setSelectedCustomerId(order.customer_id || 'WALK_IN');
 
-    const c = customers.find(cust => cust.id === order.customer_id);
+    const c = customers.find(cust => cust.id === order.customer_id) || dbStore.getCustomers(businessId).find(cust => cust.id === order.customer_id);
+    setSelectedCustomerName(order.customer_name || c?.name || 'Walk-in Customer');
     if (c) {
       setSelectedCustomerPhone(c.phone || '');
       setSelectedCustomerAddress(c.billing_address || c.address || '');
       setSelectedCustomerShippingAddress(c.shipping_address || c.billing_address || c.address || '');
       setSelectedPincode(c.pin_code || '');
       setIsSameShippingAddress(!c.shipping_address || c.shipping_address === c.billing_address);
+    } else {
+      setSelectedCustomerPhone('');
+      setSelectedCustomerAddress('');
+      setSelectedCustomerShippingAddress('');
+      setSelectedPincode('');
+      setIsSameShippingAddress(true);
     }
     setPointsToRedeem(order.points_redeemed || 0);
     setSelectedArea(order.area || 'Dahisar');
@@ -1011,7 +1008,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   };
 
   const handleRemoveLineItem = (idx: number) => {
-    setOrderItems(orderItems.filter((_, i) => i !== idx));
+    setOrderItems(prev => prev.filter((_, i) => i !== idx));
   };
 
   const calculatedTotals = useMemo(() => {
@@ -1195,7 +1192,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       let finalCreatedOrder: SalesOrder | null = null;
       // Handle Walk-in / New Customer dynamic creation
       let finalCustomerId = selectedCustomerId;
-      let finalCustomerName = '';
+      let finalCustomerName = selectedCustomerName.trim();
       let finalCustomerArea = selectedArea || 'Dahisar';
       
       if (isNewCustomerSelected) {
@@ -1218,32 +1215,15 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         finalCustomerArea = selectedArea || 'Dahisar';
         triggerToast(`New customer "${newCust.name}" registered successfully.`, 'success');
       } else if (selectedCustomerId === 'WALK_IN' || selectedCustomerId === '') {
-         let walkIn = customers.find(c => c.name === 'Walk-in Customer');
-         if (!walkIn) {
-            walkIn = dbStore.createCustomer({
-               name: 'Walk-in Customer',
-               group: 'Retail',
-               area: selectedArea || 'Dahisar',
-               gstin: '',
-               pan: '',
-               billing_address: 'Retail POS',
-               shipping_address: 'Retail POS',
-               email: '',
-               phone: '',
-               credit_limit: 0,
-               business_id: businessId,
-               active: true
-            });
-         }
-         finalCustomerId = walkIn.id;
-         finalCustomerName = walkIn.name;
+         finalCustomerId = 'WALK_IN';
+         finalCustomerName = (selectedCustomerName && selectedCustomerName.trim() !== 'Walk-in Customer') ? selectedCustomerName.trim() : 'Walk-in Customer';
          finalCustomerArea = selectedArea || 'Dahisar';
       } else {
          const cObj = customers.find(c => c.id === selectedCustomerId) || 
                       dbStore.getCustomers(businessId).find(c => c.id === selectedCustomerId) || 
-                      (dbStore as any).cache.customers.find((c: any) => c.id === selectedCustomerId);
+                      (dbStore as any).cache?.customers?.find((c: any) => c.id === selectedCustomerId);
          if (cObj) {
-            finalCustomerName = cObj.name;
+            finalCustomerName = cObj.name || selectedCustomerName.trim();
             finalCustomerArea = selectedArea || (cObj.area && cObj.area !== 'Other' ? cObj.area : 'Dahisar');
             // Save updated customer contact & addresses if changed inline
             if (selectedCustomerPhone.trim() || selectedCustomerAddress.trim() || selectedCustomerShippingAddress.trim() || selectedPincode.trim() || finalCustomerArea) {
@@ -1255,20 +1235,17 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 area: finalCustomerArea
               });
             }
-         } else if (selectedCustomerPhone.trim()) {
-           const phoneCust = (dbStore as any).cache.customers.find((c: any) => c.phone && c.phone === selectedCustomerPhone.trim());
-           if (phoneCust) {
-             finalCustomerName = phoneCust.name;
-             finalCustomerArea = selectedArea || phoneCust.area || 'Dahisar';
-           }
+         } else if (selectedCustomerName && selectedCustomerName.trim() !== 'Walk-in Customer') {
+            finalCustomerName = selectedCustomerName.trim();
+            finalCustomerArea = selectedArea || 'Dahisar';
          }
       }
 
-      // Safeguard finalCustomerName so it never stays blank
-      if (!finalCustomerName && selectedCustomerId && selectedCustomerId !== 'WALK_IN') {
-        const anyCust = dbStore.getCustomers(businessId).find(c => c.id === selectedCustomerId) || 
-                        (dbStore as any).cache?.customers?.find((c: any) => c.id === selectedCustomerId);
-        if (anyCust) finalCustomerName = anyCust.name;
+      // Safeguard finalCustomerName so it never stays blank or defaults to Walk-in if customer ID is selected
+      if ((!finalCustomerName || finalCustomerName === 'Walk-in Customer') && finalCustomerId && finalCustomerId !== 'WALK_IN') {
+        const anyCust = dbStore.getCustomers(businessId).find(c => c.id === finalCustomerId) || 
+                        (dbStore as any).cache?.customers?.find((c: any) => c.id === finalCustomerId);
+        if (anyCust && anyCust.name) finalCustomerName = anyCust.name;
       }
       if (!finalCustomerName) {
         finalCustomerName = 'Walk-in Customer';
@@ -1286,18 +1263,45 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         };
       });
 
-      // Use pre-calculated values
-      const { finalAmount, computedPaid, balance: unpaidBalance, actualRedeem, discountAmount: calculatedDiscount } = calculatedTotals;
-      const actualPaid = Number(computedPaid) || 0;
-      const actualBalance = Number(unpaidBalance) || 0;
-      
-      let customerObj = customers.find(c => c.id === finalCustomerId);
-      // Fallback for newly created customer in this same turn
-      if (!customerObj && finalCustomerId) {
-        const allCusts = dbStore.getCustomers(businessId);
-        customerObj = allCusts.find(c => c.id === finalCustomerId);
-      }
+      // Recalculate totals directly from cleanItems so deleted items or edited prices/quantities reflect accurately
+      const taxableVal = cleanItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
+      const taxVal = cleanItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
+      const subtotalBeforeDiscount = Math.round(taxableVal + taxVal);
 
+      const config = dbStore.getLoyaltyConfig(businessId);
+      const pointVal = config?.point_value || 1;
+      const selCustObj = customers.find(c => c.id === finalCustomerId) || dbStore.getCustomers(businessId).find(c => c.id === finalCustomerId);
+      const pts = selCustObj?.loyalty_points || 0;
+      const actualRedeem = Math.min(pts, Number(pointsToRedeem) || 0);
+
+      let percDiscVal = customDiscountPercentage !== '' && !isNaN(Number(customDiscountPercentage)) ? Math.max(0, Number(customDiscountPercentage)) : 0;
+      let amtDiscVal = customDiscountAmount !== '' && !isNaN(Number(customDiscountAmount)) ? Math.max(0, Number(customDiscountAmount)) : 0;
+
+      let discAmt = actualRedeem * pointVal;
+      if (discountType === 'Percentage') {
+        discAmt += (subtotalBeforeDiscount * percDiscVal) / 100;
+      } else {
+        discAmt += amtDiscVal;
+      }
+      const calculatedDiscount = Math.round(discAmt);
+
+      const addCharges = additionalCharges !== '' && !isNaN(Number(additionalCharges)) ? Math.max(0, Number(additionalCharges)) : 0;
+      const delCharges = deliveryCharges !== '' && !isNaN(Number(deliveryCharges)) ? Math.max(0, Number(deliveryCharges)) : 0;
+
+      const finalAmount = Math.max(0, subtotalBeforeDiscount - calculatedDiscount + addCharges + delCharges);
+
+      let actualPaid = 0;
+      if (finalPaymentStatusToSave === 'Paid') {
+        actualPaid = finalAmount;
+      } else if (finalPaymentStatusToSave === 'Partial') {
+        actualPaid = Math.min(finalAmount, Math.max(0, Number(paidAmount) || 0));
+      } else {
+        actualPaid = 0;
+      }
+      const actualBalance = Math.max(0, finalAmount - actualPaid);
+      const unpaidBalance = actualBalance;
+      
+      let customerObj = customers.find(c => c.id === finalCustomerId) || dbStore.getCustomers(businessId).find(c => c.id === finalCustomerId);
       const isWalkIn = customerObj?.name === 'Walk-in Customer' || finalCustomerId === 'WALK_IN' || !finalCustomerId;
 
       // Credit limit bypass check for registered customers with actual debt
@@ -1343,6 +1347,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           items: cleanItems,
           is_updated: true,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${cleanItems.length} items`,
+          dispatch_notes: `[CUSTOMER:${finalCustomerName}]`
         });
 
         finalCreatedOrder = dbStore.getSalesOrders(businessId).find(o => o.id === editingOrderId) || null;
@@ -2014,7 +2019,21 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
             {filteredOrders.map((o) => {
               const cust = customers.find(c => c.id === o.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === o.customer_id);
-              const custName = o.customer_name && o.customer_name !== 'Walk-in Customer' ? o.customer_name : (cust ? cust.name : (o.customer_name || 'Walk-in Customer'));
+              let custName = o.customer_name?.trim();
+              if (o.customer_id && o.customer_id !== 'WALK_IN' && cust && cust.name && cust.name !== 'Walk-in Customer') {
+                custName = cust.name;
+              } else if (!custName || custName === 'Walk-in Customer') {
+                if (cust && cust.name && cust.name !== 'Walk-in Customer') {
+                  custName = cust.name;
+                } else {
+                  const notesMatch = (o.dispatch_notes || o.payment_notes || '').match(/\[CUSTOMER:([^\]]+)\]/);
+                  if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim() !== 'Walk-in Customer') {
+                    custName = notesMatch[1].trim();
+                  } else {
+                    custName = (o.customer_name && o.customer_name !== 'Walk-in Customer') ? o.customer_name : 'Walk-in Customer';
+                  }
+                }
+              }
               const isSelected = selectedOrderIds.includes(o.id);
 
               return (
@@ -2535,6 +2554,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           deliveryDate={deliveryDate}
           deliveryType={deliveryType}
           selectedCustomerId={selectedCustomerId}
+          selectedCustomerName={selectedCustomerName}
           selectedCustomerPhone={selectedCustomerPhone}
           selectedCustomerAddress={selectedCustomerAddress}
           selectedCustomerShippingAddress={selectedCustomerShippingAddress}
@@ -2578,6 +2598,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           setDeliveryDate={setDeliveryDate}
           setDeliveryType={setDeliveryType}
           setSelectedCustomerId={setSelectedCustomerId}
+          setSelectedCustomerName={setSelectedCustomerName}
           setSelectedCustomerPhone={setSelectedCustomerPhone}
           setSelectedCustomerAddress={setSelectedCustomerAddress}
           setSelectedCustomerShippingAddress={setSelectedCustomerShippingAddress}

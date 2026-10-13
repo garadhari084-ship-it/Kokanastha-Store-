@@ -218,6 +218,7 @@ export interface CreateInvoiceViewProps {
   deliveryDate: string;
   deliveryType: string;
   selectedCustomerId: string;
+  selectedCustomerName?: string;
   selectedCustomerPhone: string;
   selectedCustomerAddress: string;
   selectedCustomerShippingAddress: string;
@@ -274,6 +275,7 @@ export interface CreateInvoiceViewProps {
   setDeliveryDate: (val: string) => void;
   setDeliveryType: (val: string) => void;
   setSelectedCustomerId: (val: string) => void;
+  setSelectedCustomerName?: (val: string) => void;
   setSelectedCustomerPhone: (val: string) => void;
   setSelectedCustomerAddress: (val: string) => void;
   setSelectedCustomerShippingAddress: (val: string) => void;
@@ -318,6 +320,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   deliveryDate,
   deliveryType,
   selectedCustomerId,
+  selectedCustomerName,
   selectedCustomerPhone,
   selectedCustomerAddress,
   selectedCustomerShippingAddress,
@@ -362,6 +365,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   setDeliveryDate,
   setDeliveryType,
   setSelectedCustomerId,
+  setSelectedCustomerName,
   setSelectedCustomerPhone,
   setSelectedCustomerAddress,
   setSelectedCustomerShippingAddress,
@@ -459,7 +463,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     });
 
     const orderNum = customInvoiceNumber.trim() || getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking);
-    const custName = selectedCust?.name || (selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer');
+    const custName = selectedCustomerName?.trim() || selectedCust?.name || (selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer');
 
     return {
       id: editingOrderId || 'draft-preview',
@@ -610,8 +614,9 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   value={selectedCustomerId}
                   onChange={(val) => {
                     setSelectedCustomerId(val);
-                    const c = customers.find(cust => cust.id === val);
+                    const c = customers.find(cust => cust.id === val) || dbStore.getCustomers(businessId).find(cust => cust.id === val);
                     if (c) {
+                      if (setSelectedCustomerName) setSelectedCustomerName(c.name);
                       setSelectedCustomerPhone(c.phone || '');
                       setSelectedCustomerAddress(c.billing_address || '');
                       setSelectedCustomerShippingAddress(c.shipping_address || c.billing_address || '');
@@ -625,6 +630,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       }
                       setOrderItems(prev => recalculateOrderPrices(prev, c, isAdvanceBooking, isFestiveBooking));
                     } else {
+                      if (setSelectedCustomerName) setSelectedCustomerName(val === 'WALK_IN' ? 'Walk-in Customer' : '');
                       setSelectedCustomerPhone('');
                       setSelectedCustomerAddress('');
                       setSelectedCustomerShippingAddress('');
@@ -748,8 +754,23 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
               {/* Comprehensive Contact & Logistics Details */}
               <div className="bg-slate-50/70 dark:bg-slate-800/40 p-3.5 rounded-xl border-2 border-slate-300 dark:border-slate-600/80 grid grid-cols-1 md:grid-cols-4 gap-3">
-                {/* 1. Mobile */}
-                <div className="space-y-1 md:col-span-1">
+                {/* 1. Customer Name */}
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
+                    <User size={11} className="text-indigo-500" />
+                    <span>Customer / Party Name *</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={selectedCustomerName || ''}
+                    onChange={(e) => setSelectedCustomerName && setSelectedCustomerName(e.target.value)}
+                    placeholder="Customer / Party Name"
+                    className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs font-extrabold rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* 2. Mobile */}
+                <div className="space-y-1 md:col-span-2">
                   <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
                     <Phone size={11} className="text-indigo-500" />
                     <span>Mobile Number</span>
@@ -763,8 +784,8 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   />
                 </div>
 
-                {/* 2. Customer / Billing Address */}
-                <div className="space-y-1 md:col-span-3">
+                {/* 3. Customer / Billing Address */}
+                <div className="space-y-1 md:col-span-4">
                   <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
                     <Building2 size={11} className="text-indigo-500" />
                     <span>Customer / Billing Address</span>
@@ -1829,7 +1850,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                         dbStore.getCustomers(businessId).find(c => c.id === previewOrder.customer_id) || 
                         (dbStore as any).cache?.customers?.find((c: any) => c.id === previewOrder.customer_id) || {
           id: selectedCustomerId,
-          name: selectedCust?.name || (selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer'),
+          name: selectedCustomerName?.trim() || selectedCust?.name || (selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer'),
           billing_address: selectedCustomerAddress,
           phone: selectedCustomerPhone,
           shipping_address: selectedCustomerShippingAddress || selectedCustomerAddress

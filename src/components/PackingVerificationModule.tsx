@@ -228,14 +228,6 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     if (order.is_partially_packed) {
       setShowResumePopup(true);
     }
-
-    // Update status to 'Packing' if it was 'Pending'
-    if (order.status === 'Pending' || !order.status) {
-      dbStore.updateSalesOrder(order.id, { 
-        status: 'Packing',
-        packing_started_at: new Date().toISOString()
-      });
-    }
     
     // Call reload to ensure state consistency with database
     reloadOrders();
@@ -341,7 +333,11 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
     const newScanned = currentScanned + 1;
     items[itemIdx] = { ...item, scanned_qty: newScanned };
-    dbStore.updateSalesOrder(selectedOrder.id, { items });
+    dbStore.updateSalesOrder(selectedOrder.id, { 
+      items,
+      status: (currentOrder.status === 'Pending' || !currentOrder.status) ? 'Packing' : currentOrder.status,
+      packing_started_at: currentOrder.packing_started_at || new Date().toISOString()
+    });
 
     const remaining = Math.max(0, maxQty - newScanned);
     const msg = `Verified 1 unit of ${prodName} (${newScanned}/${maxQty})${remaining === 0 ? ' - Item Done!' : ''}`;
@@ -384,7 +380,11 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     const prodName = item.product_name || prod?.name || `Item #${itemIdx + 1}`;
 
     items[itemIdx] = { ...item, scanned_qty: item.qty };
-    dbStore.updateSalesOrder(selectedOrder.id, { items });
+    dbStore.updateSalesOrder(selectedOrder.id, { 
+      items,
+      status: (currentOrder.status === 'Pending' || !currentOrder.status) ? 'Packing' : currentOrder.status,
+      packing_started_at: currentOrder.packing_started_at || new Date().toISOString()
+    });
 
     const msg = `🎉 Verified all ${item.qty} units of ${prodName}`;
     setRecentScanLog({ msg, success: true });
@@ -404,7 +404,11 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       return { ...item };
     });
 
-    dbStore.updateSalesOrder(selectedOrder.id, { items: updatedItems });
+    dbStore.updateSalesOrder(selectedOrder.id, { 
+      items: updatedItems,
+      status: (currentOrder.status === 'Pending' || !currentOrder.status) ? 'Packing' : currentOrder.status,
+      packing_started_at: currentOrder.packing_started_at || new Date().toISOString()
+    });
     triggerToast(`Verified all units for ${prod?.name || 'Item'}.`, 'success');
     setRecentScanLog({
       msg: `Quick Verified: ${prod?.name || 'Item'}`,
@@ -429,7 +433,11 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       scanned_qty: item.qty
     }));
 
-    dbStore.updateSalesOrder(selectedOrder.id, { items: updatedItems });
+    dbStore.updateSalesOrder(selectedOrder.id, { 
+      items: updatedItems,
+      status: (currentOrder.status === 'Pending' || !currentOrder.status) ? 'Packing' : currentOrder.status,
+      packing_started_at: currentOrder.packing_started_at || new Date().toISOString()
+    });
     triggerToast(`All ${totalItemsCount} items verified for Order #${selectedOrder.order_number}!`, 'success');
     setRecentScanLog({
       msg: `🎉 Quick Verified All: ${totalItemsCount}/${totalItemsCount} units verified.`,

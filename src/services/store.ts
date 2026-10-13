@@ -4936,7 +4936,9 @@ class ERPStorage {
 
     const updatedOrder = {
       ...order,
-      items: updatedItems
+      items: updatedItems,
+      status: (order.status === 'Pending' || !order.status) ? 'Packing' : order.status,
+      packing_started_at: order.packing_started_at || new Date().toISOString()
     };
 
     this.cache.sales[orderIndex] = updatedOrder;

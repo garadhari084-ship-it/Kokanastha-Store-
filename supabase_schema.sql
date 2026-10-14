@@ -210,3 +210,26 @@ CREATE TABLE stock_logs (
     business_id UUID REFERENCES businesses(id) ON DELETE CASCADE
 );
 
+-- Safely add tables to Realtime publication without error 42710
+DO $$
+DECLARE
+  tbl text;
+  tables text[] := ARRAY['businesses', 'products', 'customers', 'categories', 'suppliers', 'purchase_orders', 'sales_orders', 'stock_logs'];
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    CREATE PUBLICATION supabase_realtime;
+  END IF;
+
+  FOREACH tbl IN ARRAY tables LOOP
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = tbl) THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = tbl
+      ) THEN
+        EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE %I', tbl);
+      END IF;
+    END IF;
+  END LOOP;
+END $$;
+
+

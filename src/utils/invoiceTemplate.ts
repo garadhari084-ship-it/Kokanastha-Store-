@@ -100,9 +100,21 @@ export async function generateBillOfSupplyHTML(
     </div>`;
   }
 
-  const received = order.payment_status === 'Paid' ? totalAmount : 0;
-  const balance = totalAmount - received;
-  const paymentMode = order.payment_status === 'Paid' ? 'Online / Paid' : 'Credit / Pending';
+  const rawPaid = order.paid_amount ?? (order as any).paidAmount ?? (order as any).advance_amount ?? (order as any).advance;
+  const numPaid = typeof rawPaid === 'number' ? rawPaid : (typeof rawPaid === 'string' && rawPaid.trim() !== '' && !isNaN(Number(rawPaid)) ? Number(rawPaid) : undefined);
+  const paidVal = numPaid !== undefined ? numPaid : (order.payment_status === 'Paid' ? totalAmount : 0);
+
+  const received = order.payment_status === 'Paid' ? Math.max(paidVal, totalAmount) : paidVal;
+  const balance = Math.max(0, totalAmount - received);
+
+  let paymentMode = order.payment_mode || 'Cash';
+  if (order.payment_status === 'Paid') {
+    paymentMode = `${order.payment_mode || 'Paid'} (Paid in Full)`;
+  } else if (order.payment_status === 'Partial' || received > 0) {
+    paymentMode = `${order.payment_mode || 'Partial'} (Advance Paid: ₹${received.toFixed(2)})`;
+  } else {
+    paymentMode = `${order.payment_mode || 'Cash'} (Unpaid / Credit)`;
+  }
 
   const custName = cust?.name || order.customer_name || 'SMITA NAYAK';
   const custAddr = cust?.billing_address || (order.area ? `${order.area} Zone, Mumbai` : 'ARYAVARTA B 406');
@@ -198,14 +210,14 @@ export async function generateBillOfSupplyHTML(
   <meta charset="utf-8">
   <title>Bill of Supply - ${order.order_number}</title>
   <style>
-    @page { size: A4; margin: 10mm; }
+    @page { size: A4; margin: 8mm; }
     body {
       font-family: Arial, Helvetica, sans-serif;
       color: #1e293b;
       margin: 0;
-      padding: 15px;
-      font-size: 10pt;
-      line-height: 1.35;
+      padding: 20px;
+      font-size: 11.5pt;
+      line-height: 1.4;
       background: #ffffff;
     }
     .top-label {
@@ -554,12 +566,12 @@ export async function generateBillOfSupplyHTML(
           <td style="text-align: right;">₹ ${totalAmount.toFixed(2)}</td>
         </tr>
         <tr>
-          <td>Received</td>
-          <td style="text-align: right;">₹ ${received.toFixed(2)}</td>
+          <td>Advance / Received</td>
+          <td style="text-align: right; font-weight: bold; color: #047857;">₹ ${received.toFixed(2)}</td>
         </tr>
         <tr>
-          <td><strong>Balance</strong></td>
-          <td style="text-align: right;"><strong>₹ ${balance.toFixed(2)}</strong></td>
+          <td><strong>Balance Due</strong></td>
+          <td style="text-align: right; color: ${balance > 0 ? '#dc2626' : '#0f172a'};"><strong>₹ ${balance.toFixed(2)}</strong></td>
         </tr>
       </table>
 
@@ -701,8 +713,11 @@ export async function generate3InchBillHTML(
   }
   
   const total = order.total_amount || (subTotal + additionalCharges + deliveryCharges + legacyDelivery - discount);
-  const receivedAmount = order.paid_amount || total;
-  const balance = total - receivedAmount;
+  const rawPaid = order.paid_amount ?? (order as any).paidAmount ?? (order as any).advance_amount ?? (order as any).advance;
+  const numPaid = typeof rawPaid === 'number' ? rawPaid : (typeof rawPaid === 'string' && rawPaid.trim() !== '' && !isNaN(Number(rawPaid)) ? Number(rawPaid) : undefined);
+  const paidVal = numPaid !== undefined ? numPaid : (order.payment_status === 'Paid' ? total : 0);
+  const receivedAmount = order.payment_status === 'Paid' ? Math.max(paidVal, total) : paidVal;
+  const balance = Math.max(0, total - receivedAmount);
   
   // Example for points: 1 point per 100 spent, if they don't have a specific field.
   const earnedPoints = (total * 0.01).toFixed(2);
@@ -873,7 +888,7 @@ export async function generate3InchBillHTML(
         ${additionalCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Additional</span><span>:</span></div>` : ''}
         ${legacyDelivery > 0 ? `<div style="display: flex; justify-content: space-between;"><span>DELIVERY</span><span>:</span></div>` : ''}
         <div style="display: flex; justify-content: space-between;"><span>Total</span><span>:</span></div>
-        <div style="display: flex; justify-content: space-between;"><span>Received</span><span>:</span></div>
+        <div style="display: flex; justify-content: space-between;"><span>Adv / Recd</span><span>:</span></div>
         <div style="display: flex; justify-content: space-between;"><span>Balance</span><span>:</span></div>
       </td>
       <td style="text-align: right; vertical-align: top; width: 80px;">

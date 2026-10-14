@@ -52,7 +52,7 @@ import {
   Building2,
   ChevronLeft
 } from 'lucide-react';
-import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone } from '../services/store';
+import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone, formatOrderDisplayDate } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
 import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
 import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
@@ -1042,7 +1042,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     let computedPaid = 0;
     if (paymentStatus === 'Paid') {
       computedPaid = finalAmount;
-    } else if (paymentStatus === 'Partial') {
+    } else if (paymentStatus === 'Partial' || (paidAmount !== '' && Number(paidAmount) > 0)) {
       computedPaid = Math.min(finalAmount, Math.max(0, Number(paidAmount) || 0));
     } else {
       computedPaid = 0;
@@ -2082,7 +2082,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
                   <td className="py-2 px-3 font-semibold text-slate-700 dark:text-slate-300 text-xs">
                     <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/80 dark:border-slate-700 font-medium text-[10px] text-slate-700 dark:text-slate-300">
-                      📍 {extractAreaZone(o.area, cust?.shipping_address, currentBiz?.area_zones)}
+                      📍 {extractAreaZone(o.area || cust?.area, `${cust?.shipping_address || ''} ${cust?.billing_address || ''}`, currentBiz?.area_zones)}
                     </span>
                   </td>
 
@@ -2094,7 +2094,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                   </td>
 
                   <td className="py-2 px-3 font-black text-slate-900 dark:text-white">
-                    {currencySymbol}{o.total_amount.toLocaleString()}
+                    {currencySymbol}{(Number(o.total_amount) || 0).toLocaleString()}
                   </td>
 
                   <td className="py-2 px-3">
@@ -2146,8 +2146,14 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     <div className="flex flex-col">
                       <span className="text-slate-800 dark:text-slate-200 font-semibold">{o.order_date || new Date(o.created_at).toLocaleDateString()}</span>
                       <span className="text-[9px]">{formatOrderTime(o.time, o.created_at)}</span>
-                      {o.delivery_date && (
-                        <span className="text-indigo-600 dark:text-indigo-400 font-bold mt-1 text-[9px]">Del: {o.delivery_date}</span>
+                      {o.delivery_date ? (
+                        <span className="text-indigo-600 dark:text-indigo-400 font-bold mt-1 text-[9px]">
+                          Del: {formatOrderDisplayDate(o.delivery_date)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 dark:text-slate-500 font-medium mt-1 text-[9px]">
+                          No Delivery Date
+                        </span>
                       )}
                     </div>
                   </td>
@@ -2429,7 +2435,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         
         return (
           <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl h-[90vh] flex flex-col shadow-2xl animate-in zoom-in duration-150 overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl w-[96vw] max-w-5xl h-[95vh] flex flex-col shadow-2xl animate-in zoom-in duration-150 overflow-hidden">
               <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between print:hidden">
                 <div>
                   <h2 className="text-[11px] font-bold uppercase tracking-wider">Commercial Tax Invoice</h2>

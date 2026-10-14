@@ -583,20 +583,21 @@ export function extractAreaZone(rawArea?: string, rawAddress?: string, customZon
     ? customZones 
     : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
 
-  // 1. If rawArea is provided and is a valid concise zone name (no commas, no digits, < 25 chars)
-  if (rawArea && typeof rawArea === 'string' && rawArea.trim() && rawArea !== 'Other') {
-    const cleanArea = rawArea.replace(/ Resident$/i, '').trim();
-    // Direct case-insensitive match against registered zones
+  const cleanArea = typeof rawArea === 'string' ? rawArea.replace(/ Resident$/i, '').trim() : '';
+  const cleanAddress = typeof rawAddress === 'string' ? rawAddress.trim() : '';
+
+  // 1. If cleanArea is provided and is a valid concise zone name
+  if (cleanArea && cleanArea !== 'Other' && cleanArea !== 'N/A' && cleanArea !== 'Standard') {
     const exactMatch = standardZones.find(z => z.toLowerCase() === cleanArea.toLowerCase());
     if (exactMatch) return exactMatch;
     // If it's a short custom zone without street-address indicators
-    if (cleanArea.length <= 25 && !cleanArea.includes(',') && !/\d{5,}/.test(cleanArea) && !/\b(flat|room|road|building|apt|chawl|opp|near)\b/i.test(cleanArea)) {
+    if (cleanArea.length <= 35 && !cleanArea.includes(',') && !/\d{5,}/.test(cleanArea) && !/\b(flat|room|road|building|apt|chawl|opp|near)\b/i.test(cleanArea)) {
       return cleanArea;
     }
   }
 
-  // 2. Search for registered zones inside rawArea or rawAddress
-  const combinedText = `${rawArea || ''} ${rawAddress || ''}`;
+  // 2. Search for registered zones inside cleanArea or cleanAddress
+  const combinedText = `${cleanArea} ${cleanAddress}`;
   for (const zone of standardZones) {
     const regex = new RegExp(`\\b${zone}\\b`, 'i');
     if (regex.test(combinedText)) {
@@ -604,8 +605,79 @@ export function extractAreaZone(rawArea?: string, rawAddress?: string, customZon
     }
   }
 
-  // 3. Fallback to default
+  // 3. Fallback: If cleanArea is present and non-empty, use it directly
+  if (cleanArea && cleanArea !== 'Other' && cleanArea !== 'N/A' && cleanArea !== 'Standard') {
+    return cleanArea;
+  }
+
   return standardZones[0] || 'Dahisar';
+}
+
+/**
+ * Formats any order/delivery date string reliably into DD/MM/YYYY format without changing or swapping dates.
+ */
+export function formatOrderDisplayDate(dateStr?: string | null): string {
+  if (!dateStr || dateStr === 'N/A' || dateStr === 'Unknown Date') return '';
+  const clean = dateStr.trim();
+  if (!clean) return '';
+
+  const part = clean.split('T')[0].trim();
+
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(part)) {
+    const [y, m, d] = part.split('-');
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+  }
+
+  // DD-MM-YYYY
+  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(part)) {
+    const [d, m, y] = part.split('-');
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+  }
+
+  // DD/MM/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(part)) {
+    return part;
+  }
+
+  // Fallback Date parsing
+  const dt = new Date(clean);
+  if (!isNaN(dt.getTime())) {
+    const d = String(dt.getDate()).padStart(2, '0');
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const y = dt.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+
+  return clean;
+}
+
+/**
+ * Parses any date string safely into timestamp milliseconds at midnight (00:00:00).
+ */
+export function parseOrderDateMs(dateStr?: string | null): number {
+  if (!dateStr || dateStr === 'N/A' || dateStr === 'Unknown Date') return 0;
+  const clean = dateStr.trim().split('T')[0];
+  if (!clean) return 0;
+
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(clean)) {
+    const [y, m, d] = clean.split('-').map(Number);
+    return new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+  }
+
+  // DD-MM-YYYY or DD/MM/YYYY
+  if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(clean)) {
+    const parts = clean.split(/[-\/]/).map(Number);
+    return new Date(parts[2], parts[1] - 1, parts[0], 0, 0, 0, 0).getTime();
+  }
+
+  const dt = new Date(clean);
+  if (!isNaN(dt.getTime())) {
+    return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 0, 0, 0, 0).getTime();
+  }
+
+  return 0;
 }
 
 // ====================================================================
@@ -1184,10 +1256,10 @@ class ERPStorage {
                  payment_status: isLocalNewer && existingSO?.payment_status ? existingSO.payment_status : (so.payment_status || existingSO?.payment_status || 'Unpaid'),
                  payment_mode: isLocalNewer && existingSO?.payment_mode ? existingSO.payment_mode : (so.payment_mode || existingSO?.payment_mode || 'Cash'),
                  order_date: isLocalNewer && existingSO?.order_date ? existingSO.order_date : (so.order_date || existingSO?.order_date),
-                 delivery_date: isLocalNewer && existingSO?.delivery_date !== undefined ? existingSO.delivery_date : (so.delivery_date !== undefined ? so.delivery_date : existingSO?.delivery_date),
+                 delivery_date: isLocalNewer && existingSO?.delivery_date ? existingSO.delivery_date : ((so.delivery_date !== undefined && so.delivery_date !== null && so.delivery_date !== '') ? so.delivery_date : (existingSO?.delivery_date || null)),
                  customer_id: (so.customer_id && so.customer_id !== 'WALK_IN') ? so.customer_id : (existingSO?.customer_id || 'WALK_IN'),
                  customer_name: resolvedCustomerName || existingSO?.customer_name || 'Walk-in Customer',
-                 area: so.area || existingSO?.area || 'Dahisar',
+                 area: (so.area && so.area !== 'Other') ? so.area : (existingSO?.area || custObj?.area || 'Dahisar'),
                  channel: so.channel || existingSO?.channel || (resolvedCustomerName && resolvedCustomerName !== 'Walk-in Customer' ? 'Direct Order' : 'Walk-in'),
                  time: so.time || existingSO?.time || undefined,
                  items: mergedItems,

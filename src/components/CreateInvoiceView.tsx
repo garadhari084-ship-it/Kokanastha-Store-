@@ -479,7 +479,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       status: isFulfilledImmediately ? 'Delivered' : 'Pending',
       payment_status: (paymentStatus || 'Unpaid') as any,
       payment_mode: paymentMode || 'Cash',
-      paid_amount: Number(calculatedTotals.computedPaid) || 0,
+      paid_amount: typeof calculatedTotals.computedPaid === 'number' && calculatedTotals.computedPaid > 0 ? calculatedTotals.computedPaid : (Number(paidAmount) || 0),
       delivery_status: isFulfilledImmediately ? 'Delivered' : 'Pending',
       items: itemsForPreview,
       advance_booking: isAdvanceBooking,
@@ -1864,7 +1864,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
             }}
             className="fixed inset-0 z-[100] bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
           >
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-[96vw] max-w-5xl h-[95vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
               
               {/* Header */}
               <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between shrink-0 print:hidden">

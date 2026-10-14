@@ -10,9 +10,11 @@ export interface PriceCalculationResult {
 
 export function isLoyalMember(customer?: Customer | null): boolean {
   if (!customer) return false;
-  if (customer.is_loyal_member) return true;
-  if (customer.loyalty_tier === 'Gold' || customer.loyalty_tier === 'Platinum') return true;
-  if (customer.group && (customer.group.toLowerCase().includes('loyal') || customer.group.toLowerCase().includes('member'))) return true;
+  if (customer.is_loyal_member === false) return false;
+  if (customer.loyalty_tier === 'None') return false;
+  if (customer.is_loyal_member === true) return true;
+  if (customer.loyalty_tier && ['Silver', 'Gold', 'Platinum'].includes(customer.loyalty_tier)) return true;
+  if (customer.group && customer.group.toLowerCase() === 'loyal member') return true;
   return false;
 }
 

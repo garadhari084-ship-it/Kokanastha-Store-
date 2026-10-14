@@ -47,7 +47,7 @@ import {
   CheckCheck
 } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
-import { dbStore } from '../services/store';
+import { dbStore, extractAreaZone, formatOrderDisplayDate, parseOrderDateMs } from '../services/store';
 import { SalesOrder, Product, UserProfile, Customer, Category, SalesItem } from '../types/erp';
 
 interface PackingVerificationModuleProps {
@@ -152,13 +152,10 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   }, [openOrderIdInitially, deepLinkData, businessId, user?.id]);
 
   const formatDisplayDate = (dateStr: string | undefined | null) => {
-    if (!dateStr || dateStr === 'N/A') return '';
-    if (dateStr.includes('-')) {
-      const [y, m, d] = dateStr.split('-');
-      return `${d}/${m}/${y}`;
-    }
-    return dateStr;
+    return formatOrderDisplayDate(dateStr);
   };
+
+  const currentBiz = useMemo(() => dbStore.getBusinesses().find(b => b.id === businessId) || dbStore.getBusinesses()[0], [businessId]);
 
   // Auto-refresh when orders change in store
   const reloadOrders = () => {
@@ -233,15 +230,21 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     reloadOrders();
   };
 
-  // Exit packing station view back to order queue (keeping scanned items)
+  // Exit packing station view back to order queue (resetting status to Pending if 0 items were scanned)
   const handleBackToQueue = () => {
+    if (selectedOrder) {
+      const hasScannedAny = (selectedOrder.items || []).some(it => (it.scanned_qty || 0) > 0);
+      if (!hasScannedAny && selectedOrder.status === 'Packing') {
+        dbStore.updateSalesOrder(selectedOrder.id, {
+          status: 'Pending',
+          is_partially_packed: false
+        });
+      }
+    }
     setSelectedOrder(null);
     setIsScannerOpen(false);
     setRecentScanLog(null);
-    const allSales = dbStore.getSalesOrders(businessId);
-    setPendingOrders(
-      allSales.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled')
-    );
+    reloadOrders();
   };
 
   // Barcode Submission Handler
@@ -550,20 +553,21 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     if (!selectedOrder) return;
 
     try {
+      const hasScannedAny = (selectedOrder.items || []).some(it => (it.scanned_qty || 0) > 0);
       dbStore.updateSalesOrder(selectedOrder.id, {
         rack_location: rackLocation,
         rack_section: rackSection,
         total_bags: totalBags,
-        is_partially_packed: true,
-        status: 'Packing'
+        is_partially_packed: hasScannedAny,
+        status: hasScannedAny ? 'Packing' : (selectedOrder.status === 'Pending' || !selectedOrder.status ? 'Pending' : selectedOrder.status)
       });
 
-      triggerToast(`Order #${selectedOrder.order_number} saved as Partial Package at ${rackLocation} - ${rackSection}.`, 'info');
+      triggerToast(`Order #${selectedOrder.order_number} details saved.${hasScannedAny ? ' (Packing Started)' : ''}`, 'info');
       setSelectedOrder(null);
       setRecentScanLog(null);
       reloadOrders();
     } catch (err: any) {
-      triggerToast(err.message || 'Failed to save partial package.', 'error');
+      triggerToast(err.message || 'Failed to save order details.', 'error');
     }
   };
 
@@ -575,26 +579,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const packingProgressPercent = totalItemsCount > 0 ? Math.round((packedItemsCount / totalItemsCount) * 100) : 0;
   const isFullyVerified = totalItemsCount > 0 && packingProgressPercent === 100;
 
-  const parseOrderDate = (dStr: string | undefined): number => {
-    if (!dStr) return 0;
-    const clean = dStr.trim();
-    if (!clean || clean === 'Unknown Date') return 0;
-
-    if (clean.includes('/') && clean.split('/').length === 3) {
-      const [d, m, y] = clean.split('/').map(Number);
-      return new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
-    }
-    if (clean.includes('-') && clean.split('-').length === 3) {
-      const parts = clean.split('-').map(Number);
-      if (parts[0] > 1000) {
-        return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0).getTime();
-      } else {
-        return new Date(parts[2], parts[1] - 1, parts[0], 0, 0, 0, 0).getTime();
-      }
-    }
-    const dt = new Date(clean);
-    dt.setHours(0, 0, 0, 0);
-    return isNaN(dt.getTime()) ? 0 : dt.getTime();
+  const parseOrderDate = (dStr: string | undefined | null): number => {
+    return parseOrderDateMs(dStr);
   };
 
   const getDeliveryStatus = (deliveryDate: string | undefined) => {
@@ -1223,16 +1209,20 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-slate-300">
                 <p className="flex items-center gap-1.5">
                   <User size={13} className="text-slate-400" />
-                  <span className="font-semibold text-white truncate max-w-[150px]">
-                    {customers.find(c => c.id === selectedOrder.customer_id)?.name || 'Walk-in Customer'}
+                  <span className="font-semibold text-white truncate max-w-[180px]">
+                    {selectedOrder.customer_name || customers.find(c => c.id === selectedOrder.customer_id)?.name || 'Walk-in Customer'}
                   </span>
                 </p>
-                {selectedOrder.area && (
-                  <p className="flex items-center gap-1.5 text-slate-400">
-                    <MapPin size={13} />
-                    <span className="truncate max-w-[120px]">Area: {selectedOrder.area}</span>
-                  </p>
-                )}
+                {(() => {
+                  const selCust = customers.find(c => c.id === selectedOrder.customer_id);
+                  const areaZoneName = extractAreaZone(selectedOrder.area || selCust?.area, `${selCust?.shipping_address || ''} ${selCust?.billing_address || ''}`, currentBiz?.area_zones);
+                  return (
+                    <p className="flex items-center gap-1.5 text-slate-400">
+                      <MapPin size={13} />
+                      <span className="truncate max-w-[150px]">Area: {areaZoneName}</span>
+                    </p>
+                  );
+                })()}
                 {selectedOrder.channel && (
                   <p className="flex items-center gap-1.5 text-slate-400">
                     <Building2 size={13} />
@@ -1769,15 +1759,21 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-1">
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 border ${
-                                isDone 
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
-                                  : o.status === 'Packing' 
-                                  ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 animate-pulse' 
-                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                              }`}>
-                                {isDone ? 'Verified' : o.status}
-                              </span>
+                              {(() => {
+                                const hasScannedAny = items.some(it => (it.scanned_qty || 0) > 0);
+                                const effectiveStatus = (o.status === 'Packing' && !hasScannedAny) ? 'Pending' : o.status;
+                                return (
+                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 border ${
+                                    isDone 
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
+                                      : effectiveStatus === 'Packing' 
+                                      ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 animate-pulse' 
+                                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                                  }`}>
+                                    {isDone ? 'Verified' : effectiveStatus === 'Packing' ? 'Packing Started' : effectiveStatus}
+                                  </span>
+                                );
+                              })()}
                               {o.total_amount && (
                                 <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400">
                                   ₹{o.total_amount.toLocaleString()}
@@ -1820,20 +1816,23 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                               <div className="w-5 h-5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
                                 <User size={11} />
                               </div>
-                              <span className="truncate">{customer ? customer.name : 'Walk-in Customer'}</span>
+                              <span className="truncate">{o.customer_name || customer?.name || 'Walk-in Customer'}</span>
                             </div>
-                            {customer?.phone && (
+                            {(customer?.phone || (o as any).customer_phone || (o as any).phone) && (
                               <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pl-6.5 truncate">
                                 <Phone size={10} className="shrink-0 text-slate-400" /> 
-                                <span className="truncate">{customer.phone}</span>
+                                <span className="truncate">{customer?.phone || (o as any).customer_phone || (o as any).phone}</span>
                               </div>
                             )}
-                            {o.area && (
-                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pl-6.5 truncate">
-                                <MapPin size={10} className="shrink-0 text-slate-400" /> 
-                                <span className="truncate">{o.area}</span>
-                              </div>
-                            )}
+                            {(() => {
+                              const zone = extractAreaZone(o.area || customer?.area, `${customer?.shipping_address || ''} ${customer?.billing_address || ''}`, currentBiz?.area_zones);
+                              return (
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pl-6.5 truncate">
+                                  <MapPin size={10} className="shrink-0 text-slate-400" /> 
+                                  <span className="truncate">{zone} Zone</span>
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           {/* ORDER ITEMS PICK LIST (SHOWING PRODUCTS TO PACK) */}
@@ -2028,29 +2027,39 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                       </span>
                                     )}
                                   </div>
-                                  <span className={`w-fit mt-0.5 px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider border ${
-                                    isDone 
-                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
-                                      : o.status === 'Packing' 
-                                      ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700' 
-                                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                                  }`}>
-                                    {isDone ? 'Verified' : o.status}
-                                  </span>
+                                  {(() => {
+                                    const hasScannedAny = items.some(it => (it.scanned_qty || 0) > 0);
+                                    const effectiveStatus = (o.status === 'Packing' && !hasScannedAny) ? 'Pending' : o.status;
+                                    return (
+                                      <span className={`w-fit mt-0.5 px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider border ${
+                                        isDone 
+                                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
+                                          : effectiveStatus === 'Packing' 
+                                          ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700' 
+                                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                                      }`}>
+                                        {isDone ? 'Verified' : effectiveStatus === 'Packing' ? 'Packing Started' : effectiveStatus}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                               </td>
                               <td className="p-3">
                                 <div className="flex flex-col gap-0.5 text-[11px]">
                                   <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                                     <User size={12} className="text-indigo-500 shrink-0" />
-                                    {customer ? customer.name : 'Walk-in Customer'}
+                                    {o.customer_name || customer?.name || 'Walk-in Customer'}
                                   </span>
-                                  {(customer?.phone || o.area) && (
-                                    <span className="text-slate-500 flex items-center gap-2.5 text-[10px]">
-                                      {customer?.phone && <span className="flex items-center gap-1"><Phone size={10} /> {customer.phone}</span>}
-                                      {o.area && <span className="flex items-center gap-1"><MapPin size={10} /> {o.area}</span>}
-                                    </span>
-                                  )}
+                                  {(() => {
+                                    const phoneNum = customer?.phone || (o as any).customer_phone || (o as any).phone;
+                                    const zone = extractAreaZone(o.area || customer?.area, `${customer?.shipping_address || ''} ${customer?.billing_address || ''}`, currentBiz?.area_zones);
+                                    return (
+                                      <span className="text-slate-500 flex items-center gap-2.5 text-[10px]">
+                                        {phoneNum && <span className="flex items-center gap-1"><Phone size={10} /> {phoneNum}</span>}
+                                        <span className="flex items-center gap-1"><MapPin size={10} /> {zone} Zone</span>
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                               </td>
                               <td className="p-3 max-w-xs">

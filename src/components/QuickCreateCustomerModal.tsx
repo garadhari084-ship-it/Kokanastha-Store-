@@ -82,7 +82,7 @@ export const QuickCreateCustomerModal: React.FC<QuickCreateCustomerModalProps> =
       setPan('');
       setCreditLimit(0);
       setIsLoyalMember(false);
-      setLoyaltyTier('Silver');
+      setLoyaltyTier('None');
       setIsAddingArea(false);
       setNewAreaInput('');
     }

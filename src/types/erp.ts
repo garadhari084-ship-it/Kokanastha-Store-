@@ -298,6 +298,10 @@ export interface SalesOrder {
   order_number: string;
   customer_id: string;
   customer_name?: string;
+  customer_phone?: string;
+  pin_code?: string;
+  billing_address?: string;
+  shipping_address?: string;
   area?: string; // Dahisar, Borivali, Kandivali, Mira Road, Vasai, Virar, Other
   channel?: string; // Walk-in, Direct, Swiggy, Zomato, Phone Order
   time?: string; // e.g. '10:15 AM'

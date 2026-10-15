@@ -6,7 +6,7 @@ import { QuickCreateCustomerModal } from './QuickCreateCustomerModal';
 import { OutOfStockRestockModal } from './OutOfStockRestockModal';
 import { CreateInvoiceView } from './CreateInvoiceView';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { formatOrderTime } from '../utils/formatters';
+import { formatOrderTime, normalizeToYMD } from '../utils/formatters';
 import { 
   FileText, 
   PlusCircle, 
@@ -900,24 +900,23 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
     const c = customers.find(cust => cust.id === order.customer_id) || dbStore.getCustomers(businessId).find(cust => cust.id === order.customer_id);
     setSelectedCustomerName(order.customer_name || c?.name || 'Walk-in Customer');
-    if (c) {
-      setSelectedCustomerPhone(c.phone || '');
-      setSelectedCustomerAddress(c.billing_address || c.address || '');
-      setSelectedCustomerShippingAddress(c.shipping_address || c.billing_address || c.address || '');
-      setSelectedPincode(c.pin_code || '');
-      setIsSameShippingAddress(!c.shipping_address || c.shipping_address === c.billing_address);
-    } else {
-      setSelectedCustomerPhone('');
-      setSelectedCustomerAddress('');
-      setSelectedCustomerShippingAddress('');
-      setSelectedPincode('');
-      setIsSameShippingAddress(true);
-    }
+
+    const phone = (order as any).customer_phone || (order as any).phone || c?.phone || '';
+    const billingAddr = (order as any).billing_address || (order as any).address || c?.billing_address || c?.address || '';
+    const shippingAddr = (order as any).shipping_address || c?.shipping_address || billingAddr || '';
+    const pin = (order as any).pin_code || (order as any).pincode || (order as any).postal_code || c?.pin_code || '';
+
+    setSelectedCustomerPhone(phone);
+    setSelectedCustomerAddress(billingAddr);
+    setSelectedCustomerShippingAddress(shippingAddr);
+    setSelectedPincode(pin);
+    setIsSameShippingAddress(!shippingAddr || shippingAddr === billingAddr);
+
     setPointsToRedeem(order.points_redeemed || 0);
-    setSelectedArea(order.area || 'Dahisar');
-    setOrderDate(order.order_date || getLocalTodayDate());
+    setSelectedArea(order.area || c?.area || 'Dahisar');
+    setOrderDate(normalizeToYMD(order.order_date) || getLocalTodayDate());
     setOrderTime(order.time || getLocalCurrentTimeInput());
-    setDeliveryDate(order.delivery_date || '');
+    setDeliveryDate(normalizeToYMD(order.delivery_date) || '');
     setDeliveryType(order.delivery_type || 'Self pickup');
     setIsAdvanceBooking(order.advance_booking || false);
     setIsFulfilledImmediately(order.status === 'Delivered');
@@ -1327,6 +1326,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           order_number: orderNum,
           customer_id: finalCustomerId,
           customer_name: finalCustomerName,
+          customer_phone: selectedCustomerPhone.trim() || (existingOrder as any)?.customer_phone || customerObj?.phone || '',
+          pin_code: selectedPincode.trim() || (existingOrder as any)?.pin_code || customerObj?.pin_code || '',
+          billing_address: selectedCustomerAddress.trim() || (existingOrder as any)?.billing_address || customerObj?.billing_address || '',
+          shipping_address: isSameShippingAddress ? (selectedCustomerAddress.trim() || customerObj?.billing_address || '') : (selectedCustomerShippingAddress.trim() || (existingOrder as any)?.shipping_address || customerObj?.shipping_address || ''),
           area: finalCustomerArea,
           channel: isWalkIn ? 'Walk-in' : 'Direct Order',
           time: orderTime ? format12HourTime(orderTime) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -1401,6 +1404,10 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           order_number: orderNum,
           customer_id: finalCustomerId,
           customer_name: finalCustomerName,
+          customer_phone: selectedCustomerPhone.trim() || customerObj?.phone || '',
+          pin_code: selectedPincode.trim() || customerObj?.pin_code || '',
+          billing_address: selectedCustomerAddress.trim() || customerObj?.billing_address || '',
+          shipping_address: isSameShippingAddress ? (selectedCustomerAddress.trim() || customerObj?.billing_address || '') : (selectedCustomerShippingAddress.trim() || customerObj?.shipping_address || ''),
           area: finalCustomerArea,
           channel: isWalkIn ? 'Walk-in' : 'Direct Order',
           time: orderTime ? format12HourTime(orderTime) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),

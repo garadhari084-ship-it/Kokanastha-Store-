@@ -5224,46 +5224,7 @@ class ERPStorage {
   
   public clearLocalCacheOnly() {
     safeStorage.setItem('omnipack_erp_initialized', 'true');
-    safeStorage.removeItem('omnipack_erp_businesses');
-    safeStorage.removeItem('omnipack_erp_profiles');
-    safeStorage.removeItem('omnipack_erp_settings');
-
-    safeStorage.setItem('omnipack_erp_categories', '[]');
-    safeStorage.setItem('omnipack_erp_products', '[]');
-    safeStorage.setItem('omnipack_erp_customers', '[]');
-    safeStorage.setItem('omnipack_erp_suppliers', '[]');
-    safeStorage.setItem('omnipack_erp_purchases', '[]');
-    safeStorage.setItem('omnipack_erp_sales', '[]');
-    safeStorage.setItem('omnipack_erp_stockLogs', '[]');
-    safeStorage.setItem('omnipack_erp_auditLogs', '[]');
-    safeStorage.setItem('omnipack_erp_packingSessions', '[]');
-    safeStorage.setItem('omnipack_erp_messages', '[]');
-    safeStorage.setItem('omnipack_erp_loyaltyLogs', '[]');
-    safeStorage.setItem('omnipack_erp_subscriptions', '[]');
-    safeStorage.setItem('omnipack_erp_comboLogs', '[]');
-    safeStorage.setItem('omnipack_erp_draftReservations', '[]');
-    safeStorage.setItem('omnipack_erp_deviceSessions', '[]');
     safeStorage.setItem('omnipack_read_notifications', '[]');
-
-    this.cache = {
-      businesses: this.cache.businesses.length > 0 ? this.cache.businesses : PRE_SEEDED_BUSINESSES,
-      profiles: this.cache.profiles.length > 0 ? this.cache.profiles : PRE_SEEDED_PROFILES,
-      categories: [],
-      products: [],
-      customers: [],
-      suppliers: [],
-      purchases: [],
-      sales: [],
-      settings: this.cache.settings.length > 0 ? this.cache.settings : PRE_SEEDED_SETTINGS,
-      stockLogs: [],
-      auditLogs: [],
-      packingSessions: [],
-      messages: [],
-      loyaltyConfigs: [],
-      loyaltyLogs: [],
-      subscriptions: [],
-      comboLogs: []
-    };
     this.draftReservations = [];
     this.pendingUploads.clear();
     this.notify();

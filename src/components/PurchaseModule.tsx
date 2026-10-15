@@ -1,4 +1,5 @@
 import { PaymentCollectionModal } from './PaymentCollectionModal';
+import { SearchableProductSelect } from './SearchableProductSelect';
 import { PageHeader } from './PageHeader';
 import React, { useEffect, useState, useRef } from 'react';
 import { 
@@ -6,7 +7,7 @@ import {
   Clock, Package, Download, Building, ArrowRight, Printer, AlertTriangle, ChevronRight, 
   FileSpreadsheet, Store, CreditCard, QrCode, Wallet, CheckCircle2, Receipt, Banknote, 
   PackagePlus, Edit, Trash2, Users, Filter, Eye, Phone, Mail, MapPin, ExternalLink,
-  ChevronDown, ArrowUpRight, ShieldCheck, History
+  ChevronDown, ArrowUpRight, ShieldCheck, History, MoreVertical
 } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { PurchaseOrder, Supplier, Product, UserProfile, PurchaseItem, PaymentRecord } from '../types/erp';
@@ -40,6 +41,8 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
   // Modal States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
+  const [activeActionMenuPoId, setActiveActionMenuPoId] = useState<string | null>(null);
+  const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null);
   
   // Edit PO & Items Modal State
   const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
@@ -663,24 +666,24 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
       triggerToast('Viewers cannot delete orders.', 'error');
       return;
     }
-    const paid = Number(po.paid_amount) || (po.payment_status === 'Paid' ? po.total_amount : 0);
-    if (paid > 0) {
-      triggerToast(`Cannot delete PO ${po.order_number}: Payments have already been recorded. Mark as Cancelled instead.`, 'error');
+    setPoToDelete(po);
+  };
+
+  const executeDeletePO = (po: PurchaseOrder) => {
+    if (user.role === 'Viewer') {
+      triggerToast('Viewers cannot delete orders.', 'error');
       return;
     }
-
-    if (window.confirm(`Are you sure you want to permanently delete PO ${po.order_number}?`)) {
-      try {
-        dbStore.deletePurchaseOrder(po.id);
-        dbStore.logActivity(user.id, user.name, user.role, 'Delete PO', `Deleted Purchase Order ${po.order_number}`, businessId);
-        triggerToast(`PO ${po.order_number} deleted.`, 'success');
-        setPurchases(dbStore.getPurchaseOrders(businessId));
-        if (viewingOrder && viewingOrder.id === po.id) {
-          setViewingOrder(null);
-        }
-      } catch (err: any) {
-        triggerToast(err.message || 'Failed to delete PO', 'error');
+    try {
+      dbStore.deletePurchaseOrder(po.id);
+      dbStore.logActivity(user.id, user.name, user.role, 'Delete PO', `Deleted Purchase Order ${po.order_number}`, businessId);
+      triggerToast(`Purchase Order ${po.order_number} has been permanently deleted.`, 'success');
+      setPurchases(dbStore.getPurchaseOrders(businessId));
+      if (viewingOrder && viewingOrder.id === po.id) {
+        setViewingOrder(null);
       }
+    } catch (err: any) {
+      triggerToast(err.message || 'Failed to delete PO', 'error');
     }
   };
 
@@ -1295,54 +1298,122 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
                             </span>
                           </div>
                         </td>
-                        <td className="py-2.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            {user.role !== 'Viewer' && (
+                        <td className="py-2.5 px-4 text-right relative">
+                          <div className="flex items-center justify-end">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveActionMenuPoId(activeActionMenuPoId === po.id ? null : po.id);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold transition-all cursor-pointer shadow-xs"
+                              title="Order Actions Menu"
+                            >
+                              <MoreVertical size={15} />
+                              <span className="text-[11px]">Action</span>
+                              <ChevronDown size={12} className={`transition-transform duration-200 ${activeActionMenuPoId === po.id ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {/* Dropdown Popup Menu */}
+                            {activeActionMenuPoId === po.id && (
                               <>
-                                {balance > 0 ? (
-                                  <>
-                                    {/* Pay Full Balance */}
-                                    <button
-                                      onClick={() => handleOpenPaymentModal(po, 'full')}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold transition-colors cursor-pointer shadow-xs"
-                                      title={`Settle full pending balance of ₹${balance.toLocaleString()}`}
-                                    >
-                                      <CheckCircle2 size={11} /> Pay Full
-                                    </button>
+                                {/* Transparent Backdrop for Outside Click */}
+                                <div 
+                                  className="fixed inset-0 z-40" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveActionMenuPoId(null);
+                                  }} 
+                                />
 
-                                    {/* Partial Payment Option */}
-                                    <button
-                                      onClick={() => handleOpenPaymentModal(po, 'partial')}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[11px] font-bold transition-colors cursor-pointer shadow-xs"
-                                      title="Open partial payment options with preset amounts"
-                                    >
-                                      <Banknote size={11} /> Part Pay
-                                    </button>
-                                  </>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 rounded border border-emerald-200 dark:border-emerald-800">
-                                    <Check size={10} /> Fully Paid
-                                  </span>
-                                )}
-
-                                {/* Edit Order & Items */}
-                                <button
-                                  onClick={() => handleOpenEditPO(po)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded text-[11px] font-bold transition-colors cursor-pointer"
-                                  title="Edit Order Items & Details"
+                                <div 
+                                  className="absolute right-4 top-full mt-1 z-50 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-1.5 animate-in fade-in zoom-in-95 duration-100 text-left"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  <Edit size={12} /> Edit Items
-                                </button>
+                                  <div className="px-2.5 py-1.5 border-b border-slate-100 dark:border-slate-800 mb-1 flex items-center justify-between">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                      PO #{po.order_number}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                                      {balance > 0 ? `Due: ₹${balance.toLocaleString()}` : 'Fully Paid'}
+                                    </span>
+                                  </div>
+
+                                  {/* Action 1: View Details */}
+                                  <button
+                                    onClick={() => {
+                                      setActiveActionMenuPoId(null);
+                                      setViewingOrder(po);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    <Eye size={14} className="text-indigo-500" />
+                                    View Summary & Details
+                                  </button>
+
+                                  {user.role !== 'Viewer' && (
+                                    <>
+                                      {balance > 0 ? (
+                                        <>
+                                          {/* Action 2: Pay Full */}
+                                          <button
+                                            onClick={() => {
+                                              setActiveActionMenuPoId(null);
+                                              handleOpenPaymentModal(po, 'full');
+                                            }}
+                                            className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors cursor-pointer"
+                                          >
+                                            <CheckCircle2 size={14} className="text-emerald-600" />
+                                            Pay Full (₹{balance.toLocaleString()})
+                                          </button>
+
+                                          {/* Action 3: Partial Payment */}
+                                          <button
+                                            onClick={() => {
+                                              setActiveActionMenuPoId(null);
+                                              handleOpenPaymentModal(po, 'partial');
+                                            }}
+                                            className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors cursor-pointer"
+                                          >
+                                            <Banknote size={14} className="text-amber-500" />
+                                            Partial Payment
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <div className="px-2.5 py-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 rounded-lg my-0.5 flex items-center gap-1.5">
+                                          <Check size={12} /> Payment Cleared
+                                        </div>
+                                      )}
+
+                                      {/* Action 4: Edit Order & Items */}
+                                      <button
+                                        onClick={() => {
+                                          setActiveActionMenuPoId(null);
+                                          handleOpenEditPO(po);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors cursor-pointer"
+                                      >
+                                        <Edit size={14} className="text-indigo-600" />
+                                        Edit Order & Line Items
+                                      </button>
+
+                                      <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+
+                                      {/* Action 5: Delete Option */}
+                                      <button
+                                        onClick={() => {
+                                          setActiveActionMenuPoId(null);
+                                          setPoToDelete(po);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                                      >
+                                        <Trash2 size={14} className="text-rose-500" />
+                                        Delete Purchase Order
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </>
                             )}
-                            
-                            {/* View Details */}
-                            <button 
-                              onClick={() => setViewingOrder(po)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded hover:bg-slate-50 dark:hover:bg-slate-700 text-[11px] font-bold transition-colors cursor-pointer"
-                            >
-                              Details <ChevronRight size={12} />
-                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1621,18 +1692,24 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
 
                 {/* Add Line Item Row */}
                 <div className="flex flex-wrap md:flex-nowrap items-end gap-3 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xs">
-                  <div className="flex-1 min-w-[200px] space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500">Add Product</label>
-                    <select 
-                      value={editRowProductId}
-                      onChange={handleEditProductSelect}
-                      className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-900 text-xs rounded border border-slate-300 dark:border-slate-600"
-                    >
-                      <option value="">-- Choose product to add --</option>
-                      {products.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock_quantity})</option>
-                      ))}
-                    </select>
+                  <div className="flex-[2.5] min-w-[320px] md:min-w-[400px] space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500">Add Product *</label>
+                    <SearchableProductSelect 
+                      products={products}
+                      selectedProductId={editRowProductId}
+                      onSelectProduct={(prod) => {
+                        if (prod) {
+                          setEditRowProductId(prod.id);
+                          setEditRowPrice(prod.purchase_price ?? 0);
+                          setEditRowGst(prod.gst_rate ?? 0);
+                        } else {
+                          setEditRowProductId('');
+                          setEditRowPrice(0);
+                          setEditRowGst(0);
+                        }
+                      }}
+                      placeholder="-- Search or choose product to add --"
+                    />
                   </div>
                   <div className="w-24 space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">Qty</label>
@@ -2226,39 +2303,87 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
                                 </td>
                                 <td className="py-2.5 px-3 text-right font-black">₹{po.total_amount.toLocaleString()}</td>
                                 <td className="py-2.5 px-3 text-right font-black text-rose-600">₹{due.toLocaleString()}</td>
-                                <td className="py-2.5 px-4 text-right">
-                                  <div className="flex items-center justify-end gap-1">
-                                    {user.role !== 'Viewer' && (
+                                <td className="py-2.5 px-4 text-right relative">
+                                  <div className="flex items-center justify-end">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveActionMenuPoId(activeActionMenuPoId === po.id ? null : po.id);
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[10px] font-bold cursor-pointer"
+                                    >
+                                      <MoreVertical size={13} />
+                                      Action
+                                      <ChevronDown size={10} className={`transition-transform duration-200 ${activeActionMenuPoId === po.id ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {activeActionMenuPoId === po.id && (
                                       <>
-                                        <button
-                                          onClick={() => {
-                                            setViewingVendorLedger(null);
-                                            handleOpenPaymentModal(po);
-                                          }}
-                                          className="px-2 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[10px] font-bold cursor-pointer"
+                                        <div 
+                                          className="fixed inset-0 z-40" 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveActionMenuPoId(null);
+                                          }} 
+                                        />
+                                        <div 
+                                          className="absolute right-4 top-full mt-1 z-50 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-1.5 animate-in fade-in zoom-in-95 duration-100 text-left"
+                                          onClick={(e) => e.stopPropagation()}
                                         >
-                                          Pay
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setViewingVendorLedger(null);
-                                            handleOpenEditPO(po);
-                                          }}
-                                          className="px-2 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded text-[10px] font-bold cursor-pointer"
-                                        >
-                                          Edit Items
-                                        </button>
+                                          <button
+                                            onClick={() => {
+                                              setActiveActionMenuPoId(null);
+                                              setViewingVendorLedger(null);
+                                              setViewingOrder(po);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                                          >
+                                            <Eye size={13} className="text-indigo-500" /> View Details
+                                          </button>
+
+                                          {user.role !== 'Viewer' && (
+                                            <>
+                                              {due > 0 && (
+                                                <button
+                                                  onClick={() => {
+                                                    setActiveActionMenuPoId(null);
+                                                    setViewingVendorLedger(null);
+                                                    handleOpenPaymentModal(po, 'partial');
+                                                  }}
+                                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg cursor-pointer"
+                                                >
+                                                  <Banknote size={13} className="text-emerald-500" /> Record Payment
+                                                </button>
+                                              )}
+
+                                              <button
+                                                onClick={() => {
+                                                  setActiveActionMenuPoId(null);
+                                                  setViewingVendorLedger(null);
+                                                  handleOpenEditPO(po);
+                                                }}
+                                                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg cursor-pointer"
+                                              >
+                                                <Edit size={13} className="text-indigo-600" /> Edit Order Items
+                                              </button>
+
+                                              <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+
+                                              <button
+                                                onClick={() => {
+                                                  setActiveActionMenuPoId(null);
+                                                  setViewingVendorLedger(null);
+                                                  setPoToDelete(po);
+                                                }}
+                                                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                                              >
+                                                <Trash2 size={13} className="text-rose-500" /> Delete Order
+                                              </button>
+                                            </>
+                                          )}
+                                        </div>
                                       </>
                                     )}
-                                    <button
-                                      onClick={() => {
-                                        setViewingVendorLedger(null);
-                                        setViewingOrder(po);
-                                      }}
-                                      className="px-2 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded text-[10px] font-bold cursor-pointer"
-                                    >
-                                      Details
-                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -2693,18 +2818,24 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
               <div>
                 <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2 border-b border-slate-200 dark:border-slate-700 pb-2">Add Line Items</h3>
                 <div className="flex flex-wrap md:flex-nowrap items-end gap-3 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <div className="flex-1 min-w-[200px] space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500">Product</label>
-                    <select 
-                      value={rowProductId}
-                      onChange={handleProductSelect}
-                      className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-900 text-xs rounded border border-slate-300 dark:border-slate-600"
-                    >
-                      <option value="">-- Select Product --</option>
-                      {products.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock_quantity})</option>
-                      ))}
-                    </select>
+                  <div className="flex-[2.5] min-w-[320px] md:min-w-[400px] space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500">Product *</label>
+                    <SearchableProductSelect 
+                      products={products}
+                      selectedProductId={rowProductId}
+                      onSelectProduct={(prod) => {
+                        if (prod) {
+                          setRowProductId(prod.id);
+                          setRowPrice(prod.purchase_price ?? 0);
+                          setRowGst(prod.gst_rate ?? 0);
+                        } else {
+                          setRowProductId('');
+                          setRowPrice(0);
+                          setRowGst(0);
+                        }
+                      }}
+                      placeholder="-- Search product by name, SKU, or barcode --"
+                    />
                   </div>
                   <div className="w-24 space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">PO Qty</label>
@@ -3139,6 +3270,74 @@ export const PurchaseModule: React.FC<PurchaseModuleProps> = ({
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-2 shadow-md transition-colors"
                 >
                   <CheckCircle size={14} /> Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== DELETE PO CONFIRMATION MODAL ==================== */}
+      {poToDelete && (
+        <div className="fixed inset-0 z-[70] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-150">
+            <div className="bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 px-6 py-4 flex items-center justify-between border-b border-rose-200 dark:border-rose-900/60">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <AlertTriangle size={18} />
+                <span>Confirm Order Deletion</span>
+              </div>
+              <button 
+                onClick={() => setPoToDelete(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                Are you sure you want to permanently delete Purchase Order <span className="font-bold text-slate-900 dark:text-white">#{poToDelete.order_number}</span>?
+              </p>
+              
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Vendor:</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">{poToDelete.supplier_name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Order Total:</span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100">₹{poToDelete.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Status:</span>
+                  <span className="font-bold text-amber-600 dark:text-amber-400">{poToDelete.status}</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/30 rounded-xl border border-rose-200 dark:border-rose-900/40 text-[11px] text-rose-700 dark:text-rose-300 flex items-start gap-2">
+                <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                <span>Warning: This order and all associated line items will be removed permanently. This action cannot be undone.</span>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPoToDelete(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  No, Keep Order
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const po = poToDelete;
+                    setPoToDelete(null);
+                    if (po) executeDeletePO(po);
+                  }}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-rose-600/20 flex items-center gap-1.5"
+                >
+                  <Trash2 size={14} />
+                  Yes, Delete Order
                 </button>
               </div>
             </div>

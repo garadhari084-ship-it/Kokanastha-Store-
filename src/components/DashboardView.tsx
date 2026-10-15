@@ -149,7 +149,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   }, [userRole, allowedTabs, activeTab]);
 
-  const [timeHorizon, setTimeHorizon] = useState<TimeHorizon>('today');
+  const [timeHorizon, setTimeHorizon] = useState<TimeHorizon>('all');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);

@@ -1062,15 +1062,33 @@ class ERPStorage {
       const normBId = bId ? normalizeBusinessId(bId) : undefined;
 
       try {
-        const { data, error } = await supabase.from(tableName).select('*').limit(5000);
+        let pageSize = 1000;
+        let page = 0;
+        let fetchMore = true;
 
-        if (error) {
-          if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.toLowerCase().includes('does not exist')) {
-            this.knownMissingTables.add(tableName);
-            return [];
+        while (fetchMore) {
+          const from = page * pageSize;
+          const to = from + pageSize - 1;
+          const { data, error } = await supabase.from(tableName).select('*').range(from, to);
+
+          if (error) {
+            if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.toLowerCase().includes('does not exist')) {
+              this.knownMissingTables.add(tableName);
+              return [];
+            }
+            break;
           }
-        } else if (data) {
-          allRows = data;
+
+          if (data && data.length > 0) {
+            allRows = allRows.concat(data);
+            if (data.length < pageSize) {
+              fetchMore = false;
+            } else {
+              page++;
+            }
+          } else {
+            fetchMore = false;
+          }
         }
       } catch (err) {
         console.warn(`Supabase fetchAllFromTable catch error on ${tableName}:`, err);

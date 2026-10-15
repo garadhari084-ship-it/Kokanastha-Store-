@@ -2,7 +2,7 @@ import { PageHeader } from './PageHeader';
 import { WhatsAppIcon } from './WhatsAppIcon';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
-  Users, Search, Filter, UserPlus, Edit, Trash2, FileSpreadsheet, FileText, DollarSign, History, X, Plus, MapPin, Phone, Mail, CheckCircle, ExternalLink, ShieldAlert, Building, SearchX, Upload, FileDown, AlertCircle, Check
+  Users, Search, Filter, UserPlus, Edit, Trash2, FileSpreadsheet, FileText, DollarSign, History, X, Plus, MapPin, Phone, Mail, CheckCircle, ExternalLink, ShieldAlert, Building, SearchX, Upload, FileDown, AlertCircle, Check, Eye
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -41,6 +41,7 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(openAddModalInitially);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [viewingHistoryCustomer, setViewingHistoryCustomer] = useState<Customer | null>(null);
+  const [viewingAddressCustomer, setViewingAddressCustomer] = useState<Customer | null>(null);
 
   // Form states
   const [formName, setFormName] = useState('');
@@ -692,9 +693,11 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     });
   }, [customers, searchQuery, selectedGroup]);
 
-  const totalPages = Math.ceil(filteredCustomers.length / pageSize) || 1;
+  const effectivePageSize = pageSize === 999999 ? filteredCustomers.length || 1 : pageSize;
+  const totalPages = Math.ceil(filteredCustomers.length / effectivePageSize) || 1;
 
   const paginatedCustomers = useMemo(() => {
+    if (pageSize === 999999) return filteredCustomers;
     const start = (currentPage - 1) * pageSize;
     return filteredCustomers.slice(start, start + pageSize);
   }, [filteredCustomers, currentPage, pageSize]);
@@ -914,18 +917,18 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
         </div>
 
         {/* Compact List View */}
-        <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5">
-          <table className="w-full text-left text-[11px] border-collapse">
-            <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-[10px] sm:text-[11px]">
+        <div className="bg-white dark:bg-slate-900 overflow-x-auto rounded-3xl border border-black dark:border-white shadow-sm mt-5 w-full">
+          <table className="w-full text-left text-xs sm:text-sm border-collapse">
+            <thead className="bg-slate-700 dark:bg-slate-600 text-white font-bold uppercase tracking-wider border-b border-black dark:border-white text-xs">
               <tr>
-                <th className="py-2.5 px-2.5 max-w-[200px] sm:max-w-[240px]">Customer Details</th>
-                <th className="py-2.5 px-2">Compliance</th>
-                <th className="py-2.5 px-2 max-w-[140px]">Location/Area</th>
-                <th className="py-2.5 px-2">Outstanding / Limit</th>
-                <th className="py-2.5 px-2.5 text-right">Actions</th>
+                <th className="py-2.5 px-3">Customer Details</th>
+                <th className="py-2.5 px-3">Compliance</th>
+                <th className="py-2.5 px-3">Location / Area</th>
+                <th className="py-2.5 px-3">Outstanding / Limit</th>
+                <th className="py-2.5 px-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-black dark:divide-white bg-white dark:bg-slate-900 text-[11px]">
+            <tbody className="divide-y divide-black dark:divide-white bg-white dark:bg-slate-900 text-xs sm:text-sm">
               {paginatedCustomers.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center">
@@ -941,23 +944,22 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                   const outDetails = getCustomerOutstandingDetails(cust);
                   const effectiveOut = outDetails.totalOutstanding;
                   const isOverLimit = effectiveOut > cust.credit_limit;
-                  const headroom = cust.credit_limit - effectiveOut;
                   
                   return (
                     <tr key={`${cust.id}-${idx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="py-2.5 px-2.5 max-w-[200px] sm:max-w-[240px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleOpenEditModal(cust)}>
+                      <td className="py-1.5 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleOpenEditModal(cust)}>
                         <div className="flex items-center gap-2 overflow-hidden">
                           {cust.image_url ? (
-                            <img src={cust.image_url} alt={cust.name} className="w-7 h-7 rounded-full object-cover shrink-0 border border-slate-200" />
+                            <img src={cust.image_url} alt={cust.name} className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200" />
                           ) : (
-                            <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700 text-slate-500">
-                              <Users size={12} />
+                            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700 text-slate-500">
+                              <Users size={14} />
                             </div>
                           )}
                           <div className="flex flex-col min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="font-bold text-slate-800 dark:text-slate-200 truncate text-[11px]" title={cust.name}>{cust.name}</span>
-                              <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-bold text-slate-900 dark:text-slate-100 truncate text-xs" title={cust.name}>{cust.name}</span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
                                 cust.group === 'Wholesale' ? 'bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-900/30 dark:border-violet-800 dark:text-violet-300' :
                                 cust.group === 'Distributor' ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-300' :
                                 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-300'
@@ -965,99 +967,68 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                                 {cust.group}
                               </span>
                               {cust.loyalty_tier && cust.loyalty_tier !== 'None' && (
-                                <span className="text-[8px] font-bold px-1.5 py-0.2 rounded-full shrink-0 bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300">
                                   {cust.loyalty_tier}
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 text-[9px] mt-0.5 min-w-0 truncate">
-                              <span className="flex items-center gap-0.5 text-slate-500 font-mono shrink-0"><Phone size={9} /> {cust.phone}</span>
-                              {cust.email && <span className="flex items-center gap-0.5 text-slate-500 truncate"><Mail size={9} /> {cust.email}</span>}
+                            <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5 min-w-0 truncate font-medium">
+                              <span className="flex items-center gap-1 font-mono shrink-0"><Phone size={11} /> {cust.phone}</span>
+                              {cust.email && <span className="flex items-center gap-1 truncate"><Mail size={11} /> {cust.email}</span>}
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td className="py-2.5 px-2">
-                        <div className="flex flex-col font-mono text-[10px] space-y-0.5">
+                      <td className="py-1.5 px-3">
+                        <div className="flex flex-col font-mono text-xs space-y-0.5">
                           <p><span className="text-slate-400 uppercase mr-1">GST:</span><span className="font-bold">{cust.gstin || 'Unregistered'}</span></p>
                           <p><span className="text-slate-400 uppercase mr-1">PAN:</span><span className="font-bold">{cust.pan || 'N/A'}</span></p>
                         </div>
                       </td>
-                      <td className="py-2.5 px-2 max-w-[140px]">
-                        <div className="flex flex-col max-w-[140px]">
-                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 truncate">
-                            <MapPin size={9} className="text-slate-400 shrink-0" />
+                      <td className="py-1.5 px-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 truncate">
+                            <MapPin size={13} className="text-slate-400 shrink-0" />
                             <span className="truncate">{cust.area || 'No Area Assigned'}</span>
                           </span>
-                          <span className="text-[9px] text-slate-500 truncate mt-0.5" title={cust.billing_address}>
-                            {cust.billing_address}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setViewingAddressCustomer(cust)}
+                            className="p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition cursor-pointer shadow-2xs flex items-center gap-1 text-[11px] font-bold shrink-0"
+                            title="View Full Address"
+                          >
+                            <Eye size={14} />
+                            <span>Address</span>
+                          </button>
                         </div>
                       </td>
-                      <td className="py-2.5 px-2.5">
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <span className={`font-black text-[13px] ${isOverLimit ? 'text-rose-600 dark:text-rose-400' : effectiveOut > 0 ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-                              ₹{effectiveOut.toLocaleString()}
-                            </span>
-                            {isOverLimit && (
-                              <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-300">
-                                Over Limit
+                      <td className="py-1.5 px-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                              <span className={`font-black text-sm sm:text-base ${isOverLimit ? 'text-rose-600 dark:text-rose-400' : effectiveOut > 0 ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
+                                ₹{effectiveOut.toLocaleString()}
                               </span>
-                            )}
-                          </div>
-
-                          {/* Multi-invoice indicator & breakdown */}
-                          {outDetails.unpaidCount > 0 ? (
-                            <div className="mt-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 ${
-                                  outDetails.unpaidCount > 1 
-                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700' 
-                                    : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                                }`}>
-                                  <span>{outDetails.unpaidCount} {outDetails.unpaidCount === 1 ? 'Invoice Due' : 'Invoices Outstanding'}</span>
+                              {isOverLimit && (
+                                <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-300">
+                                  Over Limit
                                 </span>
-                              </div>
-                              
-                              {/* If multiple invoices, list unpaid invoice numbers with individual due amounts */}
-                              {outDetails.unpaidCount > 1 ? (
-                                <div className="text-[9px] font-mono text-slate-600 dark:text-slate-400 mt-1 space-y-0.5 bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700/60">
-                                  {outDetails.unpaidOrders.slice(0, 3).map((inv, idx) => {
-                                    const due = Math.max(0, (Number(inv.total_amount) || 0) - (Number(inv.paid_amount) || 0));
-                                    return (
-                                      <div key={idx} className="flex justify-between items-center text-[8.5px]">
-                                        <span className="font-semibold text-slate-700 dark:text-slate-300">#{inv.order_number}:</span>
-                                        <span className="font-bold text-rose-600 dark:text-rose-400">₹{due.toLocaleString()}</span>
-                                      </div>
-                                    );
-                                  })}
-                                  {outDetails.unpaidCount > 3 && (
-                                    <div className="text-[8px] text-slate-400 italic text-right pt-0.5 border-t border-slate-200 dark:border-slate-700">
-                                      +{outDetails.unpaidCount - 3} more invoice(s)
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="text-[8.5px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
-                                  Inv: #{outDetails.unpaidOrders[0]?.order_number}
-                                </div>
                               )}
                             </div>
-                          ) : (
-                            <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 flex items-center gap-1">
-                              <CheckCircle size={10} />
-                              <span>All Invoices Cleared</span>
-                            </div>
-                          )}
-
-                          <div className="text-[9.5px] mt-1 pt-1 border-t border-slate-100 dark:border-slate-800">
-                            <span className="text-slate-400 mr-1">Limit:</span>
-                            <span className="font-mono font-bold text-slate-600 dark:text-slate-300">₹{cust.credit_limit.toLocaleString()}</span>
-                            <span className="text-slate-400 mx-1">|</span>
-                            <span className="text-slate-400 mr-1">Avail:</span>
-                            <span className={`font-mono font-bold ${headroom < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>₹{headroom.toLocaleString()}</span>
+                            <span className="text-[11px] text-slate-500 font-medium mt-0.5">
+                              Limit: ₹{cust.credit_limit.toLocaleString()}
+                            </span>
                           </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => setViewingHistoryCustomer(cust)}
+                            className="p-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 rounded-xl transition cursor-pointer shadow-xs flex items-center gap-1.5 text-xs font-bold shrink-0"
+                            title="View All Invoices & Ledger Statement"
+                          >
+                            <Eye size={16} />
+                            <span className="hidden sm:inline">Invoices</span>
+                          </button>
                         </div>
                       </td>
                       <td className="py-2 px-2.5 text-right">
@@ -1122,6 +1093,10 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                   <option value={100}>100</option>
                   <option value={250}>250</option>
                   <option value={500}>500</option>
+                  <option value={1000}>1000</option>
+                  <option value={2000}>2000</option>
+                  <option value={5000}>5000</option>
+                  <option value={999999}>All Customers</option>
                 </select>
               </div>
             </div>
@@ -1809,6 +1784,59 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                 className="px-5 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold rounded-xl hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors cursor-pointer"
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Full Address Modal */}
+      {viewingAddressCustomer && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                  <MapPin size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">Customer Full Address</h3>
+                  <p className="text-[11px] text-slate-500">{viewingAddressCustomer.name}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setViewingAddressCustomer(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Zone / Area</span>
+                <p className="font-bold text-slate-800 dark:text-slate-200">{viewingAddressCustomer.area || 'No Area Assigned'}</p>
+              </div>
+
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Billing Address</span>
+                <p className="font-medium text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">{viewingAddressCustomer.billing_address || 'No billing address recorded.'}</p>
+              </div>
+
+              {viewingAddressCustomer.shipping_address && viewingAddressCustomer.shipping_address !== viewingAddressCustomer.billing_address && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Shipping Address</span>
+                  <p className="font-medium text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">{viewingAddressCustomer.shipping_address}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setViewingAddressCustomer(null)}
+                className="px-5 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold rounded-xl hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>

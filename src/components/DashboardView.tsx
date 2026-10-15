@@ -388,7 +388,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const sp = metrics.statusPipeline as any;
     return (
       (sp.bookingReceivedValue || 0) +
-      (sp.productionStartedValue || 0) +
       (sp.packingStartedValue || 0) +
       (sp.packingCompletedValue || 0) +
       (sp.readyForDispatchValue || 0) +
@@ -401,7 +400,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const sp = metrics.statusPipeline as any;
     return (
       (sp.bookingReceived || 0) +
-      (sp.productionStarted || 0) +
       (sp.packingStarted || 0) +
       (sp.packingCompleted || 0) +
       (sp.readyForDispatch || 0) +
@@ -452,9 +450,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     if (activeMetricModal.type === 'pipeline' && activeMetricModal.filterValue) {
       const stage = activeMetricModal.filterValue;
       if (stage === 'bookingReceived') {
-        filtered = filtered.filter(o => o.status === 'Pending' && !o.advance_booking && !(o as any).in_production && (o as any).production_status !== 'In Production');
+        filtered = filtered.filter(o => o.status === 'Pending');
       } else if (stage === 'productionStarted') {
-        filtered = filtered.filter(o => o.status === 'Pending' && (Boolean(o.advance_booking) || Boolean((o as any).in_production) || (o as any).production_status === 'In Production'));
+        filtered = filtered.filter(o => o.status === 'Pending' || Boolean((o as any).in_production) || (o as any).production_status === 'In Production');
       } else if (stage === 'packingStarted') {
         filtered = filtered.filter(o => o.status === 'Packing');
       } else if (stage === 'packingCompleted') {
@@ -2311,16 +2309,42 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                               </span>
                             </td>
 
-                            <td className="py-3.5 px-4">
-                              <span className={`inline-flex items-center text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${
-                                o.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' :
-                                o.status === 'Dispatched' ? 'bg-indigo-50 text-indigo-700 border-indigo-300' :
-                                o.status === 'Packed' ? 'bg-yellow-50 text-amber-800 border-yellow-300' :
-                                o.status === 'Packing' ? 'bg-amber-50 text-amber-800 border-amber-300' :
-                                'bg-slate-100 text-slate-700 border-slate-300'
-                              }`}>
-                                {o.status}
-                              </span>
+                            <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex flex-col gap-1 items-start">
+                                <select
+                                  value={o.status}
+                                  onChange={(e) => handleQuickStatusChange(o.id, e.target.value as OrderStatus)}
+                                  className={`text-[10px] font-extrabold px-2 py-1 rounded-lg border outline-none cursor-pointer transition ${
+                                    o.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300' :
+                                    o.status === 'Dispatched' ? 'bg-indigo-50 text-indigo-700 border-indigo-300 dark:bg-indigo-950/40 dark:text-indigo-300' :
+                                    o.status === 'Packed' ? 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300' :
+                                    o.status === 'Packing' ? 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300' :
+                                    'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300'
+                                  }`}
+                                >
+                                  <option value="Pending">Pending (Production Started)</option>
+                                  <option value="Packing">Packing Started</option>
+                                  <option value="Packed">Packing Completed</option>
+                                  <option value="Dispatched">Out for Delivery</option>
+                                  <option value="Delivered">Delivered</option>
+                                  <option value="Cancelled">Cancelled</option>
+                                </select>
+                                {o.status === 'Packed' && (
+                                  <button
+                                    onClick={() => {
+                                      dbStore.updateSalesOrder(o.id, { ready_for_dispatch: !o.ready_for_dispatch });
+                                      triggerToast(`Order ${o.order_number} ${!o.ready_for_dispatch ? 'marked Ready for Dispatch' : 'moved to Packing Completed'}.`, 'info');
+                                    }}
+                                    className={`text-[9px] font-black px-1.5 py-0.5 rounded border transition cursor-pointer ${
+                                      o.ready_for_dispatch 
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/60 dark:text-emerald-200' 
+                                        : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/60 dark:text-amber-200'
+                                    }`}
+                                  >
+                                    {o.ready_for_dispatch ? '✓ Ready for Dispatch' : '+ Mark Ready for Dispatch'}
+                                  </button>
+                                )}
+                              </div>
                             </td>
 
                             <td className="py-3.5 px-4 text-right">

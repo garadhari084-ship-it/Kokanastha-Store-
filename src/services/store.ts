@@ -5468,8 +5468,8 @@ class ERPStorage {
       return isOrderInTimeHorizon(o, timeHorizon, customStartDate, customEndDate);
     });
 
-    const bookingReceivedOrders = pipelineOrders.filter(o => o.status === 'Pending' && !o.advance_booking && !(o as any).in_production && (o as any).production_status !== 'In Production');
-    const productionStartedOrders = pipelineOrders.filter(o => o.status === 'Pending' && (Boolean(o.advance_booking) || Boolean((o as any).in_production) || (o as any).production_status === 'In Production'));
+    const bookingReceivedOrders = pipelineOrders.filter(o => o.status === 'Pending');
+    const productionStartedOrders = pipelineOrders.filter(o => o.status === 'Pending' || Boolean((o as any).in_production) || (o as any).production_status === 'In Production');
     const packingStartedOrders = pipelineOrders.filter(o => o.status === 'Packing');
     const packingCompletedOrders = pipelineOrders.filter(o => o.status === 'Packed' && !o.ready_for_dispatch);
     const readyForDispatchOrders = pipelineOrders.filter(o => o.status === 'Packed' && Boolean(o.ready_for_dispatch));

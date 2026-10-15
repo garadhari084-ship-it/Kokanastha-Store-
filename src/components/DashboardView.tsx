@@ -77,7 +77,6 @@ import {
 import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone } from '../services/store';
 import { SalesOrder, UserProfile, OrderStatus } from '../types/erp';
 import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
-import { downloadHtmlAsPdf } from '../utils/pdfGenerator';
 import { BillOfSupplyView } from './BillOfSupplyView';
 
 interface DashboardViewProps {
@@ -265,21 +264,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     ];
     const fullHtml = await generate3InchBillHTML(order, cust, businessObj, allProds);
 
-    try {
-      await downloadHtmlAsPdf(fullHtml, `3_Inch_Bill_${order.order_number}.pdf`, true);
-      triggerToast(`3-Inch Bill PDF for "${order.order_number}" downloaded!`, 'success');
-    } catch {
-      // Fallback to HTML
-      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `3_Inch_Bill_${order.order_number}.html`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    
+    // Download as HTML
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `3_Inch_Bill_${order.order_number}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     
     // Open print window directly
     const printWindow = window.open('', '_blank', 'width=400,height=600');
@@ -293,6 +288,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }, 500);
     }
 
+    triggerToast(`3-Inch Bill for "${order.order_number}" downloaded & opened for printing!`, 'success');
     dbStore.logActivity(user.id, user.name, user.role, 'Download 3-Inch Bill', `Downloaded 3-Inch bill for ${order.order_number}`, businessId);
   };
 
@@ -306,24 +302,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     ];
     const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
     
-    try {
-      await downloadHtmlAsPdf(fullHtml, `Bill_of_Supply_${order.order_number}.pdf`, false);
-      triggerToast(`Bill of Supply PDF for "${order.order_number}" downloaded successfully!`, 'success');
-    } catch {
-      // Fallback to HTML
-      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Bill_of_Supply_${order.order_number}.html`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      triggerToast(`Bill of Supply for "${order.order_number}" downloaded!`, 'success');
-    }
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Bill_of_Supply_${order.order_number}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 
-    dbStore.logActivity(user.id, user.name, user.role, 'Save Invoice', `Saved Bill of Supply PDF for ${order.order_number}`, businessId);
+    triggerToast(`Bill of Supply for "${order.order_number}" downloaded & opening print spooler!`, 'success');
+    dbStore.logActivity(user.id, user.name, user.role, 'Save Invoice', `Saved Bill of Supply for ${order.order_number}`, businessId);
+
     handlePrintInvoice(order);
   };
 
@@ -2516,7 +2507,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             }}
             className="fixed inset-0 z-[80] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
           >
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-[96vw] max-w-5xl h-[95vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
               
               {/* Header */}
               <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between shrink-0 print:hidden">

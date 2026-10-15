@@ -56,7 +56,6 @@ import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone, formatOrde
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
 import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
 import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
-import { generateInvoicePDF } from '../utils/pdfGenerator';
 import { BillOfSupplyView } from './BillOfSupplyView';
 
 interface CustomDropdownOption {
@@ -1658,21 +1657,29 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   };
 
   const handleDownloadPDFInvoice = async (order: SalesOrder) => {
-    try {
-      const cust = customers.find(c => c.id === order.customer_id);
-      const businessObj = dbStore.getBusiness(businessId);
-      const allProds = [
-        ...(Array.isArray(products) ? products : []),
-        ...dbStore.getProducts(businessId),
-        ...((dbStore as any).cache?.products || [])
-      ];
-      await generateInvoicePDF(order, cust, businessObj, allProds);
-      triggerToast(`Bill of Supply PDF for "${order.order_number}" downloaded successfully!`, 'success');
-      dbStore.logActivity(user.id, user.name, user.role, 'Download Invoice PDF', `Downloaded Bill of Supply PDF for ${order.order_number}`, businessId);
-    } catch (err: any) {
-      console.error('Failed to generate PDF invoice:', err);
-      triggerToast('Failed to generate PDF invoice. Please try again.', 'error');
-    }
+    const cust = customers.find(c => c.id === order.customer_id);
+    const businessObj = dbStore.getBusiness(businessId);
+    const allProds = [
+      ...(Array.isArray(products) ? products : []),
+      ...dbStore.getProducts(businessId),
+      ...((dbStore as any).cache?.products || [])
+    ];
+    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
+
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Bill_of_Supply_${order.order_number}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    triggerToast(`Bill of Supply for "${order.order_number}" downloaded & opening print spooler!`, 'success');
+    dbStore.logActivity(user.id, user.name, user.role, 'Download Invoice', `Downloaded Bill of Supply for ${order.order_number}`, businessId);
+
+    handlePrintInvoice(order);
   };
 
   const handleEmailInvoice = (orderNumber: string, emailStr: string) => {
@@ -2428,7 +2435,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
         
         return (
           <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl w-[96vw] max-w-5xl h-[95vh] flex flex-col shadow-2xl animate-in zoom-in duration-150 overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl h-[90vh] flex flex-col shadow-2xl animate-in zoom-in duration-150 overflow-hidden">
               <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between print:hidden">
                 <div>
                   <h2 className="text-[11px] font-bold uppercase tracking-wider">Commercial Tax Invoice</h2>

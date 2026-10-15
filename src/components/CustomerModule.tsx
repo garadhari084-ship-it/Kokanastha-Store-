@@ -2,7 +2,7 @@ import { PageHeader } from './PageHeader';
 import { WhatsAppIcon } from './WhatsAppIcon';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
-  Users, Search, Filter, UserPlus, Edit, Trash2, FileSpreadsheet, FileText, DollarSign, History, X, Plus, MapPin, Phone, Mail, CheckCircle, ExternalLink, ShieldAlert, Building, SearchX, Upload, FileDown, AlertCircle, Check, Receipt
+  Users, Search, Filter, UserPlus, Edit, Trash2, FileSpreadsheet, FileText, DollarSign, History, X, Plus, MapPin, Phone, Mail, CheckCircle, ExternalLink, ShieldAlert, Building, SearchX, Upload, FileDown, AlertCircle, Check
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -506,10 +506,8 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
 
     // Check if customer has outstanding balance
     const cust = customers.find(c => c.id === id);
-    const outInfo = customerOutstandingMap.get(id) || (cust ? dbStore.getCustomerOutstanding(cust.id, businessId) : null);
-    const effectiveDebt = outInfo ? outInfo.totalOutstanding : (cust?.outstanding_amount || 0);
-    if (effectiveDebt > 0) {
-      triggerToast(`Cannot delete: Customer has an outstanding balance of Rs. ${effectiveDebt.toLocaleString()}`, 'error');
+    if (cust && cust.outstanding_amount > 0) {
+      triggerToast(`Cannot delete: Customer has an outstanding balance of Rs. ${cust.outstanding_amount}`, 'error');
       return;
     }
 
@@ -525,53 +523,22 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     }
   };
 
-  // Real-time outstanding balance across all invoices for every customer
-  const customerOutstandingMap = useMemo(() => {
-    const map = new Map<string, {
-      totalOutstanding: number;
-      unpaidInvoicesCount: number;
-      invoices: {
-        id: string;
-        order_number: string;
-        order_date: string;
-        total_amount: number;
-        paid_amount: number;
-        unpaid_amount: number;
-        payment_status: 'Unpaid' | 'Partial' | 'Paid';
-        status: string;
-      }[];
-    }>();
-
-    for (const c of customers) {
-      map.set(c.id, dbStore.getCustomerOutstanding(c.id, businessId));
-    }
-    return map;
-  }, [customers, businessId]);
-
   const handleExportCSV = () => {
     dbStore.logActivity(user.id, user.name, user.role, 'Export Excel', 'Exported Customers directory to Excel format', businessId);
     
-    const headers = ['ID', 'Name', 'Group', 'GSTIN', 'PAN', 'Phone', 'Email', 'Credit Limit', 'Outstanding', 'Unpaid Invoices', 'Billing Address'];
-    const rows = filteredCustomers.map(c => {
-      const outInfo = customerOutstandingMap.get(c.id) || dbStore.getCustomerOutstanding(c.id, businessId);
-      const effectiveDebt = outInfo ? outInfo.totalOutstanding : (c.outstanding_amount || 0);
-      const invoicesSummary = outInfo?.invoices && outInfo.invoices.length > 0
-        ? outInfo.invoices.map(i => `${i.order_number}: Rs.${i.unpaid_amount.toLocaleString()}`).join('; ')
-        : 'None (Settled)';
-      return [
-        c.id,
-        c.name,
-        c.group,
-        c.gstin,
-        c.pan,
-        c.phone,
-        c.email,
-        c.credit_limit,
-        effectiveDebt,
-        `"${invoicesSummary.replace(/"/g, '""')}"`,
-        `"${c.billing_address.replace(/"/g, '""')}"`
-      ];
-    });
+    const headers = ['ID', 'Name', 'Group', 'GSTIN', 'PAN', 'Phone', 'Email', 'Credit Limit', 'Outstanding', 'Billing Address'];
+    const rows = filteredCustomers.map(c => [
+      c.id,
+      c.name,
+      c.group,
+      c.gstin,
+      c.pan,
+      c.phone,
+      c.email,
+      c.credit_limit,
+      c.outstanding_amount,
+      `"${c.billing_address.replace(/"/g, '""')}"`
+    ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' 
       + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
@@ -604,19 +571,14 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
       doc.text(`Exported by: ${user.name} (${user.role})`, 14, 40);
       
       const tableColumn = ["Customer Name", "Group", "Phone", "Credit Limit", "Outstanding", "Available"];
-      const tableRows = filteredCustomers.map(c => {
-        const outInfo = customerOutstandingMap.get(c.id) || dbStore.getCustomerOutstanding(c.id, businessId);
-        const effectiveDebt = outInfo ? outInfo.totalOutstanding : (c.outstanding_amount || 0);
-        const count = outInfo?.unpaidInvoicesCount || 0;
-        return [
-          c.name,
-          c.group,
-          c.phone,
-          `Rs. ${c.credit_limit.toLocaleString()}`,
-          `Rs. ${effectiveDebt.toLocaleString()}${count > 1 ? ` (${count} inv)` : ''}`,
-          `Rs. ${(c.credit_limit - effectiveDebt).toLocaleString()}`
-        ];
-      });
+      const tableRows = filteredCustomers.map(c => [
+        c.name,
+        c.group,
+        c.phone,
+        `Rs. ${c.credit_limit.toLocaleString()}`,
+        `Rs. ${c.outstanding_amount.toLocaleString()}`,
+        `Rs. ${(c.credit_limit - c.outstanding_amount).toLocaleString()}`
+      ]);
 
       autoTable(doc, {
         head: [tableColumn],
@@ -646,8 +608,6 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
     try {
       const doc = new jsPDF();
       const history = getCustomerHistory(cust.id);
-      const outInfo = customerOutstandingMap.get(cust.id) || dbStore.getCustomerOutstanding(cust.id, businessId);
-      const totalOutstandingVal = outInfo ? outInfo.totalOutstanding : (cust.outstanding_amount || 0);
       
       doc.setFontSize(18);
       doc.setTextColor(30, 41, 59);
@@ -662,9 +622,9 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
       
       autoTable(doc, {
         body: [
-          ['Total Outstanding Balance', `Rs. ${totalOutstandingVal.toLocaleString()}`],
+          ['Total Outstanding Balance', `Rs. ${cust.outstanding_amount.toLocaleString()}`],
           ['Authorized Credit Limit', `Rs. ${cust.credit_limit.toLocaleString()}`],
-          ['Available Credit Headroom', `Rs. ${(cust.credit_limit - totalOutstandingVal).toLocaleString()}`]
+          ['Available Credit Headroom', `Rs. ${(cust.credit_limit - cust.outstanding_amount).toLocaleString()}`]
         ],
         startY: 50,
         theme: 'grid',
@@ -672,21 +632,14 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
         columnStyles: { 0: { fontStyle: 'bold', fillColor: [248, 250, 252], cellWidth: 60 } }
       });
 
-      const tableColumn = ["Order Number", "Order Date", "Total Amount", "Paid Amount", "Outstanding Due", "Payment Status"];
-      const tableRows = history.map(o => {
-        const total = Math.max(0, Number(o.total_amount) || 0);
-        const paid = Math.max(0, Number(o.paid_amount) || 0);
-        let due = Math.max(0, total - paid);
-        if (o.status === 'Cancelled' || o.payment_status === 'Paid') due = 0;
-        return [
-          o.order_number,
-          o.order_date,
-          `Rs. ${total.toLocaleString()}`,
-          `Rs. ${paid.toLocaleString()}`,
-          `Rs. ${due.toLocaleString()}`,
-          o.status === 'Cancelled' ? 'Cancelled' : o.payment_status
-        ];
-      });
+      const tableColumn = ["Order Number", "Order Date", "Delivery Status", "Invoice Amount", "Payment Status"];
+      const tableRows = history.map(o => [
+        o.order_number,
+        o.order_date,
+        o.status,
+        `Rs. ${o.total_amount.toLocaleString()}`,
+        o.payment_status
+      ]);
 
       autoTable(doc, {
         head: [tableColumn],
@@ -728,20 +681,13 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
   }, [filteredCustomers, currentPage, pageSize]);
 
   const getCustomerHistory = (customerId: string): SalesOrder[] => {
-    return dbStore.getCustomerSalesOrders(customerId, businessId);
+    return dbStore.getSalesOrders(businessId).filter(o => o.customer_id === customerId);
   };
 
-  // KPI Calculations across all customer invoices
+  // KPI Calculations
   const totalCustomers = customers.length;
-  const totalOutstanding = customers.reduce((sum, c) => {
-    const info = customerOutstandingMap.get(c.id);
-    return sum + (info ? info.totalOutstanding : (c.outstanding_amount || 0));
-  }, 0);
-  const overLimitCount = customers.filter(c => {
-    const info = customerOutstandingMap.get(c.id);
-    const debt = info ? info.totalOutstanding : (c.outstanding_amount || 0);
-    return debt > c.credit_limit;
-  }).length;
+  const totalOutstanding = customers.reduce((sum, c) => sum + c.outstanding_amount, 0);
+  const overLimitCount = customers.filter(c => c.outstanding_amount > c.credit_limit).length;
   const avgCreditLimit = totalCustomers > 0 ? Math.round(customers.reduce((sum, c) => sum + c.credit_limit, 0) / totalCustomers) : 0;
 
   return (
@@ -926,11 +872,8 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                 </tr>
               ) : (
                 paginatedCustomers.map((cust, idx) => {
-                  const outInfo = customerOutstandingMap.get(cust.id) || dbStore.getCustomerOutstanding(cust.id, businessId);
-                  const effectiveOutstanding = outInfo.totalOutstanding;
-                  const isOverLimit = effectiveOutstanding > cust.credit_limit;
-                  const headroom = cust.credit_limit - effectiveOutstanding;
-                  const unpaidInvoices = outInfo.invoices;
+                  const isOverLimit = cust.outstanding_amount > cust.credit_limit;
+                  const headroom = cust.credit_limit - cust.outstanding_amount;
                   
                   return (
                     <tr key={`${cust.id}-${idx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
@@ -983,63 +926,19 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
                           </span>
                         </div>
                       </td>
-                      <td className="py-2 px-2 min-w-[195px]">
+                      <td className="py-2 px-2">
                         <div className="flex flex-col">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`font-black text-[12px] ${isOverLimit ? 'text-rose-600 dark:text-rose-400' : effectiveOutstanding > 0 ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-                              ₹{effectiveOutstanding.toLocaleString()}
+                          <div className="flex items-center gap-2">
+                            <span className={`font-black text-[12px] ${isOverLimit ? 'text-rose-600' : 'text-slate-900 dark:text-white'}`}>
+                              ₹{cust.outstanding_amount.toLocaleString()}
                             </span>
                             {isOverLimit && (
-                              <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-300">
+                              <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-300">
                                 Over Limit
                               </span>
                             )}
-                            {unpaidInvoices.length > 1 && (
-                              <span className="text-[8px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300" title={`${unpaidInvoices.length} unpaid invoices contribute to this outstanding amount`}>
-                                {unpaidInvoices.length} Invoices
-                              </span>
-                            )}
-                            {unpaidInvoices.length === 1 && (
-                              <span className="text-[8px] font-medium px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                                1 Invoice
-                              </span>
-                            )}
                           </div>
-
-                          {/* Individual invoice breakdown showing all outstanding invoices */}
-                          {unpaidInvoices.length > 0 && (
-                            <div className="flex flex-col gap-1 mt-1 max-w-[210px]">
-                              {unpaidInvoices.map((inv) => (
-                                <div 
-                                  key={inv.id} 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setViewingHistoryCustomer(cust);
-                                  }}
-                                  className="flex items-center justify-between text-[9px] bg-slate-50 dark:bg-slate-800/80 px-2 py-0.5 rounded border border-slate-200/90 dark:border-slate-700/90 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 cursor-pointer transition-colors"
-                                  title={`Click to view ledger. Invoice #${inv.order_number} (${inv.order_date}) • Total: ₹${inv.total_amount.toLocaleString()} • Paid: ₹${inv.paid_amount.toLocaleString()} • Outstanding: ₹${inv.unpaid_amount.toLocaleString()}`}
-                                >
-                                  <div className="flex items-center gap-1 min-w-0">
-                                    <Receipt size={9} className="text-slate-400 shrink-0" />
-                                    <span className="font-mono font-bold text-slate-700 dark:text-slate-200 truncate max-w-[100px]">
-                                      {inv.order_number}
-                                    </span>
-                                  </div>
-                                  <span className="font-mono font-black text-rose-600 dark:text-rose-400 shrink-0 ml-1">
-                                    ₹{inv.unpaid_amount.toLocaleString()}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {effectiveOutstanding === 0 && (
-                            <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
-                              <CheckCircle size={9} /> All Invoices Settled
-                            </span>
-                          )}
-
-                          <div className="text-[9px] mt-1 text-slate-500">
+                          <div className="text-[9px] mt-0.5">
                             <span className="text-slate-400 mr-1">Limit:</span>
                             <span className="font-mono font-bold text-slate-600 dark:text-slate-300">₹{cust.credit_limit.toLocaleString()}</span>
                             <span className="text-slate-400 mx-1">|</span>
@@ -1522,128 +1421,73 @@ export const CustomerModule: React.FC<CustomerModuleProps> = ({
             
             <div className="p-6 overflow-y-auto bg-slate-50 dark:bg-slate-900 flex-1">
               {/* Ledger Summary */}
-              {(() => {
-                const outInfo = customerOutstandingMap.get(viewingHistoryCustomer.id) || dbStore.getCustomerOutstanding(viewingHistoryCustomer.id, businessId);
-                const currentOutstanding = outInfo ? outInfo.totalOutstanding : (viewingHistoryCustomer.outstanding_amount || 0);
-                const currentAvailable = viewingHistoryCustomer.credit_limit - currentOutstanding;
-                const custHistoryOrders = getCustomerHistory(viewingHistoryCustomer.id);
-                const totalBilled = custHistoryOrders.reduce((sum, o) => sum + (o.status !== 'Cancelled' ? (Number(o.total_amount) || 0) : 0), 0);
-                const totalPaid = custHistoryOrders.reduce((sum, o) => sum + (o.status !== 'Cancelled' ? (Number(o.paid_amount) || 0) : 0), 0);
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <p className="text-[10px] text-slate-500 font-bold uppercase">Outstanding Balance</p>
+                  <p className="text-xl font-black text-slate-900 dark:text-white mt-1">₹{viewingHistoryCustomer.outstanding_amount.toLocaleString()}</p>
+                </div>
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <p className="text-[10px] text-slate-500 font-bold uppercase">Authorized Credit Limit</p>
+                  <p className="text-xl font-black text-slate-900 dark:text-white mt-1">₹{viewingHistoryCustomer.credit_limit.toLocaleString()}</p>
+                </div>
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <p className="text-[10px] text-slate-500 font-bold uppercase">Available Credit</p>
+                  <p className={`text-xl font-black mt-1 ${(viewingHistoryCustomer.credit_limit - viewingHistoryCustomer.outstanding_amount) < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    ₹{(viewingHistoryCustomer.credit_limit - viewingHistoryCustomer.outstanding_amount).toLocaleString()}
+                  </p>
+                </div>
+              </div>
 
-                return (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-                      <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase">Total Invoiced (Billed)</p>
-                        <p className="text-lg font-black text-slate-900 dark:text-white mt-0.5">₹{totalBilled.toLocaleString()}</p>
-                      </div>
-                      <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase">Total Collected (Paid)</p>
-                        <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">₹{totalPaid.toLocaleString()}</p>
-                      </div>
-                      <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase">Net Outstanding Balance</p>
-                        <p className={`text-lg font-black mt-0.5 ${currentOutstanding > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
-                          ₹{currentOutstanding.toLocaleString()}
-                        </p>
-                        {outInfo?.unpaidInvoicesCount ? (
-                          <p className="text-[9px] text-slate-400 mt-0.5 font-medium">{outInfo.unpaidInvoicesCount} invoice(s) due</p>
-                        ) : null}
-                      </div>
-                      <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase">Available Credit</p>
-                        <p className={`text-lg font-black mt-0.5 ${currentAvailable < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                          ₹{currentAvailable.toLocaleString()}
-                        </p>
-                        <p className="text-[9px] text-slate-400 mt-0.5 font-medium">Limit: ₹{viewingHistoryCustomer.credit_limit.toLocaleString()}</p>
-                      </div>
-                    </div>
-
-                    {/* Transaction History */}
-                    <div className="flex items-center justify-between mb-3 px-1 border-b border-slate-200 dark:border-slate-700 pb-2">
-                      <h3 className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase">
-                        All Invoices & Transactions ({custHistoryOrders.length})
-                      </h3>
-                      <span className="text-[10px] text-slate-500 font-medium">
-                        {outInfo?.unpaidInvoicesCount || 0} unpaid invoice(s)
-                      </span>
-                    </div>
-
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                      <table className="w-full text-left text-[11px]">
-                        <thead>
-                          <tr className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-[10px]">
-                            <th className="py-2.5 px-3 font-bold text-slate-600 dark:text-slate-400">Order / Invoice #</th>
-                            <th className="py-2.5 px-3 font-bold text-slate-600 dark:text-slate-400">Date</th>
-                            <th className="py-2.5 px-3 font-bold text-slate-600 dark:text-slate-400 text-right">Invoice Total</th>
-                            <th className="py-2.5 px-3 font-bold text-slate-600 dark:text-slate-400 text-right">Amount Paid</th>
-                            <th className="py-2.5 px-3 font-bold text-slate-600 dark:text-slate-400 text-right">Outstanding Due</th>
-                            <th className="py-2.5 px-3 font-bold text-slate-600 dark:text-slate-400 text-center">Status</th>
-                            <th className="py-2.5 px-3 font-bold text-slate-600 dark:text-slate-400 text-right">Payment</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                          {custHistoryOrders.length === 0 ? (
-                            <tr>
-                              <td colSpan={7} className="py-8 text-center text-slate-500">No transactions recorded yet.</td>
-                            </tr>
-                          ) : (
-                            custHistoryOrders.map((order, idx) => {
-                              const total = Math.max(0, Number(order.total_amount) || 0);
-                              const paid = Math.max(0, Number(order.paid_amount) || 0);
-                              let due = Math.max(0, total - paid);
-                              if (order.status === 'Cancelled' || order.payment_status === 'Paid') due = 0;
-
-                              return (
-                                <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                                  <td className="py-2.5 px-3 font-mono font-bold">{order.order_number}</td>
-                                  <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">{order.order_date}</td>
-                                  <td className="py-2.5 px-3 font-black text-right">₹{total.toLocaleString()}</td>
-                                  <td className="py-2.5 px-3 font-bold text-emerald-600 text-right">₹{paid.toLocaleString()}</td>
-                                  <td className={`py-2.5 px-3 font-black text-right ${due > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'}`}>
-                                    ₹{due.toLocaleString()}
-                                  </td>
-                                  <td className="py-2.5 px-3 text-center">
-                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                      order.status === 'Pending' ? 'bg-slate-100 text-slate-600' :
-                                      order.status === 'Packing' || order.status === 'Packed' ? 'bg-sky-100 text-sky-700' :
-                                      order.status === 'Dispatched' ? 'bg-indigo-100 text-indigo-700' :
-                                      order.status === 'Delivered' ? 'bg-emerald-100 text-emerald-700' :
-                                      'bg-rose-100 text-rose-700'
-                                    }`}>
-                                      {order.status}
-                                    </span>
-                                  </td>
-                                  <td className="py-2.5 px-3 text-right">
-                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                      order.payment_status === 'Paid' ? 'bg-emerald-100 text-emerald-700' :
-                                      order.payment_status === 'Partial' ? 'bg-amber-100 text-amber-700' :
-                                      'bg-rose-100 text-rose-700'
-                                    }`}>
-                                      {order.payment_status}
-                                    </span>
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                        {custHistoryOrders.length > 0 && (
-                          <tfoot className="bg-slate-50 dark:bg-slate-900 border-t-2 border-slate-200 dark:border-slate-700 font-bold text-[10px]">
-                            <tr>
-                              <td colSpan={2} className="py-2.5 px-3 text-slate-700 dark:text-slate-300 uppercase">Total / Net Balance</td>
-                              <td className="py-2.5 px-3 text-right font-black">₹{totalBilled.toLocaleString()}</td>
-                              <td className="py-2.5 px-3 text-right font-black text-emerald-600">₹{totalPaid.toLocaleString()}</td>
-                              <td className="py-2.5 px-3 text-right font-black text-rose-600">₹{currentOutstanding.toLocaleString()}</td>
-                              <td colSpan={2}></td>
-                            </tr>
-                          </tfoot>
-                        )}
-                      </table>
-                    </div>
-                  </>
-                );
-              })()}
+              {/* Transaction History */}
+              <h3 className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase mb-3 px-1 border-b border-slate-200 dark:border-slate-700 pb-2">Recent Sales Orders</h3>
+              <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <table className="w-full text-left text-[11px]">
+                  <thead>
+                    <tr className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                      <th className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400">Order Number</th>
+                      <th className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400">Date</th>
+                      <th className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400">Amount</th>
+                      <th className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400">Status</th>
+                      <th className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-400 text-right">Payment</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                    {getCustomerHistory(viewingHistoryCustomer.id).length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-500">No transactions recorded yet.</td>
+                      </tr>
+                    ) : (
+                      getCustomerHistory(viewingHistoryCustomer.id).map((order, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                          <td className="py-2.5 px-4 font-mono font-bold">{order.order_number}</td>
+                          <td className="py-2.5 px-4 text-slate-600 dark:text-slate-400">{order.order_date}</td>
+                          <td className="py-2.5 px-4 font-black">₹{order.total_amount.toLocaleString()}</td>
+                          <td className="py-2.5 px-4">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                              order.status === 'Pending' ? 'bg-slate-100 text-slate-600' :
+                              order.status === 'Packing' || order.status === 'Packed' ? 'bg-sky-100 text-sky-700' :
+                              order.status === 'Dispatched' ? 'bg-indigo-100 text-indigo-700' :
+                              order.status === 'Delivered' ? 'bg-emerald-100 text-emerald-700' :
+                              'bg-rose-100 text-rose-700'
+                            }`}>
+                              {order.status}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 text-right">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                              order.payment_status === 'Paid' ? 'bg-emerald-100 text-emerald-700' :
+                              order.payment_status === 'Partial' ? 'bg-amber-100 text-amber-700' :
+                              'bg-rose-100 text-rose-700'
+                            }`}>
+                              {order.payment_status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
             
             <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-6 py-4 flex justify-between items-center shrink-0">

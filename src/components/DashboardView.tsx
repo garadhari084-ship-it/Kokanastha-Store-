@@ -77,7 +77,7 @@ import {
 import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone } from '../services/store';
 import { SalesOrder, UserProfile, OrderStatus } from '../types/erp';
 import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
-import { generateInvoicePDF } from '../utils/pdfGenerator';
+import { downloadHtmlAsPdf } from '../utils/pdfGenerator';
 import { BillOfSupplyView } from './BillOfSupplyView';
 
 interface DashboardViewProps {
@@ -265,17 +265,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     ];
     const fullHtml = await generate3InchBillHTML(order, cust, businessObj, allProds);
 
-    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    
-    // Download as HTML
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `3_Inch_Bill_${order.order_number}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      await downloadHtmlAsPdf(fullHtml, `3_Inch_Bill_${order.order_number}.pdf`, true);
+      triggerToast(`3-Inch Bill PDF for "${order.order_number}" downloaded!`, 'success');
+    } catch {
+      // Fallback to HTML
+      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `3_Inch_Bill_${order.order_number}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
     
     // Open print window directly
     const printWindow = window.open('', '_blank', 'width=400,height=600');
@@ -289,26 +293,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }, 500);
     }
 
-    triggerToast(`3-Inch Bill for "${order.order_number}" downloaded & opened for printing!`, 'success');
     dbStore.logActivity(user.id, user.name, user.role, 'Download 3-Inch Bill', `Downloaded 3-Inch bill for ${order.order_number}`, businessId);
   };
 
   const handleSavePDFInvoice = async (order: SalesOrder) => {
+    const cust = customers.find(c => c.id === order.customer_id);
+    const businessObj = dbStore.getBusiness(businessId);
+    const allProds = [
+      ...(Array.isArray(products) ? products : []),
+      ...dbStore.getProducts(businessId),
+      ...((dbStore as any).cache?.products || [])
+    ];
+    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
+    
     try {
-      const cust = customers.find(c => c.id === order.customer_id);
-      const businessObj = dbStore.getBusiness(businessId);
-      const allProds = [
-        ...(Array.isArray(products) ? products : []),
-        ...dbStore.getProducts(businessId),
-        ...((dbStore as any).cache?.products || [])
-      ];
-      await generateInvoicePDF(order, cust, businessObj, allProds);
+      await downloadHtmlAsPdf(fullHtml, `Bill_of_Supply_${order.order_number}.pdf`, false);
       triggerToast(`Bill of Supply PDF for "${order.order_number}" downloaded successfully!`, 'success');
-      dbStore.logActivity(user.id, user.name, user.role, 'Save Invoice PDF', `Saved Bill of Supply PDF for ${order.order_number}`, businessId);
-    } catch (err: any) {
-      console.error('Failed to generate PDF invoice:', err);
-      triggerToast('Failed to generate PDF invoice. Please try again.', 'error');
+    } catch {
+      // Fallback to HTML
+      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Bill_of_Supply_${order.order_number}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      triggerToast(`Bill of Supply for "${order.order_number}" downloaded!`, 'success');
     }
+
+    dbStore.logActivity(user.id, user.name, user.role, 'Save Invoice', `Saved Bill of Supply PDF for ${order.order_number}`, businessId);
+    handlePrintInvoice(order);
   };
 
   const handleEmailInvoice = (order: SalesOrder, emailStr: string) => {

@@ -2210,19 +2210,6 @@ export default function App() {
                         <ShieldAlert size={18} className="mt-0.5 shrink-0 text-rose-500" />
                         <span className="font-medium text-rose-800 leading-snug">{authError}</span>
                       </div>
-                      <div className="flex justify-end pt-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            safeStorage.pruneNonEssential();
-                            try { window.localStorage.clear(); } catch (_) {}
-                            window.location.reload();
-                          }}
-                          className="text-[11px] font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer"
-                        >
-                          Clear Local Cache & Retry
-                        </button>
-                      </div>
                     </div>
                   )}
 

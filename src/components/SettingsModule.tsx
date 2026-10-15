@@ -299,16 +299,15 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     }
   };
 
-  const handleClearLocalCache = async () => {
+  const handleRefreshCloudData = async () => {
     setIsSyncing(true);
     try {
-      dbStore.purgeLocalEntityCaches();
       if (isSupabaseConfigured && supabase) {
         await dbStore.syncFromSupabase(businessId);
       }
-      triggerToast('Local browser storage cache cleared successfully! Data refreshed from Supabase.', 'success');
+      triggerToast('Operational data refreshed from cloud database successfully!', 'success');
     } catch (e: any) {
-      triggerToast(e?.message || 'Failed to clear local cache.', 'error');
+      triggerToast(e?.message || 'Failed to refresh cloud data.', 'error');
     } finally {
       setIsSyncing(false);
     }
@@ -448,13 +447,13 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         rightContent={
           <button
             type="button"
-            onClick={handleClearLocalCache}
+            onClick={handleRefreshCloudData}
             disabled={isSyncing}
             className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
-            title="Clear local browser cache and reload fresh data from Supabase"
+            title="Re-synchronize fresh operational data from cloud"
           >
             <RefreshCw size={13} className={isSyncing ? "animate-spin text-amber-400" : "text-amber-400"} />
-            <span>{isSyncing ? "Clearing..." : "Clear Cache"}</span>
+            <span>{isSyncing ? "Refreshing..." : "Refresh Data"}</span>
           </button>
         }
       />
@@ -1197,21 +1196,21 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Browser Storage & Cache Management</h3>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Cloud Data Synchronization & Refresh</h3>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Purge all locally cached operational records (orders, products, customers) from this computer. Your live data remains securely stored in the Supabase cloud database.
+                  Re-synchronize operational records with the Supabase cloud database while preserving all your saved area columns, delivery charges, and local configurations.
                 </p>
               </div>
             </div>
             <button
               type="button"
-              onClick={handleClearLocalCache}
+              onClick={handleRefreshCloudData}
               disabled={isSyncing}
               className="px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white active:scale-[0.99]"
             >
               <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
-              <span>{isSyncing ? "Clearing Cache..." : "Clear Cache"}</span>
+              <span>{isSyncing ? "Refreshing..." : "Refresh Live Data"}</span>
             </button>
           </div>
         </div>

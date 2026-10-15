@@ -741,23 +741,9 @@ class ERPStorage {
   }
 
   public purgeLocalEntityCaches(): void {
+    // Safely prune only transient notification/audit logs, preserving core tables, area columns, and delivery charges
     const keysToRemove = [
-      'omnipack_erp_sales',
-      'omnipack_erp_products',
-      'omnipack_erp_customers',
-      'omnipack_erp_categories',
-      'omnipack_erp_purchases',
-      'omnipack_erp_suppliers',
-      'omnipack_erp_stockLogs',
       'omnipack_erp_auditLogs',
-      'omnipack_erp_packingSessions',
-      'omnipack_erp_messages',
-      'omnipack_erp_loyaltyLogs',
-      'omnipack_erp_subscriptions',
-      'omnipack_erp_comboLogs',
-      'omnipack_erp_draftReservations',
-      'omnipack_erp_deviceSessions',
-      'omnipack_erp_deleted_sales_ids',
       'omnipack_read_notifications'
     ];
     keysToRemove.forEach(k => {

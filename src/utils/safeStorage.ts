@@ -62,27 +62,14 @@ export const safeStorage = {
           }
         }
 
-        // 2. If still full and this is a critical key (session, credentials, device id), purge all ERP caches except session
+        // 2. If still full and this is a critical key (session, credentials, device id), purge ONLY non-essential transient log keys
         if (key.includes('session') || key.includes('device_id') || key.includes('passwords')) {
-          const preservedSession = window.localStorage.getItem('omnipack_session');
-          const preservedDeviceId = window.localStorage.getItem('omnipack_device_id');
-          const preservedPasswords = window.localStorage.getItem('omnipack_erp_passwords');
-
-          window.localStorage.clear();
-
-          if (preservedDeviceId && key !== 'omnipack_device_id') {
-            try { window.localStorage.setItem('omnipack_device_id', preservedDeviceId); } catch (_) {}
+          for (const purgeKey of PURGE_PRIORITY_KEYS) {
+            window.localStorage.removeItem(purgeKey);
           }
-          if (preservedPasswords && key !== 'omnipack_erp_passwords') {
-            try { window.localStorage.setItem('omnipack_erp_passwords', preservedPasswords); } catch (_) {}
-          }
-          if (preservedSession && key !== 'omnipack_session') {
-            try { window.localStorage.setItem('omnipack_session', preservedSession); } catch (_) {}
-          }
-
           try {
             window.localStorage.setItem(key, value);
-            console.log(`[safeStorage] Successfully saved critical key "${key}" after deep storage purge.`);
+            console.log(`[safeStorage] Successfully saved critical key "${key}" after pruning non-essential storage.`);
             return true;
           } catch (_) {}
         }

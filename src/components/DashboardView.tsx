@@ -5,9 +5,10 @@ export interface MetricDetailConfig {
   icon: any;
   iconColor: string;
   badgeText: string;
-  type: 'status' | 'to_pack' | 'deliveries_today' | 'overdue' | 'payment' | 'area' | 'all' | 'revenue' | 'receivables' | 'low_stock' | 'out_of_stock' | 'kitchen';
+  type: 'status' | 'to_pack' | 'deliveries_today' | 'overdue' | 'payment' | 'area' | 'all' | 'revenue' | 'receivables' | 'low_stock' | 'out_of_stock' | 'kitchen' | 'pipeline';
   filterValue?: string;
   description?: string;
+  onlyActive?: boolean;
 }
 
 import { PageHeader } from './PageHeader';
@@ -381,6 +382,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const customers = dbStore.getCustomers(businessId);
   const allOrders = dbStore.getSalesOrders(businessId);
   const currentBiz = useMemo(() => dbStore.getBusiness(businessId), [businessId]);
+  const customerMap = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
+
+  const totalPipelineValue = useMemo(() => {
+    const sp = metrics.statusPipeline as any;
+    return (
+      (sp.bookingReceivedValue || 0) +
+      (sp.productionStartedValue || 0) +
+      (sp.packingStartedValue || 0) +
+      (sp.packingCompletedValue || 0) +
+      (sp.readyForDispatchValue || 0) +
+      (sp.outForDeliveryValue || 0) +
+      (sp.deliveredValue || 0)
+    );
+  }, [metrics.statusPipeline]);
+
+  const totalPipelineOrders = useMemo(() => {
+    const sp = metrics.statusPipeline as any;
+    return (
+      (sp.bookingReceived || 0) +
+      (sp.productionStarted || 0) +
+      (sp.packingStarted || 0) +
+      (sp.packingCompleted || 0) +
+      (sp.readyForDispatch || 0) +
+      (sp.outForDelivery || 0) +
+      (sp.delivered || 0)
+    );
+  }, [metrics.statusPipeline]);
+
+  const totalActiveAreaValue = useMemo(() => {
+    return metrics.activeOrdersByArea.reduce((sum, a) => sum + ((a as any).value || 0), 0);
+  }, [metrics.activeOrdersByArea]);
+
+  const totalActiveAreaOrders = useMemo(() => {
+    return metrics.activeOrdersByArea.reduce((sum, a) => sum + (a.count || 0), 0);
+  }, [metrics.activeOrdersByArea]);
 
   const lowStockThreshold = useMemo(() => dbStore.getSettings(businessId).low_stock_limit, [businessId]);
   const lowStockCount = useMemo(() => products.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) <= lowStockThreshold).length, [products, lowStockThreshold]);
@@ -408,12 +444,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     // Filter order stream for active metric modal
     let filtered = allOrders;
 
-    // Apply time horizon ONLY for time-dependent metrics
-    if (activeMetricModal.type === 'revenue' || activeMetricModal.type === 'all' || activeMetricModal.type === 'area') {
+    // Apply time horizon ONLY for time-dependent metrics (excluding pipeline in-progress metrics and active area metrics)
+    if (activeMetricModal.type === 'revenue' || activeMetricModal.type === 'all' || (activeMetricModal.type === 'area' && !activeMetricModal.onlyActive)) {
       filtered = allOrders.filter(o => isOrderInTimeHorizon(o, timeHorizon, customStartDate, customEndDate));
     }
 
-    if (activeMetricModal.type === 'to_pack') {
+    if (activeMetricModal.type === 'pipeline' && activeMetricModal.filterValue) {
+      const stage = activeMetricModal.filterValue;
+      if (stage === 'bookingReceived') {
+        filtered = filtered.filter(o => o.status === 'Pending' && !o.advance_booking && !(o as any).in_production && (o as any).production_status !== 'In Production');
+      } else if (stage === 'productionStarted') {
+        filtered = filtered.filter(o => o.status === 'Pending' && (Boolean(o.advance_booking) || Boolean((o as any).in_production) || (o as any).production_status === 'In Production'));
+      } else if (stage === 'packingStarted') {
+        filtered = filtered.filter(o => o.status === 'Packing');
+      } else if (stage === 'packingCompleted') {
+        filtered = filtered.filter(o => o.status === 'Packed' && !o.ready_for_dispatch);
+      } else if (stage === 'readyForDispatch') {
+        filtered = filtered.filter(o => o.status === 'Packed' && Boolean(o.ready_for_dispatch));
+      } else if (stage === 'outForDelivery') {
+        filtered = filtered.filter(o => o.status === 'Dispatched');
+      } else if (stage === 'delivered') {
+        filtered = filtered.filter(o => o.status === 'Delivered' && (timeHorizon === 'all' || isOrderInTimeHorizon(o, timeHorizon, customStartDate, customEndDate)));
+      } else if (stage === 'cancelled') {
+        filtered = filtered.filter(o => o.status === 'Cancelled' && (timeHorizon === 'all' || isOrderInTimeHorizon(o, timeHorizon, customStartDate, customEndDate)));
+      }
+    } else if (activeMetricModal.type === 'to_pack') {
       filtered = filtered.filter(o => o.status === 'Pending' || o.status === 'Packing');
     } else if (activeMetricModal.type === 'deliveries_today') {
       filtered = filtered.filter(o => o.status === 'Dispatched' || o.status === 'Delivered');
@@ -426,7 +481,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       filtered = filtered.filter(o => o.payment_status === 'Unpaid' || o.payment_status === 'Partial');
     } else if (activeMetricModal.type === 'area' && activeMetricModal.filterValue) {
       const targetArea = activeMetricModal.filterValue.toLowerCase();
-      filtered = filtered.filter(o => (o.area || 'Dahisar').toLowerCase() === targetArea);
+      filtered = filtered.filter(o => {
+        if (activeMetricModal.onlyActive && (o.status === 'Cancelled' || o.status === 'Delivered' || o.status === 'Returned')) {
+          return false;
+        }
+        const cust = customerMap.get(o.customer_id);
+        const resolved = extractAreaZone(o.area, cust?.shipping_address || cust?.billing_address || cust?.area, currentBiz?.area_zones);
+        return (resolved || 'Other').toLowerCase() === targetArea;
+      });
     } else if (activeMetricModal.type === 'receivables') {
       filtered = filtered.filter(o => o.payment_status !== 'Paid');
     } else if (activeMetricModal.type === 'revenue') {
@@ -443,7 +505,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     return { orders: filtered, products: [] };
-  }, [activeMetricModal, modalSearch, allOrders, products, timeHorizon]);
+  }, [activeMetricModal, modalSearch, allOrders, products, timeHorizon, customerMap, currentBiz]);
 
   const horizonLabel = useMemo(() => {
     switch (timeHorizon) {
@@ -1089,50 +1151,82 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           
             {/* Operational Order Pipeline & Active Orders by Area */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
-                            {/* Pipeline */}
+              {/* Pipeline */}
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 border border-slate-700 rounded-3xl p-6 shadow-xl text-white">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 blur-3xl rounded-full -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/10 blur-3xl rounded-full translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
                 
                 <div className="relative z-10 flex items-center justify-between pb-4 border-b border-slate-700/80 mb-5">
-                  <h2 className="text-sm font-black text-white flex items-center gap-2 tracking-wide uppercase">
-                    <Activity size={18} className="text-amber-400" /> Operational Order Pipeline
-                  </h2>
+                  <div>
+                    <h2 className="text-sm font-black text-white flex items-center gap-2 tracking-wide uppercase">
+                      <Activity size={18} className="text-amber-400" /> Operational Order Pipeline
+                    </h2>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      Live Order Stages &amp; Pipeline Valuation
+                    </span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                     </span>
                     <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/20 uppercase tracking-wider shadow-[0_0_10px_rgba(251,191,36,0.2)]">
-                      Command Center
+                      Total: ₹{totalPipelineValue.toLocaleString()}
                     </span>
                   </div>
                 </div>
                 
                 <div className="relative z-10 flex flex-col gap-1.5">
                   {[
-                    { id: 1, label: 'Booking Received', count: metrics.statusPipeline.bookingReceived, color: 'bg-slate-800', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]' },
-                    { id: 2, label: 'Production Started', count: metrics.statusPipeline.productionStarted, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]' },
-                    { id: 3, label: 'Packing Started', count: metrics.statusPipeline.packingStarted, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]' },
-                    { id: 4, label: 'Packing Completed', count: metrics.statusPipeline.packingCompleted, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]' },
-                    { id: 5, label: 'Ready for Dispatch', count: metrics.statusPipeline.readyForDispatch, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]' },
-                    { id: 6, label: 'Out for Delivery', count: metrics.statusPipeline.outForDelivery, color: 'bg-indigo-950', textColor: 'text-indigo-400', progressColor: 'bg-indigo-400', glow: 'shadow-[0_0_12px_rgba(129,140,248,0.4)]' },
-                    { id: 7, label: 'Delivered', count: metrics.statusPipeline.delivered, color: 'bg-emerald-950', textColor: 'text-emerald-400', progressColor: 'bg-emerald-400', glow: 'shadow-[0_0_12px_rgba(52,211,153,0.4)]' }
+                    { id: 1, label: 'Booking Received', count: metrics.statusPipeline.bookingReceived, value: (metrics.statusPipeline as any).bookingReceivedValue || 0, color: 'bg-slate-800', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]', stageKey: 'bookingReceived' },
+                    { id: 2, label: 'Production Started', count: metrics.statusPipeline.productionStarted, value: (metrics.statusPipeline as any).productionStartedValue || 0, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]', stageKey: 'productionStarted' },
+                    { id: 3, label: 'Packing Started', count: metrics.statusPipeline.packingStarted, value: (metrics.statusPipeline as any).packingStartedValue || 0, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]', stageKey: 'packingStarted' },
+                    { id: 4, label: 'Packing Completed', count: metrics.statusPipeline.packingCompleted, value: (metrics.statusPipeline as any).packingCompletedValue || 0, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]', stageKey: 'packingCompleted' },
+                    { id: 5, label: 'Ready for Dispatch', count: metrics.statusPipeline.readyForDispatch, value: (metrics.statusPipeline as any).readyForDispatchValue || 0, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]', stageKey: 'readyForDispatch' },
+                    { id: 6, label: 'Out for Delivery', count: metrics.statusPipeline.outForDelivery, value: (metrics.statusPipeline as any).outForDeliveryValue || 0, color: 'bg-indigo-950', textColor: 'text-indigo-400', progressColor: 'bg-indigo-400', glow: 'shadow-[0_0_12px_rgba(129,140,248,0.4)]', stageKey: 'outForDelivery' },
+                    { id: 7, label: 'Delivered', count: metrics.statusPipeline.delivered, value: (metrics.statusPipeline as any).deliveredValue || 0, color: 'bg-emerald-950', textColor: 'text-emerald-400', progressColor: 'bg-emerald-400', glow: 'shadow-[0_0_12px_rgba(52,211,153,0.4)]', stageKey: 'delivered' }
                   ].map((step, idx, arr) => (
                     <div key={step.id} className="relative group z-10">
                       {idx !== arr.length - 1 && (
-                        <div className="absolute left-[19px] top-[32px] bottom-[-6px] w-[2px] bg-slate-700/50 -z-10"></div>
+                        <div className="absolute left-[19px] top-[34px] bottom-[-4px] w-[2px] bg-slate-700/50 -z-10"></div>
                       )}
-                      <div className="relative z-10 flex items-center gap-4 p-2 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/10">
+                      <div 
+                        onClick={() => handleOpenMetricDetail({
+                          title: `${step.label} (${step.count} Orders)`,
+                          subtitle: `Order list & total value of ₹${Number(step.value || 0).toLocaleString()}`,
+                          icon: Activity,
+                          iconColor: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+                          badgeText: step.label,
+                          type: 'pipeline',
+                          filterValue: step.stageKey,
+                          description: `All orders currently under "${step.label}" with combined order value of ₹${Number(step.value || 0).toLocaleString()}.`
+                        })}
+                        className="relative z-10 flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/10 cursor-pointer"
+                        title={`Click to view orders in ${step.label}`}
+                      >
                         <div className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-black ${step.color} ${step.textColor} ${step.count > 0 ? step.glow + ' ring-1 ring-' + step.progressColor.split('-')[1] + '-500/50' : 'ring-1 ring-white/10'}`}>
                           {step.id}
                         </div>
-                        <span className={`text-[11px] font-bold flex-1 tracking-wide ${step.count > 0 ? 'text-white' : 'text-slate-400'}`}>{step.label}</span>
-                        <div className="hidden sm:block w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner ring-1 ring-white/5">
-                          <div className={`h-full ${step.progressColor} rounded-full transition-all duration-1000 ${step.count > 0 ? step.glow : ''}`} style={{ width: step.count > 0 ? '100%' : '0%' }}></div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-[11px] font-bold tracking-wide truncate ${step.count > 0 ? 'text-white' : 'text-slate-400'}`}>
+                              {step.label}
+                            </span>
+                            <span className={`text-[11px] font-bold ${step.count > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
+                              ₹{Number(step.value || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner ring-1 ring-white/5 mt-1">
+                            <div 
+                              className={`h-full ${step.progressColor} rounded-full transition-all duration-700 ${step.count > 0 ? step.glow : ''}`} 
+                              style={{ width: step.count > 0 ? `${Math.min(100, Math.max(12, (step.count / Math.max(1, totalPipelineOrders)) * 100))}%` : '0%' }}
+                            ></div>
+                          </div>
                         </div>
-                        <div className={`w-10 text-center bg-slate-800/80 px-2 py-1 rounded-md border border-slate-700/50 shadow-inner`}>
-                          <span className={`text-[11px] font-black ${step.count > 0 ? step.textColor : 'text-slate-500'}`}>{step.count}</span>
+                        <div className="w-16 text-center bg-slate-800/80 px-2 py-1 rounded-md border border-slate-700/50 shadow-inner shrink-0">
+                          <span className={`text-[11px] font-black ${step.count > 0 ? step.textColor : 'text-slate-500'}`}>
+                            {step.count} {step.count === 1 ? 'ord' : 'ords'}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1140,26 +1234,60 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </div>
 
-{/* Active Orders by Area */}
+              {/* Active Orders by Area */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
                 <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 mb-4">
-                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <MapPin size={18} className="text-amber-500" /> Active Orders by Area
-                  </h2>
-                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full">
-                    {metrics.activeOrdersByArea.length} Zones
-                  </span>
+                  <div>
+                    <h2 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <MapPin size={18} className="text-amber-500" /> Active Orders by Area
+                    </h2>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                      Live dispatch zones &amp; order values
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+                      {totalActiveAreaOrders} Active Orders
+                    </span>
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 px-2.5 py-0.5 rounded-full">
+                      ₹{Number(totalActiveAreaValue).toLocaleString()}
+                    </span>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-0.5">
                   {metrics.activeOrdersByArea.map((area, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">{area.area}</span>
+                    <div 
+                      key={idx} 
+                      onClick={() => handleOpenMetricDetail({
+                        title: `Active Orders - ${area.area}`,
+                        subtitle: `${area.count} orders • Total Value: ₹${Number((area as any).value || 0).toLocaleString()}`,
+                        icon: MapPin,
+                        iconColor: 'text-amber-500 bg-amber-500/10 border-amber-200',
+                        badgeText: area.area,
+                        type: 'area',
+                        filterValue: area.area,
+                        onlyActive: true,
+                        description: `Live active orders scheduled or awaiting dispatch in ${area.area}.`
+                      })}
+                      className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100/80 dark:hover:bg-slate-800 hover:border-amber-400/30 transition-colors cursor-pointer group"
+                      title={`Click to view ${area.area} active orders`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${area.count > 0 ? 'bg-amber-500 ring-2 ring-amber-500/30' : 'bg-slate-300 dark:bg-slate-700'}`}></div>
+                        <div className="truncate">
+                          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                            {area.area}
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block">
+                            ₹{Number((area as any).value || 0).toLocaleString()}
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-[11px] font-black text-slate-900 dark:text-white bg-white dark:bg-slate-900 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 shadow-xs">
-                        {area.count} orders
-                      </span>
+                      <div className="text-right shrink-0">
+                        <span className="text-[11px] font-black text-slate-900 dark:text-white bg-white dark:bg-slate-900 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 shadow-xs block">
+                          {area.count} {area.count === 1 ? 'order' : 'orders'}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1450,10 +1578,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {metrics.activeOrdersByArea.slice(0, 4).map(item => (
-                    <div key={item.area} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-center space-y-1">
+                    <div 
+                      key={item.area} 
+                      onClick={() => handleOpenMetricDetail({
+                        title: `Active Orders - ${item.area}`,
+                        subtitle: `${item.count} orders • Total Value: ₹${Number((item as any).value || 0).toLocaleString()}`,
+                        icon: MapPin,
+                        iconColor: 'text-amber-500 bg-amber-500/10 border-amber-200',
+                        badgeText: item.area,
+                        type: 'area',
+                        filterValue: item.area,
+                        onlyActive: true,
+                        description: `Live active orders scheduled or awaiting dispatch in ${item.area}.`
+                      })}
+                      className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-center space-y-1 hover:border-amber-400/40 hover:bg-slate-100/50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
                       <MapPin size={18} className="mx-auto text-amber-500" />
                       <strong className="text-[11px] font-bold block text-slate-800 dark:text-slate-200">{item.area}</strong>
-                      <span className="text-base font-black text-amber-600 dark:text-amber-400 block">{item.count}</span>
+                      <span className="text-base font-black text-amber-600 dark:text-amber-400 block">{item.count} {item.count === 1 ? 'order' : 'orders'}</span>
+                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 block">₹{Number((item as any).value || 0).toLocaleString()}</span>
                       <span className="text-[10px] text-slate-400 block">Assigned Route</span>
                     </div>
                   ))}

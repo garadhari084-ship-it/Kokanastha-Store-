@@ -510,13 +510,23 @@ export function isOrderInTimeHorizon(
   // Helper to extract clean YYYY-MM-DD from various date string formats
   const extractDateStr = (dateVal?: string | null): string => {
     if (!dateVal) return '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) return dateVal;
+    const clean = dateVal.trim().split('T')[0];
+    if (!clean) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(clean)) {
+      const [y, m, d] = clean.split('-');
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(clean)) {
+      const parts = clean.split(/[-\/]/);
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
     try {
       const d = new Date(dateVal);
       if (!isNaN(d.getTime())) {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       }
-      return dateVal.split('T')[0] || '';
+      return clean;
     } catch (_) {
       return '';
     }
@@ -610,7 +620,7 @@ export function extractAreaZone(rawArea?: string, rawAddress?: string, customZon
     return cleanArea;
   }
 
-  return standardZones[0] || 'Dahisar';
+  return 'Other';
 }
 
 /**
@@ -3751,6 +3761,16 @@ class ERPStorage {
     throw new Error('Purchase Order not found');
   }
 
+  public deletePurchaseOrder(id: string): boolean {
+    const initialLen = this.cache.purchases.length;
+    this.cache.purchases = this.cache.purchases.filter(p => p.id !== id);
+    if (this.cache.purchases.length !== initialLen) {
+      this.save('purchases', null, true, id);
+      return true;
+    }
+    return false;
+  }
+
   // ==================== CONCURRENT DEVICE SESSION ENFORCEMENT ====================
   public getActiveDeviceSessions(userId?: string): ActiveDeviceSession[] {
     const now = Date.now();
@@ -5410,13 +5430,17 @@ class ERPStorage {
   ) {
     const products = this.getProducts(businessId);
     const allOrders = this.getSalesOrders(businessId);
+    const customers = this.getCustomers(businessId);
+    const customerMap = new Map(customers.map(c => [c.id, c]));
+    const biz = this.getBusiness(businessId);
+    const customZones = biz?.area_zones && biz.area_zones.length > 0 ? biz.area_zones : undefined;
 
     // Filter orders strictly by time horizon
     const orders = allOrders.filter(o => isOrderInTimeHorizon(o, timeHorizon, customStartDate, customEndDate));
 
     const todaySalesAmount = orders
       .filter(o => o.status !== 'Cancelled')
-      .reduce((sum, o) => sum + o.total_amount, 0);
+      .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
 
     const pendingOrders = orders.filter(o => o.status === 'Pending').length;
     const packingOrders = orders.filter(o => o.status === 'Packing').length;
@@ -5424,50 +5448,107 @@ class ERPStorage {
     const dispatchedOrders = orders.filter(o => o.status === 'Dispatched').length;
     const deliveredOrders = orders.filter(o => o.status === 'Delivered').length;
     const cancelledOrders = orders.filter(o => o.status === 'Cancelled').length;
-    const advanceBookingOrders = orders.filter(o => o.advance_booking).length;
+    const advanceBookingOrders = orders.filter(o => Boolean(o.advance_booking)).length;
 
     // Specific KPI values matching operational snapshot
     const toPackToday = allOrders.filter(o => o.status === 'Pending' || o.status === 'Packing').length;
-    const readyForDispatch = allOrders.filter(o => o.status === 'Packed').length;
+    const readyForDispatch = allOrders.filter(o => o.status === 'Packed' && Boolean(o.ready_for_dispatch)).length;
     const deliveriesToday = allOrders.filter(o => o.status === 'Dispatched' || o.status === 'Delivered').length;
     const overdueOrdersCount = allOrders.filter(o => o.is_overdue || o.status === 'Pending' || o.status === 'Packing').length;
     const pendingPaymentsCount = allOrders.filter(o => o.payment_status === 'Unpaid' || o.payment_status === 'Partial').length;
     const totalOrdersCount = orders.length;
     const outstandingAmount = allOrders
       .filter(o => o.payment_status === 'Unpaid' || o.payment_status === 'Partial')
-      .reduce((sum, o) => sum + Math.max(0, o.total_amount - (o.paid_amount || 0)), 0);
+      .reduce((sum, o) => sum + Math.max(0, (Number(o.total_amount) || 0) - (Number(o.paid_amount) || 0)), 0);
 
-    // Pipeline counts
-    const statusPipeline = {
-      bookingReceived: orders.filter(o => o.status === 'Pending' && !o.advance_booking).length,
-      productionStarted: orders.filter(o => o.status === 'Pending' && o.advance_booking).length || 1,
-      packingStarted: orders.filter(o => o.status === 'Packing').length,
-      packingCompleted: orders.filter(o => o.status === 'Packed').length,
-      readyForDispatch: orders.filter(o => o.status === 'Packed').length,
-      outForDelivery: orders.filter(o => o.status === 'Dispatched').length,
-      delivered: orders.filter(o => o.status === 'Delivered').length,
-      cancelled: orders.filter(o => o.status === 'Cancelled').length,
+    // Live Operational Pipeline: include in-progress active orders plus finalized orders for the time horizon
+    const pipelineOrders = allOrders.filter(o => {
+      const isActive = o.status === 'Pending' || o.status === 'Packing' || o.status === 'Packed' || o.status === 'Dispatched';
+      if (isActive) return true;
+      return isOrderInTimeHorizon(o, timeHorizon, customStartDate, customEndDate);
+    });
+
+    const bookingReceivedOrders = pipelineOrders.filter(o => o.status === 'Pending' && !o.advance_booking && !(o as any).in_production && (o as any).production_status !== 'In Production');
+    const productionStartedOrders = pipelineOrders.filter(o => o.status === 'Pending' && (Boolean(o.advance_booking) || Boolean((o as any).in_production) || (o as any).production_status === 'In Production'));
+    const packingStartedOrders = pipelineOrders.filter(o => o.status === 'Packing');
+    const packingCompletedOrders = pipelineOrders.filter(o => o.status === 'Packed' && !o.ready_for_dispatch);
+    const readyForDispatchOrders = pipelineOrders.filter(o => o.status === 'Packed' && Boolean(o.ready_for_dispatch));
+    const outForDeliveryOrders = pipelineOrders.filter(o => o.status === 'Dispatched');
+    const deliveredOrdersList = pipelineOrders.filter(o => o.status === 'Delivered');
+    const cancelledOrdersList = pipelineOrders.filter(o => o.status === 'Cancelled');
+
+    const getOrderValue = (o: SalesOrder): number => {
+      const direct = Number(o.total_amount);
+      if (!isNaN(direct) && direct > 0) return direct;
+      if (Array.isArray(o.items) && o.items.length > 0) {
+        const itemsTotal = o.items.reduce((sum, it) => {
+          const p = Number(it.selling_price) || Number((it as any).price) || Number((it as any).unit_price) || 0;
+          const q = Number(it.qty) || Number((it as any).quantity) || 1;
+          const t = Number((it as any).total) || Number((it as any).total_price) || (p * q);
+          return sum + t;
+        }, 0);
+        const charges = Number(o.additional_charges) || 0;
+        const discount = Number(o.discount_amount) || 0;
+        return Math.max(0, itemsTotal + charges - discount);
+      }
+      return !isNaN(direct) ? direct : 0;
     };
 
-    // Area breakdown
-    const areaCountsMap: Record<string, number> = {};
-    orders.forEach(o => {
-      const area = o.area || 'Other';
-      areaCountsMap[area] = (areaCountsMap[area] || 0) + 1;
-    });
+    const sumOrderValues = (list: SalesOrder[]) => list.reduce((sum, o) => sum + getOrderValue(o), 0);
 
-    // Ensure standard areas are present
-    const defaultAreas = ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Other'];
+    // Pipeline counts and values accurately calculated as per real orders
+    const statusPipeline = {
+      bookingReceived: bookingReceivedOrders.length,
+      bookingReceivedValue: sumOrderValues(bookingReceivedOrders),
+      productionStarted: productionStartedOrders.length,
+      productionStartedValue: sumOrderValues(productionStartedOrders),
+      packingStarted: packingStartedOrders.length,
+      packingStartedValue: sumOrderValues(packingStartedOrders),
+      packingCompleted: packingCompletedOrders.length,
+      packingCompletedValue: sumOrderValues(packingCompletedOrders),
+      readyForDispatch: readyForDispatchOrders.length,
+      readyForDispatchValue: sumOrderValues(readyForDispatchOrders),
+      outForDelivery: outForDeliveryOrders.length,
+      outForDeliveryValue: sumOrderValues(outForDeliveryOrders),
+      delivered: deliveredOrdersList.length,
+      deliveredValue: sumOrderValues(deliveredOrdersList),
+      cancelled: cancelledOrdersList.length,
+      cancelledValue: sumOrderValues(cancelledOrdersList),
+    };
+
+    // Active orders are in-flight orders requiring fulfillment/delivery (not Cancelled, Delivered, or Returned)
+    const activeOrders = allOrders.filter(o => 
+      o.status === 'Pending' || o.status === 'Packing' || o.status === 'Packed' || o.status === 'Dispatched'
+    );
+
+    const defaultAreas = customZones && customZones.length > 0
+      ? customZones
+      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Other'];
+
+    const areaMap: Record<string, { count: number; value: number }> = {};
     defaultAreas.forEach(a => {
-      if (!(a in areaCountsMap)) {
-        areaCountsMap[a] = 0;
-      }
+      areaMap[a] = { count: 0, value: 0 };
     });
 
-    const activeOrdersByArea = Object.entries(areaCountsMap).map(([area, count]) => ({
+    activeOrders.forEach(o => {
+      const cust = customerMap.get(o.customer_id);
+      const resolvedArea = extractAreaZone(o.area, cust?.shipping_address || cust?.billing_address || cust?.area, customZones);
+      const targetArea = resolvedArea || 'Other';
+      if (!areaMap[targetArea]) {
+        areaMap[targetArea] = { count: 0, value: 0 };
+      }
+      areaMap[targetArea].count += 1;
+      areaMap[targetArea].value += getOrderValue(o);
+    });
+
+    const activeOrdersByArea = Object.entries(areaMap).map(([area, data]) => ({
       area,
-      count
-    })).sort((a, b) => b.count - a.count);
+      count: data.count,
+      value: data.value
+    })).sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return b.value - a.value;
+    });
 
     const lowStockThreshold = this.getSettings(businessId).low_stock_limit;
     const lowStock = products.filter(p => p.current_stock > 0 && p.current_stock <= lowStockThreshold).length;

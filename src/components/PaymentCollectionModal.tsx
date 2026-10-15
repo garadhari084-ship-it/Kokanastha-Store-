@@ -16,6 +16,7 @@ interface PaymentCollectionModalProps {
   user: UserProfile;
   order: SalesOrder | PurchaseOrder;
   type: 'Sales' | 'Purchase';
+  initialMode?: 'full' | 'partial';
   onClose: () => void;
   onSuccess: (updatedOrder: SalesOrder | PurchaseOrder, newRecord: PaymentRecord) => void;
   triggerToast: (msg: string, type: 'success' | 'error' | 'info') => void;
@@ -26,6 +27,7 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
   user,
   order,
   type,
+  initialMode = 'full',
   onClose,
   onSuccess,
   triggerToast
@@ -43,8 +45,19 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
   const previouslyPaid = Number(freshOrder.paid_amount) || 0;
   const currentOutstanding = Math.max(0, totalAmount - previouslyPaid);
 
+  // Settlement Mode: 'full' (100%) vs 'partial' (with partial payment options)
+  const [settlementType, setSettlementType] = useState<'full' | 'partial'>(initialMode || 'full');
+  const [partialPreset, setPartialPreset] = useState<'10' | '25' | '33' | '50' | '75' | 'custom'>('50');
+  const [partialTag, setPartialTag] = useState<string>('Part Payment');
+  const [nextBalanceDueDate, setNextBalanceDueDate] = useState<string>('');
+
   // Form states
-  const [paymentAmount, setPaymentAmount] = useState<number>(currentOutstanding);
+  const [paymentAmount, setPaymentAmount] = useState<number>(() => {
+    if (initialMode === 'partial') {
+      return Math.round(currentOutstanding * 0.5) || currentOutstanding;
+    }
+    return currentOutstanding;
+  });
   const [paymentMode, setPaymentMode] = useState<string>('UPI / QR');
   const [referenceNo, setReferenceNo] = useState<string>('');
   const [bankAccount, setBankAccount] = useState<string>(business?.bank_name || 'Main Cash / Bank Account');
@@ -61,9 +74,15 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
     const paid = Number(latest.paid_amount) || 0;
     const outstanding = Math.max(0, tot - paid);
 
-    setPaymentAmount(outstanding);
+    if (initialMode === 'partial') {
+      setSettlementType('partial');
+      setPaymentAmount(Math.round(outstanding * 0.5) || outstanding);
+    } else {
+      setSettlementType('full');
+      setPaymentAmount(outstanding);
+    }
     setUpdatedOrderState(latest);
-  }, [order.id, order.paid_amount, order.total_amount, businessId, type]);
+  }, [order.id, order.paid_amount, order.total_amount, businessId, type, initialMode]);
 
   // Step state: 'entry' -> 'success_options'
   const [step, setStep] = useState<'entry' | 'success_options'>('entry');
@@ -89,10 +108,13 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
     partyPhone = supp?.phone || '';
   }
 
-  const handleApplyPreset = (percent: number) => {
+  const handleApplyPreset = (percent: number, presetKey?: '10' | '25' | '33' | '50' | '75') => {
     if (percent === 100) {
+      setSettlementType('full');
       setPaymentAmount(currentOutstanding);
     } else {
+      setSettlementType('partial');
+      if (presetKey) setPartialPreset(presetKey);
       const amt = Math.round((currentOutstanding * percent) / 100);
       setPaymentAmount(amt);
     }
@@ -122,6 +144,14 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
     const receiptSeq = (order.payment_history && order.payment_history.length > 0) ? `-${order.payment_history.length + 1}` : '';
     const receiptNo = `${type === 'Sales' ? 'RCT' : 'PAY'}-${order.order_number}${receiptSeq}`;
 
+    // Compile comprehensive notes including partial payment metadata if applicable
+    const noteSegments = [
+      notes.trim(),
+      settlementType === 'partial' ? `[Tag: ${partialTag}]` : '',
+      settlementType === 'partial' && nextBalanceDueDate ? `[Next Balance Due: ${nextBalanceDueDate}]` : ''
+    ].filter(Boolean);
+    const compiledNotes = noteSegments.join(' • ');
+
     const newRecord: PaymentRecord = {
       id: crypto.randomUUID(),
       order_id: order.id,
@@ -132,7 +162,7 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
       reference_no: referenceNo.trim() || undefined,
       bank_account: bankAccount,
       payment_date: paymentDate,
-      notes: notes.trim() || undefined,
+      notes: compiledNotes || undefined,
       receipt_number: receiptNo,
       collected_by: user.name || 'Staff',
       business_id: businessId,
@@ -488,52 +518,119 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
               </div>
             </div>
 
-            {/* Presets / Quick Amount Buttons */}
+            {/* Settlement Type Selector: Full Payment vs Partial Payment */}
+            <div className="bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setSettlementType('full');
+                  setPaymentAmount(currentOutstanding);
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  settlementType === 'full'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <CheckCircle2 size={14} /> Full Payment ({currencySymbol}{currentOutstanding.toLocaleString()})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSettlementType('partial');
+                  setPartialPreset('50');
+                  setPaymentAmount(Math.round(currentOutstanding * 0.5) || currentOutstanding);
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  settlementType === 'partial'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Banknote size={14} /> Partial Payment Options
+              </button>
+            </div>
+
+            {/* Presets & Partial Payment Options */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="font-bold text-slate-700 dark:text-slate-300">
-                  Collection / Settlement Amount ({currencySymbol})
+                  {settlementType === 'partial' ? 'Select Partial Amount / Installment' : 'Settlement Amount'} ({currencySymbol})
                 </label>
-                <span className="text-[10px] text-slate-400 font-medium">Quick Presets:</span>
+                {settlementType === 'partial' && (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+                    Partial Settlement Mode
+                  </span>
+                )}
               </div>
               
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                <button
-                  type="button"
-                  onClick={() => handleApplyPreset(100)}
-                  className={`py-2 px-2 rounded-xl border text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
-                    paymentAmount === currentOutstanding && currentOutstanding > 0
-                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  <CheckCircle2 size={13} /> Full Balance
-                </button>
+              {/* Quick Preset Buttons for Partial Payment */}
+              {settlementType === 'partial' && (
+                <div className="space-y-2 mb-2.5">
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[
+                      { key: '10', label: '10% Token', pct: 10 },
+                      { key: '25', label: '25% Advance', pct: 25 },
+                      { key: '33', label: '33% 1/3rd', pct: 33.33 },
+                      { key: '50', label: '50% Half', pct: 50 },
+                      { key: '75', label: '75% Milestone', pct: 75 }
+                    ].map(p => {
+                      const calculatedAmt = Math.round((currentOutstanding * p.pct) / 100);
+                      const isSelected = paymentAmount === calculatedAmt;
+                      return (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => handleApplyPreset(p.pct, p.key as any)}
+                          className={`py-1.5 px-1 rounded-xl border text-[10px] font-bold transition-all cursor-pointer flex flex-col items-center justify-center ${
+                            isSelected
+                              ? 'bg-amber-600 text-white border-amber-500 shadow-xs'
+                              : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          <span>{p.label}</span>
+                          <span className="text-[9px] opacity-80 font-mono mt-0.5">{currencySymbol}{calculatedAmt.toLocaleString()}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleApplyPreset(50)}
-                  className={`py-2 px-2 rounded-xl border text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
-                    paymentAmount === Math.round(currentOutstanding * 0.5) && currentOutstanding > 0
-                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  50% Part Pay
-                </button>
+                  {/* Partial Payment Metadata: Tag & Next Due Date */}
+                  <div className="grid grid-cols-2 gap-2 p-2.5 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/50 rounded-xl">
+                    <div>
+                      <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
+                        Installment Label / Tag
+                      </label>
+                      <select
+                        value={partialTag}
+                        onChange={(e) => setPartialTag(e.target.value)}
+                        className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 rounded-lg text-xs font-semibold focus:outline-hidden focus:border-amber-500"
+                      >
+                        <option value="Advance / Token">Advance / Token Payment</option>
+                        <option value="1st Installment">1st Installment</option>
+                        <option value="2nd Installment">2nd Installment</option>
+                        <option value="Milestone Settlement">Milestone Settlement</option>
+                        <option value="Running Credit Payment">Running Credit Payment</option>
+                        <option value="Part Payment">Ad-hoc Part Payment</option>
+                      </select>
+                    </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleApplyPreset(25)}
-                  className={`py-2 px-2 rounded-xl border text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
-                    paymentAmount === Math.round(currentOutstanding * 0.25) && currentOutstanding > 0
-                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  25% Part Pay
-                </button>
-              </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
+                        Next Balance Due Date (Optional)
+                      </label>
+                      <input 
+                        type="date"
+                        value={nextBalanceDueDate}
+                        onChange={(e) => setNextBalanceDueDate(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 rounded-lg text-xs font-mono focus:outline-hidden focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Amount Input */}
               <div className="relative">
@@ -546,22 +643,53 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
                   max={currentOutstanding}
                   step="any"
                   value={paymentAmount || ''}
-                  onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full pl-8 pr-3 py-3 bg-slate-50 dark:bg-slate-800 border-2 border-emerald-500/50 rounded-2xl text-base font-black text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 transition shadow-inner"
-                  placeholder="Enter amount..."
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 0;
+                    setPaymentAmount(val);
+                    if (val < currentOutstanding) {
+                      setSettlementType('partial');
+                    } else if (val >= currentOutstanding) {
+                      setSettlementType('full');
+                    }
+                  }}
+                  className={`w-full pl-8 pr-3 py-3 bg-slate-50 dark:bg-slate-800 border-2 rounded-2xl text-base font-black text-slate-900 dark:text-white focus:outline-hidden transition shadow-inner ${
+                    settlementType === 'partial' 
+                      ? 'border-amber-500/60 focus:border-amber-500' 
+                      : 'border-emerald-500/60 focus:border-emerald-500'
+                  }`}
+                  placeholder="Enter custom amount..."
                   required
                 />
               </div>
 
-              {/* Dynamic Balance Preview Banner */}
-              <div className="mt-2 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500 font-medium">Remaining Balance After Payment:</span>
-                <span className={`font-black ${calculatedRemaining === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                  {currencySymbol}{calculatedRemaining.toLocaleString()} 
-                  <span className="ml-1 text-[10px] font-bold">
-                    ({calculatedRemaining === 0 ? 'Fully Paid' : 'Partially Outstanding'})
+              {/* Dynamic Balance Preview Banner with Pending Details */}
+              <div className={`mt-2 p-2.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between text-[11px] gap-1 border ${
+                calculatedRemaining === 0 
+                  ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300' 
+                  : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  {calculatedRemaining === 0 ? (
+                    <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                  )}
+                  <span>
+                    {calculatedRemaining === 0 
+                      ? 'This payment fully settles all dues!' 
+                      : `Pending balance after this payment: `}
                   </span>
-                </span>
+                </div>
+                <div className="font-black text-right">
+                  <span className={calculatedRemaining === 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-400'}>
+                    {currencySymbol}{calculatedRemaining.toLocaleString()} Pending
+                  </span>
+                  {calculatedRemaining > 0 && (
+                    <span className="ml-1 text-[10px] opacity-80">
+                      ({Math.round(((totalAmount - (previouslyPaid + paymentAmount)) / totalAmount) * 100)}% remaining)
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

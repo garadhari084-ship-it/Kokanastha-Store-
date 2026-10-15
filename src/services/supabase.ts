@@ -55,7 +55,11 @@ export async function fetchServerSupabaseConfig(): Promise<{ url: string; key: s
   try {
     const res = await fetch('/api/config/supabase');
     if (res.ok) {
-      const data = await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        return null;
+      }
+      const data = await res.json().catch(() => null);
       if (data?.url && data?.key) {
         return { url: data.url.trim(), key: data.key.trim() };
       }

@@ -1490,8 +1490,8 @@ class ERPStorage {
                    };
                 }
                 return {
-                   ...existing,
                    ...b,
+                   ...existing,
                    area_zones: (existing.area_zones && existing.area_zones.length > 0) ? existing.area_zones : ((Array.isArray(b.area_zones) && b.area_zones.length > 0) ? b.area_zones : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri']),
                    default_dispatch_zone: existing.default_dispatch_zone || b.default_dispatch_zone || 'Dahisar',
                    barcode_phone: existing.barcode_phone || savedDefaults.phone || b.barcode_phone,
@@ -2218,6 +2218,7 @@ class ERPStorage {
     if (index !== -1) {
       this.cache.businesses[index] = { ...this.cache.businesses[index], ...updates };
       this.save('businesses', this.cache.businesses.find(b => b.id === id));
+      this.notify();
       return this.cache.businesses[index];
     }
     throw new Error('Business not found');
@@ -5395,22 +5396,11 @@ class ERPStorage {
   }
 
   /**
-   * Safely refreshes application data from local storage and optionally syncs with database.
-   * NEVER clears or wipes local cache, preserving all customer names, orders, and area zones.
+   * Non-destructive application UI refresh.
+   * NEVER saves data, NEVER clears cache, preserving all custom area zones, customer names, and active forms.
    */
   public async refreshApplicationData(businessId?: string): Promise<void> {
-    const normBId = businessId ? normalizeBusinessId(businessId) : undefined;
-
-    // 1. If Supabase is configured and connected, fetch latest remote records without wiping local data
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await this.syncFromSupabase(normBId);
-      } catch (e) {
-        console.warn('Supabase sync skipped during refresh:', e);
-      }
-    }
-
-    // 2. Notify all subscribers to update application UI cleanly without clearing or resetting cache
+    // Notify all subscribers to update application UI cleanly without clearing, wiping, or resetting cache
     this.notify();
   }
 

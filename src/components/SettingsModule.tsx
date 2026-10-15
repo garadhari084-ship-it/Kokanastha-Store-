@@ -357,8 +357,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     setResetPassword('');
   };
 
-  const handleSaveSettings = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveSettings = (e?: any) => {
+    if (e && e.preventDefault) e.preventDefault();
 
     if (user.role !== 'Super Admin') {
       triggerToast('Unauthorized: Only Super Admins can modify organization-wide tenant parameters.', 'error');
@@ -458,12 +458,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         }
       />
 
-      <div className="px-0.5 sm:px-1 space-y-6">
-      {/* ================= ADVANCED TENANT SETTINGS FORM ================= */}
-      <form onSubmit={handleSaveSettings} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Left 2 Columns: Core Identity & Advanced Features */}
-        <div className="lg:col-span-2 space-y-6">
+      <div className="space-y-6">
           
           {/* A. Corporate Identity & GST Details */}
           <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
@@ -1034,186 +1029,6 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
               </div>
             </div>
           </div>
-
-          {/* D. Automated Messaging & API Webhooks */}
-          {/* <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
-            <h3 className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <MessageSquare size={16} className="text-emerald-500" />
-              <span>Messaging Gateways & Notification Triggers</span>
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-500 uppercase">WhatsApp API Key Hook</label>
-                <input 
-                  type="password" 
-                  value={whatsappApiKey}
-                  onChange={(e) => setWhatsappApiKey(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-500 uppercase">SMS Gateway Endpoint</label>
-                <input 
-                  type="url" 
-                  value={smsGatewayUrl}
-                  onChange={(e) => setSmsGatewayUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700"
-                />
-              </div>
-
-              <div className="space-y-1 sm:col-span-2">
-                <label className="text-[11px] font-bold text-slate-500 uppercase">WhatsApp Verification Dispatch Template</label>
-                <input 
-                  type="text" 
-                  value={whatsappTemplate}
-                  onChange={(e) => setWhatsappTemplate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700"
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Auto WhatsApp on Packing Verification</span>
-                <input 
-                  type="checkbox"
-                  checked={enableAutoWhatsapp}
-                  onChange={(e) => setEnableAutoWhatsapp(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Auto SMS on Driver Dispatch Assignment</span>
-                <input 
-                  type="checkbox"
-                  checked={enableAutoSms}
-                  onChange={(e) => setEnableAutoSms(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                />
-              </div>
-            </div>
-          </div> */}
-
-        </div>
-
-        {/* Right 1 Column: Governance, Maps & Action Controls */}
-        <div className="space-y-6">
-          
-          {/* Security & Audit Governance */}
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
-            <h3 className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <Shield size={16} className="text-rose-500" />
-              <span>Security, Audit & Governance</span>
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Audit Log Retention Period</label>
-                <select 
-                  value={auditRetentionDays}
-                  onChange={(e) => setAuditRetentionDays(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-xs rounded-xl border border-slate-200 dark:border-slate-700"
-                >
-                  <option value={30}>30 Days Retention</option>
-                  <option value={60}>60 Days Retention</option>
-                  <option value={90}>90 Days Retention (Recommended)</option>
-                  <option value={365}>365 Days Retention</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Continuous Auto-Cloud Sync</span>
-                <input 
-                  type="checkbox"
-                  checked={autoBackup}
-                  onChange={(e) => setAutoBackup(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Google Maps Integration */}
-          {/* <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
-            <h3 className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <Compass size={16} className="text-amber-500" />
-              <span>Google Maps Integration</span>
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Google Maps Platform Key</label>
-                <input 
-                  type="password" 
-                  value={googleMapsKey}
-                  onChange={(e) => setGoogleMapsKey(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 font-mono text-xs rounded-xl border border-slate-200 dark:border-slate-700"
-                />
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                Google Maps APIs enable live distance calculation from warehouse coordinates to buyer addresses during checkout and route planning.
-              </p>
-            </div>
-          </div> */}
-
-          {/* Action Save Panel */}
-          <div className="bg-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-lg space-y-4">
-            <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-              <Sliders size={16} className="text-amber-400" />
-              <span>Tenant Policy Save</span>
-            </h4>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Updates to tenant rules take effect immediately across all active operator terminals and packing stations.
-            </p>
-
-            {(user.role === 'Super Admin' || user.role === 'Admin') ? (
-              <button 
-                type="submit"
-                className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Save size={16} />
-                <span>Save Tenant Configurations</span>
-              </button>
-            ) : (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl text-center text-xs font-semibold">
-                View-Only: Administrator rights required to modify settings.
-              </div>
-            )}
-          </div>
-
-        </div>
-
-      </form>
-
-      {/* Cloud Data Synchronization Section */}
-      <div className="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                <Trash2 size={24} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Cloud Data Synchronization & Refresh</h3>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Re-synchronize operational records with the Supabase cloud database while preserving all your saved area columns, delivery charges, and local configurations.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleRefreshCloudData}
-              disabled={isSyncing}
-              className="px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white active:scale-[0.99]"
-            >
-              <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
-              <span>{isSyncing ? "Refreshing..." : "Refresh Live Data"}</span>
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Danger Zone for Super Admin */}
@@ -1238,6 +1053,27 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         </div>
       )}
 
+      {/* Save Configurations Section (Bottom) */}
+      <div className="mt-8 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Sliders size={16} className="text-amber-500" />
+              <span>Save Tenant Configurations</span>
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Save all changes made to tenant profiles, policies, and preferences across the organization.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveSettings}
+            className="px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer shrink-0"
+          >
+            <Save size={16} />
+            <span>Save Configurations</span>
+          </button>
+        </div>
       </div>
 
       {/* Factory Reset Confirmation Modal */}

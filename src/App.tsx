@@ -537,8 +537,17 @@ export default function App() {
     return null;
   });
 
-  // App Layout States
-  const [activeView, setActiveView] = useState<string>('dashboard');
+  // App Layout States - restore active view if saved so refresh preserves current view
+  const [activeView, setActiveView] = useState<string>(() => {
+    return localStorage.getItem('omnipack_active_view') || 'dashboard';
+  });
+
+  useEffect(() => {
+    if (activeView) {
+      localStorage.setItem('omnipack_active_view', activeView);
+    }
+  }, [activeView]);
+
   const [deepLinkData, setDeepLinkData] = useState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
@@ -638,29 +647,33 @@ export default function App() {
 
   const [isRefreshingData, setIsRefreshingData] = useState(false);
 
-  const handleRefreshAndSaveAllData = useCallback(async () => {
+  // Header button only refreshes the app; does NOT save or clear local cache
+  const handleRefreshApp = useCallback(async () => {
     if (isRefreshingData) return;
     setIsRefreshingData(true);
     try {
-      await dbStore.saveAllLocalDataAndRefreshFromDatabase(currentBusiness?.id);
-      triggerToast('Local cache cleared. All unsaved data saved & synced with database!', 'success');
+      await dbStore.refreshApp(currentBusiness?.id);
+      triggerToast('App refreshed', 'info');
     } catch (err: any) {
-      console.error('Refresh error:', err);
-      triggerToast('Local cache cleared & refreshed from database.', 'info');
+      console.warn('App refresh notice:', err);
+      dbStore.notify();
+      triggerToast('App refreshed', 'info');
     } finally {
-      setIsRefreshingData(false);
+      setTimeout(() => {
+        setIsRefreshingData(false);
+      }, 500);
     }
   }, [currentBusiness?.id, isRefreshingData, triggerToast]);
 
   useEffect(() => {
     const handleGlobalRefresh = () => {
-      handleRefreshAndSaveAllData();
+      handleRefreshApp();
     };
     window.addEventListener('app-refresh-data', handleGlobalRefresh);
     return () => {
       window.removeEventListener('app-refresh-data', handleGlobalRefresh);
     };
-  }, [handleRefreshAndSaveAllData]);
+  }, [handleRefreshApp]);
 
   // Restore session on mount
   // Handle click outside to close dropdowns
@@ -2696,12 +2709,13 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 relative header-dropdown-container">
-            {/* Refresh Data & Clear Local Cache Icon Button */}
+            {/* Refresh App Icon Button */}
             <button 
-              onClick={handleRefreshAndSaveAllData}
+              onClick={handleRefreshApp}
               disabled={isRefreshingData}
               className="relative p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group focus:outline-none cursor-pointer disabled:opacity-50"
-              title="Clear Local Cache, Save Unsaved Data & Sync with Database"
+              title="Refresh App"
+              aria-label="Refresh App"
             >
               <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/20 to-orange-500/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"></div>
               <RefreshCw size={18} className={`text-slate-600 dark:text-slate-300 group-hover:text-amber-500 transition-colors relative z-10 ${isRefreshingData ? 'animate-spin text-amber-500' : ''}`} />

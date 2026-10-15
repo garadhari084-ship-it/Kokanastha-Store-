@@ -210,14 +210,14 @@ export async function generateBillOfSupplyHTML(
   <meta charset="utf-8">
   <title>Bill of Supply - ${order.order_number}</title>
   <style>
-    @page { size: A4; margin: 10mm; }
+    @page { size: A4; margin: 8mm; }
     body {
       font-family: Arial, Helvetica, sans-serif;
       color: #1e293b;
       margin: 0;
-      padding: 15px;
-      font-size: 10pt;
-      line-height: 1.35;
+      padding: 20px;
+      font-size: 11.5pt;
+      line-height: 1.4;
       background: #ffffff;
     }
     .top-label {

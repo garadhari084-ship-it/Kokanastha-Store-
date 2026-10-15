@@ -126,83 +126,83 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const savingsInfo = calculateOrderSavings(items, allAvailableProds);
 
   return (
-    <div className="bg-white text-slate-900 px-0.5 sm:px-1 py-6 sm:py-8 font-sans text-[11px] leading-relaxed shadow-lg max-w-2xl mx-auto rounded-xl border border-slate-200 print:border-none print:shadow-none print:max-w-none print:w-full print:p-0">
+    <div className="bg-white text-slate-900 px-4 sm:px-8 py-6 sm:py-9 font-sans text-xs sm:text-[13px] leading-relaxed shadow-xl max-w-4xl w-full mx-auto rounded-2xl border border-slate-200 print:border-none print:shadow-none print:max-w-none print:w-full print:p-0 print:rounded-none">
       
       {/* Header */}
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex items-center gap-4">
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex items-center gap-5">
           {businessObj?.logo_url && (
             <img 
               src={businessObj.logo_url} 
               alt={bName} 
-              className="w-24 h-auto max-h-24 object-contain" 
+              className="w-28 h-auto max-h-28 object-contain" 
             />
           )}
           <div className="text-left space-y-1">
-            <h1 className="text-xl font-black tracking-wide text-slate-950 uppercase m-0 leading-tight">
+            <h1 className="text-2xl sm:text-3xl font-black tracking-wide text-slate-950 uppercase m-0 leading-tight">
               {bName}
             </h1>
-            <p className="text-[10px] text-slate-600 font-medium max-w-sm leading-tight">
+            <p className="text-xs text-slate-600 font-medium max-w-md leading-normal">
               {bAddress}
             </p>
-            <div className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 leading-tight mt-1">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <div className="text-xs text-emerald-600 font-bold flex items-center gap-1.5 leading-tight mt-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
               </svg>
               9820769697
             </div>
             {businessObj?.fssai_number && (
-              <p className="text-[10px] text-slate-700 font-bold leading-tight">
+              <p className="text-xs text-slate-700 font-bold leading-tight">
                 FSSAI No: {businessObj.fssai_number}
               </p>
             )}
           </div>
         </div>
-        <div className="text-right text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+        <div className="text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider bg-slate-100 px-2.5 py-1 rounded">
           ORIGINAL FOR RECIPIENT
         </div>
       </div>
 
       {/* Double Border Divider */}
-      <div className="border-t-2 border-slate-950 my-2"></div>
+      <div className="border-t-2 border-slate-950 my-3"></div>
 
       {/* Title */}
-      <div className="text-center font-black text-sm text-slate-950 mb-3">
-        Bill of Supply
+      <div className="text-center font-black text-base sm:text-lg text-slate-950 mb-4 tracking-wide uppercase">
+        Commercial Tax Invoice / Bill of Supply
       </div>
 
       {/* Metadata 3-col Grid */}
-      <div className="grid grid-cols-3 gap-3 mb-4 text-[10.5px]">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5 text-xs sm:text-[12.5px] bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 print:bg-white print:border-none print:p-0">
         <div>
-          <div className="font-extrabold text-slate-900 border-b border-slate-300 pb-1 mb-1 uppercase text-[9px] tracking-wide">
+          <div className="font-extrabold text-slate-900 border-b border-slate-300 pb-1 mb-1.5 uppercase text-[10px] tracking-wide">
             Bill To
           </div>
-          <div className="text-slate-800">
-            <strong className="block text-slate-950 font-bold">{custName}</strong>
+          <div className="text-slate-800 space-y-0.5">
+            <strong className="block text-slate-950 font-bold text-sm">{custName}</strong>
             <span className="block text-slate-600">{custAddr}</span>
-            <span className="block text-slate-600 mt-0.5">Contact No. : {custPhone}</span>
+            <span className="block text-slate-600 mt-1">Contact No. : <strong className="font-mono text-slate-900">{custPhone}</strong></span>
           </div>
         </div>
 
         <div>
-          <div className="font-extrabold text-slate-900 border-b border-slate-300 pb-1 mb-1 uppercase text-[9px] tracking-wide">
+          <div className="font-extrabold text-slate-900 border-b border-slate-300 pb-1 mb-1.5 uppercase text-[10px] tracking-wide">
             Transportation Details
           </div>
-          <div className="text-slate-700 space-y-0.5">
-            <div><span className="text-slate-500">Transport Name:</span> {order.delivery_type && order.delivery_type.toLowerCase().includes('courier') ? 'Global Courier' : 'Direct Express'}</div>
+          <div className="text-slate-700 space-y-1">
+            <div><span className="text-slate-500">Transport:</span> <strong>{order.delivery_type && order.delivery_type.toLowerCase().includes('courier') ? 'Global Courier' : 'Direct Express'}</strong></div>
             <div><span className="text-slate-500">Delivery Date:</span> {order.delivery_date || order.order_date}</div>
-            <div><span className="text-slate-500">Delivery Location:</span> {order.area || 'Dahisar'}</div>
-            <div><span className="text-slate-500">Delivery Type:</span> {order.delivery_type || 'Local Dispatch'}</div>
+            <div><span className="text-slate-500">Location:</span> {order.area || 'Dahisar'}</div>
+            <div><span className="text-slate-500">Dispatch Type:</span> {order.delivery_type || 'Local Dispatch'}</div>
           </div>
         </div>
 
         <div>
-          <div className="font-extrabold text-slate-900 border-b border-slate-300 pb-1 mb-1 uppercase text-[9px] tracking-wide">
+          <div className="font-extrabold text-slate-900 border-b border-slate-300 pb-1 mb-1.5 uppercase text-[10px] tracking-wide">
             Invoice Details
           </div>
-          <div className="text-slate-700 space-y-0.5 font-mono text-[10px]">
-            <div><span className="text-slate-500 font-sans">Invoice No. :</span> <strong className="text-slate-950 font-bold">{order.order_number}</strong></div>
-            <div><span className="text-slate-500 font-sans">Date :</span> {order.order_date}</div>
+          <div className="text-slate-700 space-y-1 font-mono text-xs">
+            <div><span className="text-slate-500 font-sans">Invoice No. :</span> <strong className="text-slate-950 font-bold text-sm bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">{order.order_number}</strong></div>
+            <div><span className="text-slate-500 font-sans">Date :</span> <strong>{order.order_date}</strong></div>
             <div><span className="text-slate-500 font-sans">Time :</span> {formatOrderTime(order.time, order.created_at)}</div>
           </div>
         </div>
@@ -210,30 +210,30 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
 
       {/* Savings Highlight Banner */}
       {savingsInfo.totalSavings > 0 && (
-        <div className="mb-3 px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-950 font-bold text-center text-[11px] flex items-center justify-center gap-2">
-          <span className="text-sm">🎉</span>
+        <div className="mb-4 px-4 py-2 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-950 font-bold text-center text-xs sm:text-[13px] flex items-center justify-center gap-2">
+          <span className="text-base">🎉</span>
           <span>{savingsInfo.bannerMessage}</span>
-          <span className="text-[9px] font-mono text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200">
+          <span className="text-xs font-mono text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-200">
             Saved {currencySymbol}{savingsInfo.totalSavings.toLocaleString()}
           </span>
         </div>
       )}
 
       {/* Table */}
-      <div className="border-y border-slate-950 mb-4 overflow-x-auto">
+      <div className="border-y-2 border-slate-950 mb-5 overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-slate-950 text-[10px] font-black uppercase text-slate-950">
-              <th className="py-2 px-1 text-center w-8">#</th>
-              <th className="py-2 px-2">Item name</th>
-              <th className="py-2 px-2 text-center">Item Code</th>
-              <th className="py-2 px-2 text-center">Quantity</th>
-              <th className="py-2 px-2 text-right">Normal Rate</th>
-              <th className="py-2 px-2 text-right">Applied Rate</th>
-              <th className="py-2 px-2 text-right">Amount</th>
+            <tr className="border-b-2 border-slate-950 text-xs font-black uppercase text-slate-950 bg-slate-50 print:bg-transparent">
+              <th className="py-2.5 px-2 text-center w-10">#</th>
+              <th className="py-2.5 px-3">Item name</th>
+              <th className="py-2.5 px-3 text-center">Item Code</th>
+              <th className="py-2.5 px-3 text-center">Quantity</th>
+              <th className="py-2.5 px-3 text-right">Normal Rate</th>
+              <th className="py-2.5 px-3 text-right">Applied Rate</th>
+              <th className="py-2.5 px-3 text-right">Amount</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 text-[10.5px]">
+          <tbody className="divide-y divide-slate-200 text-xs sm:text-[12.5px]">
             {items.length === 0 ? (
               <tr>
                 <td colSpan={7} className="py-6 text-center text-slate-400 font-sans italic text-xs">
@@ -277,81 +277,81 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
                       <span>{currencySymbol} {normalRate.toFixed(2)}</span>
                     )}
                   </td>
-                  <td className="py-1.5 px-2 text-right font-mono font-bold text-slate-900">
+                  <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
                     {currencySymbol} {price.toFixed(2)}
                   </td>
-                  <td className="py-1.5 px-2 text-right font-mono font-black text-slate-950">{currencySymbol} {amount.toFixed(2)}</td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black text-slate-950">{currencySymbol} {amount.toFixed(2)}</td>
                 </tr>
               );
             }))}
-            <tr className="border-t border-b border-slate-950 font-black text-slate-950 text-[11px]">
-              <td colSpan={3} className="py-2 px-2">Total</td>
-              <td className="py-2 px-2 text-center">{totalQty}</td>
+            <tr className="border-t-2 border-b-2 border-slate-950 font-black text-slate-950 text-xs sm:text-[13px] bg-slate-50 print:bg-transparent">
+              <td colSpan={3} className="py-2.5 px-3">Total</td>
+              <td className="py-2.5 px-3 text-center">{totalQty}</td>
               <td></td>
               <td></td>
-              <td className="py-2 px-2 text-right font-mono">{currencySymbol} {subTotal.toFixed(2)}</td>
+              <td className="py-2.5 px-3 text-right font-mono text-sm sm:text-base font-black">{currencySymbol} {subTotal.toFixed(2)}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       {/* Bottom Section 2-Column Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 text-[10.5px]">
+      <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 text-xs sm:text-[12.5px]">
         {/* Left Side */}
-        <div className="sm:col-span-7 space-y-3">
+        <div className="sm:col-span-7 space-y-4">
           <div>
-            <div className="font-extrabold text-slate-900 uppercase text-[9px]">Invoice Amount In Words</div>
-            <div className="font-bold text-slate-900 italic mt-0.5">{amountInWords}</div>
+            <div className="font-extrabold text-slate-900 uppercase text-[10px] tracking-wide text-slate-500">Invoice Amount In Words</div>
+            <div className="font-bold text-slate-900 italic mt-0.5 text-xs sm:text-[13px]">{amountInWords}</div>
           </div>
 
           <div>
-            <div className="font-extrabold text-slate-900 uppercase text-[9px]">Payment mode</div>
-            <div className="font-semibold text-slate-800">{paymentMode}</div>
+            <div className="font-extrabold text-slate-900 uppercase text-[10px] tracking-wide text-slate-500">Payment mode</div>
+            <div className="font-semibold text-slate-800 text-xs sm:text-[13px]">{paymentMode}</div>
           </div>
 
           <div>
-            <div className="font-extrabold text-slate-900 uppercase text-[9px]">Terms and Conditions</div>
-            <div className="text-[9.5px] text-slate-600 space-y-0.5 mt-0.5">
+            <div className="font-extrabold text-slate-900 uppercase text-[10px] tracking-wide text-slate-500">Terms and Conditions</div>
+            <div className="text-xs text-slate-600 space-y-0.5 mt-0.5">
               <p>Thanks for doing business with us!</p>
-              <p className="font-bold">NO REPLACEMENT AND NO REFUND FOR FOOD PRODUCTS</p>
+              <p className="font-bold text-slate-800">NO REPLACEMENT AND NO REFUND FOR FOOD PRODUCTS</p>
               <p>STAY SAFE AND STAY HOME</p>
             </div>
           </div>
 
           <div>
-            <div className="font-extrabold text-slate-900 uppercase text-[9px] mb-1">Payment QRs & Bank Details</div>
-            <div className="flex items-start gap-2 text-[9px] text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200">
+            <div className="font-extrabold text-slate-900 uppercase text-[10px] tracking-wide mb-1.5 text-slate-500">Payment QRs & Bank Details</div>
+            <div className="flex items-start gap-3 text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200 print:bg-white">
               {/* UPI QR */}
               {order.payment_status !== 'Paid' && (
-                <div className="text-center bg-white border border-slate-300 rounded-md p-1 shrink-0 w-20 shadow-2xs">
-                  <div className="text-[7.5px] font-black uppercase text-slate-900 leading-none mb-0.5">UPI PAY QR</div>
+                <div className="text-center bg-white border border-slate-300 rounded-lg p-1.5 shrink-0 w-24 shadow-xs">
+                  <div className="text-[8px] font-black uppercase text-slate-900 leading-none mb-1">UPI PAY QR</div>
                   {upiQrImgSrc ? (
-                    <img src={upiQrImgSrc} alt="UPI QR" className="w-16 h-16 mx-auto border rounded border-slate-200" />
+                    <img src={upiQrImgSrc} alt="UPI QR" className="w-20 h-20 mx-auto border rounded border-slate-200" />
                   ) : (
-                    <div className="w-16 h-16 mx-auto border rounded border-slate-200 bg-slate-100" />
+                    <div className="w-20 h-20 mx-auto border rounded border-slate-200 bg-slate-100" />
                   )}
-                  <div className="text-[6.5px] font-bold text-emerald-700 mt-0.5">SCAN TO PAY</div>
-                  <div className="text-[5.5px] font-mono text-slate-500 truncate max-w-[64px] mx-auto">{upiId}</div>
+                  <div className="text-[7.5px] font-bold text-emerald-700 mt-1">SCAN TO PAY</div>
+                  <div className="text-[6.5px] font-mono text-slate-500 truncate max-w-[80px] mx-auto">{upiId}</div>
                 </div>
               )}
 
               {/* Bill QR */}
-              <div className="text-center bg-white border border-slate-300 rounded-md p-1 shrink-0 w-20 shadow-2xs">
-                <div className="text-[7.5px] font-black uppercase text-slate-900 leading-none mb-0.5">BILL QR</div>
+              <div className="text-center bg-white border border-slate-300 rounded-lg p-1.5 shrink-0 w-24 shadow-xs">
+                <div className="text-[8px] font-black uppercase text-slate-900 leading-none mb-1">BILL QR</div>
                 {billQrImgSrc ? (
-                  <img src={billQrImgSrc} alt="Bill QR" className="w-16 h-16 mx-auto border rounded border-slate-200" />
+                  <img src={billQrImgSrc} alt="Bill QR" className="w-20 h-20 mx-auto border rounded border-slate-200" />
                 ) : (
-                  <div className="w-16 h-16 mx-auto border rounded border-slate-200 bg-slate-100" />
+                  <div className="w-20 h-20 mx-auto border rounded border-slate-200 bg-slate-100" />
                 )}
-                <div className="text-[6.5px] font-bold text-blue-700 mt-0.5">ONLINE INVOICE</div>
-                <div className="text-[5.5px] font-mono text-slate-500 truncate max-w-[64px] mx-auto">{order.order_number}</div>
+                <div className="text-[7.5px] font-bold text-blue-700 mt-1">ONLINE INVOICE</div>
+                <div className="text-[6.5px] font-mono text-slate-500 truncate max-w-[80px] mx-auto">{order.order_number}</div>
               </div>
 
               {/* Bank Details */}
-              <div className="space-y-0.5 text-[8.5px] leading-tight shrink min-w-0 pl-1 my-auto">
+              <div className="space-y-1 text-xs leading-normal shrink min-w-0 pl-1 my-auto">
                 <div><strong>Bank :</strong> {bankName}</div>
-                <div><strong>Account No. :</strong> {accountNo}</div>
-                <div><strong>IFSC code :</strong> {ifscCode}</div>
+                <div><strong>Account No. :</strong> <span className="font-mono">{accountNo}</span></div>
+                <div><strong>IFSC code :</strong> <span className="font-mono">{ifscCode}</span></div>
                 <div><strong>A/C Holder :</strong> {accountHolder}</div>
               </div>
             </div>
@@ -360,66 +360,66 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
 
         {/* Right Side */}
         <div className="sm:col-span-5 flex flex-col justify-between">
-          <div className="space-y-1.5 border-t sm:border-t-0 border-slate-300 pt-2 sm:pt-0">
-            <div className="font-extrabold text-slate-900 uppercase text-[9px] border-b border-slate-300 pb-0.5 mb-1 text-right">Amounts</div>
-            <div className="flex justify-between font-mono">
+          <div className="space-y-2 border-t sm:border-t-0 border-slate-300 pt-3 sm:pt-0">
+            <div className="font-extrabold text-slate-900 uppercase text-[10px] tracking-wider border-b border-slate-300 pb-1 mb-1.5 text-right text-slate-500">Amounts Breakdown</div>
+            <div className="flex justify-between font-mono text-xs sm:text-[13px]">
               <span className="font-sans text-slate-600">Sub Total</span>
               <span>{currencySymbol} {subTotal.toFixed(2)}</span>
             </div>
             {discount > 0 && (
-              <div className="flex justify-between font-mono text-rose-600">
+              <div className="flex justify-between font-mono text-rose-600 text-xs sm:text-[13px]">
                 <span className="font-sans">Discount {order.discount_percentage ? `(${order.discount_percentage}%)` : ''}</span>
                 <span>-{currencySymbol} {discount.toFixed(2)}</span>
               </div>
             )}
             {order.points_redeemed !== undefined && order.points_redeemed > 0 && (
-              <div className="flex justify-between font-mono text-amber-800 font-bold bg-amber-50/80 px-1 py-0.5 rounded border border-amber-200">
+              <div className="flex justify-between font-mono text-amber-800 font-bold bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200 text-xs">
                 <span className="font-sans">Loyalty Points Redeemed</span>
                 <span>-{order.points_redeemed} Pts</span>
               </div>
             )}
             {order.points_redeemed !== undefined && order.points_redeemed > 0 && customer && (
-              <div className="flex justify-between font-mono text-emerald-800 font-medium text-[9.5px] px-1 py-0.5">
+              <div className="flex justify-between font-mono text-emerald-800 font-medium text-xs px-1">
                 <span className="font-sans text-slate-500">Remaining Loyalty Points</span>
                 <span>{(customer.loyalty_points || 0).toLocaleString()} Pts</span>
               </div>
             )}
             {legacyDelivery > 0 && (
-              <div className="flex justify-between font-mono text-slate-600">
+              <div className="flex justify-between font-mono text-slate-600 text-xs sm:text-[13px]">
                 <span className="font-sans uppercase">DELIVERY:</span>
                 <span>{currencySymbol} {legacyDelivery.toFixed(2)}</span>
               </div>
             )}
             {deliveryCharges > 0 && (
-              <div className="flex justify-between font-mono text-slate-600">
+              <div className="flex justify-between font-mono text-slate-600 text-xs sm:text-[13px]">
                 <span className="font-sans uppercase">Delivery Charges:</span>
                 <span>{currencySymbol} {deliveryCharges.toFixed(2)}</span>
               </div>
             )}
             {additionalCharges > 0 && (
-              <div className="flex justify-between font-mono text-slate-600">
+              <div className="flex justify-between font-mono text-slate-600 text-xs sm:text-[13px]">
                 <span className="font-sans uppercase">Additional Charges:</span>
                 <span>{currencySymbol} {additionalCharges.toFixed(2)}</span>
               </div>
             )}
-            <div className="flex justify-between font-mono font-black border-y border-slate-950 py-1 text-slate-950 text-xs">
+            <div className="flex justify-between font-mono font-black border-y-2 border-slate-950 py-2 text-slate-950 text-sm sm:text-base">
               <span className="font-sans">Total</span>
               <span>{currencySymbol} {totalAmount.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between font-mono text-slate-600">
+            <div className="flex justify-between font-mono text-slate-600 text-xs sm:text-[13px]">
               <span className="font-sans">Received</span>
               <span>{currencySymbol} {received.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between font-mono font-extrabold text-slate-900 border-b border-slate-300 pb-1">
-              <span className="font-sans">Balance</span>
-              <span>{currencySymbol} {balance.toFixed(2)}</span>
+            <div className="flex justify-between font-mono font-extrabold text-slate-900 border-b border-slate-300 pb-1.5 text-xs sm:text-[13px]">
+              <span className="font-sans">Balance Due</span>
+              <span className={balance > 0 ? 'text-rose-600' : 'text-emerald-600'}>{currencySymbol} {balance.toFixed(2)}</span>
             </div>
           </div>
 
           <div className="text-right mt-6 pt-2">
             <div className="text-xs text-slate-800">For : <strong>{bName}</strong></div>
-            <div className="font-serif italic text-lg text-slate-900 my-1 font-bold">AbRupendu</div>
-            <div className="font-extrabold text-[10px] uppercase tracking-wide text-slate-900">AB RUPENDU</div>
+            <div className="font-serif italic text-xl text-slate-900 my-1 font-bold">AbRupendu</div>
+            <div className="font-extrabold text-xs uppercase tracking-wide text-slate-900">AB RUPENDU</div>
           </div>
         </div>
       </div>
@@ -429,12 +429,12 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
 
       {/* Acknowledgement Header */}
       <div className="text-center mb-3">
-        <div className="font-bold text-[10px] uppercase tracking-wider text-slate-700">Acknowledgement</div>
+        <div className="font-bold text-xs uppercase tracking-wider text-slate-600">Acknowledgement</div>
         <h2 className="font-black text-sm uppercase text-slate-950 m-0">{bName}</h2>
       </div>
 
       {/* Acknowledgement 3-col Grid */}
-      <div className="grid grid-cols-3 gap-3 text-[10px]">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
         <div>
           <strong className="block font-bold text-slate-900">Invoice To:</strong>
           <span className="block font-bold text-slate-950">{custName}</span>
@@ -444,14 +444,14 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
         <div>
           <strong className="block font-bold text-slate-900">Invoice Details:</strong>
           <div className="font-mono text-slate-700 space-y-0.5">
-            <div>Invoice No. : {order.order_number}</div>
+            <div>Invoice No. : <strong>{order.order_number}</strong></div>
             <div>Invoice date : {order.order_date}</div>
-            <div>Invoice Amount : {currencySymbol} {totalAmount.toFixed(2)}</div>
+            <div>Invoice Amount : <strong>{currencySymbol} {totalAmount.toFixed(2)}</strong></div>
           </div>
         </div>
 
         <div className="flex flex-col justify-end text-right">
-          <div className="border-t border-slate-900 pt-1 text-center font-bold text-slate-800 w-36 ml-auto">
+          <div className="border-t border-slate-900 pt-1 text-center font-bold text-slate-800 w-40 ml-auto">
             Receiver's Seal & Sign
           </div>
         </div>

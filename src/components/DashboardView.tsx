@@ -72,7 +72,9 @@ import {
   CalendarDays,
   Edit,
   ClipboardList,
-  AlertCircle
+  AlertCircle,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
 import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone } from '../services/store';
 import { SalesOrder, UserProfile, OrderStatus } from '../types/erp';
@@ -180,6 +182,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<SalesOrder | null>(null);
   const [selectedOrderForNotify, setSelectedOrderForNotify] = useState<SalesOrder | null>(null);
   const [viewingInvoiceOrder, setViewingInvoiceOrder] = useState<SalesOrder | null>(null);
+  const [invoicePreviewZoom, setInvoicePreviewZoom] = useState<number>(100);
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<SalesOrder | null>(null);
@@ -2505,37 +2508,75 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             onClick={(e) => {
               if (e.target === e.currentTarget) setViewingInvoiceOrder(null);
             }}
-            className="fixed inset-0 z-[80] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
+            className="fixed inset-0 z-[80] bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 md:p-6 animate-in fade-in duration-150"
           >
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl w-full max-w-5xl xl:max-w-6xl h-[95vh] max-h-[95vh] flex flex-col shadow-2xl overflow-hidden">
               
               {/* Header */}
-              <div className="bg-slate-950 text-white px-6 py-4 flex items-center justify-between shrink-0 print:hidden">
-                <div className="flex items-center gap-1.5.5">
+              <div className="bg-slate-950 text-white px-5 sm:px-6 py-3.5 flex items-center justify-between shrink-0 print:hidden border-b border-slate-800">
+                <div className="flex items-center gap-3">
                   <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
                     <FileText size={18} />
                   </div>
                   <div>
-                    <h2 className="text-xs font-black uppercase tracking-wider text-amber-400">Commercial Tax Invoice Preview & Confirmation</h2>
-                    <p className="text-[10px] text-slate-400 font-mono">Order Number: {viewingInvoiceOrder.order_number}</p>
+                    <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-amber-400">Commercial Tax Invoice Preview & Print</h2>
+                    <p className="text-[10px] sm:text-xs text-slate-400 font-mono">Invoice: <span className="text-white font-bold">{viewingInvoiceOrder.order_number}</span></p>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setViewingInvoiceOrder(null)} 
-                  className="p-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800 transition cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
+
+                <div className="flex items-center gap-2">
+                  {/* Zoom controls */}
+                  <div className="hidden sm:flex items-center gap-1 bg-slate-800/90 rounded-xl p-1 border border-slate-700 mr-2">
+                    <button
+                      onClick={() => setInvoicePreviewZoom(prev => Math.max(70, prev - 15))}
+                      className="p-1 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition cursor-pointer"
+                      title="Zoom Out"
+                    >
+                      <ZoomOut size={15} />
+                    </button>
+                    <button
+                      onClick={() => setInvoicePreviewZoom(100)}
+                      className="px-2 py-0.5 text-[11px] font-mono text-slate-300 hover:text-white hover:bg-slate-700 rounded transition cursor-pointer font-bold"
+                      title="Reset Zoom to 100%"
+                    >
+                      {invoicePreviewZoom}%
+                    </button>
+                    <button
+                      onClick={() => setInvoicePreviewZoom(prev => Math.min(160, prev + 15))}
+                      className="p-1 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition cursor-pointer"
+                      title="Zoom In"
+                    >
+                      <ZoomIn size={15} />
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => handlePrintInvoice(viewingInvoiceOrder)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black shadow-sm transition cursor-pointer"
+                  >
+                    <Printer size={15} />
+                    <span>Print</span>
+                  </button>
+                  <button 
+                    onClick={() => setViewingInvoiceOrder(null)} 
+                    className="p-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800 hover:bg-slate-700 transition cursor-pointer"
+                    title="Close"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
               {/* Invoice Printable Body */}
-              <div className="flex-1 overflow-y-auto p-4 bg-slate-100 dark:bg-slate-950 print:p-0 print:bg-white" id="printable-tax-invoice">
-                <BillOfSupplyView 
-                  order={viewingInvoiceOrder} 
-                  customer={custObj} 
-                  businessObj={businessObj} 
-                  products={products} 
-                />
+              <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-200/60 dark:bg-slate-950 print:p-0 print:bg-white" id="printable-tax-invoice">
+                <div style={{ transform: `scale(${invoicePreviewZoom / 100})`, transformOrigin: 'top center', transition: 'transform 0.15s ease' }} className="w-full flex justify-center">
+                  <BillOfSupplyView 
+                    order={viewingInvoiceOrder} 
+                    customer={custObj} 
+                    businessObj={businessObj} 
+                    products={products} 
+                  />
+                </div>
               </div>
 
               {/* Action buttons in two distinct rows */}

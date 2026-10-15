@@ -246,7 +246,7 @@ export const PublicInvoiceView: React.FC<PublicInvoiceViewProps> = ({
       </div>
 
       {/* Footer Navigation (Hidden in Print) */}
-      <div className="max-w-2xl mx-auto mt-6 print:hidden flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+      <div className="max-w-4xl mx-auto mt-6 print:hidden flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
         <div className="flex items-center gap-2">
           <Sparkles size={14} className="text-indigo-500" />
           <span>Kokanastha Store Customer Portal</span>

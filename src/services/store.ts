@@ -3076,6 +3076,45 @@ class ERPStorage {
       uniqueCustomers.push(cust);
     }
 
+    // Reconcile and calculate multi-invoice outstanding amount for each customer across all active sales orders
+    const activeOrders = this.cache.sales.filter(o => 
+      isSameBusiness(o.business_id, businessId) && 
+      o.status !== 'Cancelled' && 
+      o.status !== 'Returned'
+    );
+
+    for (const cust of uniqueCustomers) {
+      const cNormName = cust.name ? cust.name.trim().toLowerCase() : '';
+      const cNormPhone = cust.phone ? cust.phone.replace(/\D/g, '') : '';
+      
+      const matchingOrders = activeOrders.filter(o => {
+        if (o.customer_id && (o.customer_id === cust.id || (cNormPhone && o.customer_id === cust.phone))) return true;
+        if (cNormPhone && cNormPhone.length >= 10) {
+          const oPhone = ((o as any).phone || (o as any).customer_phone || '').replace(/\D/g, '');
+          if (oPhone && oPhone.slice(-10) === cNormPhone.slice(-10)) return true;
+        }
+        if (cNormName && cNormName !== 'walk-in customer' && cNormName !== 'walk in' && cNormName !== 'walkin') {
+          const oName = (o.customer_name || '').trim().toLowerCase();
+          if (oName && oName === cNormName) return true;
+        }
+        return false;
+      });
+
+      if (matchingOrders.length > 0) {
+        let totalUnpaid = 0;
+        for (const order of matchingOrders) {
+          if (order.payment_status === 'Paid') continue;
+          const tot = Number(order.total_amount) || 0;
+          const paid = typeof order.paid_amount === 'number' ? order.paid_amount : (Number(order.paid_amount) || 0);
+          const unpaid = Math.max(0, tot - paid);
+          if (unpaid > 0.01) {
+            totalUnpaid += unpaid;
+          }
+        }
+        cust.outstanding_amount = totalUnpaid;
+      }
+    }
+
     return uniqueCustomers;
   }
 
@@ -5221,6 +5260,22 @@ class ERPStorage {
     };
     this.draftReservations = [];
     this.pendingUploads.clear();
+    this.notify();
+  }
+
+  public async refreshApp(businessId?: string) {
+    const normBId = businessId ? normalizeBusinessId(businessId) : undefined;
+    
+    // Only refresh data from backend if configured; do NOT clear cache, do NOT overwrite or save local records
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await this.syncFromSupabase(normBId);
+      } catch (e) {
+        console.warn('Sync check error on app refresh:', e);
+      }
+    } else {
+      this.reloadFromLocalStorage();
+    }
     this.notify();
   }
 

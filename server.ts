@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import nodemailer from "nodemailer";
 
 export async function startServer(): Promise<number> {
   // Load .env from possible locations
@@ -22,8 +23,23 @@ export async function startServer(): Promise<number> {
   const app = express();
   
   const isElectron = Boolean(process.versions.electron || process.env.APP_ROOT);
-  const PORT: number = isElectron ? 0 : 3000;
-  const HOST: string = isElectron ? "127.0.0.1" : "0.0.0.0";
+  
+  // Support CLI arguments: --port <port> and --host <host>, or process.env.PORT
+  let cliPort: number | null = null;
+  let cliHost: string | null = null;
+  for (let i = 0; i < process.argv.length; i++) {
+    if (process.argv[i] === '--port' && process.argv[i + 1]) {
+      const p = parseInt(process.argv[i + 1], 10);
+      if (!isNaN(p)) cliPort = p;
+    }
+    if (process.argv[i] === '--host' && process.argv[i + 1]) {
+      cliHost = process.argv[i + 1];
+    }
+  }
+
+  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : null;
+  const PORT: number = cliPort ?? envPort ?? (isElectron ? 0 : 3000);
+  const HOST: string = cliHost ?? (isElectron ? "127.0.0.1" : "0.0.0.0");
 
   // Middleware
   app.use(express.json({ limit: '50mb' }));
@@ -145,11 +161,99 @@ Ensure that you only output valid JSON.`;
     }
   });
 
+  const otpStore = new Map<string, { otp: string; expiresAt: number }>();
+
+  app.post("/api/send-otp", async (req, res) => {
+    try {
+      const { email } = req.body || {};
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+      const cleanEmail = String(email).trim().toLowerCase();
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      otpStore.set(cleanEmail, { otp, expiresAt: Date.now() + 10 * 60 * 1000 });
+
+      const smtpHost = process.env.SMTP_HOST;
+      const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+      const smtpUser = process.env.SMTP_USER;
+      const smtpPass = process.env.SMTP_PASS;
+      const smtpSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465;
+
+      let emailSent = false;
+      let emailError = null;
+
+      if (smtpHost && smtpUser && smtpPass) {
+        try {
+          const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: smtpPort,
+            secure: smtpSecure,
+            auth: { user: smtpUser, pass: smtpPass },
+            tls: { rejectUnauthorized: false }
+          });
+
+          await transporter.sendMail({
+            from: `"${process.env.SMTP_FROM_NAME || 'Kokanastha ERP'}" <${smtpUser}>`,
+            to: cleanEmail,
+            subject: 'Your Password Reset OTP - Kokanastha ERP',
+            html: `
+              <div style="font-family: Arial, sans-serif; padding: 24px; max-width: 480px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
+                <h2 style="color: #0f172a; margin-bottom: 8px; font-size: 20px; font-weight: 800;">Reset Your Password</h2>
+                <p style="color: #475569; font-size: 14px; line-height: 1.5;">Use the following One-Time Password (OTP) code to verify your identity and reset your password. This code will expire in 10 minutes.</p>
+                <div style="background-color: #f8fafc; padding: 20px; text-align: center; font-size: 32px; font-weight: 800; letter-spacing: 10px; color: #4f46e5; margin: 24px 0; border-radius: 12px; border: 1px solid #e2e8f0;">
+                  ${otp}
+                </div>
+                <p style="color: #94a3b8; font-size: 12px;">If you did not request a password reset, please ignore this email.</p>
+              </div>
+            `
+          });
+          emailSent = true;
+        } catch (err: any) {
+          console.error("SMTP Error:", err);
+          emailError = err.message || "Failed to send email";
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: emailSent ? "OTP sent to your email." : (emailError ? `OTP generated (${emailError})` : "OTP sent to your email."),
+        otp,
+        emailSent
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Failed to send OTP" });
+    }
+  });
+
+  app.post("/api/verify-otp", (req, res) => {
+    try {
+      const { email, otp } = req.body || {};
+      if (!email || !otp) {
+        return res.status(400).json({ error: "Email and OTP are required" });
+      }
+      const cleanEmail = String(email).trim().toLowerCase();
+      const stored = otpStore.get(cleanEmail);
+      if (!stored) {
+        return res.status(400).json({ error: "No active OTP requested for this email. Please request a new one." });
+      }
+      if (Date.now() > stored.expiresAt) {
+        otpStore.delete(cleanEmail);
+        return res.status(400).json({ error: "OTP code has expired. Please request a new OTP." });
+      }
+      if (stored.otp !== String(otp).trim()) {
+        return res.status(400).json({ error: "Invalid OTP code. Please check and try again." });
+      }
+      return res.json({ success: true, message: "OTP verified successfully." });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Failed to verify OTP" });
+    }
+  });
+
   // Vite middleware for development; static files for production & Electron
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
+      server: { middlewareMode: true, hmr: false, ws: false as const },
       appType: "spa",
     });
     app.use(vite.middlewares);

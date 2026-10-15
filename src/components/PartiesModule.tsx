@@ -55,7 +55,21 @@ export const PartiesModule: React.FC<PartiesModuleProps> = ({ businessId, user, 
   }, [customers, selectedCustomerId]);
 
   const customerHistory = useMemo(() => {
-    return selectedCustomer ? dbStore.getSalesOrders(businessId).filter(o => o.customer_id === selectedCustomer.id) : [];
+    if (!selectedCustomer) return [];
+    const normPhone = selectedCustomer.phone ? selectedCustomer.phone.replace(/\D/g, '') : '';
+    const normName = selectedCustomer.name ? selectedCustomer.name.trim().toLowerCase() : '';
+    return dbStore.getSalesOrders(businessId).filter(o => {
+      if (o.customer_id && (o.customer_id === selectedCustomer.id || (normPhone && o.customer_id === selectedCustomer.phone))) return true;
+      if (normPhone && normPhone.length >= 10) {
+        const oPhone = ((o as any).phone || (o as any).customer_phone || '').replace(/\D/g, '');
+        if (oPhone && oPhone.slice(-10) === normPhone.slice(-10)) return true;
+      }
+      if (normName && normName !== 'walk-in customer' && normName !== 'walk in' && normName !== 'walkin') {
+        const oName = (o.customer_name || '').trim().toLowerCase();
+        if (oName && oName === normName) return true;
+      }
+      return false;
+    });
   }, [businessId, selectedCustomer]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);

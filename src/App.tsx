@@ -642,11 +642,11 @@ export default function App() {
     if (isRefreshingData) return;
     setIsRefreshingData(true);
     try {
-      await dbStore.saveAllLocalDataAndRefreshFromDatabase(currentBusiness?.id);
-      triggerToast('Local cache cleared. All unsaved data saved & synced with database!', 'success');
+      await dbStore.refreshApplicationData(currentBusiness?.id);
+      triggerToast('Application data refreshed successfully!', 'success');
     } catch (err: any) {
       console.error('Refresh error:', err);
-      triggerToast('Local cache cleared & refreshed from database.', 'info');
+      triggerToast('Application refreshed.', 'info');
     } finally {
       setIsRefreshingData(false);
     }
@@ -2696,12 +2696,12 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 relative header-dropdown-container">
-            {/* Refresh Data & Clear Local Cache Icon Button */}
+            {/* Refresh Application Data Button */}
             <button 
               onClick={handleRefreshAndSaveAllData}
               disabled={isRefreshingData}
               className="relative p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group focus:outline-none cursor-pointer disabled:opacity-50"
-              title="Clear Local Cache, Save Unsaved Data & Sync with Database"
+              title="Refresh Application Data"
             >
               <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/20 to-orange-500/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"></div>
               <RefreshCw size={18} className={`text-slate-600 dark:text-slate-300 group-hover:text-amber-500 transition-colors relative z-10 ${isRefreshingData ? 'animate-spin text-amber-500' : ''}`} />

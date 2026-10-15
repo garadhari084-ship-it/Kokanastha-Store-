@@ -975,6 +975,60 @@ class ERPStorage {
       }
       safeStorage.setItem(tierMigrationKey, 'true');
     }
+
+    // Protect against lost customer data: Auto-recover registered customers from sales orders if missing
+    if (Array.isArray(this.cache.sales) && this.cache.sales.length > 0) {
+      let recovered = false;
+      const existingCustIds = new Set((this.cache.customers || []).map(c => c.id));
+      const existingCustNames = new Set((this.cache.customers || []).map(c => (c.name || '').trim().toLowerCase()));
+
+      for (const s of this.cache.sales) {
+        let name = s.customer_name;
+        if (!name || name === 'Walk-in Customer' || name === 'Customer') {
+          const notesMatch = (s.dispatch_notes || '').match(/\[CUSTOMER:([^\]]+)\]/);
+          if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim() !== 'Walk-in Customer') {
+            name = notesMatch[1].trim();
+          }
+        }
+
+        if (name && name !== 'Walk-in Customer' && name !== 'Customer') {
+          const normName = name.trim().toLowerCase();
+          const custId = s.customer_id && s.customer_id !== 'WALK_IN' ? s.customer_id : crypto.randomUUID();
+          
+          if (!existingCustIds.has(custId) && !existingCustNames.has(normName)) {
+            const newCust: Customer = {
+              id: custId,
+              name: name.trim(),
+              phone: (s as any).customer_phone || (s as any).phone || '',
+              email: (s as any).customer_email || (s as any).email || '',
+              group: 'Retail',
+              billing_address: (s as any).billing_address || s.area || 'Mumbai',
+              shipping_address: (s as any).shipping_address || s.area || 'Mumbai',
+              area: s.area || 'Dahisar',
+              gstin: '',
+              pan: '',
+              active: true,
+              credit_limit: 0,
+              outstanding_amount: 0,
+              loyalty_points: 0,
+              lifetime_spend: 0,
+              loyalty_tier: 'None',
+              business_id: s.business_id,
+              created_at: s.created_at || new Date().toISOString()
+            };
+            this.cache.customers.push(newCust);
+            existingCustIds.add(custId);
+            existingCustNames.add(normName);
+            recovered = true;
+          }
+        }
+      }
+
+      if (recovered) {
+        this.save('customers', this.cache.customers);
+      }
+    }
+
     this.notify();
   }
 
@@ -3038,6 +3092,104 @@ class ERPStorage {
     return { success: true, fromPacked, fromVirtual };
   }
 
+  /**
+   * Returns all sales orders for a specific customer.
+   * Matches by customer ID, alias customer IDs (deduplicated records), customer name, or dispatch note tags.
+   */
+  public getCustomerSalesOrders(customerId: string, businessId?: string): SalesOrder[] {
+    const allSales = this.cache.sales || [];
+    const cust = (this.cache.customers || []).find(c => c.id === customerId);
+    const normName = cust?.name ? cust.name.trim().toLowerCase() : '';
+    const normPhone = cust?.phone ? cust.phone.replace(/\D/g, '') : '';
+
+    const matchingCustIds = new Set<string>([customerId]);
+    if (cust) {
+      (this.cache.customers || []).forEach(c => {
+        const cName = c.name ? c.name.trim().toLowerCase() : '';
+        const cPhone = c.phone ? c.phone.replace(/\D/g, '') : '';
+        if ((normName && cName && normName === cName && normName !== 'walk-in customer') ||
+            (normPhone && normPhone.length >= 10 && cPhone === normPhone)) {
+          matchingCustIds.add(c.id);
+        }
+      });
+    }
+
+    return allSales.filter(o => {
+      if (businessId && !isSameBusiness(o.business_id, businessId)) return false;
+      if (o.customer_id && matchingCustIds.has(o.customer_id)) return true;
+      if (normName && normName !== 'walk-in customer' && o.customer_name) {
+        const orderCustName = o.customer_name.trim().toLowerCase();
+        if (orderCustName === normName) return true;
+      }
+      if (normName && normName !== 'walk-in customer' && o.dispatch_notes) {
+        if (o.dispatch_notes.toLowerCase().includes(`[customer:${normName}]`)) return true;
+      }
+      return false;
+    });
+  }
+
+  /**
+   * Computes the real-time outstanding balance across all invoices of a customer.
+   * Accurately aggregates all unpaid and partially paid active sales orders.
+   */
+  public getCustomerOutstanding(customerId: string, businessId?: string): {
+    totalOutstanding: number;
+    unpaidInvoicesCount: number;
+    invoices: {
+      id: string;
+      order_number: string;
+      order_date: string;
+      total_amount: number;
+      paid_amount: number;
+      unpaid_amount: number;
+      payment_status: 'Unpaid' | 'Partial' | 'Paid';
+      status: string;
+    }[];
+  } {
+    const orders = this.getCustomerSalesOrders(customerId, businessId);
+    const activeOrders = orders.filter(o => o.status !== 'Cancelled');
+    
+    let totalOutstanding = 0;
+    const unpaidInvoices: {
+      id: string;
+      order_number: string;
+      order_date: string;
+      total_amount: number;
+      paid_amount: number;
+      unpaid_amount: number;
+      payment_status: 'Unpaid' | 'Partial' | 'Paid';
+      status: string;
+    }[] = [];
+
+    for (const o of activeOrders) {
+      const total = Math.max(0, Number(o.total_amount) || 0);
+      const paid = Math.max(0, Number(o.paid_amount) || 0);
+      let unpaid = Math.max(0, total - paid);
+      if (o.payment_status === 'Paid') {
+        unpaid = 0;
+      }
+      if (unpaid > 0) {
+        totalOutstanding += unpaid;
+        unpaidInvoices.push({
+          id: o.id,
+          order_number: o.order_number,
+          order_date: o.order_date,
+          total_amount: total,
+          paid_amount: paid,
+          unpaid_amount: unpaid,
+          payment_status: o.payment_status || (paid > 0 ? 'Partial' : 'Unpaid'),
+          status: o.status
+        });
+      }
+    }
+
+    return {
+      totalOutstanding: Math.round(totalOutstanding),
+      unpaidInvoicesCount: unpaidInvoices.length,
+      invoices: unpaidInvoices
+    };
+  }
+
   // Customer Operations
   public getCustomers(businessId: string): Customer[] {
     const raw = this.cache.customers.filter(c => isSameBusiness(c.business_id, businessId));
@@ -3071,6 +3223,13 @@ class ERPStorage {
       // Force 0 points for 'None' tier or non-loyal members
       if (!cust.loyalty_tier || cust.loyalty_tier === 'None' || !cust.is_loyal_member) {
         cust.loyalty_points = 0;
+      }
+
+      // Synchronize outstanding_amount dynamically from ALL active sales orders/invoices!
+      const customerOrders = this.getCustomerSalesOrders(cust.id, businessId);
+      if (customerOrders.length > 0) {
+        const { totalOutstanding } = this.getCustomerOutstanding(cust.id, businessId);
+        cust.outstanding_amount = totalOutstanding;
       }
 
       uniqueCustomers.push(cust);
@@ -5224,66 +5383,31 @@ class ERPStorage {
     this.notify();
   }
 
-  public async saveAllLocalDataAndRefreshFromDatabase(businessId?: string) {
+  /**
+   * Safely refreshes application data from local storage and optionally syncs with database.
+   * NEVER clears or wipes local cache, preserving all customer names, orders, and area zones.
+   */
+  public async refreshApplicationData(businessId?: string): Promise<void> {
     const normBId = businessId ? normalizeBusinessId(businessId) : undefined;
 
-    // 1. Save all current local data items to Supabase database if configured
+    // 1. Reload freshly from local storage without deleting or clearing anything
+    this.reloadFromLocalStorage();
+
+    // 2. If Supabase is configured and connected, fetch latest remote records without wiping local data
     if (isSupabaseConfigured && supabase) {
       try {
-        const syncPromises: Promise<any>[] = [];
-        
-        // Save products
-        (this.cache.products || []).forEach(p => {
-          if (p && p.id && p.name) syncPromises.push(this.syncToSupabase('products', p));
-        });
-        
-        // Save customers
-        (this.cache.customers || []).forEach(c => {
-          if (c && c.id && c.name) syncPromises.push(this.syncToSupabase('customers', c));
-        });
-
-        // Save sales
-        (this.cache.sales || []).forEach(s => {
-          if (s && s.id && s.order_number) syncPromises.push(this.syncToSupabase('sales', s));
-        });
-
-        // Save categories
-        (this.cache.categories || []).forEach(cat => {
-          if (cat && cat.id && cat.name) syncPromises.push(this.syncToSupabase('categories', cat));
-        });
-
-        // Save suppliers
-        (this.cache.suppliers || []).forEach(sup => {
-          if (sup && sup.id && sup.name) syncPromises.push(this.syncToSupabase('suppliers', sup));
-        });
-
-        // Save purchases
-        (this.cache.purchases || []).forEach(pur => {
-          if (pur && pur.id) syncPromises.push(this.syncToSupabase('purchases', pur));
-        });
-
-        // Save stock logs
-        (this.cache.stockLogs || []).forEach(sl => {
-          if (sl && sl.id) syncPromises.push(this.syncToSupabase('stockLogs', sl));
-        });
-
-        await Promise.allSettled(syncPromises);
+        await this.syncFromSupabase(normBId);
       } catch (e) {
-        console.warn('Error syncing local data to database before refresh:', e);
+        console.warn('Supabase sync skipped during refresh:', e);
       }
     }
 
-    // 2. Clear local storage cache
-    this.clearLocalCacheOnly();
-
-    // 3. Fetch fresh data from Supabase database into application memory
-    if (isSupabaseConfigured && supabase) {
-      await this.syncFromSupabase(normBId);
-    } else {
-      this.reloadFromLocalStorage();
-    }
-
+    // 3. Notify all subscribers to update application UI cleanly
     this.notify();
+  }
+
+  public async saveAllLocalDataAndRefreshFromDatabase(businessId?: string): Promise<void> {
+    return this.refreshApplicationData(businessId);
   }
 
   public async clearAllAndReset(businessId?: string) {

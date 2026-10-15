@@ -22,8 +22,23 @@ export async function startServer(): Promise<number> {
   const app = express();
   
   const isElectron = Boolean(process.versions.electron || process.env.APP_ROOT);
-  const PORT: number = isElectron ? 0 : 3000;
-  const HOST: string = isElectron ? "127.0.0.1" : "0.0.0.0";
+  
+  // Support CLI arguments: --port <port> and --host <host>, or process.env.PORT
+  let cliPort: number | null = null;
+  let cliHost: string | null = null;
+  for (let i = 0; i < process.argv.length; i++) {
+    if (process.argv[i] === '--port' && process.argv[i + 1]) {
+      const p = parseInt(process.argv[i + 1], 10);
+      if (!isNaN(p)) cliPort = p;
+    }
+    if (process.argv[i] === '--host' && process.argv[i + 1]) {
+      cliHost = process.argv[i + 1];
+    }
+  }
+
+  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : null;
+  const PORT: number = cliPort ?? envPort ?? (isElectron ? 0 : 3000);
+  const HOST: string = cliHost ?? (isElectron ? "127.0.0.1" : "0.0.0.0");
 
   // Middleware
   app.use(express.json({ limit: '50mb' }));
@@ -149,7 +164,7 @@ Ensure that you only output valid JSON.`;
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
+      server: { middlewareMode: true, hmr: false, ws: false as const },
       appType: "spa",
     });
     app.use(vite.middlewares);

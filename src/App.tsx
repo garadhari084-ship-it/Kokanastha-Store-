@@ -2015,7 +2015,7 @@ export default function App() {
     const defaultLogoUrl = dbStore.getBusinesses()[0]?.logo_url || '/logo.png';
     const defaultCoverUrl = dbStore.getBusinesses()[0]?.login_cover_url;
     return (
-      <div className="min-h-screen w-full bg-slate-50 flex flex-col lg:flex-row select-none" id="login-screen-root">
+      <div className="min-h-screen w-full bg-slate-50 flex flex-col lg:flex-row select-none transform lg:scale-[0.96] origin-center" id="login-screen-root">
         {/* Left Side: Cover Photo / Graphic Showcase */}
         <div className="hidden lg:flex lg:w-1/2 min-h-screen bg-slate-950 relative overflow-hidden items-center justify-center shrink-0 border-r border-slate-900">
           {defaultCoverUrl ? (
@@ -2266,25 +2266,6 @@ export default function App() {
                       )}
                     </button>
                   </form>
-
-                  {/* Cloud Database Status Bar on Login */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                    <button
-                      type="button"
-                      onClick={() => setShowDbConfigModal(true)}
-                      className="w-full py-2 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between text-slate-700 transition cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-amber-500 shadow-sm shadow-amber-500/50'}`} />
-                        <span className="text-[11px] font-bold">
-                          Database: {isSupabaseConfigured ? 'Supabase Connected' : 'Local Storage Sandbox'}
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-extrabold text-indigo-600 group-hover:underline">
-                        {isSupabaseConfigured ? 'Check / Configure' : 'Connect Cloud DB'}
-                      </span>
-                    </button>
-                  </div>
 
                 </div>
               </>

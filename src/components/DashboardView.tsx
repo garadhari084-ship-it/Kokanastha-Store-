@@ -1176,59 +1176,66 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 
                 <div className="relative z-10 flex flex-col gap-1.5">
                   {[
-                    { id: 1, label: 'Booking Received', count: metrics.statusPipeline.bookingReceived, value: (metrics.statusPipeline as any).bookingReceivedValue || 0, color: 'bg-slate-800', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]', stageKey: 'bookingReceived' },
+                    { id: 1, label: 'Booking Received', count: metrics.statusPipeline.bookingReceived, value: (metrics.statusPipeline as any).bookingReceivedValue || 0, color: 'bg-emerald-950', textColor: 'text-emerald-400', progressColor: 'bg-emerald-400', glow: 'shadow-[0_0_12px_rgba(52,211,153,0.4)]', stageKey: 'bookingReceived' },
                     { id: 2, label: 'Production Started', count: metrics.statusPipeline.productionStarted, value: (metrics.statusPipeline as any).productionStartedValue || 0, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]', stageKey: 'productionStarted' },
                     { id: 3, label: 'Packing Started', count: metrics.statusPipeline.packingStarted, value: (metrics.statusPipeline as any).packingStartedValue || 0, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]', stageKey: 'packingStarted' },
                     { id: 4, label: 'Packing Completed', count: metrics.statusPipeline.packingCompleted, value: (metrics.statusPipeline as any).packingCompletedValue || 0, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]', stageKey: 'packingCompleted' },
                     { id: 5, label: 'Ready for Dispatch', count: metrics.statusPipeline.readyForDispatch, value: (metrics.statusPipeline as any).readyForDispatchValue || 0, color: 'bg-amber-950', textColor: 'text-amber-400', progressColor: 'bg-amber-400', glow: 'shadow-[0_0_12px_rgba(251,191,36,0.4)]', stageKey: 'readyForDispatch' },
                     { id: 6, label: 'Out for Delivery', count: metrics.statusPipeline.outForDelivery, value: (metrics.statusPipeline as any).outForDeliveryValue || 0, color: 'bg-indigo-950', textColor: 'text-indigo-400', progressColor: 'bg-indigo-400', glow: 'shadow-[0_0_12px_rgba(129,140,248,0.4)]', stageKey: 'outForDelivery' },
                     { id: 7, label: 'Delivered', count: metrics.statusPipeline.delivered, value: (metrics.statusPipeline as any).deliveredValue || 0, color: 'bg-emerald-950', textColor: 'text-emerald-400', progressColor: 'bg-emerald-400', glow: 'shadow-[0_0_12px_rgba(52,211,153,0.4)]', stageKey: 'delivered' }
-                  ].map((step, idx, arr) => (
-                    <div key={step.id} className="relative group z-10">
-                      {idx !== arr.length - 1 && (
-                        <div className="absolute left-[19px] top-[34px] bottom-[-4px] w-[2px] bg-slate-700/50 -z-10"></div>
-                      )}
-                      <div 
-                        onClick={() => handleOpenMetricDetail({
-                          title: `${step.label} (${step.count} Orders)`,
-                          subtitle: `Order list & total value of ₹${Number(step.value || 0).toLocaleString()}`,
-                          icon: Activity,
-                          iconColor: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-                          badgeText: step.label,
-                          type: 'pipeline',
-                          filterValue: step.stageKey,
-                          description: `All orders currently under "${step.label}" with combined order value of ₹${Number(step.value || 0).toLocaleString()}.`
-                        })}
-                        className="relative z-10 flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/10 cursor-pointer"
-                        title={`Click to view orders in ${step.label}`}
-                      >
-                        <div className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-black ${step.color} ${step.textColor} ${step.count > 0 ? step.glow + ' ring-1 ring-' + step.progressColor.split('-')[1] + '-500/50' : 'ring-1 ring-white/10'}`}>
-                          {step.id}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className={`text-[11px] font-bold tracking-wide truncate ${step.count > 0 ? 'text-white' : 'text-slate-400'}`}>
-                              {step.label}
+                  ].map((step, idx, arr) => {
+                    const baseTotal = Math.max(1, metrics.statusPipeline.bookingReceived || totalPipelineOrders);
+                    const pct = idx === 0 ? 100 : Math.round((step.count / baseTotal) * 100);
+                    return (
+                      <div key={step.id} className="relative group z-10">
+                        {idx !== arr.length - 1 && (
+                          <div className="absolute left-[19px] top-[34px] bottom-[-4px] w-[2px] bg-slate-700/50 -z-10"></div>
+                        )}
+                        <div 
+                          onClick={() => handleOpenMetricDetail({
+                            title: `${step.label} (${step.count} Orders)`,
+                            subtitle: `Order list & total value of ₹${Number(step.value || 0).toLocaleString()}`,
+                            icon: Activity,
+                            iconColor: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+                            badgeText: step.label,
+                            type: 'pipeline',
+                            filterValue: step.stageKey,
+                            description: `All orders currently under "${step.label}" with combined order value of ₹${Number(step.value || 0).toLocaleString()}.`
+                          })}
+                          className="relative z-10 flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/10 cursor-pointer"
+                          title={`Click to view orders in ${step.label}`}
+                        >
+                          <div className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-black ${step.color} ${step.textColor} ${step.count > 0 || idx === 0 ? step.glow + ' ring-1 ring-' + step.progressColor.split('-')[1] + '-500/50' : 'ring-1 ring-white/10'}`}>
+                            {step.id}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`text-[11px] font-bold tracking-wide truncate ${step.count > 0 || idx === 0 ? 'text-white' : 'text-slate-400'}`}>
+                                {step.label}
+                              </span>
+                              <span className={`text-[11px] font-bold ${step.count > 0 || idx === 0 ? step.textColor : 'text-slate-500'}`}>
+                                ₹{Number(step.value || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner ring-1 ring-white/5 mt-1">
+                              <div 
+                                className={`h-full ${step.progressColor} rounded-full transition-all duration-700 ${step.count > 0 || idx === 0 ? step.glow : ''}`} 
+                                style={{ width: idx === 0 ? '100%' : `${Math.min(100, Math.max(0, pct))}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                          <div className="w-20 text-center bg-slate-800/80 px-2 py-1 rounded-md border border-slate-700/50 shadow-inner shrink-0 flex flex-col items-center justify-center">
+                            <span className={`text-[11px] font-black ${step.count > 0 || idx === 0 ? step.textColor : 'text-slate-500'}`}>
+                              {step.count} {step.count === 1 ? 'ord' : 'ords'}
                             </span>
-                            <span className={`text-[11px] font-bold ${step.count > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
-                              ₹{Number(step.value || 0).toLocaleString()}
+                            <span className="text-[9px] font-bold text-slate-400">
+                              {pct}%
                             </span>
                           </div>
-                          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner ring-1 ring-white/5 mt-1">
-                            <div 
-                              className={`h-full ${step.progressColor} rounded-full transition-all duration-700 ${step.count > 0 ? step.glow : ''}`} 
-                              style={{ width: step.count > 0 ? `${Math.min(100, Math.max(12, (step.count / Math.max(1, totalPipelineOrders)) * 100))}%` : '0%' }}
-                            ></div>
-                          </div>
-                        </div>
-                        <div className="w-16 text-center bg-slate-800/80 px-2 py-1 rounded-md border border-slate-700/50 shadow-inner shrink-0">
-                          <span className={`text-[11px] font-black ${step.count > 0 ? step.textColor : 'text-slate-500'}`}>
-                            {step.count} {step.count === 1 ? 'ord' : 'ords'}
-                          </span>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

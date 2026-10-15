@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS customers (
     pan VARCHAR(10),
     billing_address TEXT NOT NULL,
     shipping_address TEXT NOT NULL,
+    pin_code VARCHAR(20),
     email VARCHAR(255),
     phone VARCHAR(20) NOT NULL,
     credit_limit DECIMAL(15,2) DEFAULT 0.00,
@@ -231,6 +232,10 @@ CREATE TABLE IF NOT EXISTS sales_orders (
     order_number VARCHAR(100) NOT NULL,
     customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
     customer_name VARCHAR(255),
+    customer_phone VARCHAR(50),
+    pin_code VARCHAR(20),
+    billing_address TEXT,
+    shipping_address TEXT,
     area VARCHAR(100) DEFAULT 'Dahisar',
     channel VARCHAR(100) DEFAULT 'Direct Order',
     time VARCHAR(50),
@@ -793,7 +798,7 @@ BEGIN
     END LOOP;
 END $$;
 
--- Ensure new columns on businesses table
+-- Ensure new columns on businesses & sales_orders tables
 DO $$ 
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='businesses' AND column_name='fssai_number') THEN
@@ -801,5 +806,36 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='businesses' AND column_name='mobile_number') THEN
         ALTER TABLE businesses ADD COLUMN mobile_number VARCHAR(20);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='businesses' AND column_name='default_dispatch_zone') THEN
+        ALTER TABLE businesses ADD COLUMN default_dispatch_zone VARCHAR(100) DEFAULT 'Dahisar';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='businesses' AND column_name='area_zones') THEN
+        ALTER TABLE businesses ADD COLUMN area_zones TEXT[] DEFAULT ARRAY['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri']::TEXT[];
+    END IF;
+
+    -- sales_orders missing columns
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='pin_code') THEN
+        ALTER TABLE sales_orders ADD COLUMN pin_code VARCHAR(20);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='customer_phone') THEN
+        ALTER TABLE sales_orders ADD COLUMN customer_phone VARCHAR(50);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='billing_address') THEN
+        ALTER TABLE sales_orders ADD COLUMN billing_address TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='shipping_address') THEN
+        ALTER TABLE sales_orders ADD COLUMN shipping_address TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sales_orders' AND column_name='area') THEN
+        ALTER TABLE sales_orders ADD COLUMN area VARCHAR(100) DEFAULT 'Dahisar';
+    END IF;
+
+    -- customers missing columns
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='pin_code') THEN
+        ALTER TABLE customers ADD COLUMN pin_code VARCHAR(20);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='area') THEN
+        ALTER TABLE customers ADD COLUMN area VARCHAR(100) DEFAULT 'Dahisar';
     END IF;
 END $$;

@@ -1351,11 +1351,10 @@ class ERPStorage {
                };
              });
 
-             // Preserve pending offline customers
-             const pendingOfflineCustomers = (this.cache.customers || []).filter(c => this.pendingUploads.has(c.id));
-             pendingOfflineCustomers.forEach(poc => {
-               if (!mergedCustomers.some(c => c.id === poc.id)) {
-                 mergedCustomers.push(poc);
+             // Preserve ALL local customers so refresh NEVER drops or resets customer selections!
+             (this.cache.customers || []).forEach(localCust => {
+               if (!mergedCustomers.some(c => c.id === localCust.id)) {
+                 mergedCustomers.push(localCust);
                }
              });
 
@@ -1478,6 +1477,8 @@ class ERPStorage {
                 if (!existing) {
                    return {
                       ...b,
+                      area_zones: (Array.isArray(b.area_zones) && b.area_zones.length > 0) ? b.area_zones : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'],
+                      default_dispatch_zone: b.default_dispatch_zone || 'Dahisar',
                       barcode_phone: savedDefaults.phone || b.barcode_phone,
                       barcode_address: savedDefaults.address || b.barcode_address,
                       barcode_other_info: savedDefaults.other_info || b.barcode_other_info,
@@ -1491,6 +1492,8 @@ class ERPStorage {
                 return {
                    ...existing,
                    ...b,
+                   area_zones: (existing.area_zones && existing.area_zones.length > 0) ? existing.area_zones : ((Array.isArray(b.area_zones) && b.area_zones.length > 0) ? b.area_zones : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri']),
+                   default_dispatch_zone: existing.default_dispatch_zone || b.default_dispatch_zone || 'Dahisar',
                    barcode_phone: existing.barcode_phone || savedDefaults.phone || b.barcode_phone,
                    barcode_address: existing.barcode_address || savedDefaults.address || b.barcode_address,
                    barcode_other_info: existing.barcode_other_info || savedDefaults.other_info || b.barcode_other_info,
@@ -1501,6 +1504,14 @@ class ERPStorage {
                    barcode_label_size: existing.barcode_label_size || savedDefaults.label_size || b.barcode_label_size
                 };
              });
+
+             // Preserve all local businesses so custom areas/settings are never lost
+             (this.cache.businesses || []).forEach(localBiz => {
+               if (!mergedBusinesses.some(b => b.id === localBiz.id)) {
+                 mergedBusinesses.push(localBiz);
+               }
+             });
+
              this.cache.businesses = mergedBusinesses.length > 0 ? mergedBusinesses : this.cache.businesses;
              safeStorage.setItem('omnipack_erp_businesses', JSON.stringify(this.cache.businesses));
           } else {
@@ -5390,10 +5401,7 @@ class ERPStorage {
   public async refreshApplicationData(businessId?: string): Promise<void> {
     const normBId = businessId ? normalizeBusinessId(businessId) : undefined;
 
-    // 1. Reload freshly from local storage without deleting or clearing anything
-    this.reloadFromLocalStorage();
-
-    // 2. If Supabase is configured and connected, fetch latest remote records without wiping local data
+    // 1. If Supabase is configured and connected, fetch latest remote records without wiping local data
     if (isSupabaseConfigured && supabase) {
       try {
         await this.syncFromSupabase(normBId);
@@ -5402,7 +5410,7 @@ class ERPStorage {
       }
     }
 
-    // 3. Notify all subscribers to update application UI cleanly
+    // 2. Notify all subscribers to update application UI cleanly without clearing or resetting cache
     this.notify();
   }
 

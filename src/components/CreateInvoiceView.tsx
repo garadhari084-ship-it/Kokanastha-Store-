@@ -43,19 +43,7 @@ import { dbStore } from '../services/store';
 import { BillOfSupplyView } from './BillOfSupplyView';
 import { generateBillOfSupplyHTML } from '../utils/invoiceTemplate';
 
-const mapPincodeToArea = (pin: string) => {
-  const code = pin.trim();
-  if (['400068'].includes(code)) return 'Dahisar';
-  if (['400091', '400092', '400103', '400066'].includes(code)) return 'Borivali';
-  if (['400067', '400101', '400104'].includes(code)) return 'Kandivali';
-  if (['401107'].includes(code)) return 'Mira Road';
-  if (['401201', '401202', '401208', '401209'].includes(code)) return 'Vasai';
-  if (['401303', '401305'].includes(code)) return 'Virar';
-  if (['400064', '400097'].includes(code)) return 'Malad';
-  if (['400062', '400063', '400065', '400104'].includes(code)) return 'Goregaon';
-  if (['400053', '400058', '400059', '400069', '400099', '400047', '400072'].includes(code)) return 'Andheri';
-  return null;
-};
+import { fetchAreaFromPincode, syncMapPincodeToArea } from '../utils/pincodeUtils';
 import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
 import { sendRenewalReminderOnWhatsApp } from '../utils/certificateUtils';
 
@@ -626,8 +614,12 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       setSelectedPincode(c.pin_code || '');
                       setIsSameShippingAddress(!c.shipping_address || c.shipping_address === c.billing_address);
                       setPointsToRedeem(0);
-                      if (c.area && c.area !== 'Other') {
+                      if (c.area && c.area !== 'Other' && c.area !== 'Dahisar') {
                         setSelectedArea(c.area);
+                      } else if (c.pin_code && c.pin_code.trim().length === 6) {
+                        fetchAreaFromPincode(c.pin_code.trim()).then(detectedArea => {
+                          if (detectedArea) setSelectedArea(detectedArea);
+                        });
                       } else {
                         setSelectedArea(currentBiz?.default_dispatch_zone || 'Dahisar');
                       }
@@ -855,11 +847,17 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     onChange={(e) => {
                       const val = e.target.value;
                       setSelectedPincode(val);
-                      if (val.trim().length === 6) {
-                        const matchedArea = mapPincodeToArea(val);
-                        if (matchedArea) {
-                          setSelectedArea(matchedArea);
+                      const cleanVal = val.trim();
+                      if (cleanVal.length === 6 && /^\d{6}$/.test(cleanVal)) {
+                        const syncArea = syncMapPincodeToArea(cleanVal);
+                        if (syncArea && syncArea !== 'Dahisar') {
+                          setSelectedArea(syncArea);
                         }
+                        fetchAreaFromPincode(cleanVal).then(exactArea => {
+                          if (exactArea) {
+                            setSelectedArea(exactArea);
+                          }
+                        });
                       }
                     }}
                     placeholder="6-digit PIN"
@@ -874,9 +872,14 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     <span>Dispatch Zone</span>
                   </label>
                   {(() => {
-                    const areaZoneList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
+                    const baseList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
                       ? currentBiz.area_zones 
-                      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'];
+                      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri', 'All India'];
+                    const set = new Set(baseList);
+                    set.add('All India');
+                    if (selectedArea) set.add(selectedArea);
+                    const areaZoneList = Array.from(set);
+
                     return (
                       <DropdownField 
                         value={selectedArea}

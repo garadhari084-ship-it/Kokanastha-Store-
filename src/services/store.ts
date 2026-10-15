@@ -63,7 +63,7 @@ const PRE_SEEDED_BUSINESSES: Business[] = [
     enable_auto_whatsapp: true,
     enable_auto_sms: true,
     default_dispatch_zone: 'Dahisar',
-    area_zones: ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri'],
+    area_zones: ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri', 'All India'],
     upi_id: '9820769697@okicici',
     bank_name: 'NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN',
     account_number: '092110100000085',

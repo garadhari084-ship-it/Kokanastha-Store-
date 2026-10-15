@@ -779,12 +779,29 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const groupedQueue = useMemo(() => {
     const groups: Record<string, SalesOrder[]> = {};
     
-    // Sort the entire filteredQueue first to show newest delivery first
+    // Sort filteredQueue by priority: Red (overdue / due today <= 0) -> Yellow (<=5) -> Orange (<=10) -> Green (>10)
     const sorted = [...filteredQueue].sort((a, b) => {
-      const dateA = a.delivery_date || a.order_date || '0000-00-00';
-      const dateB = b.delivery_date || b.order_date || '0000-00-00';
-      if (dateA !== dateB) return dateB.localeCompare(dateA); // Descending date
-      return b.order_number.localeCompare(a.order_number); // Descending order number
+      const statusA = getDeliveryStatus(a.delivery_date);
+      const statusB = getDeliveryStatus(b.delivery_date);
+
+      const getRank = (st: ReturnType<typeof getDeliveryStatus>) => {
+        if (st.isOverdue || (st.diffDays !== null && st.diffDays <= 0)) return 1; // Red
+        if (st.diffDays !== null && st.diffDays <= 5) return 2; // Yellow
+        if (st.diffDays !== null && st.diffDays <= 10) return 3; // Orange
+        if (st.diffDays !== null && st.diffDays > 10) return 4; // Green
+        return 5; // No date
+      };
+
+      const rankA = getRank(statusA);
+      const rankB = getRank(statusB);
+
+      if (rankA !== rankB) return rankA - rankB;
+
+      const diffA = statusA.diffDays ?? 9999;
+      const diffB = statusB.diffDays ?? 9999;
+      if (diffA !== diffB) return diffA - diffB;
+
+      return b.order_number.localeCompare(a.order_number);
     });
 
     sorted.forEach(o => {
@@ -792,11 +809,46 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       if (!groups[date]) groups[date] = [];
       groups[date].push(o);
     });
+
+    // Sort orders within each date group by priority as well
+    Object.keys(groups).forEach(date => {
+      groups[date].sort((a, b) => {
+        const statusA = getDeliveryStatus(a.delivery_date);
+        const statusB = getDeliveryStatus(b.delivery_date);
+        const getRank = (st: ReturnType<typeof getDeliveryStatus>) => {
+          if (st.isOverdue || (st.diffDays !== null && st.diffDays <= 0)) return 1;
+          if (st.diffDays !== null && st.diffDays <= 5) return 2;
+          if (st.diffDays !== null && st.diffDays <= 10) return 3;
+          if (st.diffDays !== null && st.diffDays > 10) return 4;
+          return 5;
+        };
+        const rankA = getRank(statusA);
+        const rankB = getRank(statusB);
+        if (rankA !== rankB) return rankA - rankB;
+        const diffA = statusA.diffDays ?? 9999;
+        const diffB = statusB.diffDays ?? 9999;
+        if (diffA !== diffB) return diffA - diffB;
+        return b.order_number.localeCompare(a.order_number);
+      });
+    });
     
-    return Object.entries(groups).sort(([dateA], [dateB]) => {
+    return Object.entries(groups).sort(([dateA, ordersA], [dateB, ordersB]) => {
       if (dateA === 'Unknown Date') return 1;
       if (dateB === 'Unknown Date') return -1;
-      return dateB.localeCompare(dateA); // Descending group date
+      const topA = ordersA[0];
+      const topB = ordersB[0];
+      const stA = getDeliveryStatus(topA?.delivery_date);
+      const stB = getDeliveryStatus(topB?.delivery_date);
+      const getRank = (st: ReturnType<typeof getDeliveryStatus>) => {
+        if (st.isOverdue || (st.diffDays !== null && st.diffDays <= 0)) return 1;
+        if (st.diffDays !== null && st.diffDays <= 5) return 2;
+        if (st.diffDays !== null && st.diffDays <= 10) return 3;
+        return 4;
+      };
+      const rA = getRank(stA);
+      const rB = getRank(stB);
+      if (rA !== rB) return rA - rB;
+      return dateA.localeCompare(dateB);
     });
   }, [filteredQueue]);
 
@@ -1969,12 +2021,12 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold">
-                          <th className="p-3">Delivery Status</th>
-                          <th className="p-3">Order Info</th>
-                          <th className="p-3">Customer Info</th>
-                          <th className="p-3">Items to Pack (Pick List)</th>
-                          <th className="p-3">Progress</th>
-                          <th className="p-3 text-right">Actions</th>
+                          <th className="py-2 px-3">Delivery Status</th>
+                          <th className="py-2 px-3">Order Info</th>
+                          <th className="py-2 px-3">Customer Info</th>
+                          <th className="py-2 px-3">Items to Pack (Pick List)</th>
+                          <th className="py-2 px-3">Progress</th>
+                          <th className="py-2 px-3 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1993,11 +2045,11 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                               onClick={() => handleOpenPackingStation(o)}
                               className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer text-[11px]"
                             >
-                              <td className="p-3">
+                              <td className="py-1.5 px-3">
                                 <div className="flex items-center gap-2">
                                   <div className={`w-2.5 h-2.5 rounded-full ${dStatus.dot} flex-shrink-0 shadow-sm animate-pulse`}></div>
-                                  <div className={`px-2.5 py-1 rounded-xl border flex items-center gap-2 shadow-sm ${dStatus.badge}`}>
-                                    <Clock size={13} className={dStatus.icon} />
+                                  <div className={`px-2 py-0.5 rounded-xl border flex items-center gap-1.5 shadow-sm ${dStatus.badge}`}>
+                                    <Clock size={12} className={dStatus.icon} />
                                     <div className="flex flex-col">
                                       <span className="text-[8px] uppercase font-black leading-tight opacity-90 tracking-wider">
                                         {dStatus.statusText}
@@ -2012,8 +2064,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                   </div>
                                 </div>
                               </td>
-                              <td className="p-3">
-                                <div className="flex flex-col gap-1">
+                              <td className="py-1.5 px-3">
+                                <div className="flex flex-col gap-0.5">
                                   <span className="text-xs font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                                     #{o.order_number}
                                   </span>
@@ -2031,7 +2083,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                     const hasScannedAny = items.some(it => (it.scanned_qty || 0) > 0);
                                     const effectiveStatus = (o.status === 'Packing' && !hasScannedAny) ? 'Pending' : o.status;
                                     return (
-                                      <span className={`w-fit mt-0.5 px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider border ${
+                                      <span className={`w-fit px-1.5 py-0.5 rounded-md text-[8px] font-extrabold uppercase tracking-wider border ${
                                         isDone 
                                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
                                           : effectiveStatus === 'Packing' 
@@ -2044,7 +2096,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                   })()}
                                 </div>
                               </td>
-                              <td className="p-3">
+                              <td className="py-1.5 px-3">
                                 <div className="flex flex-col gap-0.5 text-[11px]">
                                   <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                                     <User size={12} className="text-indigo-500 shrink-0" />
@@ -2054,7 +2106,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                     const phoneNum = customer?.phone || (o as any).customer_phone || (o as any).phone;
                                     const zone = extractAreaZone(o.area || customer?.area, `${customer?.shipping_address || ''} ${customer?.billing_address || ''}`, currentBiz?.area_zones);
                                     return (
-                                      <span className="text-slate-500 flex items-center gap-2.5 text-[10px]">
+                                      <span className="text-slate-500 flex items-center gap-2 text-[10px]">
                                         {phoneNum && <span className="flex items-center gap-1"><Phone size={10} /> {phoneNum}</span>}
                                         <span className="flex items-center gap-1"><MapPin size={10} /> {zone} Zone</span>
                                       </span>
@@ -2062,40 +2114,60 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                   })()}
                                 </div>
                               </td>
-                              <td className="p-3 max-w-xs">
-                                <div className="flex flex-wrap gap-1 items-center">
-                                  {items.slice(0, 3).map((it, itemIdx) => {
-                                    const prod = products.find(p => p.id === it.product_id);
-                                    const name = it.product_name || prod?.name || `Item #${itemIdx + 1}`;
-                                    const itemDone = (it.scanned_qty || 0) >= (it.qty || 1);
+                              <td className="py-1.5 px-3 max-w-xs">
+                                {items.length === 0 ? (
+                                  <span className="text-[10px] text-slate-400 italic">No products</span>
+                                ) : (
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {(() => {
+                                      const firstIt = items[0];
+                                      const prod = products.find(p => p.id === firstIt.product_id);
+                                      const name = firstIt.product_name || prod?.name || 'Item #1';
+                                      const itemDone = (firstIt.scanned_qty || 0) >= (firstIt.qty || 1);
+                                      return (
+                                        <span 
+                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium border ${
+                                            itemDone
+                                              ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                          }`}
+                                        >
+                                          <span className="truncate max-w-[120px]">{name}</span>
+                                          <strong className="font-bold">x{firstIt.qty}</strong>
+                                        </span>
+                                      );
+                                    })()}
 
-                                    return (
-                                      <span 
-                                        key={itemIdx}
-                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium border ${
-                                          itemDone
-                                            ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                                        }`}
+                                    {items.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setPreviewOrderPickList(o);
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 cursor-pointer"
+                                        title="View all items in pick list"
                                       >
-                                        <span className="truncate max-w-[100px]">{name}</span>
-                                        <strong className="font-bold">x{it.qty}</strong>
-                                      </span>
-                                    );
-                                  })}
-                                  {items.length > 3 && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setPreviewOrderPickList(o);
-                                      }}
-                                      className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 hover:underline"
-                                    >
-                                      +{items.length - 3} more
-                                    </button>
-                                  )}
-                                </div>
+                                        <Eye size={12} />
+                                        <span>+{items.length - 1} more</span>
+                                      </button>
+                                    )}
+
+                                    {items.length === 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setPreviewOrderPickList(o);
+                                        }}
+                                        className="p-1 rounded text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer"
+                                        title="View pick list details"
+                                      >
+                                        <Eye size={13} />
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                               </td>
                               <td className="p-3 min-w-[160px]">
                                 <div className="flex items-center gap-2.5">

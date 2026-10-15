@@ -1186,7 +1186,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
 
       </form>
 
-      {/* Local Storage & Cache Maintenance Section */}
+      {/* Cloud Data Synchronization Section */}
       <div className="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

@@ -43,7 +43,7 @@ import { dbStore } from '../services/store';
 import { BillOfSupplyView } from './BillOfSupplyView';
 import { generateBillOfSupplyHTML } from '../utils/invoiceTemplate';
 
-import { fetchAreaFromPincode, syncMapPincodeToArea } from '../utils/pincodeUtils';
+import { fetchAreaFromPincode, syncMapPincodeToArea, fetchPincodeFromArea, syncMapAreaToPincode } from '../utils/pincodeUtils';
 import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
 import { sendRenewalReminderOnWhatsApp } from '../utils/certificateUtils';
 
@@ -115,7 +115,7 @@ const DropdownField: React.FC<CustomDropdownProps> = ({
   const selectedOption = options.find(opt => opt.value === value);
 
   return (
-    <div className="relative w-full" ref={dropdownRef}>
+    <div className={`relative w-full ${isOpen ? 'z-50' : 'z-10'}`} ref={dropdownRef}>
       <button
         type="button"
         disabled={disabled}
@@ -131,7 +131,7 @@ const DropdownField: React.FC<CustomDropdownProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full min-w-[260px] bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 max-h-72 flex flex-col">
+        <div className="absolute z-50 mt-1 w-full min-w-full left-0 right-0 bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 max-h-60 flex flex-col">
           {searchable && (
             <div className="p-2 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-900/40">
               <input
@@ -735,7 +735,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
         <div className="lg:col-span-8 space-y-4">
           
           {/* Card A: Customer Contact & Delivery Logistics */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-visible">
             <div className="px-4 py-3 bg-slate-50/80 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <User size={15} className="text-indigo-600 dark:text-indigo-400" />
@@ -865,7 +865,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   />
                 </div>
 
-                {/* 5. Dispatch Zone */}
+                {/* 5. Dispatch Zone (Fully Editable Input + Zone Suggestions) */}
                 <div className="space-y-1 md:col-span-1">
                   <label className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1">
                     <Tag size={11} className="text-indigo-500" />
@@ -874,26 +874,48 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   {(() => {
                     const baseList = currentBiz?.area_zones && currentBiz.area_zones.length > 0 
                       ? currentBiz.area_zones 
-                      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri', 'All India'];
-                    const set = new Set(baseList);
-                    set.add('All India');
+                      : ['Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar', 'Malad', 'Goregaon', 'Andheri', 'Dadar', 'Shevgaon', 'All India'];
+                    const set = new Set(baseList.filter(z => Boolean(z)));
                     if (selectedArea) set.add(selectedArea);
                     const areaZoneList = Array.from(set);
 
                     return (
-                      <DropdownField 
-                        value={selectedArea}
-                        onChange={(val) => setSelectedArea(val)}
-                        options={areaZoneList.map(aZone => ({ value: aZone, label: aZone }))}
-                        className="h-8 text-xs font-bold"
-                      />
+                      <div className="relative w-full">
+                        <input
+                          type="text"
+                          list="dispatch-area-zones-datalist"
+                          value={selectedArea}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSelectedArea(val);
+                            if (val.trim()) {
+                              const syncPin = syncMapAreaToPincode(val);
+                              if (syncPin) {
+                                setSelectedPincode(syncPin);
+                              }
+                              fetchPincodeFromArea(val).then(matchedPin => {
+                                if (matchedPin) {
+                                  setSelectedPincode(matchedPin);
+                                }
+                              });
+                            }
+                          }}
+                          placeholder="Type or select zone..."
+                          className="w-full h-8 px-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs font-extrabold rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500 transition-all"
+                        />
+                        <datalist id="dispatch-area-zones-datalist">
+                          {areaZoneList.map(aZone => (
+                            <option key={aZone} value={aZone} />
+                          ))}
+                        </datalist>
+                      </div>
                     );
                   })()}
                 </div>
               </div>
 
               {/* Order Date, Delivery Date & Mode */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 relative z-30">
                 <div className="space-y-1">
                   <label className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                     Invoice / Order Date *
@@ -931,7 +953,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 relative z-40">
                   <label className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                     Delivery / Pickup Mode
                   </label>
@@ -1498,7 +1520,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
         <div className="lg:col-span-4 space-y-4 sticky top-4">
           
           {/* Card C: Financial Breakdown & Settlement */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-visible flex flex-col">
             <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CreditCard size={15} className="text-amber-400" />

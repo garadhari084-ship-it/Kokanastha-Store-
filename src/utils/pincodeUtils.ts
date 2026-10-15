@@ -1,14 +1,12 @@
 /**
  * pincodeUtils.ts
- * Real-time Indian PIN Code lookup engine covering all 19,586+ Indian postal codes.
- * Prioritizes exact locality / post office area names (e.g. Dadar, Shevgaon, Bandra West, Worli, Dahisar)
- * with persistent local storage caching and live India Post API resolution.
+ * Bi-directional Indian PIN Code <-> Area / Dispatch Zone resolution engine.
+ * - PIN Code -> Area Name (e.g. 400014 -> Dadar, 414502 -> Shevgaon, 400068 -> Dahisar)
+ * - Area Name -> PIN Code (e.g. Dadar -> 400014, Shevgaon -> 414502, Borivali -> 400092)
  */
 
-// Persistent local storage cache key
 const PINCODE_STORAGE_KEY = 'omnipack_pincodes_cache';
 
-// Load stored pincode mappings from local storage
 function loadStoredPincodes(): Record<string, string> {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -19,7 +17,6 @@ function loadStoredPincodes(): Record<string, string> {
   return {};
 }
 
-// Save pincode mapping into persistent local storage
 function saveStoredPincode(pin: string, area: string): void {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -31,6 +28,12 @@ function saveStoredPincode(pin: string, area: string): void {
 }
 
 const pincodeCache = new Map<string, string>(Object.entries(loadStoredPincodes()));
+const areaToPinCache = new Map<string, string>();
+
+// Populate reverse cache from stored pincodes
+pincodeCache.forEach((area, pin) => {
+  if (area && pin) areaToPinCache.set(area.toLowerCase(), pin);
+});
 
 // High-speed local map for popular zones & localities
 const LOCAL_PINCODE_MAP: Record<string, string> = {
@@ -69,7 +72,6 @@ const LOCAL_PINCODE_MAP: Record<string, string> = {
   '414001': 'Ahmednagar'
 };
 
-// 3-digit PIN code regional prefix fallback index
 const REGIONAL_PREFIX_MAP: Record<string, string> = {
   '110': 'New Delhi',
   '121': 'Faridabad',
@@ -96,21 +98,18 @@ const REGIONAL_PREFIX_MAP: Record<string, string> = {
 };
 
 /**
- * Resolves ANY 6-digit Indian PIN code out of 19,586+ postal codes
- * to its exact locality / post office area name (e.g. Dadar for 400014, Shevgaon for 414502).
+ * Resolves 6-digit Indian PIN code to its exact locality / area name.
  */
 export async function fetchAreaFromPincode(pin: string): Promise<string> {
   const code = pin.trim();
   if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
-    return 'Dahisar';
+    return '';
   }
 
-  // 1. Check in-memory / persistent cache
   if (pincodeCache.has(code)) {
     return pincodeCache.get(code)!;
   }
 
-  // 2. Check local exact map
   if (LOCAL_PINCODE_MAP[code]) {
     const localArea = LOCAL_PINCODE_MAP[code];
     pincodeCache.set(code, localArea);
@@ -118,7 +117,6 @@ export async function fetchAreaFromPincode(pin: string): Promise<string> {
     return localArea;
   }
 
-  // 3. Query India Post official API covering all 19,586+ Indian PIN codes
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3500);
@@ -138,7 +136,6 @@ export async function fetchAreaFromPincode(pin: string): Promise<string> {
       ) {
         const poList = data[0].PostOffice;
 
-        // Prioritize primary post office with DeliveryStatus === 'Delivery' or Head/Sub Post Office
         const primaryPO = poList.find((po: any) => 
           po.DeliveryStatus === 'Delivery' && po.Name && po.Name.trim() !== ''
         ) || poList.find((po: any) => 
@@ -149,14 +146,12 @@ export async function fetchAreaFromPincode(pin: string): Promise<string> {
         let areaName = '';
 
         if (primaryPO && primaryPO.Name) {
-          // Extract exact locality name (e.g. "Dadar" for 400014, "Bandra West" for 400050, "Shevgaon" for 414502)
           areaName = primaryPO.Name
-            .replace(/\s*\([^)]*\)/g, '') // Remove parenthetical additions like "(Mumbai)"
-            .replace(/\s+(S\.?O\.?|B\.?O\.?|H\.?O\.?)$/i, '') // Remove post office abbreviations
+            .replace(/\s*\([^)]*\)/g, '')
+            .replace(/\s+(S\.?O\.?|B\.?O\.?|H\.?O\.?)$/i, '')
             .trim();
         }
 
-        // Fallback to Block or District if Name was empty or generic
         if (!areaName || areaName.toLowerCase() === 'mumbai' || areaName.toLowerCase() === 'pune') {
           const blockEntry = poList.find((po: any) => po.Block && po.Block.trim() !== 'NA' && po.Block.trim().toLowerCase() !== 'mumbai' && po.Block.trim().toLowerCase() !== 'na');
           if (blockEntry && blockEntry.Block) {
@@ -174,6 +169,7 @@ export async function fetchAreaFromPincode(pin: string): Promise<string> {
           areaName = areaName.charAt(0).toUpperCase() + areaName.slice(1);
           pincodeCache.set(code, areaName);
           saveStoredPincode(code, areaName);
+          areaToPinCache.set(areaName.toLowerCase(), code);
           return areaName;
         }
       }
@@ -182,7 +178,6 @@ export async function fetchAreaFromPincode(pin: string): Promise<string> {
     console.warn(`India Post API lookup notice for ${code}:`, err);
   }
 
-  // 4. Regional prefix index fallback if API network is slow or offline
   const prefix3 = code.substring(0, 3);
   if (REGIONAL_PREFIX_MAP[prefix3]) {
     const regionalArea = REGIONAL_PREFIX_MAP[prefix3];
@@ -196,12 +191,90 @@ export async function fetchAreaFromPincode(pin: string): Promise<string> {
 }
 
 /**
- * Instant synchronous PIN code lookup for 0ms initial render
+ * Reverse lookup: Resolves a Zone/Area name to its corresponding 6-digit PIN code.
  */
+export async function fetchPincodeFromArea(areaName: string): Promise<string> {
+  const name = areaName.trim();
+  if (!name || name === 'All India' || name === 'Other') return '';
+
+  const lowerName = name.toLowerCase();
+
+  if (areaToPinCache.has(lowerName)) {
+    return areaToPinCache.get(lowerName)!;
+  }
+
+  // 1. Search in local exact map
+  for (const [pin, zone] of Object.entries(LOCAL_PINCODE_MAP)) {
+    if (zone.toLowerCase() === lowerName || lowerName === zone.toLowerCase()) {
+      areaToPinCache.set(lowerName, pin);
+      return pin;
+    }
+  }
+
+  // 2. Search in pincodeCache
+  for (const [pin, zone] of pincodeCache.entries()) {
+    if (zone.toLowerCase() === lowerName) {
+      areaToPinCache.set(lowerName, pin);
+      return pin;
+    }
+  }
+
+  // 3. Query India Post Office API
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+    const res = await fetch(`https://api.postalpincode.in/postoffice/${encodeURIComponent(name)}`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (
+        Array.isArray(data) && 
+        data[0]?.Status === 'Success' && 
+        Array.isArray(data[0]?.PostOffice) && 
+        data[0].PostOffice.length > 0
+      ) {
+        const poList = data[0].PostOffice;
+
+        const targetPO = poList.find((po: any) => 
+          po.Circle === 'Maharashtra' && (po.BranchType === 'Head Post Office' || po.BranchType === 'Sub Post Office') && po.Pincode
+        ) || poList.find((po: any) => 
+          (po.BranchType === 'Head Post Office' || po.BranchType === 'Sub Post Office') && po.Pincode
+        ) || poList.find((po: any) => po.Pincode) || poList[0];
+
+        if (targetPO && targetPO.Pincode) {
+          const matchedPin = targetPO.Pincode.trim();
+          areaToPinCache.set(lowerName, matchedPin);
+          pincodeCache.set(matchedPin, name);
+          saveStoredPincode(matchedPin, name);
+          return matchedPin;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`India Post Office lookup notice for ${name}:`, err);
+  }
+
+  return '';
+}
+
 export function syncMapPincodeToArea(pin: string): string {
   const code = pin.trim();
-  if (!code) return 'Dahisar';
+  if (!code) return '';
   if (pincodeCache.has(code)) return pincodeCache.get(code)!;
   if (LOCAL_PINCODE_MAP[code]) return LOCAL_PINCODE_MAP[code];
-  return 'Dahisar';
+  return '';
+}
+
+export function syncMapAreaToPincode(areaName: string): string {
+  const name = areaName.trim().toLowerCase();
+  if (!name) return '';
+  if (areaToPinCache.has(name)) return areaToPinCache.get(name)!;
+  for (const [pin, zone] of Object.entries(LOCAL_PINCODE_MAP)) {
+    if (zone.toLowerCase() === name) return pin;
+  }
+  return '';
 }

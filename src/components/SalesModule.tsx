@@ -774,6 +774,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setSelectedCustomerAddress('');
     setSelectedCustomerShippingAddress('');
     setSelectedPincode('');
+    setSelectedArea('');
     setIsSameShippingAddress(true);
     setRowProductId('');
     setRowQty(1);

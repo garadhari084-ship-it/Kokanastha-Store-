@@ -587,7 +587,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     setActivePreviewPage(1);
   };
 
-  // Generate & Download 3-Inch Terminal Bag Slip PDF
+  // Generate & Download 3-Inch Terminal Bag Slip PDF (Optimized for 80mm POS Thermal Receipt Printers)
   const handleDownload3InchThermalPdf = (order: SalesOrder, customBagsCount?: number) => {
     if (!order) return;
 
@@ -605,14 +605,15 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     const storageLocationStr = `${rackLoc || 'Rack A'} ${rackSec ? '- ' + rackSec : ''}`.trim() || 'Rack A - Second Row';
     const notesStr = (order as any).notes || (order as any).delivery_instructions || (order as any).payment_notes || 'No special notes';
 
+    // Standard 3-Inch POS Receipt Paper Roll (80mm Width x 130mm Height)
     const doc = new jsPDF({
       unit: 'mm',
-      format: [76, 125]
+      format: [80, 130]
     });
 
     for (let i = 1; i <= bags; i++) {
       if (i > 1) {
-        doc.addPage([76, 125]);
+        doc.addPage([80, 130]);
       }
 
       let y = 5;
@@ -622,8 +623,8 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       let hasLogo = false;
       if (logoUrl && (logoUrl.startsWith('data:image/') || logoUrl.startsWith('http'))) {
         try {
-          doc.addImage(logoUrl, 'PNG', 26, y, 24, 10);
-          y += 11;
+          doc.addImage(logoUrl, 'PNG', 26, y, 28, 11);
+          y += 12;
           hasLogo = true;
         } catch {
           hasLogo = false;
@@ -632,137 +633,134 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
       if (!hasLogo) {
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(11);
+        doc.setTextColor(0, 0, 0); // Solid Pure Black for crisp POS thermal print
         const bizName = currentBiz?.name || 'KOKANASTHA STORE';
-        doc.text(bizName, 38, y, { align: 'center' });
-        y += 4.5;
+        doc.text(bizName.toUpperCase(), 40, y, { align: 'center' });
+        y += 5;
       }
 
-      doc.setFontSize(7);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(100, 116, 139);
-      doc.text('Kokanastha packing Station', 38, y, { align: 'center' });
-      y += 3.5;
-
-      // Dashed Divider line
-      doc.setDrawColor(203, 213, 225);
-      doc.setLineDashPattern([1, 1], 0);
-      doc.line(4, y, 72, y);
+      doc.setFontSize(9);
+      doc.setTextColor(0, 0, 0); // Pure Black
+      doc.text('Kokanastha packing Station', 40, y, { align: 'center' });
       y += 4;
 
-      // 2. PROMINENT BAG TAG IDENTIFIER BOX (e.g. 4-1, 4-2, 4-3, 4-4)
+      // Solid Dashed Divider line across full 80mm paper width
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.3);
+      doc.setLineDashPattern([1.5, 1.5], 0);
+      doc.line(2, y, 78, y);
+      y += 4;
+
+      // 2. PROMINENT BAG TAG IDENTIFIER BOX (Full 76mm Printable Width)
       const bagTagText = `${bags}-${i}`;
-      doc.setFillColor(15, 23, 42); // slate-900 solid box
-      doc.roundedRect(4, y, 68, 15, 2, 2, 'F');
+      doc.setFillColor(0, 0, 0); // Pure Solid Black Box
+      doc.roundedRect(2, y, 76, 16, 2, 2, 'F');
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.setTextColor(250, 204, 21); // amber-400
-      doc.text(`BAG TAG: ${bagTagText}`, 38, y + 5.5, { align: 'center' });
+      doc.setFontSize(12);
+      doc.setTextColor(255, 255, 255); // Solid White Text
+      doc.text(`BAG TAG: ${bagTagText}`, 40, y + 6.5, { align: 'center' });
 
-      doc.setFontSize(7);
-      doc.setTextColor(255, 255, 255);
-      doc.text(`BAG ${i} OF ${bags} TOTAL BAGS`, 38, y + 11, { align: 'center' });
-      y += 18;
+      doc.setFontSize(8.5);
+      doc.text(`BAG ${i} OF ${bags} TOTAL BAGS`, 40, y + 12.5, { align: 'center' });
+      y += 20;
 
-      // Reset Line Dash Pattern
+      // Reset Line Dash Pattern & Line Width
       doc.setLineDashPattern([], 0);
 
-      // 3. ORDER DETAILS TABLE-LIKE ENTRIES
-      doc.setFontSize(7.5);
+      // 3. ORDER DETAILS HIGH-CONTRAST BOLD ENTRIES
+      doc.setTextColor(0, 0, 0);
 
       // Invoice / Order Number
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text('Invoice / Order #:', 4, y);
-      doc.setTextColor(79, 70, 229); // indigo-600
+      doc.setFontSize(8.5);
+      doc.text('Invoice / Order #:', 2, y);
+      doc.setFontSize(9.5);
       doc.text(`${order.order_number}`, 32, y);
-      y += 4.5;
+      y += 5;
 
       // Customer Name
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text('Customer Name:', 4, y);
-      doc.setFont('helvetica', 'normal');
-      const splitCust = doc.splitTextToSize(customerName + (customerPhone ? ` (${customerPhone})` : ''), 40);
+      doc.setFontSize(8.5);
+      doc.text('Customer Name:', 2, y);
+      const splitCust = doc.splitTextToSize(customerName + (customerPhone ? ` (${customerPhone})` : ''), 46);
+      doc.setFontSize(9);
       doc.text(splitCust, 32, y);
-      y += (splitCust.length * 3.5) + 1;
+      y += (splitCust.length * 4) + 1;
 
       // Balance Payment
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text('Balance Due:', 4, y);
-      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.text('Balance Due:', 2, y);
+      doc.setFontSize(9.5);
       if (balanceDue > 0) {
-        doc.setTextColor(220, 38, 38); // rose-600
         doc.text(`Rs. ${balanceDue.toLocaleString()} (UNPAID)`, 32, y);
       } else {
-        doc.setTextColor(22, 163, 74); // emerald-600
         doc.text(`Rs. 0 (PAID IN FULL)`, 32, y);
       }
-      y += 4.5;
+      y += 5;
 
       // Where we store the bags (Storage Location)
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text('Storage Location:', 4, y);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(180, 83, 9); // amber-700
-      doc.text(`${storageLocationStr}`, 32, y);
-      y += 4.5;
+      doc.setFontSize(8.5);
+      doc.text('Storage Location:', 2, y);
+      doc.setFontSize(9);
+      const splitLoc = doc.splitTextToSize(storageLocationStr, 46);
+      doc.text(splitLoc, 32, y);
+      y += (splitLoc.length * 4) + 1;
 
       // Count of Bags
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text('Count of Bags:', 4, y);
-      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.text('Count of Bags:', 2, y);
+      doc.setFontSize(9);
       doc.text(`${bags} Bag(s) [Page Tag ${bagTagText}]`, 32, y);
-      y += 4.5;
+      y += 5;
 
       // Instructions / Notes
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text('Instructions / Notes:', 4, y);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      const splitNotes = doc.splitTextToSize(notesStr, 38);
+      doc.setFontSize(8.5);
+      doc.text('Instructions / Notes:', 2, y);
+      const splitNotes = doc.splitTextToSize(notesStr, 46);
+      doc.setFontSize(8);
       doc.text(splitNotes, 32, y);
-      y += (splitNotes.length * 3) + 2;
+      y += (splitNotes.length * 3.5) + 2;
 
       // Divider Line
-      doc.setDrawColor(226, 232, 240);
-      doc.line(4, y, 72, y);
-      y += 3.5;
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.3);
+      doc.line(2, y, 78, y);
+      y += 4;
 
       // Items Summary List
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(71, 85, 105);
-      doc.text('ORDER ITEMS SUMMARY:', 4, y);
-      y += 3.5;
+      doc.setFontSize(8.5);
+      doc.text('ORDER ITEMS SUMMARY:', 2, y);
+      y += 4;
 
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
       const items = order.items || [];
-      items.slice(0, 5).forEach((it) => {
+      items.slice(0, 8).forEach((it) => {
         const pName = it.product_name || 'Item';
         const lineText = `• ${pName} x ${it.qty}`;
-        const splitLine = doc.splitTextToSize(lineText, 68);
-        doc.text(splitLine, 4, y);
-        y += (splitLine.length * 2.8);
+        const splitLine = doc.splitTextToSize(lineText, 76);
+        doc.text(splitLine, 2, y);
+        y += (splitLine.length * 3.2);
       });
-      if (items.length > 5) {
-        doc.text(`... plus ${items.length - 5} additional line item(s)`, 4, y);
-        y += 2.8;
+      if (items.length > 8) {
+        doc.text(`... plus ${items.length - 8} additional line item(s)`, 2, y);
+        y += 3.2;
       }
 
       // Footer Timestamp & Page Tag
-      y = Math.max(y + 2, 118);
-      doc.setFontSize(6);
-      doc.setFont('helvetica', 'italic');
-      doc.setTextColor(148, 163, 184);
-      doc.text(`Printed: ${new Date().toLocaleString()} • Tag ${bagTagText}`, 38, y, { align: 'center' });
+      y = Math.max(y + 3, 122);
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Printed: ${new Date().toLocaleString()} • Tag ${bagTagText}`, 40, y, { align: 'center' });
     }
 
     const cleanCustName = (customerName || 'Customer').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
@@ -2787,50 +2785,50 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                     </div>
 
                     {/* SLIP FIELDS TABLE */}
-                    <div className="space-y-2.5 text-xs sm:text-sm pt-1">
-                      <div className="flex justify-between items-start pb-2 border-b border-slate-100">
-                        <span className="font-bold text-slate-600">Invoice / Order #:</span>
-                        <span className="font-black text-indigo-600 text-sm tracking-wide">SO-{preview3InchOrder.order_number}</span>
+                    <div className="space-y-2.5 text-xs sm:text-sm pt-1 font-mono text-slate-950">
+                      <div className="flex justify-between items-start pb-2 border-b border-slate-200">
+                        <span className="font-extrabold text-slate-900">Invoice / Order #:</span>
+                        <span className="font-black text-slate-950 text-sm tracking-wide">SO-{preview3InchOrder.order_number}</span>
                       </div>
 
-                      <div className="flex justify-between items-start pb-2 border-b border-slate-100">
-                        <span className="font-bold text-slate-600">Customer Name:</span>
-                        <span className="font-bold text-slate-900 text-right max-w-[200px] truncate">
+                      <div className="flex justify-between items-start pb-2 border-b border-slate-200">
+                        <span className="font-extrabold text-slate-900">Customer Name:</span>
+                        <span className="font-black text-slate-950 text-right max-w-[240px]">
                           {customerName}
-                          {customerPhone ? <span className="block text-xs font-normal text-slate-500">{customerPhone}</span> : null}
+                          {customerPhone ? <span className="block text-xs font-bold text-slate-700">{customerPhone}</span> : null}
                         </span>
                       </div>
 
-                      <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                        <span className="font-bold text-slate-600">Balance Payment:</span>
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                        <span className="font-extrabold text-slate-900">Balance Payment:</span>
                         {balanceDue > 0 ? (
-                          <span className="font-black text-rose-600 bg-rose-50 px-2 py-1 rounded-lg border border-rose-200">
+                          <span className="font-black text-slate-950 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-400">
                             ₹{balanceDue.toLocaleString()} (UNPAID)
                           </span>
                         ) : (
-                          <span className="font-black text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200">
+                          <span className="font-black text-slate-950 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-400">
                             ₹0 (PAID IN FULL)
                           </span>
                         )}
                       </div>
 
-                      <div className="flex justify-between items-start pb-2 border-b border-slate-100">
-                        <span className="font-bold text-slate-600">Storage Location:</span>
-                        <span className="font-black text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 text-right max-w-[200px] truncate">
+                      <div className="flex justify-between items-start pb-2 border-b border-slate-200">
+                        <span className="font-extrabold text-slate-900">Storage Location:</span>
+                        <span className="font-black text-slate-950 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-400 text-right max-w-[240px]">
                           {storageLocationStr}
                         </span>
                       </div>
 
-                      <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                        <span className="font-bold text-slate-600">Count of Bags:</span>
-                        <span className="font-black text-slate-900">
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                        <span className="font-extrabold text-slate-900">Count of Bags:</span>
+                        <span className="font-black text-slate-950">
                           {previewBagsCount} Bag(s)
                         </span>
                       </div>
 
-                      <div className="space-y-1 pb-2 border-b border-slate-100">
-                        <span className="font-bold text-slate-600 block">Instructions / Notes:</span>
-                        <p className="text-xs text-slate-700 font-sans leading-snug bg-slate-50 p-2 rounded-xl border border-slate-200">
+                      <div className="space-y-1 pb-2 border-b border-slate-200">
+                        <span className="font-extrabold text-slate-900 block">Instructions / Notes:</span>
+                        <p className="text-xs text-slate-950 font-mono font-bold leading-snug bg-slate-100 p-2 rounded-xl border border-slate-300">
                           {notesStr}
                         </p>
                       </div>
@@ -2838,18 +2836,18 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
                     {/* ITEMS SUMMARY */}
                     <div className="space-y-1.5 pt-1">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-900 block">
                         ORDER ITEMS SUMMARY:
                       </span>
                       <div className="space-y-1 text-xs">
                         {(preview3InchOrder.items || []).slice(0, 6).map((it, idx) => (
-                          <div key={idx} className="flex justify-between text-slate-800">
-                            <span className="truncate max-w-[260px]">• {it.product_name || 'Item'}</span>
-                            <span className="font-bold shrink-0">x {it.qty}</span>
+                          <div key={idx} className="flex justify-between text-slate-950 font-bold">
+                            <span className="truncate max-w-[300px]">• {it.product_name || 'Item'}</span>
+                            <span className="font-black shrink-0">x {it.qty}</span>
                           </div>
                         ))}
                         {(preview3InchOrder.items || []).length > 6 && (
-                          <p className="text-xs text-slate-400 italic">
+                          <p className="text-xs text-slate-700 font-bold italic">
                             ... plus {(preview3InchOrder.items || []).length - 6} additional line items
                           </p>
                         )}
@@ -2857,7 +2855,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                     </div>
 
                     {/* FOOTER WATERMARK */}
-                    <div className="pt-3 border-t border-dashed border-slate-300 text-center text-xs text-slate-400 italic">
+                    <div className="pt-3 border-t border-dashed border-slate-400 text-center text-xs text-slate-900 font-bold">
                       Printed: {new Date().toLocaleString()} • Tag {currentBagTag}
                     </div>
                   </div>

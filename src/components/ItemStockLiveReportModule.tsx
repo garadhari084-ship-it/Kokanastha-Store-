@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Package, Search, PackageOpen, Plus } from 'lucide-react';
+import { Package, Search, PackageOpen, Plus, Clock, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { dbStore } from '../services/store';
 import { Product, SalesOrder, UserProfile } from '../types/erp';
 
@@ -18,7 +18,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
 }) => {
   const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
   const [activeOrders, setActiveOrders] = useState<SalesOrder[]>(
-    dbStore.getSalesOrders(businessId).filter(o => o.status === 'Pending' || o.status === 'Packing')
+    dbStore.getSalesOrders(businessId).filter(o => o.status === 'Pending' || o.status === 'Packing' || o.status === 'Packed')
   );
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -26,34 +26,49 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
     return dbStore.subscribe(() => {
       setProducts(dbStore.getProducts(businessId));
       setActiveOrders(
-        dbStore.getSalesOrders(businessId).filter(o => o.status === 'Pending' || o.status === 'Packing')
+        dbStore.getSalesOrders(businessId).filter(o => o.status === 'Pending' || o.status === 'Packing' || o.status === 'Packed')
       );
     });
   }, [businessId]);
 
   const reportData = useMemo(() => {
     return products.map(prod => {
-      let bookQty = 0;
-      let packQty = 0;
+      let bookQty = 0;      // Unpacked booked quantity awaiting packing
+      let packQty = 0;      // Verified / scanned packed quantity
+      let totalOrderQty = 0;// Total quantity ordered across active sales orders
 
       activeOrders.forEach(order => {
         const item = (order.items || []).find(i => i.product_id === prod.id);
         if (item) {
-          bookQty += (item.qty || 0);
-          packQty += (item.scanned_qty || 0);
+          const qty = Number(item.qty || 0);
+          const scanned = Number(item.scanned_qty || 0);
+          
+          // As items get scanned in packing station:
+          // bookQty reduces, packQty increases
+          const unpackedQty = Math.max(0, qty - scanned);
+          const packedPortion = Math.min(qty, scanned);
+
+          bookQty += unpackedQty;
+          packQty += packedPortion;
+          totalOrderQty += qty;
         }
       });
+
+      // Pending Qty = Remaining quantity awaiting packing (bookQty)
+      const pendingQty = bookQty;
+      
+      // Live Stock (Minus Booked) = System current stock (which reflects stock after deducting booked orders)
+      const liveStock = Number(prod.current_stock) || 0;
 
       return {
         ...prod,
         bookQty,
         packQty,
-        pendingQty: bookQty - packQty,
-        availableQty: prod.current_stock,
-        liveStock: prod.current_stock + (bookQty - packQty)
+        pendingQty,
+        totalOrderQty,
+        liveStock
       };
     }).filter(p => {
-      // Show if it matches search
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return String(p.name || '').toLowerCase().includes(q) || String(p.barcode || '').toLowerCase().includes(q);
@@ -62,8 +77,21 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
     });
   }, [products, activeOrders, searchQuery]);
 
+  // Overall KPI totals
+  const totals = useMemo(() => {
+    return reportData.reduce((acc, item) => {
+      acc.totalBooked += item.bookQty;
+      acc.totalPacked += item.packQty;
+      acc.totalPending += item.pendingQty;
+      acc.totalLive += item.liveStock;
+      if (item.liveStock < 0) acc.negativeCount += 1;
+      return acc;
+    }, { totalBooked: 0, totalPacked: 0, totalPending: 0, totalLive: 0, negativeCount: 0 });
+  }, [reportData]);
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
@@ -71,14 +99,14 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
             Item Stock Live Report
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Real-time packing and live stock status across all active orders
+            Real-time live stock status • Dynamic transition from Book Qty to Pack Qty as orders get packed
           </p>
         </div>
         
         {onCreateOrder && (
           <button
             onClick={onCreateOrder}
-            className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 w-full sm:w-auto justify-center shadow-sm"
+            className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors flex items-center gap-2 w-full sm:w-auto justify-center shadow-sm cursor-pointer"
           >
             <Plus size={16} />
             Create Order
@@ -86,6 +114,58 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         )}
       </div>
 
+      {/* KPI Cards Overview */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
+        <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-bold">
+            <span>Book Qty (Unpacked)</span>
+            <Clock size={16} className="text-amber-500" />
+          </div>
+          <p className="text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">{totals.totalBooked.toLocaleString()}</p>
+          <span className="text-[10px] text-slate-400 block">Orders awaiting packing</span>
+        </div>
+
+        <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-bold">
+            <span>Pack Qty (Verified)</span>
+            <PackageOpen size={16} className="text-indigo-500" />
+          </div>
+          <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400 font-mono">{totals.totalPacked.toLocaleString()}</p>
+          <span className="text-[10px] text-slate-400 block">Scanned in packing station</span>
+        </div>
+
+        <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-bold">
+            <span>Pending Qty</span>
+            <Clock size={16} className="text-rose-500" />
+          </div>
+          <p className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">{totals.totalPending.toLocaleString()}</p>
+          <span className="text-[10px] text-slate-400 block">Pending packing pipeline</span>
+        </div>
+
+        <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-bold">
+            <span>Net Live Available</span>
+            {totals.negativeCount > 0 ? (
+              <AlertTriangle size={16} className="text-rose-600 animate-bounce" />
+            ) : (
+              <ShieldCheck size={16} className="text-emerald-600" />
+            )}
+          </div>
+          <p className={`text-2xl font-black font-mono ${
+            totals.totalLive < 0 
+              ? 'text-rose-600 dark:text-rose-400' 
+              : 'text-emerald-600 dark:text-emerald-400'
+          }`}>
+            {totals.totalLive.toLocaleString()}
+          </p>
+          <span className="text-[10px] text-slate-400 block">
+            {totals.negativeCount > 0 ? `${totals.negativeCount} item(s) in shortage!` : 'Current live available stock'}
+          </span>
+        </div>
+      </div>
+
+      {/* Main Table Card */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="relative w-full sm:w-96">
@@ -111,14 +191,13 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                 <th className="py-3 px-4 text-center">Book Qty</th>
                 <th className="py-3 px-4 text-center">Pack Qty</th>
                 <th className="py-3 px-4 text-center">Pending Qty</th>
-                <th className="py-3 px-4 text-right">Available Qty</th>
-                <th className="py-3 px-4 text-right">Live Stock</th>
+                <th className="py-3 px-4 text-right">Live Stock (Minus Booked)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-700 dark:text-slate-300">
               {reportData.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-500">
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center">
                       <PackageOpen size={32} className="opacity-30 mb-3" />
                       <p className="text-sm">No items found.</p>
@@ -147,45 +226,42 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                     <td className="py-2.5 px-4 font-mono font-medium text-slate-600 dark:text-slate-400">
                       {item.barcode || '-'}
                     </td>
-                    <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
+                    <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-slate-100">
                       {item.name}
                     </td>
                     <td className="py-2.5 px-4 text-center">
-                      <span className="inline-block px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-medium">
+                      <span className="inline-block px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 font-bold">
                         {item.bookQty}
                       </span>
                     </td>
                     <td className="py-2.5 px-4 text-center">
-                      <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400 font-medium">
+                      <span className="inline-block px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400 font-bold">
                         {item.packQty}
                       </span>
                     </td>
                     <td className="py-2.5 px-4 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded-full font-bold ${
+                      <span className={`inline-block px-2.5 py-0.5 rounded-full font-black ${
                         item.pendingQty > 0 
-                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' 
-                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' 
+                          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                       }`}>
                         {item.pendingQty}
                       </span>
                     </td>
-                    <td className="py-2.5 px-4 text-right font-mono font-bold">
-                      <span className={`inline-block px-2.5 py-1 rounded-lg ${
-                        item.availableQty > 10 ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-400' :
-                        item.availableQty > 0 ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400' :
-                        'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
-                      }`}>
-                        {item.availableQty}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-mono font-bold">
-                      <span className={`inline-block px-2.5 py-1 rounded-lg ${
-                        item.liveStock > 10 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' :
-                        item.liveStock > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400' :
-                        'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400'
-                      }`}>
-                        {item.liveStock}
-                      </span>
+                    <td className="py-2.5 px-4 text-right font-mono font-black">
+                      {item.liveStock < 0 ? (
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-rose-600 text-white dark:bg-rose-700 dark:text-white font-mono font-black border border-rose-700 shadow-sm animate-pulse">
+                          {item.liveStock} (SHORTAGE)
+                        </span>
+                      ) : item.liveStock > 10 ? (
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200/80 shadow-xs">
+                          {item.liveStock}
+                        </span>
+                      ) : (
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200/80 shadow-xs">
+                          {item.liveStock}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))

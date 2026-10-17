@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import jsPDF from 'jspdf';
+import JsBarcode from 'jsbarcode';
 import { PageHeader } from './PageHeader';
 import { 
   Bike, 
@@ -587,6 +588,29 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     setActivePreviewPage(1);
   };
 
+  // Helper: Generate Scannable CODE128 Barcode Image DataURL for POS Terminal Print
+  const generateBarcodeDataUrl = (codeText: string): string | null => {
+    try {
+      const canvas = document.createElement('canvas');
+      JsBarcode(canvas, codeText, {
+        format: 'CODE128',
+        width: 3,
+        height: 60,
+        displayValue: true,
+        fontSize: 18,
+        font: 'monospace',
+        fontOptions: 'bold',
+        margin: 6,
+        background: '#ffffff',
+        lineColor: '#000000',
+      });
+      return canvas.toDataURL('image/png');
+    } catch (err) {
+      console.error('Barcode generation error:', err);
+      return null;
+    }
+  };
+
   // Generate & Download 3-Inch Terminal Bag Slip PDF (Optimized for 80mm POS Thermal Receipt Printers)
   const handleDownload3InchThermalPdf = (order: SalesOrder, customBagsCount?: number) => {
     if (!order) return;
@@ -605,26 +629,26 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     const storageLocationStr = `${rackLoc || 'Rack A'} ${rackSec ? '- ' + rackSec : ''}`.trim() || 'Rack A - Second Row';
     const notesStr = (order as any).notes || (order as any).delivery_instructions || (order as any).payment_notes || 'No special notes';
 
-    // Standard 3-Inch POS Receipt Paper Roll (80mm Width x 130mm Height)
+    // Standard 3-Inch POS Receipt Paper Roll (80mm Width x 160mm Length for large fonts & barcode)
     const doc = new jsPDF({
       unit: 'mm',
-      format: [80, 130]
+      format: [80, 160]
     });
 
     for (let i = 1; i <= bags; i++) {
       if (i > 1) {
-        doc.addPage([80, 130]);
+        doc.addPage([80, 160]);
       }
 
-      let y = 5;
+      let y = 6;
 
       // 1. Business Logo or Header
       const logoUrl = currentBiz?.logo_url;
       let hasLogo = false;
       if (logoUrl && (logoUrl.startsWith('data:image/') || logoUrl.startsWith('http'))) {
         try {
-          doc.addImage(logoUrl, 'PNG', 26, y, 28, 11);
-          y += 12;
+          doc.addImage(logoUrl, 'PNG', 25, y, 30, 12);
+          y += 13;
           hasLogo = true;
         } catch {
           hasLogo = false;
@@ -632,133 +656,129 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
       }
 
       if (!hasLogo) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
+        doc.setFont('courier', 'bold');
+        doc.setFontSize(13);
         doc.setTextColor(0, 0, 0); // Solid Pure Black for crisp POS thermal print
         const bizName = currentBiz?.name || 'KOKANASTHA STORE';
         doc.text(bizName.toUpperCase(), 40, y, { align: 'center' });
-        y += 5;
+        y += 6;
       }
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.setTextColor(0, 0, 0); // Pure Black
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0); // Pure Black Heavy Monospace
       doc.text('Kokanastha packing Station', 40, y, { align: 'center' });
-      y += 4;
+      y += 5;
 
-      // Solid Dashed Divider line across full 80mm paper width
+      // Solid Heavy Divider line across full 80mm paper width
       doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.3);
-      doc.setLineDashPattern([1.5, 1.5], 0);
+      doc.setLineWidth(0.6);
       doc.line(2, y, 78, y);
-      y += 4;
+      y += 5;
 
-      // 2. PROMINENT BAG TAG IDENTIFIER BOX (Full 76mm Printable Width)
+      // 2. PROMINENT BAG TAG IDENTIFIER BOX
       const bagTagText = `${bags}-${i}`;
       doc.setFillColor(0, 0, 0); // Pure Solid Black Box
-      doc.roundedRect(2, y, 76, 16, 2, 2, 'F');
+      doc.roundedRect(2, y, 76, 18, 2, 2, 'F');
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(16);
       doc.setTextColor(255, 255, 255); // Solid White Text
-      doc.text(`BAG TAG: ${bagTagText}`, 40, y + 6.5, { align: 'center' });
+      doc.text(`BAG TAG: ${bagTagText}`, 40, y + 7.5, { align: 'center' });
 
-      doc.setFontSize(8.5);
-      doc.text(`BAG ${i} OF ${bags} TOTAL BAGS`, 40, y + 12.5, { align: 'center' });
-      y += 20;
-
-      // Reset Line Dash Pattern & Line Width
-      doc.setLineDashPattern([], 0);
-
-      // 3. ORDER DETAILS HIGH-CONTRAST BOLD ENTRIES
-      doc.setTextColor(0, 0, 0);
-
-      // Invoice / Order Number
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.text('Invoice / Order #:', 2, y);
-      doc.setFontSize(9.5);
-      doc.text(`${order.order_number}`, 32, y);
-      y += 5;
-
-      // Customer Name
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.text('Customer Name:', 2, y);
-      const splitCust = doc.splitTextToSize(customerName + (customerPhone ? ` (${customerPhone})` : ''), 46);
-      doc.setFontSize(9);
-      doc.text(splitCust, 32, y);
-      y += (splitCust.length * 4) + 1;
-
-      // Balance Payment
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.text('Balance Due:', 2, y);
-      doc.setFontSize(9.5);
-      if (balanceDue > 0) {
-        doc.text(`Rs. ${balanceDue.toLocaleString()} (UNPAID)`, 32, y);
-      } else {
-        doc.text(`Rs. 0 (PAID IN FULL)`, 32, y);
-      }
-      y += 5;
-
-      // Where we store the bags (Storage Location)
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.text('Storage Location:', 2, y);
-      doc.setFontSize(9);
-      const splitLoc = doc.splitTextToSize(storageLocationStr, 46);
-      doc.text(splitLoc, 32, y);
-      y += (splitLoc.length * 4) + 1;
-
-      // Count of Bags
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.text('Count of Bags:', 2, y);
-      doc.setFontSize(9);
-      doc.text(`${bags} Bag(s) [Page Tag ${bagTagText}]`, 32, y);
-      y += 5;
-
-      // Instructions / Notes
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.text('Instructions / Notes:', 2, y);
-      const splitNotes = doc.splitTextToSize(notesStr, 46);
-      doc.setFontSize(8);
-      doc.text(splitNotes, 32, y);
-      y += (splitNotes.length * 3.5) + 2;
+      doc.setFontSize(10);
+      doc.text(`BAG ${i} OF ${bags} TOTAL BAGS`, 40, y + 14, { align: 'center' });
+      y += 22;
 
       // Divider Line
       doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.3);
+      doc.setLineWidth(0.5);
       doc.line(2, y, 78, y);
-      y += 4;
+      y += 5;
+
+      // 4. ORDER DETAILS HIGH-CONTRAST ULTRA-BOLD MONOSPACE ENTRIES
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('courier', 'bold');
+
+      // Invoice / Order Number
+      doc.setFontSize(11);
+      doc.text('Order Ref #:', 2, y);
+      doc.setFontSize(13);
+      doc.text(`SO-${order.order_number}`, 32, y);
+      y += 6;
+
+      // Customer Name
+      doc.setFontSize(11);
+      doc.text('Customer:', 2, y);
+      const splitCust = doc.splitTextToSize(customerName + (customerPhone ? ` (${customerPhone})` : ''), 46);
+      doc.setFontSize(11.5);
+      doc.text(splitCust, 32, y);
+      y += (splitCust.length * 5) + 1;
+
+      // Balance Payment
+      doc.setFontSize(11);
+      doc.text('Balance:', 2, y);
+      doc.setFontSize(12);
+      if (balanceDue > 0) {
+        doc.text(`Rs. ${balanceDue.toLocaleString()} (UNPAID)`, 32, y);
+      } else {
+        doc.text(`Rs. 0 (PAID)`, 32, y);
+      }
+      y += 6;
+
+      // Storage Location
+      doc.setFontSize(11);
+      doc.text('Storage:', 2, y);
+      const splitLoc = doc.splitTextToSize(storageLocationStr, 46);
+      doc.setFontSize(12);
+      doc.text(splitLoc, 32, y);
+      y += (splitLoc.length * 5) + 1;
+
+      // Count of Bags
+      doc.setFontSize(11);
+      doc.text('Bags Count:', 2, y);
+      doc.setFontSize(12);
+      doc.text(`${bags} Bag(s) [Tag ${bagTagText}]`, 32, y);
+      y += 6;
+
+      // Instructions / Notes
+      doc.setFontSize(11);
+      doc.text('Notes:', 2, y);
+      const splitNotes = doc.splitTextToSize(notesStr, 46);
+      doc.setFontSize(10.5);
+      doc.text(splitNotes, 32, y);
+      y += (splitNotes.length * 4.5) + 2;
+
+      // Divider Line
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.5);
+      doc.line(2, y, 78, y);
+      y += 5;
 
       // Items Summary List
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(11);
       doc.text('ORDER ITEMS SUMMARY:', 2, y);
-      y += 4;
+      y += 5;
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
+      doc.setFontSize(10.5);
       const items = order.items || [];
-      items.slice(0, 8).forEach((it) => {
+      items.slice(0, 10).forEach((it) => {
         const pName = it.product_name || 'Item';
-        const lineText = `• ${pName} x ${it.qty}`;
+        const lineText = `* ${pName.toUpperCase()} x ${it.qty}`;
         const splitLine = doc.splitTextToSize(lineText, 76);
         doc.text(splitLine, 2, y);
-        y += (splitLine.length * 3.2);
+        y += (splitLine.length * 4);
       });
-      if (items.length > 8) {
-        doc.text(`... plus ${items.length - 8} additional line item(s)`, 2, y);
-        y += 3.2;
+      if (items.length > 10) {
+        doc.text(`+ ${items.length - 10} MORE ITEMS`, 2, y);
+        y += 4;
       }
 
       // Footer Timestamp & Page Tag
-      y = Math.max(y + 3, 122);
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'bold');
+      y = Math.max(y + 4, 150);
+      doc.setFontSize(8.5);
+      doc.setFont('courier', 'bold');
       doc.setTextColor(0, 0, 0);
       doc.text(`Printed: ${new Date().toLocaleString()} • Tag ${bagTagText}`, 40, y, { align: 'center' });
     }
@@ -2776,10 +2796,10 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
                     {/* PROMINENT BAG TAG BOX */}
                     <div className="bg-slate-900 text-white rounded-2xl p-4 text-center space-y-1 shadow-lg border border-slate-800">
-                      <span className="text-sm sm:text-base font-black text-amber-400 tracking-wider block uppercase">
+                      <span className="text-base sm:text-lg font-mono font-black text-amber-400 tracking-wider block uppercase">
                         BAG TAG: {currentBagTag}
                       </span>
-                      <span className="text-xs font-bold text-slate-300 block uppercase tracking-wide">
+                      <span className="text-xs font-mono font-bold text-slate-300 block uppercase tracking-wide">
                         BAG {activePreviewPage} OF {previewBagsCount} TOTAL BAGS
                       </span>
                     </div>

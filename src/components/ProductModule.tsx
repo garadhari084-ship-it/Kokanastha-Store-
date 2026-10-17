@@ -1125,7 +1125,7 @@ export const ThermalBarcodeSticker: React.FC<ThermalBarcodeStickerProps> = ({
             {/* Address & Facility (Mob number removed per user request) */}
             {effectiveAddress ? (
               <div className="px-2 py-0.5 border-b border-black leading-tight bg-white text-black">
-                <span className="font-black text-[8px] uppercase text-black block mb-0.5">Mfg & Packed By:</span>
+                <span className="font-black text-[8px] uppercase text-black block mb-0.5">Packed & Marketing By:</span>
                 <div className="font-medium text-[7.5px] leading-tight break-words text-black">
                   {effectiveAddress}
                 </div>

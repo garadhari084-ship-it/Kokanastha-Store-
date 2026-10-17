@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import jsPDF from 'jspdf';
 import { PageHeader } from './PageHeader';
 import { 
   Bike, 
@@ -10,6 +11,7 @@ import {
   AlertCircle, 
   AlertTriangle,
   Printer, 
+  Info,
   ArrowLeft, 
   ArrowRight,
   Sparkles,
@@ -108,6 +110,11 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const [rackSection, setRackSection] = useState<string>('');
   const [totalBags, setTotalBags] = useState<number>(1);
   const [showResumePopup, setShowResumePopup] = useState(false);
+
+  // 3-Inch Terminal Slip Preview Modal states
+  const [preview3InchOrder, setPreview3InchOrder] = useState<SalesOrder | null>(null);
+  const [previewBagsCount, setPreviewBagsCount] = useState<number>(1);
+  const [activePreviewPage, setActivePreviewPage] = useState<number>(1);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const selectedOrderRef = useRef<SalesOrder | null>(selectedOrder);
@@ -569,6 +576,199 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
     } catch (err: any) {
       triggerToast(err.message || 'Failed to save order details.', 'error');
     }
+  };
+
+  // Open 3-Inch Terminal Slip Preview Modal
+  const handleOpen3InchPreview = (order: SalesOrder, customBagsCount?: number) => {
+    if (!order) return;
+    setPreview3InchOrder(order);
+    const initialBags = customBagsCount || order.total_bags || totalBags || 1;
+    setPreviewBagsCount(initialBags);
+    setActivePreviewPage(1);
+  };
+
+  // Generate & Download 3-Inch Terminal Bag Slip PDF
+  const handleDownload3InchThermalPdf = (order: SalesOrder, customBagsCount?: number) => {
+    if (!order) return;
+
+    const customer = customers.find(c => c.id === order.customer_id);
+    const customerName = order.customer_name || customer?.name || 'Walk-in Customer';
+    const customerPhone = order.customer_phone || customer?.phone || '';
+
+    const total = Number(order.total_amount) || 0;
+    const paid = typeof order.paid_amount === 'number' ? order.paid_amount : (Number(order.paid_amount) || 0);
+    const balanceDue = Math.max(0, total - paid);
+
+    const bags = customBagsCount || order.total_bags || totalBags || 1;
+    const rackLoc = order.rack_location || (selectedOrder?.id === order.id ? rackLocation : 'Rack A');
+    const rackSec = order.rack_section || (selectedOrder?.id === order.id ? rackSection : 'Second Row');
+    const storageLocationStr = `${rackLoc || 'Rack A'} ${rackSec ? '- ' + rackSec : ''}`.trim() || 'Rack A - Second Row';
+    const notesStr = (order as any).notes || (order as any).delivery_instructions || (order as any).payment_notes || 'No special notes';
+
+    const doc = new jsPDF({
+      unit: 'mm',
+      format: [76, 125]
+    });
+
+    for (let i = 1; i <= bags; i++) {
+      if (i > 1) {
+        doc.addPage([76, 125]);
+      }
+
+      let y = 5;
+
+      // 1. Business Logo or Header
+      const logoUrl = currentBiz?.logo_url;
+      let hasLogo = false;
+      if (logoUrl && (logoUrl.startsWith('data:image/') || logoUrl.startsWith('http'))) {
+        try {
+          doc.addImage(logoUrl, 'PNG', 26, y, 24, 10);
+          y += 11;
+          hasLogo = true;
+        } catch {
+          hasLogo = false;
+        }
+      }
+
+      if (!hasLogo) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(15, 23, 42);
+        const bizName = currentBiz?.name || 'KOKANASTHA STORE';
+        doc.text(bizName, 38, y, { align: 'center' });
+        y += 4.5;
+      }
+
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(100, 116, 139);
+      doc.text('Kokanastha packing Station', 38, y, { align: 'center' });
+      y += 3.5;
+
+      // Dashed Divider line
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineDashPattern([1, 1], 0);
+      doc.line(4, y, 72, y);
+      y += 4;
+
+      // 2. PROMINENT BAG TAG IDENTIFIER BOX (e.g. 4-1, 4-2, 4-3, 4-4)
+      const bagTagText = `${bags}-${i}`;
+      doc.setFillColor(15, 23, 42); // slate-900 solid box
+      doc.roundedRect(4, y, 68, 15, 2, 2, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(250, 204, 21); // amber-400
+      doc.text(`BAG TAG: ${bagTagText}`, 38, y + 5.5, { align: 'center' });
+
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`BAG ${i} OF ${bags} TOTAL BAGS`, 38, y + 11, { align: 'center' });
+      y += 18;
+
+      // Reset Line Dash Pattern
+      doc.setLineDashPattern([], 0);
+
+      // 3. ORDER DETAILS TABLE-LIKE ENTRIES
+      doc.setFontSize(7.5);
+
+      // Invoice / Order Number
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Invoice / Order #:', 4, y);
+      doc.setTextColor(79, 70, 229); // indigo-600
+      doc.text(`${order.order_number}`, 32, y);
+      y += 4.5;
+
+      // Customer Name
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Customer Name:', 4, y);
+      doc.setFont('helvetica', 'normal');
+      const splitCust = doc.splitTextToSize(customerName + (customerPhone ? ` (${customerPhone})` : ''), 40);
+      doc.text(splitCust, 32, y);
+      y += (splitCust.length * 3.5) + 1;
+
+      // Balance Payment
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Balance Due:', 4, y);
+      doc.setFont('helvetica', 'bold');
+      if (balanceDue > 0) {
+        doc.setTextColor(220, 38, 38); // rose-600
+        doc.text(`Rs. ${balanceDue.toLocaleString()} (UNPAID)`, 32, y);
+      } else {
+        doc.setTextColor(22, 163, 74); // emerald-600
+        doc.text(`Rs. 0 (PAID IN FULL)`, 32, y);
+      }
+      y += 4.5;
+
+      // Where we store the bags (Storage Location)
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Storage Location:', 4, y);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(180, 83, 9); // amber-700
+      doc.text(`${storageLocationStr}`, 32, y);
+      y += 4.5;
+
+      // Count of Bags
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Count of Bags:', 4, y);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${bags} Bag(s) [Page Tag ${bagTagText}]`, 32, y);
+      y += 4.5;
+
+      // Instructions / Notes
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Instructions / Notes:', 4, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      const splitNotes = doc.splitTextToSize(notesStr, 38);
+      doc.text(splitNotes, 32, y);
+      y += (splitNotes.length * 3) + 2;
+
+      // Divider Line
+      doc.setDrawColor(226, 232, 240);
+      doc.line(4, y, 72, y);
+      y += 3.5;
+
+      // Items Summary List
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105);
+      doc.text('ORDER ITEMS SUMMARY:', 4, y);
+      y += 3.5;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      const items = order.items || [];
+      items.slice(0, 5).forEach((it) => {
+        const pName = it.product_name || 'Item';
+        const lineText = `• ${pName} x ${it.qty}`;
+        const splitLine = doc.splitTextToSize(lineText, 68);
+        doc.text(splitLine, 4, y);
+        y += (splitLine.length * 2.8);
+      });
+      if (items.length > 5) {
+        doc.text(`... plus ${items.length - 5} additional line item(s)`, 4, y);
+        y += 2.8;
+      }
+
+      // Footer Timestamp & Page Tag
+      y = Math.max(y + 2, 118);
+      doc.setFontSize(6);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Printed: ${new Date().toLocaleString()} • Tag ${bagTagText}`, 38, y, { align: 'center' });
+    }
+
+    const cleanCustName = (customerName || 'Customer').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+    const pdfFileName = `${order.order_number}_${cleanCustName}.pdf`;
+    doc.save(pdfFileName);
+    triggerToast(`Downloaded 3-inch terminal PDF "${pdfFileName}" (${bags} bag page${bags > 1 ? 's' : ''})`, 'success');
   };
 
   // Calculations for current selected order
@@ -1228,6 +1428,15 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
             </button>
 
             <div className="flex items-center gap-2.5">
+              <button 
+                type="button"
+                onClick={() => handleOpen3InchPreview(selectedOrder, totalBags)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 dark:text-amber-300 border border-amber-300/60 dark:border-amber-700/50 rounded-xl text-[11px] font-bold transition-all cursor-pointer active:scale-95 shadow-xs"
+                title="Preview & Print 3-inch Terminal Slip"
+              >
+                <Printer size={14} />
+                <span>3" Terminal Slip</span>
+              </button>
               <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
                 Data saved automatically as you scan
               </span>
@@ -1669,7 +1878,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                 </div>
                 <div>
                   <label className="text-[10px] text-slate-500 mb-1 block ml-1">Total Number of Bags</label>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <input
                       type="number"
                       min="1"
@@ -1686,7 +1895,20 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                       }}
                       className="w-24 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-bold px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                     />
-                    <span className="text-[10px] text-slate-400 font-medium italic">Click field to clear & type new count</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedOrder) {
+                          handleOpen3InchPreview(selectedOrder, totalBags);
+                        }
+                      }}
+                      className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 dark:text-amber-300 border border-amber-300/60 dark:border-amber-700/50 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
+                      title="Preview & Print 3-inch Terminal Slips"
+                    >
+                      <Printer size={13} />
+                      <span>Print 3" Slips ({totalBags} Bag{totalBags > 1 ? 's' : ''})</span>
+                    </button>
+                    <span className="text-[10px] text-slate-400 font-medium italic hidden lg:inline">Click field to clear & type new count</span>
                   </div>
                 </div>
               </div>
@@ -1982,15 +2204,28 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                           </div>
                         </div>
                         
-                        {/* Action Buttons: Pick List & Open Station */}
-                        <div className="grid grid-cols-2 gap-2 mt-3 pt-1">
+                        {/* Action Buttons: 3" Slip, Pick List & Open Station */}
+                        <div className="grid grid-cols-3 gap-1.5 mt-3 pt-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpen3InchPreview(o);
+                            }}
+                            className="py-2 px-1.5 rounded-xl text-[10px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 dark:text-amber-300 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 border border-amber-200/60 dark:border-amber-800/40"
+                            title="Preview & Print 3-inch Terminal Slip"
+                          >
+                            <Info size={12} className="text-amber-600 dark:text-amber-400" />
+                            <Printer size={12} />
+                            <span>3" Slip</span>
+                          </button>
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setPreviewOrderPickList(o);
                             }}
-                            className="py-2 px-2.5 rounded-xl text-[10px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 border border-slate-200 dark:border-slate-700"
+                            className="py-2 px-1.5 rounded-xl text-[10px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 border border-slate-200 dark:border-slate-700"
                           >
                             <Eye size={12} />
                             <span>Pick List</span>
@@ -2001,7 +2236,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                               e.stopPropagation();
                               handleOpenPackingStation(o);
                             }}
-                            className={`py-2 px-2.5 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 shadow-sm cursor-pointer active:scale-95 ${
+                            className={`py-2 px-1.5 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 shadow-sm cursor-pointer active:scale-95 ${
                               isDone
                                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
                                 : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
@@ -2193,6 +2428,19 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      handleOpen3InchPreview(o);
+                                    }}
+                                    title="Preview & Print 3-inch Terminal Slip"
+                                    className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 dark:text-amber-300 rounded-lg transition-colors cursor-pointer border border-amber-200/60 dark:border-amber-800/40 flex items-center gap-1"
+                                  >
+                                    <Info size={12} className="text-amber-600 dark:text-amber-400" />
+                                    <Printer size={13} />
+                                    <span className="text-[10px] font-bold hidden xl:inline">3" Slip</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       setPreviewOrderPickList(o);
                                     }}
                                     title="View items pick list"
@@ -2353,13 +2601,28 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
 
             {/* Modal Footer */}
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
-              <button
-                type="button"
-                onClick={() => setPreviewOrderPickList(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPreviewOrderPickList(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (previewOrderPickList) {
+                      handleOpen3InchPreview(previewOrderPickList);
+                    }
+                  }}
+                  className="px-3.5 py-2 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 dark:text-amber-300 border border-amber-300/60 dark:border-amber-700/50 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
+                  title="Preview & Print 3-inch Terminal Slip"
+                >
+                  <Printer size={14} />
+                  <span>3" Terminal Slip</span>
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -2367,12 +2630,264 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
                   setPreviewOrderPickList(null);
                   handleOpenPackingStation(target);
                 }}
-                className="px-5 py-2 text-xs font-black bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+                className="px-5 py-2 text-xs font-black bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
               >
                 <Scan size={14} />
                 <span>Open Packing Verification Station</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3-INCH TERMINAL SLIP PREVIEW MODAL */}
+      {preview3InchOrder && (
+        <div className="fixed inset-0 z-[120] bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-3xl sm:max-w-4xl lg:max-w-5xl w-full shadow-2xl overflow-hidden flex flex-col my-auto animate-in fade-in zoom-in-95 duration-200 max-h-[98vh] h-[94vh]">
+            
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-amber-500/10 dark:bg-amber-950/30 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <Printer size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    3-Inch Slip Terminal Print Preview
+                    <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                      Order #{preview3InchOrder.order_number}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    High-resolution terminal print layout preview • Verify bag tags & storage details before downloading PDF
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreview3InchOrder(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Controls Bar */}
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+              <div className="flex items-center gap-3">
+                <label className="font-bold text-slate-800 dark:text-slate-200 text-xs">Total Bag Count:</label>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newBags = Math.max(1, previewBagsCount - 1);
+                      setPreviewBagsCount(newBags);
+                      if (activePreviewPage > newBags) setActivePreviewPage(newBags);
+                    }}
+                    className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-black text-slate-700 dark:text-slate-200 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer active:scale-95 text-sm shadow-xs"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    value={previewBagsCount}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      const parsed = isNaN(val) ? 1 : Math.max(1, val);
+                      setPreviewBagsCount(parsed);
+                      if (activePreviewPage > parsed) setActivePreviewPage(parsed);
+                    }}
+                    className="w-16 h-8 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-black text-slate-900 dark:text-white text-xs shadow-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newBags = previewBagsCount + 1;
+                      setPreviewBagsCount(newBags);
+                    }}
+                    className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-black text-slate-700 dark:text-slate-200 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer active:scale-95 text-sm shadow-xs"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Multi-Bag Page Tag Selector Tabs */}
+              {previewBagsCount > 1 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-0.5 custom-scrollbar">
+                  <span className="text-[11px] font-bold text-slate-500 mr-1">Bag Pages:</span>
+                  {Array.from({ length: previewBagsCount }, (_, idx) => idx + 1).map((pg) => {
+                    const tagLabel = `${previewBagsCount}-${pg}`;
+                    const isActive = activePreviewPage === pg;
+                    return (
+                      <button
+                        key={pg}
+                        type="button"
+                        onClick={() => setActivePreviewPage(pg)}
+                        className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                          isActive
+                            ? 'bg-slate-900 text-amber-400 dark:bg-amber-400 dark:text-slate-950 shadow-md scale-105'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        Tag {tagLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* PREVIEW CONTAINER - EXPANDED REALISTIC 3-INCH THERMAL SLIP */}
+            <div className="p-6 overflow-y-auto flex-1 bg-slate-200/80 dark:bg-slate-950 flex justify-center custom-scrollbar">
+              {(() => {
+                const customer = customers.find(c => c.id === preview3InchOrder.customer_id);
+                const customerName = preview3InchOrder.customer_name || customer?.name || 'Walk-in Customer';
+                const customerPhone = preview3InchOrder.customer_phone || customer?.phone || '';
+                const total = Number(preview3InchOrder.total_amount) || 0;
+                const paid = typeof preview3InchOrder.paid_amount === 'number' ? preview3InchOrder.paid_amount : (Number(preview3InchOrder.paid_amount) || 0);
+                const balanceDue = Math.max(0, total - paid);
+                const rackLoc = preview3InchOrder.rack_location || (selectedOrder?.id === preview3InchOrder.id ? rackLocation : 'Rack A');
+                const rackSec = preview3InchOrder.rack_section || (selectedOrder?.id === preview3InchOrder.id ? rackSection : 'Second Row');
+                const storageLocationStr = `${rackLoc || 'Rack A'} ${rackSec ? '- ' + rackSec : ''}`.trim() || 'Rack A - Second Row';
+                const notesStr = (preview3InchOrder as any).notes || (preview3InchOrder as any).delivery_instructions || (preview3InchOrder as any).payment_notes || 'No special notes';
+                const currentBagTag = `${previewBagsCount}-${activePreviewPage}`;
+
+                return (
+                  <div className="w-[420px] sm:w-[520px] bg-white text-slate-900 p-7 sm:p-9 rounded-2xl shadow-2xl border border-slate-300 font-mono text-xs sm:text-sm space-y-4 relative select-none my-auto">
+                    
+                    {/* Header Business Info */}
+                    <div className="text-center pb-3 border-b border-dashed border-slate-300">
+                      {currentBiz?.logo_url ? (
+                        <img 
+                          src={currentBiz.logo_url} 
+                          alt="Logo" 
+                          className="h-10 max-w-[160px] object-contain mx-auto mb-1.5"
+                          onError={(e) => (e.currentTarget.style.display = 'none')}
+                        />
+                      ) : null}
+                      <h4 className="font-black text-base uppercase tracking-tight text-slate-900">
+                        {currentBiz?.name || 'KOKANASTHA STORE'}
+                      </h4>
+                      <p className="text-xs font-extrabold text-slate-500 uppercase tracking-widest mt-0.5">
+                        Kokanastha packing Station
+                      </p>
+                    </div>
+
+                    {/* PROMINENT BAG TAG BOX */}
+                    <div className="bg-slate-900 text-white rounded-2xl p-4 text-center space-y-1 shadow-lg border border-slate-800">
+                      <span className="text-sm sm:text-base font-black text-amber-400 tracking-wider block uppercase">
+                        BAG TAG: {currentBagTag}
+                      </span>
+                      <span className="text-xs font-bold text-slate-300 block uppercase tracking-wide">
+                        BAG {activePreviewPage} OF {previewBagsCount} TOTAL BAGS
+                      </span>
+                    </div>
+
+                    {/* SLIP FIELDS TABLE */}
+                    <div className="space-y-2.5 text-xs sm:text-sm pt-1">
+                      <div className="flex justify-between items-start pb-2 border-b border-slate-100">
+                        <span className="font-bold text-slate-600">Invoice / Order #:</span>
+                        <span className="font-black text-indigo-600 text-sm tracking-wide">SO-{preview3InchOrder.order_number}</span>
+                      </div>
+
+                      <div className="flex justify-between items-start pb-2 border-b border-slate-100">
+                        <span className="font-bold text-slate-600">Customer Name:</span>
+                        <span className="font-bold text-slate-900 text-right max-w-[200px] truncate">
+                          {customerName}
+                          {customerPhone ? <span className="block text-xs font-normal text-slate-500">{customerPhone}</span> : null}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                        <span className="font-bold text-slate-600">Balance Payment:</span>
+                        {balanceDue > 0 ? (
+                          <span className="font-black text-rose-600 bg-rose-50 px-2 py-1 rounded-lg border border-rose-200">
+                            ₹{balanceDue.toLocaleString()} (UNPAID)
+                          </span>
+                        ) : (
+                          <span className="font-black text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200">
+                            ₹0 (PAID IN FULL)
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex justify-between items-start pb-2 border-b border-slate-100">
+                        <span className="font-bold text-slate-600">Storage Location:</span>
+                        <span className="font-black text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 text-right max-w-[200px] truncate">
+                          {storageLocationStr}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                        <span className="font-bold text-slate-600">Count of Bags:</span>
+                        <span className="font-black text-slate-900">
+                          {previewBagsCount} Bag(s)
+                        </span>
+                      </div>
+
+                      <div className="space-y-1 pb-2 border-b border-slate-100">
+                        <span className="font-bold text-slate-600 block">Instructions / Notes:</span>
+                        <p className="text-xs text-slate-700 font-sans leading-snug bg-slate-50 p-2 rounded-xl border border-slate-200">
+                          {notesStr}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* ITEMS SUMMARY */}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
+                        ORDER ITEMS SUMMARY:
+                      </span>
+                      <div className="space-y-1 text-xs">
+                        {(preview3InchOrder.items || []).slice(0, 6).map((it, idx) => (
+                          <div key={idx} className="flex justify-between text-slate-800">
+                            <span className="truncate max-w-[260px]">• {it.product_name || 'Item'}</span>
+                            <span className="font-bold shrink-0">x {it.qty}</span>
+                          </div>
+                        ))}
+                        {(preview3InchOrder.items || []).length > 6 && (
+                          <p className="text-xs text-slate-400 italic">
+                            ... plus {(preview3InchOrder.items || []).length - 6} additional line items
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* FOOTER WATERMARK */}
+                    <div className="pt-3 border-t border-dashed border-slate-300 text-center text-xs text-slate-400 italic">
+                      Printed: {new Date().toLocaleString()} • Tag {currentBagTag}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
+              <button
+                type="button"
+                onClick={() => setPreview3InchOrder(null)}
+                className="px-5 py-2.5 text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              >
+                Close Preview
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  handleDownload3InchThermalPdf(preview3InchOrder, previewBagsCount);
+                  setPreview3InchOrder(null);
+                }}
+                className="px-6 py-2.5 text-xs sm:text-sm font-black bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+              >
+                <Printer size={18} />
+                <span>Download PDF ({previewBagsCount} Bag Page{previewBagsCount > 1 ? 's' : ''})</span>
+              </button>
+            </div>
+
           </div>
         </div>
       )}

@@ -392,8 +392,12 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(openAddModalInitially && !selectedOrderIdInitially);
   const [invoiceToDelete, setInvoiceToDelete] = useState<{id: string, orderNumber: string} | null>(null);
+  const [isDeletingInvoice, setIsDeletingInvoice] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState(0);
   const [invoiceToEdit, setInvoiceToEdit] = useState<SalesOrder | null>(null);
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<SalesOrder | null>(null);
+  const [actionLoading, setActionLoading] = useState<'pdf' | '3inch' | 'edit' | 'delete' | 'close' | 'preview' | null>(null);
+  const [actionProgress, setActionProgress] = useState<number>(0);
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<SalesOrder | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -764,6 +768,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setCustomDiscountAmount('');
     setDiscountType('Percentage');
     setAdditionalCharges('');
+    setDeliveryCharges('');
     setAdditionalChargeType('Delivery');
     setOrderItems([]);
     setIsNewCustomerSelected(false);
@@ -1226,18 +1231,21 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                       dbStore.getCustomers(businessId).find(c => c.id === selectedCustomerId) || 
                       (dbStore as any).cache?.customers?.find((c: any) => c.id === selectedCustomerId);
          if (cObj) {
-            finalCustomerName = cObj.name || selectedCustomerName.trim();
+            finalCustomerName = selectedCustomerName.trim() || cObj.name;
             finalCustomerArea = selectedArea || (cObj.area && cObj.area !== 'Other' ? cObj.area : 'Dahisar');
-            // Save updated customer contact & addresses if changed inline
-            if (selectedCustomerPhone.trim() || selectedCustomerAddress.trim() || selectedCustomerShippingAddress.trim() || selectedPincode.trim() || finalCustomerArea) {
-              dbStore.updateCustomer(cObj.id, {
-                phone: selectedCustomerPhone.trim() || cObj.phone,
-                billing_address: selectedCustomerAddress.trim() || cObj.billing_address,
-                shipping_address: isSameShippingAddress ? (selectedCustomerAddress.trim() || cObj.billing_address) : (selectedCustomerShippingAddress.trim() || cObj.shipping_address),
-                pin_code: selectedPincode.trim() || cObj.pin_code,
-                area: finalCustomerArea
-              });
-            }
+            const updatedBilling = selectedCustomerAddress.trim() || cObj.billing_address;
+            const updatedShipping = isSameShippingAddress ? updatedBilling : (selectedCustomerShippingAddress.trim() || cObj.shipping_address || updatedBilling);
+            
+            // Save updated customer details directly to customer profile
+            dbStore.updateCustomer(cObj.id, {
+              name: finalCustomerName,
+              phone: selectedCustomerPhone.trim() || cObj.phone,
+              billing_address: updatedBilling,
+              shipping_address: updatedShipping,
+              pin_code: selectedPincode.trim() || cObj.pin_code,
+              area: finalCustomerArea,
+              ...(deliveryType ? { preferred_delivery_mode: deliveryType } as any : {})
+            });
          } else if (selectedCustomerName && selectedCustomerName.trim() !== 'Walk-in Customer') {
             finalCustomerName = selectedCustomerName.trim();
             finalCustomerArea = selectedArea || 'Dahisar';
@@ -1346,9 +1354,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
           discount_amount: calculatedDiscount,
+          special_discount_amount: calculatedDiscount,
           discount_percentage: calculatedTotals.discountPercentage,
           additional_charges: Number(additionalCharges) || 0,
           delivery_charges: Number(deliveryCharges) || 0,
+          delivery_charge: Number(deliveryCharges) || 0,
           additional_charges_type: additionalChargeType,
           points_redeemed: actualRedeem,
           items: cleanItems,
@@ -1425,9 +1435,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           festive_booking: isFestiveBooking,
           total_amount: finalAmount,
           discount_amount: calculatedDiscount,
+          special_discount_amount: calculatedDiscount,
           discount_percentage: calculatedTotals.discountPercentage,
           additional_charges: Number(additionalCharges) || 0,
           delivery_charges: Number(deliveryCharges) || 0,
+          delivery_charge: Number(deliveryCharges) || 0,
           additional_charges_type: additionalChargeType,
           points_redeemed: actualRedeem,
           qr_code_data: `${orderNum}|${finalCustomerId}|${finalCustomerName}|${cleanItems.length} items`,
@@ -1566,16 +1578,32 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   };
 
   const confirmDeleteInvoice = async () => {
-    if (!invoiceToDelete) return;
+    if (!invoiceToDelete || isDeletingInvoice) return;
+    setIsDeletingInvoice(true);
+    setDeleteProgress(15);
     try {
+      setDeleteProgress(35);
+      await new Promise(r => setTimeout(r, 180));
+
+      setDeleteProgress(65);
       await dbStore.deleteSalesOrder(invoiceToDelete.id);
+      
+      setDeleteProgress(90);
+      await new Promise(r => setTimeout(r, 180));
+
+      setDeleteProgress(100);
       dbStore.logActivity(user.id, user.name, user.role, 'Delete Invoice', `Permanently deleted invoice ${invoiceToDelete.orderNumber}`, businessId);
       triggerToast(`Invoice ${invoiceToDelete.orderNumber} permanently deleted from database.`, 'success');
+      
       setOrders(dbStore.getSalesOrders(businessId));
       setViewingInvoiceOrder(null);
+      setSelectedOrderForDetail(null);
       setInvoiceToDelete(null);
     } catch (err: any) {
       triggerToast(err.message || 'Failed to delete invoice.', 'error');
+    } finally {
+      setIsDeletingInvoice(false);
+      setDeleteProgress(0);
     }
   };
 
@@ -1583,7 +1611,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     triggerToast(`Sent Bill of Supply for "${order.order_number}" to system print spooler.`, 'success');
     dbStore.logActivity(user.id, user.name, user.role, 'Print Invoice', `Printed Bill of Supply for ${order.order_number}`, businessId);
 
-    const cust = customers.find(c => c.id === order.customer_id);
+    const cust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
     const allProds = [
       ...(Array.isArray(products) ? products : []),
@@ -1630,6 +1658,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   };
 
   const handleDownload3InchBill = async (order: SalesOrder) => {
+    setActionLoading('3inch');
+    setActionProgress(25);
+    await new Promise(r => setTimeout(r, 80));
+    setActionProgress(65);
+
     const cust = customers.find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
     const allProds = [
@@ -1639,6 +1672,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     ];
     const fullHtml = await generate3InchBillHTML(order, cust, businessObj, allProds);
 
+    setActionProgress(85);
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     
@@ -1663,12 +1697,22 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       }, 500);
     }
 
+    setActionProgress(100);
+    await new Promise(r => setTimeout(r, 100));
+    setActionLoading(null);
+    setActionProgress(0);
+
     triggerToast(`3-Inch Bill for "${order.order_number}" downloaded & opened for printing!`, 'success');
     dbStore.logActivity(user.id, user.name, user.role, 'Download 3-Inch Bill', `Downloaded 3-Inch bill for ${order.order_number}`, businessId);
   };
 
   const handleDownloadPDFInvoice = async (order: SalesOrder) => {
-    const cust = customers.find(c => c.id === order.customer_id);
+    setActionLoading('pdf');
+    setActionProgress(25);
+    await new Promise(r => setTimeout(r, 80));
+    setActionProgress(65);
+
+    const cust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
     const businessObj = dbStore.getBusiness(businessId);
     const allProds = [
       ...(Array.isArray(products) ? products : []),
@@ -1677,6 +1721,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     ];
     const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
 
+    setActionProgress(85);
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1686,6 +1731,11 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+
+    setActionProgress(100);
+    await new Promise(r => setTimeout(r, 100));
+    setActionLoading(null);
+    setActionProgress(0);
 
     triggerToast(`Bill of Supply for "${order.order_number}" downloaded & opening print spooler!`, 'success');
     dbStore.logActivity(user.id, user.name, user.role, 'Download Invoice', `Downloaded Bill of Supply for ${order.order_number}`, businessId);
@@ -2269,15 +2319,22 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           }}
           className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
         >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto custom-scrollbar">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-3xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto custom-scrollbar">
             
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
                 <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
                   INVOICE & SPECIFICATIONS
                 </span>
-                <h3 className="text-xl font-black text-slate-900 dark:text-white">
-                  {selectedOrderForDetail.order_number}
+                <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>{selectedOrderForDetail.order_number}</span>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-extrabold ${
+                    selectedOrderForDetail.payment_status === 'Paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
+                    selectedOrderForDetail.payment_status === 'Partial' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
+                    'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                  }`}>
+                    {selectedOrderForDetail.payment_status || 'Unpaid'}
+                  </span>
                 </h3>
               </div>
               <button 
@@ -2314,53 +2371,154 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Items Ordered</span>
                 {(selectedOrderForDetail.items || []).map((it, idx) => {
                   const pObj = products.find(p => p.id === it.product_id);
+                  const itemTotal = (Number(it.selling_price) || 0) * (Number(it.qty) || 1);
                   return (
                     <div key={idx} className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-100 dark:border-slate-800 text-xs">
                       <span className="font-bold text-slate-800 dark:text-slate-200">
-                        {pObj ? pObj.name : `Product ID #${it.product_id}`} × {it.qty}
+                        {pObj ? pObj.name : (it.product_name || `Product ID #${it.product_id}`)} × {it.qty}
                       </span>
-                      <span className="font-black text-slate-900 dark:text-white">
-                        {currencySymbol}{(it.selling_price * it.qty).toLocaleString()}
+                      <span className="font-black text-slate-900 dark:text-white font-mono">
+                        {currencySymbol}{itemTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
                   );
                 })}
               </div>
 
-              {/* Total Summary */}
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Total Payable Amount</span>
-                <span className="text-2xl font-black text-slate-900 dark:text-white">
-                  {currencySymbol}{selectedOrderForDetail.total_amount.toLocaleString()}
-                </span>
-              </div>
+              {/* Detailed Financial & Charges Ledger Breakdown */}
+              {(() => {
+                const itemsList = selectedOrderForDetail.items || [];
+                const taxableSub = itemsList.reduce((sum, i) => sum + ((Number(i.selling_price) || 0) * (Number(i.qty) || 1)), 0);
+                const taxSum = itemsList.reduce((sum, i) => sum + ((Number(i.selling_price) || 0) * (Number(i.qty) || 1) * ((Number(i.gst_rate) || 0) / 100)), 0);
+                const discAmt = Number(selectedOrderForDetail.discount_amount) || Number(selectedOrderForDetail.special_discount_amount) || 0;
+                const delCharges = Number(selectedOrderForDetail.delivery_charges) || Number(selectedOrderForDetail.delivery_charge) || 0;
+                const addCharges = Number(selectedOrderForDetail.additional_charges) || 0;
+                const totalPayable = Number(selectedOrderForDetail.total_amount) || Math.max(0, taxableSub + taxSum - discAmt + delCharges + addCharges);
+                const paidVal = selectedOrderForDetail.payment_status === 'Paid' 
+                  ? Math.max(Number(selectedOrderForDetail.paid_amount) || totalPayable, totalPayable)
+                  : (Number(selectedOrderForDetail.paid_amount) || 0);
+                const remainingBal = Math.max(0, totalPayable - paidVal);
+
+                return (
+                  <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-4 border-2 border-slate-200 dark:border-slate-700 space-y-2.5 text-xs font-mono">
+                    <div className="text-[11px] font-extrabold uppercase text-slate-500 font-sans tracking-wider border-b border-slate-200 dark:border-slate-700 pb-1.5 flex justify-between">
+                      <span>Charges & Settlement Ledger</span>
+                      <span className="text-indigo-600 dark:text-indigo-400">{selectedOrderForDetail.payment_mode || 'Cash'}</span>
+                    </div>
+
+                    <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                      <span>Items Subtotal</span>
+                      <span className="font-bold">{currencySymbol}{taxableSub.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+
+                    {taxSum > 0 && (
+                      <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                        <span>GST / Tax</span>
+                        <span className="font-bold text-indigo-600 dark:text-indigo-400">+{currencySymbol}{taxSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+
+                    {discAmt > 0 && (
+                      <div className="flex justify-between text-rose-600 dark:text-rose-400 font-bold">
+                        <span>Special / Loyalty Discount</span>
+                        <span>-{currencySymbol}{discAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+
+                    {delCharges > 0 && (
+                      <div className="flex justify-between text-sky-600 dark:text-sky-400 font-bold">
+                        <span>Delivery Charges</span>
+                        <span>+{currencySymbol}{delCharges.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+
+                    {addCharges > 0 && (
+                      <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                        <span>Additional Fees</span>
+                        <span>+{currencySymbol}{addCharges.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t-2 border-slate-300 dark:border-slate-600 flex justify-between items-center text-sm font-sans font-black text-slate-900 dark:text-white">
+                      <span>Total Payable Amount</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-mono text-base">
+                        {currencySymbol}{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-1 font-sans">
+                      <span className="text-slate-600 dark:text-slate-300 font-bold">Advance / Part Payment Received</span>
+                      <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                        {currencySymbol}{paidVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between items-center font-sans">
+                      <span className="font-black text-slate-900 dark:text-white">Remaining Balance Due</span>
+                      <span className={`font-mono font-black text-base ${remainingBal > 0 ? 'text-rose-600 dark:text-rose-400 animate-pulse' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        {currencySymbol}{remainingBal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Vertically stacked action buttons matching the attached image */}
             <div className="flex flex-col space-y-2.5 pt-2">
               <button 
-                onClick={() => {
+                disabled={actionLoading === 'preview'}
+                onClick={async () => {
+                  setActionLoading('preview');
+                  setActionProgress(30);
+                  await new Promise(r => setTimeout(r, 80));
+                  setActionProgress(100);
                   setViewingInvoiceOrder(selectedOrderForDetail);
                   setSelectedOrderForDetail(null);
+                  setActionLoading(null);
+                  setActionProgress(0);
                 }}
-                className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                className="relative overflow-hidden w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-xs transition flex flex-col items-center justify-center cursor-pointer shadow-md"
               >
-                <Printer size={16} /> Preview & Print Tax Invoice
+                <div className="flex items-center gap-2 z-10">
+                  {actionLoading === 'preview' ? <Loader2 size={16} className="animate-spin text-slate-950" /> : <Printer size={16} />}
+                  <span>{actionLoading === 'preview' ? `Opening Preview (${actionProgress}%)...` : 'Preview & Print Tax Invoice'}</span>
+                </div>
+                {actionLoading === 'preview' && (
+                  <div className="absolute bottom-0 left-0 h-1 bg-slate-950/60 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
+                )}
               </button>
+
               <button
+                disabled={actionLoading === '3inch'}
                 onClick={() => handleDownload3InchBill(selectedOrderForDetail)}
-                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                className="relative overflow-hidden w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-xs transition flex flex-col items-center justify-center cursor-pointer shadow-md"
                 title="Download 3-Inch Thermal Bill"
               >
-                <Printer size={16} /> 3" Bill
+                <div className="flex items-center gap-2 z-10">
+                  {actionLoading === '3inch' ? <Loader2 size={16} className="animate-spin text-amber-300" /> : <Printer size={16} />}
+                  <span>{actionLoading === '3inch' ? `Generating 3" Bill (${actionProgress}%)...` : '3" Bill'}</span>
+                </div>
+                {actionLoading === '3inch' && (
+                  <div className="absolute bottom-0 left-0 h-1 bg-amber-400 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
+                )}
               </button>
+
               <button
+                disabled={actionLoading === 'pdf'}
                 onClick={() => handleDownloadPDFInvoice(selectedOrderForDetail)}
-                className="w-full py-3.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white rounded-2xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                className="relative overflow-hidden w-full py-3.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white rounded-2xl font-black text-xs transition flex flex-col items-center justify-center cursor-pointer shadow-md"
                 title="Save & Download Tax Invoice PDF"
               >
-                <Download size={16} /> Save PDF
+                <div className="flex items-center gap-2 z-10">
+                  {actionLoading === 'pdf' ? <Loader2 size={16} className="animate-spin text-emerald-400" /> : <Download size={16} />}
+                  <span>{actionLoading === 'pdf' ? `Saving & Downloading PDF (${actionProgress}%)...` : 'Save PDF'}</span>
+                </div>
+                {actionLoading === 'pdf' && (
+                  <div className="absolute bottom-0 left-0 h-1 bg-emerald-400 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
+                )}
               </button>
+
               {selectedOrderForDetail.payment_status !== 'Paid' && (selectedOrderForDetail.total_amount - (selectedOrderForDetail.paid_amount || 0)) > 0.01 && (
                 <button 
                   onClick={() => {
@@ -2390,7 +2548,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
 
               <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 mt-2">
                 <button
-                  onClick={() => {
+                  disabled={actionLoading === 'edit' || selectedOrderForDetail.status === 'Dispatched'}
+                  onClick={async () => {
                     if (selectedOrderForDetail.status === 'Dispatched') {
                       triggerToast('Cannot edit an order that is out for delivery (Dispatched).', 'error');
                       return;
@@ -2398,21 +2557,47 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
                     if (selectedOrderForDetail.delivery_status === 'Delivered') {
                       triggerToast('Note: This order is already delivered. Any changes will update the inventory records.', 'info');
                     }
+                    setActionLoading('edit');
+                    setActionProgress(40);
+                    await new Promise(r => setTimeout(r, 80));
+                    setActionProgress(100);
                     setInvoiceToEdit(selectedOrderForDetail);
                     setSelectedOrderForDetail(null);
+                    setActionLoading(null);
+                    setActionProgress(0);
                   }}
-                  className={`w-full py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${selectedOrderForDetail.status === 'Dispatched' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/40 dark:hover:bg-sky-900/60 dark:text-sky-300 cursor-pointer'}`}
+                  className={`relative overflow-hidden w-full py-3 rounded-xl font-bold text-xs transition flex flex-col items-center justify-center ${selectedOrderForDetail.status === 'Dispatched' ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' : 'bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/40 dark:hover:bg-sky-900/60 dark:text-sky-300 cursor-pointer'}`}
                 >
-                  <Edit size={14} /> Edit / Update
+                  <div className="flex items-center gap-1.5 z-10">
+                    {actionLoading === 'edit' ? <Loader2 size={14} className="animate-spin text-sky-600" /> : <Edit size={14} />}
+                    <span>{actionLoading === 'edit' ? `Loading (${actionProgress}%)...` : 'Edit / Update'}</span>
+                  </div>
+                  {actionLoading === 'edit' && (
+                    <div className="absolute bottom-0 left-0 h-1 bg-sky-500 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
+                  )}
                 </button>
+
                 <button
-                  onClick={() => {
+                  disabled={actionLoading === 'delete'}
+                  onClick={async () => {
+                    setActionLoading('delete');
+                    setActionProgress(30);
+                    await new Promise(r => setTimeout(r, 80));
+                    setActionProgress(100);
                     setInvoiceToDelete({ id: selectedOrderForDetail.id, orderNumber: selectedOrderForDetail.order_number });
                     setSelectedOrderForDetail(null);
+                    setActionLoading(null);
+                    setActionProgress(0);
                   }}
-                  className="w-full py-3 bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="relative overflow-hidden w-full py-3 bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded-xl font-bold text-xs transition flex flex-col items-center justify-center cursor-pointer"
                 >
-                  <Trash2 size={14} /> Delete Invoice
+                  <div className="flex items-center gap-1.5 z-10">
+                    {actionLoading === 'delete' ? <Loader2 size={14} className="animate-spin text-rose-600" /> : <Trash2 size={14} />}
+                    <span>{actionLoading === 'delete' ? `Loading (${actionProgress}%)...` : 'Delete Invoice'}</span>
+                  </div>
+                  {actionLoading === 'delete' && (
+                    <div className="absolute bottom-0 left-0 h-1 bg-rose-600 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
+                  )}
                 </button>
               </div>
             </div>
@@ -2696,26 +2881,70 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       {/* Delete Confirmation Modal */}
       {invoiceToDelete && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-150">
-            <div className="w-16 h-16 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Trash2 size={32} />
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-150 border border-slate-200 dark:border-slate-800">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 transition-colors ${
+              isDeletingInvoice 
+                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600' 
+                : 'bg-rose-100 dark:bg-rose-900/30 text-rose-600'
+            }`}>
+              {isDeletingInvoice ? (
+                <Loader2 size={32} className="animate-spin text-amber-600 dark:text-amber-400" />
+              ) : (
+                <Trash2 size={32} />
+              )}
             </div>
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Delete Invoice</h3>
-            <p className="text-[13px] text-slate-500 mb-6">
-              Are you sure you want to delete invoice <strong>{invoiceToDelete.orderNumber}</strong>? This action cannot be undone.
+            
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">
+              {isDeletingInvoice ? 'Deleting Invoice...' : 'Delete Invoice'}
+            </h3>
+            
+            <p className="text-[13px] text-slate-500 mb-3">
+              {isDeletingInvoice ? (
+                <span>Reversing inventory & customer debt for invoice <strong>{invoiceToDelete.orderNumber}</strong>...</span>
+              ) : (
+                <span>Are you sure you want to delete invoice <strong>{invoiceToDelete.orderNumber}</strong>? This action cannot be undone.</span>
+              )}
             </p>
-            <div className="flex items-center gap-3">
+
+            {/* Progress Bar */}
+            {isDeletingInvoice && (
+              <div className="space-y-1.5 my-4 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-amber-500 via-rose-500 to-rose-600 h-full rounded-full transition-all duration-200 ease-out"
+                    style={{ width: `${deleteProgress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-slate-400 font-mono font-bold pt-0.5">
+                  <span>Progress</span>
+                  <span>{deleteProgress}%</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 mt-4">
               <button
+                type="button"
+                disabled={isDeletingInvoice}
                 onClick={() => setInvoiceToDelete(null)}
-                className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[13px] rounded-xl transition cursor-pointer"
+                className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[13px] rounded-xl transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 No, Cancel
               </button>
               <button
+                type="button"
+                disabled={isDeletingInvoice}
                 onClick={confirmDeleteInvoice}
-                className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[13px] rounded-xl shadow-md transition cursor-pointer"
+                className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[13px] rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Yes, Delete
+                {isDeletingInvoice ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Yes, Delete</span>
+                )}
               </button>
             </div>
           </div>

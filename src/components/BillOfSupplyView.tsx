@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { SalesOrder, Customer, Business, Product } from '../types/erp';
-import { numberToWordsIndian } from '../utils/invoiceTemplate';
+import { numberToWordsIndian, buildCompleteShippingAddress, buildCompleteBillingAddress } from '../utils/invoiceTemplate';
 import { buildUpiPayString, buildBillVerificationString, generateQRCodeDataUrl } from '../utils/qrCode';
 import { formatOrderTime } from '../utils/formatters';
 import { calculateOrderSavings } from '../utils/pricing';
@@ -50,29 +50,67 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
       }
     } catch(e) {}
   }
-  const subTotal = items.reduce((sum, it) => sum + ((Number(it.qty) || 1) * (Number(it.selling_price) || 0)), 0);
-  const discount = order.discount_amount || 0;
-  
-  const additionalCharges = order.additional_charges || 0;
-  const deliveryCharges = order.delivery_charges || 0;
-  let legacyDelivery = 0;
-  if (additionalCharges === 0 && deliveryCharges === 0) {
-    legacyDelivery = (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
-  }
-  const totalAmount = order.total_amount || (subTotal + additionalCharges + deliveryCharges + legacyDelivery - discount);
-  const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
+  const subTotal = items.reduce((sum, it) => {
+    const p = allAvailableProds.find(prod => 
+      prod.id === it.product_id || 
+      ((it as any).barcode && prod.barcode === (it as any).barcode) || 
+      ((it as any).sku && prod.sku === (it as any).sku) || 
+      ((it as any).product_name && prod.name === (it as any).product_name)
+    );
+    const qty = Math.max(1, Number(it.qty) || Number((it as any).quantity) || 1);
+    const rate = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
+    return sum + (qty * rate);
+  }, 0);
+
+  const taxVal = items.reduce((sum, it) => {
+    const p = allAvailableProds.find(prod => 
+      prod.id === it.product_id || 
+      ((it as any).barcode && prod.barcode === (it as any).barcode) || 
+      ((it as any).sku && prod.sku === (it as any).sku) || 
+      ((it as any).product_name && prod.name === (it as any).product_name)
+    );
+    const qty = Math.max(1, Number(it.qty) || Number((it as any).quantity) || 1);
+    const rate = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
+    const gst = Number(it.gst_rate) || (p ? Number(p.gst_rate) : 0);
+    return sum + (qty * rate * (gst / 100));
+  }, 0);
+
+  const discount = Number(order.discount_amount) || Number((order as any).discount) || Number(order.special_discount_amount) || 0;
+  const additionalCharges = Number(order.additional_charges) || 0;
+  const deliveryCharges = Number(order.delivery_charges) || Number(order.delivery_charge) || 0;
+
+  const computedTotal = Math.max(0, subTotal + taxVal + additionalCharges + deliveryCharges - discount);
+  const totalAmount = (typeof order.total_amount === 'number' && order.total_amount > 0) ? order.total_amount : computedTotal;
+  const totalQty = items.reduce((sum, it) => sum + (Number(it.qty) || Number((it as any).quantity) || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
 
   const rawPaid = order.paid_amount ?? (order as any).paidAmount ?? (order as any).advance_amount ?? (order as any).advance;
   const numPaid = typeof rawPaid === 'number' ? rawPaid : (typeof rawPaid === 'string' && rawPaid.trim() !== '' && !isNaN(Number(rawPaid)) ? Number(rawPaid) : undefined);
-  const paidVal = numPaid !== undefined ? numPaid : (order.payment_status === 'Paid' ? totalAmount : 0);
-  const received = order.payment_status === 'Paid' ? Math.max(paidVal, totalAmount) : paidVal;
+  
+  let received = 0;
+  if (order.payment_status === 'Paid') {
+    received = Math.max(numPaid !== undefined ? numPaid : totalAmount, totalAmount);
+  } else if (numPaid !== undefined && numPaid > 0) {
+    received = Math.min(numPaid, totalAmount);
+  } else {
+    received = 0;
+  }
   const balance = Math.max(0, totalAmount - received);
   const paymentMode = order.payment_mode || (order.payment_status === 'Paid' ? 'Online / Paid' : 'Credit / Pending');
 
-  const custName = customer?.name || order.customer_name || 'SMITA NAYAK';
-  const custAddr = customer?.billing_address || (order.area ? `${order.area} Zone, Mumbai` : 'ARYAVARTA B 406');
-  const custPhone = customer?.phone || (order as any).phone || '8779792825';
+  let cust = customer;
+  if (!cust && order.customer_id) {
+    const allCusts = dbStore.getCustomers(order.business_id || businessObj?.id || '');
+    cust = allCusts.find(c => c.id === order.customer_id);
+  }
+
+  const custName = cust?.name || order.customer_name || 'Customer';
+  const custPhone = cust?.phone || (order as any).phone || (order as any).customer_phone || '';
+
+  const billingInfo = buildCompleteBillingAddress(order, cust);
+  const shippingInfo = buildCompleteShippingAddress(order, cust);
+  const custAddr = billingInfo.fullAddress;
+  const custShippingAddr = shippingInfo.fullAddress;
 
   const bName = businessObj?.name || 'KOKANASTHA';
   const bAddress = businessObj?.billing_address || 'SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLABH ROAD ASHOKVAN DAHISAR E MUMBAI 68, Ph. no.: 9820769697 Email: contact@kokanastha.in';
@@ -171,16 +209,33 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
         Commercial Tax Invoice / Bill of Supply
       </div>
 
-      {/* Metadata 3-col Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5 text-xs sm:text-[12.5px] bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 print:bg-white print:border-none print:p-0">
+      {/* Metadata 4-col Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5 text-xs sm:text-[12px] bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 print:bg-white print:border-none print:p-0">
         <div>
           <div className="font-extrabold text-slate-900 border-b border-slate-300 pb-1 mb-1.5 uppercase text-[10px] tracking-wide">
-            Bill To
+            Bill To (Billing Address)
           </div>
           <div className="text-slate-800 space-y-0.5">
             <strong className="block text-slate-950 font-bold text-sm">{custName}</strong>
-            <span className="block text-slate-600">{custAddr}</span>
-            <span className="block text-slate-600 mt-1">Contact No. : <strong className="font-mono text-slate-900">{custPhone}</strong></span>
+            <span className="block text-slate-600 break-words leading-relaxed">{custAddr}</span>
+            <span className="block text-slate-600 mt-1">Contact No. : <strong className="font-mono text-slate-900">{custPhone || 'N/A'}</strong></span>
+          </div>
+        </div>
+
+        <div>
+          <div className="font-extrabold text-slate-900 border-b border-slate-300 pb-1 mb-1.5 uppercase text-[10px] tracking-wide">
+            Ship To (Shipping Address)
+          </div>
+          <div className="text-slate-800 space-y-0.5">
+            <strong className="block text-slate-950 font-bold text-sm">{custName}</strong>
+            <span className="block text-slate-800 break-words leading-relaxed">{shippingInfo.streetAddress || 'Shipping Address not specified'}</span>
+            {(shippingInfo.zone || shippingInfo.pincode) && (
+              <span className="block text-slate-600 text-[11px] pt-0.5">
+                {shippingInfo.zone && <>Zone: <strong className="text-slate-900">{shippingInfo.zone}</strong></>}
+                {shippingInfo.zone && shippingInfo.pincode && <span className="mx-1.5 text-slate-400">•</span>}
+                {shippingInfo.pincode && <>PIN Code: <strong className="text-slate-900 font-mono">{shippingInfo.pincode}</strong></>}
+              </span>
+            )}
           </div>
         </div>
 
@@ -191,7 +246,7 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
           <div className="text-slate-700 space-y-1">
             <div><span className="text-slate-500">Transport:</span> <strong>{order.delivery_type && order.delivery_type.toLowerCase().includes('courier') ? 'Global Courier' : 'Direct Express'}</strong></div>
             <div><span className="text-slate-500">Delivery Date:</span> {order.delivery_date || order.order_date}</div>
-            <div><span className="text-slate-500">Location:</span> {order.area || 'Dahisar'}</div>
+            <div><span className="text-slate-500">Location:</span> {shippingInfo.zone || order.area || 'Dahisar'}</div>
             <div><span className="text-slate-500">Dispatch Type:</span> {order.delivery_type || 'Local Dispatch'}</div>
           </div>
         </div>
@@ -366,6 +421,12 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               <span className="font-sans text-slate-600">Sub Total</span>
               <span>{currencySymbol} {subTotal.toFixed(2)}</span>
             </div>
+            {taxVal > 0 && (
+              <div className="flex justify-between font-mono text-indigo-600 text-xs sm:text-[13px]">
+                <span className="font-sans">Tax (GST)</span>
+                <span>+{currencySymbol} {taxVal.toFixed(2)}</span>
+              </div>
+            )}
             {discount > 0 && (
               <div className="flex justify-between font-mono text-rose-600 text-xs sm:text-[13px]">
                 <span className="font-sans">Discount {order.discount_percentage ? `(${order.discount_percentage}%)` : ''}</span>
@@ -382,12 +443,6 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               <div className="flex justify-between font-mono text-emerald-800 font-medium text-xs px-1">
                 <span className="font-sans text-slate-500">Remaining Loyalty Points</span>
                 <span>{(customer.loyalty_points || 0).toLocaleString()} Pts</span>
-              </div>
-            )}
-            {legacyDelivery > 0 && (
-              <div className="flex justify-between font-mono text-slate-600 text-xs sm:text-[13px]">
-                <span className="font-sans uppercase">DELIVERY:</span>
-                <span>{currencySymbol} {legacyDelivery.toFixed(2)}</span>
               </div>
             )}
             {deliveryCharges > 0 && (
@@ -433,12 +488,18 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
         <h2 className="font-black text-sm uppercase text-slate-950 m-0">{bName}</h2>
       </div>
 
-      {/* Acknowledgement 3-col Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+      {/* Acknowledgement 4-col Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
         <div>
-          <strong className="block font-bold text-slate-900">Invoice To:</strong>
+          <strong className="block font-bold text-slate-900">Bill To:</strong>
           <span className="block font-bold text-slate-950">{custName}</span>
-          <span className="block text-slate-600">{custAddr}</span>
+          <span className="block text-slate-600 text-[11px] leading-relaxed break-words">{custAddr}</span>
+        </div>
+
+        <div>
+          <strong className="block font-bold text-slate-900">Ship To:</strong>
+          <span className="block font-bold text-slate-950">{custName}</span>
+          <span className="block text-slate-600 text-[11px] leading-relaxed break-words">{shippingInfo.fullAddress}</span>
         </div>
 
         <div>

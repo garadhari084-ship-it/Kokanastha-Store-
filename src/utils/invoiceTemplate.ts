@@ -27,12 +27,164 @@ export function numberToWordsIndian(amount: number): string {
   return `${words} Rupees only`;
 }
 
+/**
+ * Builds the complete shipping address consisting of:
+ * [shipping address field] + [Zone] + [Pin code]
+ * As requested: shipping address is shipping address field + Zone + Pine code
+ */
+export function buildCompleteShippingAddress(
+  order: Partial<SalesOrder> | any = {},
+  cust?: Partial<Customer> | any | null
+): {
+  fullAddress: string;
+  streetAddress: string;
+  zone: string;
+  pincode: string;
+} {
+  // 1. Street / Shipping Address field
+  const rawStreet = (
+    order?.shipping_address ||
+    order?.delivery_address ||
+    cust?.shipping_address ||
+    order?.billing_address ||
+    order?.address ||
+    cust?.billing_address ||
+    cust?.address ||
+    ''
+  ).toString().trim();
+
+  // 2. Zone
+  const rawZone = (order?.area || cust?.area || '').toString().replace(/ Resident$/i, '').trim();
+  const zone = (rawZone && rawZone !== 'Other' && rawZone !== 'N/A' && rawZone !== 'Standard') ? rawZone : '';
+
+  // 3. Pin code (Pine code)
+  const rawPin = (
+    order?.pin_code ||
+    order?.pincode ||
+    order?.postal_code ||
+    order?.pin ||
+    cust?.pin_code ||
+    cust?.pincode ||
+    cust?.pin ||
+    ''
+  ).toString().trim();
+  const pincode = rawPin;
+
+  // Build combined address: shipping address field + Zone + Pine code
+  const streetLower = rawStreet.toLowerCase();
+  const zoneAlreadyPresent = zone ? streetLower.includes(zone.toLowerCase()) : true;
+  const pinAlreadyPresent = pincode ? streetLower.includes(pincode.toLowerCase()) : true;
+
+  let fullAddress = rawStreet;
+
+  if (zone && !zoneAlreadyPresent) {
+    if (fullAddress) {
+      fullAddress += `, ${zone}`;
+    } else {
+      fullAddress = zone;
+    }
+  }
+
+  if (pincode && !pinAlreadyPresent) {
+    if (fullAddress) {
+      fullAddress += ` - ${pincode}`;
+    } else {
+      fullAddress = `PIN: ${pincode}`;
+    }
+  }
+
+  if (!fullAddress) {
+    fullAddress = 'Shipping Address not specified';
+  }
+
+  return {
+    fullAddress,
+    streetAddress: rawStreet,
+    zone,
+    pincode
+  };
+}
+
+/**
+ * Builds the complete billing address with optional pin code
+ */
+export function buildCompleteBillingAddress(
+  order: Partial<SalesOrder> | any = {},
+  cust?: Partial<Customer> | any | null
+): {
+  fullAddress: string;
+  streetAddress: string;
+  zone: string;
+  pincode: string;
+} {
+  const rawStreet = (
+    order?.billing_address ||
+    cust?.billing_address ||
+    order?.address ||
+    cust?.address ||
+    ''
+  ).toString().trim();
+
+  const rawZone = (order?.area || cust?.area || '').toString().replace(/ Resident$/i, '').trim();
+  const zone = (rawZone && rawZone !== 'Other' && rawZone !== 'N/A' && rawZone !== 'Standard') ? rawZone : '';
+
+  const rawPin = (
+    order?.pin_code ||
+    order?.pincode ||
+    cust?.pin_code ||
+    cust?.pincode ||
+    ''
+  ).toString().trim();
+  const pincode = rawPin;
+
+  const streetLower = rawStreet.toLowerCase();
+  const zoneAlreadyPresent = zone ? streetLower.includes(zone.toLowerCase()) : false;
+  const pinAlreadyPresent = pincode ? streetLower.includes(pincode.toLowerCase()) : false;
+
+  let fullAddress = rawStreet;
+
+  if (zone && !zoneAlreadyPresent) {
+    if (fullAddress) {
+      fullAddress += `, ${zone}`;
+    } else {
+      fullAddress = zone;
+    }
+  }
+
+  if (pincode && !pinAlreadyPresent) {
+    if (fullAddress) {
+      fullAddress += ` - ${pincode}`;
+    } else {
+      fullAddress = `PIN: ${pincode}`;
+    }
+  }
+
+  if (!fullAddress) {
+    fullAddress = zone ? `${zone} Zone, Mumbai` : 'Billing Address not specified';
+  }
+
+  return {
+    fullAddress,
+    streetAddress: rawStreet,
+    zone,
+    pincode
+  };
+}
+
 export async function generateBillOfSupplyHTML(
   order: SalesOrder,
   cust?: Customer,
   businessObj?: Business,
   products: Product[] = []
 ): Promise<string> {
+  if (!cust && order.customer_id) {
+    const allCusts = dbStore.getCustomers(order.business_id || businessObj?.id || '');
+    cust = allCusts.find(c => c.id === order.customer_id);
+  }
+  if (!businessObj && order.business_id) {
+    businessObj = dbStore.getBusiness(order.business_id);
+  }
+
   const allAvailableProds = [
     ...(Array.isArray(products) ? products : []),
     ...dbStore.getProducts(order.business_id || businessObj?.id || ''),
@@ -60,17 +212,38 @@ export async function generateBillOfSupplyHTML(
     } catch(e) {}
   }
   const logoBase64 = businessObj?.logo_url ? await urlToBase64(businessObj.logo_url) : "";
-  const subTotal = items.reduce((sum, it) => sum + ((Number(it.qty) || 1) * (Number(it.selling_price) || 0)), 0);
-  const discount = order.discount_amount || 0;
-  // If there's a discount, the logic for delivery/tax needs to be careful.
-  const additionalCharges = order.additional_charges || 0;
-  const deliveryCharges = order.delivery_charges || 0;
-  let legacyDelivery = 0;
-  if (additionalCharges === 0 && deliveryCharges === 0) {
-    legacyDelivery = (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
-  }
-  const totalAmount = order.total_amount || (subTotal + additionalCharges + deliveryCharges + legacyDelivery - discount);
-  const totalQty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
+  const subTotal = items.reduce((sum, it) => {
+    const p = allAvailableProds.find(prod => 
+      prod.id === it.product_id || 
+      ((it as any).barcode && prod.barcode === (it as any).barcode) || 
+      ((it as any).sku && prod.sku === (it as any).sku) || 
+      ((it as any).product_name && prod.name === (it as any).product_name)
+    );
+    const qty = Math.max(1, Number(it.qty) || Number((it as any).quantity) || 1);
+    const rate = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
+    return sum + (qty * rate);
+  }, 0);
+
+  const taxVal = items.reduce((sum, it) => {
+    const p = allAvailableProds.find(prod => 
+      prod.id === it.product_id || 
+      ((it as any).barcode && prod.barcode === (it as any).barcode) || 
+      ((it as any).sku && prod.sku === (it as any).sku) || 
+      ((it as any).product_name && prod.name === (it as any).product_name)
+    );
+    const qty = Math.max(1, Number(it.qty) || Number((it as any).quantity) || 1);
+    const rate = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
+    const gst = Number(it.gst_rate) || (p ? Number(p.gst_rate) : 0);
+    return sum + (qty * rate * (gst / 100));
+  }, 0);
+
+  const discount = Number(order.discount_amount) || Number((order as any).discount) || Number(order.special_discount_amount) || 0;
+  const additionalCharges = Number(order.additional_charges) || 0;
+  const deliveryCharges = Number(order.delivery_charges) || Number(order.delivery_charge) || 0;
+
+  const computedTotal = Math.max(0, subTotal + taxVal + additionalCharges + deliveryCharges - discount);
+  const totalAmount = computedTotal;
+  const totalQty = items.reduce((sum, it) => sum + (Number(it.qty) || Number((it as any).quantity) || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
 
   const savingsData = calculateOrderSavings(items, allAvailableProds);
@@ -102,9 +275,15 @@ export async function generateBillOfSupplyHTML(
 
   const rawPaid = order.paid_amount ?? (order as any).paidAmount ?? (order as any).advance_amount ?? (order as any).advance;
   const numPaid = typeof rawPaid === 'number' ? rawPaid : (typeof rawPaid === 'string' && rawPaid.trim() !== '' && !isNaN(Number(rawPaid)) ? Number(rawPaid) : undefined);
-  const paidVal = numPaid !== undefined ? numPaid : (order.payment_status === 'Paid' ? totalAmount : 0);
-
-  const received = order.payment_status === 'Paid' ? Math.max(paidVal, totalAmount) : paidVal;
+  
+  let received = 0;
+  if (order.payment_status === 'Paid') {
+    received = Math.max(numPaid !== undefined ? numPaid : totalAmount, totalAmount);
+  } else if (numPaid !== undefined && numPaid > 0) {
+    received = Math.min(numPaid, totalAmount);
+  } else {
+    received = 0;
+  }
   const balance = Math.max(0, totalAmount - received);
 
   let paymentMode = order.payment_mode || 'Cash';
@@ -116,9 +295,13 @@ export async function generateBillOfSupplyHTML(
     paymentMode = `${order.payment_mode || 'Cash'} (Unpaid / Credit)`;
   }
 
-  const custName = cust?.name || order.customer_name || 'SMITA NAYAK';
-  const custAddr = cust?.billing_address || (order.area ? `${order.area} Zone, Mumbai` : 'ARYAVARTA B 406');
-  const custPhone = cust?.phone || (order as any).phone || '8779792825';
+  const custName = cust?.name || order.customer_name || 'Customer';
+  const custPhone = cust?.phone || (order as any).phone || (order as any).customer_phone || '';
+
+  const billingInfo = buildCompleteBillingAddress(order, cust);
+  const shippingInfo = buildCompleteShippingAddress(order, cust);
+  const custAddr = billingInfo.fullAddress;
+  const custShippingAddr = shippingInfo.fullAddress;
 
   const bName = businessObj?.name || 'KOKANASTHA';
   let bAddress = businessObj?.billing_address || 'SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLABH ROAD ASHOKVAN DAHISAR E MUMBAI 68, Ph. no.: 9820769697 Email: contact@kokanastha.in';
@@ -266,7 +449,7 @@ export async function generateBillOfSupplyHTML(
     .meta-table td {
       vertical-align: top;
       padding: 0 4px;
-      width: 33.33%;
+      width: 25%;
     }
     .meta-heading {
       font-size: 8.5pt;
@@ -386,7 +569,7 @@ export async function generateBillOfSupplyHTML(
     }
     .ack-table td {
       vertical-align: top;
-      width: 33.33%;
+      width: 25%;
     }
     .savings-banner {
       background: #fdf2f8;
@@ -441,24 +624,38 @@ export async function generateBillOfSupplyHTML(
 
   <table class="meta-table">
     <tr>
-      <td>
-        <div class="meta-heading">Bill To</div>
+      <td style="width: 26%;">
+        <div class="meta-heading">Bill To (Billing Address)</div>
         <div class="meta-value">
           <strong>${custName}</strong>${isLoyal ? '<span class="loyal-member-badge">LOYAL MEMBER</span>' : ''}<br/>
-          ${custAddr}<br/>
-          Contact No. : ${custPhone}
+          <div style="word-break: break-word; margin-top: 2px;">${billingInfo.fullAddress}</div>
+          <div style="margin-top: 3px;">Contact No. : <strong>${custPhone || 'N/A'}</strong></div>
         </div>
       </td>
-      <td>
+      <td style="width: 26%;">
+        <div class="meta-heading">Ship To (Shipping Address)</div>
+        <div class="meta-value">
+          <strong>${custName}</strong><br/>
+          <div style="word-break: break-word; margin-top: 2px;">${shippingInfo.streetAddress || 'Shipping Address not specified'}</div>
+          ${shippingInfo.zone || shippingInfo.pincode ? `
+            <div style="color: #475569; font-size: 7.5pt; margin-top: 2px; line-height: 1.3;">
+              ${shippingInfo.zone ? `Zone: <strong style="color: #0f172a;">${shippingInfo.zone}</strong>` : ''}
+              ${shippingInfo.zone && shippingInfo.pincode ? ` &bull; ` : ''}
+              ${shippingInfo.pincode ? `PIN Code: <strong style="color: #0f172a;">${shippingInfo.pincode}</strong>` : ''}
+            </div>
+          ` : ''}
+        </div>
+      </td>
+      <td style="width: 24%;">
         <div class="meta-heading">Transportation Details</div>
         <div class="meta-value">
           Transport Name: ${order.delivery_type && order.delivery_type.toLowerCase().includes('courier') ? 'Global Courier' : 'Direct Express'}<br/>
           Delivery Date: ${order.delivery_date || order.order_date}<br/>
-          Delivery Location: ${order.area || 'Dahisar'}<br/>
+          Delivery Location: ${shippingInfo.zone || order.area || 'Dahisar'}<br/>
           Delivery Type: ${order.delivery_type || 'Local Dispatch'}
         </div>
       </td>
-      <td>
+      <td style="width: 24%;">
         <div class="meta-heading">Invoice Details</div>
         <div class="meta-value">
           Invoice No. : <strong>${order.order_number}</strong><br/>
@@ -543,26 +740,28 @@ export async function generateBillOfSupplyHTML(
           <td>Sub Total</td>
           <td style="text-align: right;">₹ ${subTotal.toFixed(2)}</td>
         </tr>
+        ${taxVal > 0 ? `
+        <tr>
+          <td>Tax (GST)</td>
+          <td style="text-align: right;">+₹ ${taxVal.toFixed(2)}</td>
+        </tr>
+        ` : ''}
         ${discount > 0 ? `
         <tr>
           <td>Discount${order.discount_percentage ? ` (${order.discount_percentage}%)` : ''}</td>
-          <td style="text-align: right; color: #e11d48;">-₹ ${discount.toFixed(2)}</td>
+          <td style="text-align: right; color: #dc2626; font-weight: bold;">-₹ ${discount.toFixed(2)}</td>
         </tr>
         ` : ''}
-        ${legacyDelivery > 0 ? `<tr>
-          <td>DELIVERY:</td>
-          <td style="text-align: right;">₹ ${legacyDelivery.toFixed(2)}</td>
-        </tr>` : ''}
         ${deliveryCharges > 0 ? `<tr>
           <td>Delivery Charges:</td>
-          <td style="text-align: right;">₹ ${deliveryCharges.toFixed(2)}</td>
+          <td style="text-align: right; color: #0284c7; font-weight: bold;">+₹ ${deliveryCharges.toFixed(2)}</td>
         </tr>` : ''}
         ${additionalCharges > 0 ? `<tr>
           <td>Additional Charges:</td>
-          <td style="text-align: right;">₹ ${additionalCharges.toFixed(2)}</td>
+          <td style="text-align: right;">+₹ ${additionalCharges.toFixed(2)}</td>
         </tr>` : ''}
         <tr class="grand-row">
-          <td>Total</td>
+          <td>Total Amount</td>
           <td style="text-align: right;">₹ ${totalAmount.toFixed(2)}</td>
         </tr>
         <tr>
@@ -592,18 +791,23 @@ export async function generateBillOfSupplyHTML(
 
   <table class="ack-table">
     <tr>
-      <td>
-        <strong>Invoice To:</strong><br/>
+      <td style="width: 26%;">
+        <strong>Bill To:</strong><br/>
         <strong>${custName}</strong><br/>
-        ${custAddr}
+        <span style="font-size: 7.5pt;">${billingInfo.fullAddress}</span>
       </td>
-      <td>
+      <td style="width: 26%;">
+        <strong>Ship To:</strong><br/>
+        <strong>${custName}</strong><br/>
+        <span style="font-size: 7.5pt;">${shippingInfo.fullAddress}</span>
+      </td>
+      <td style="width: 24%;">
         <strong>Invoice Details:</strong><br/>
         Invoice No. : ${order.order_number}<br/>
         Invoice date : ${order.order_date}<br/>
         Invoice Amount : ₹ ${totalAmount.toFixed(2)}
       </td>
-      <td style="text-align: right; vertical-align: bottom;">
+      <td style="width: 24%; text-align: right; vertical-align: bottom;">
         <div style="border-top: 1px solid #0f172a; width: 140px; margin-left: auto; text-align: center; padding-top: 2px;">
           Receiver's Seal & Sign
         </div>
@@ -630,6 +834,14 @@ export async function generate3InchBillHTML(
   businessObj: any,
   products: any[]
 ): Promise<string> {
+  if (!customerObj && order.customer_id) {
+    const allCusts = dbStore.getCustomers(order.business_id || businessObj?.id || '');
+    customerObj = allCusts.find((c: any) => c.id === order.customer_id);
+  }
+  if (!businessObj && order.business_id) {
+    businessObj = dbStore.getBusiness(order.business_id);
+  }
+
   const bName = businessObj?.name || "KOKANASTHA";
   const bAddress = businessObj?.billing_address || "SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLA\nBH ROAD ASHOKVAN DAHISAR E MUMBAI 68";
   const phone = businessObj?.phone || "9820769697";
@@ -702,21 +914,30 @@ export async function generate3InchBillHTML(
     `;
   });
 
-  const subTotal = items.reduce((sum: number, it: any) => sum + ((it.qty || 1) * (it.selling_price || 0)), 0);
-  const discount = order.discount_amount || 0;
-  const additionalCharges = order.additional_charges || 0;
-  const deliveryCharges = order.delivery_charges || 0;
-  
-  let legacyDelivery = 0;
-  if (additionalCharges === 0 && deliveryCharges === 0) {
-    legacyDelivery = (order.total_amount > (subTotal - discount) ? (order.total_amount - (subTotal - discount)) : 0);
-  }
-  
-  const total = order.total_amount || (subTotal + additionalCharges + deliveryCharges + legacyDelivery - discount);
+  const subTotal = items.reduce((sum: number, it: any) => {
+    const p = allAvailableProds.find((prod: any) => prod.id === it.product_id || prod.name === it.product_name);
+    const qty = Math.max(1, Number(it.qty) || Number(it.quantity) || 1);
+    const price = Number(it.selling_price) || Number(it.price) || (p ? Number(p.selling_price) : 0);
+    return sum + (qty * price);
+  }, 0);
+  const discount = Number(order.discount_amount) || Number((order as any).discount) || Number(order.special_discount_amount) || 0;
+  const additionalCharges = Number(order.additional_charges) || 0;
+  const deliveryCharges = Number(order.delivery_charges) || Number(order.delivery_charge) || 0;
+
+  const computedTotal = Math.max(0, subTotal + additionalCharges + deliveryCharges - discount);
+  const total = (typeof order.total_amount === 'number' && order.total_amount > 0) ? order.total_amount : computedTotal;
+
   const rawPaid = order.paid_amount ?? (order as any).paidAmount ?? (order as any).advance_amount ?? (order as any).advance;
   const numPaid = typeof rawPaid === 'number' ? rawPaid : (typeof rawPaid === 'string' && rawPaid.trim() !== '' && !isNaN(Number(rawPaid)) ? Number(rawPaid) : undefined);
-  const paidVal = numPaid !== undefined ? numPaid : (order.payment_status === 'Paid' ? total : 0);
-  const receivedAmount = order.payment_status === 'Paid' ? Math.max(paidVal, total) : paidVal;
+  
+  let receivedAmount = 0;
+  if (order.payment_status === 'Paid') {
+    receivedAmount = Math.max(numPaid !== undefined ? numPaid : total, total);
+  } else if (numPaid !== undefined && numPaid > 0) {
+    receivedAmount = Math.min(numPaid, total);
+  } else {
+    receivedAmount = 0;
+  }
   const balance = Math.max(0, total - receivedAmount);
   
   // Example for points: 1 point per 100 spent, if they don't have a specific field.
@@ -846,12 +1067,27 @@ export async function generate3InchBillHTML(
   
   <div class="info-section">
     <div class="info-left">
-      ${customerObj ? `
-        <div style="font-weight: 900;">${customerObj.name || ''}</div>
-        ${customerObj.phone ? `<div>Ph. No.: ${customerObj.phone}</div>` : ''}
-        <div>Bill To:</div>
-        <div style="word-break: break-word;">${customerObj.billing_address || customerObj.address || ''}</div>
-      ` : `
+      ${(customerObj || (order as any).shipping_address || (order as any).customer_name) ? (() => {
+        const bInfo = buildCompleteBillingAddress(order, customerObj);
+        const sInfo = buildCompleteShippingAddress(order, customerObj);
+        const cName = customerObj?.name || order.customer_name || 'Customer';
+        const cPhone = customerObj?.phone || order.customer_phone || order.phone || '';
+        return `
+          <div style="font-weight: 900;">${cName}</div>
+          ${cPhone ? `<div>Ph. No.: ${cPhone}</div>` : ''}
+          <div style="font-size: 11px; margin-top: 2px; font-weight: bold;">Bill To:</div>
+          <div style="word-break: break-word;">${bInfo.fullAddress}</div>
+          <div style="margin-top: 3px; font-weight: bold;">Ship To:</div>
+          <div style="word-break: break-word;">${sInfo.streetAddress || sInfo.fullAddress}</div>
+          ${(sInfo.zone || sInfo.pincode) ? `
+            <div style="font-size: 10px; color: #475569;">
+              ${sInfo.zone ? `Zone: <strong>${sInfo.zone}</strong>` : ''}
+              ${sInfo.zone && sInfo.pincode ? ` &bull; ` : ''}
+              ${sInfo.pincode ? `PIN: <strong>${sInfo.pincode}</strong>` : ''}
+            </div>
+          ` : ''}
+        `;
+      })() : `
         <div>Cash Sale</div>
       `}
     </div>
@@ -886,7 +1122,6 @@ export async function generate3InchBillHTML(
         ${discount > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Disc.${order.discount_percentage ? `(${order.discount_percentage}%)` : ''}</span><span>:</span></div>` : ''}
         ${deliveryCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Delivery</span><span>:</span></div>` : ''}
         ${additionalCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Additional</span><span>:</span></div>` : ''}
-        ${legacyDelivery > 0 ? `<div style="display: flex; justify-content: space-between;"><span>DELIVERY</span><span>:</span></div>` : ''}
         <div style="display: flex; justify-content: space-between;"><span>Total</span><span>:</span></div>
         <div style="display: flex; justify-content: space-between;"><span>Adv / Recd</span><span>:</span></div>
         <div style="display: flex; justify-content: space-between;"><span>Balance</span><span>:</span></div>
@@ -896,7 +1131,6 @@ export async function generate3InchBillHTML(
         ${discount > 0 ? `<div>-${discount.toFixed(2)}</div>` : ''}
         ${deliveryCharges > 0 ? `<div>${deliveryCharges.toFixed(2)}</div>` : ''}
         ${additionalCharges > 0 ? `<div>${additionalCharges.toFixed(2)}</div>` : ''}
-        ${legacyDelivery > 0 ? `<div>${legacyDelivery.toFixed(2)}</div>` : ''}
         <div>${total.toFixed(2)}</div>
         <div>${receivedAmount.toFixed(2)}</div>
         <div>${balance.toFixed(2)}</div>

@@ -63,8 +63,8 @@ export interface UserProfile {
   business_id: string;
   active: boolean;
   created_at: string;
-  allowed_pages?: string[]; // List of page IDs the user can access
-  session_token?: string; // Single device login session token
+  allowed_pages?: string[];
+  session_token?: string;
 }
 
 export interface ActiveDeviceSession {
@@ -90,104 +90,96 @@ export interface ComboItem {
 }
 
 export interface NutritionFacts {
-  serving_size?: string; // e.g. "100g" or "30g"
-  servings_per_container?: string; // e.g. "5" or "10"
-  energy_kcal?: number; // Energy (kcal)
-  protein_g?: number; // Protein (g)
-  carbohydrates_g?: number; // Carbohydrates (g)
-  total_sugars_g?: number; // Total Sugars (g)
-  added_sugars_g?: number; // Added Sugars (g)
-  total_fat_g?: number; // Total Fat (g)
-  saturated_fat_g?: number; // Saturated Fat (g)
-  trans_fat_g?: number; // Trans Fat (g)
-  cholesterol_mg?: number; // Cholesterol (mg)
-  sodium_mg?: number; // Sodium (mg)
-  dietary_fiber_g?: number; // Dietary Fiber (g)
-  calcium_mg?: number; // Calcium (mg)
-  iron_mg?: number; // Iron (mg)
+  serving_size?: string;
+  servings_per_container?: string;
+  energy_kcal?: number;
+  protein_g?: number;
+  carbohydrates_g?: number;
+  total_sugars_g?: number;
+  added_sugars_g?: number;
+  total_fat_g?: number;
+  saturated_fat_g?: number;
+  trans_fat_g?: number;
+  cholesterol_mg?: number;
+  sodium_mg?: number;
+  dietary_fiber_g?: number;
+  calcium_mg?: number;
+  iron_mg?: number;
 }
 
 export interface FoodPackagingInfo {
-  dietary_type?: 'veg' | 'non_veg' | 'vegan' | 'egg'; // Default 'veg'
-  ingredients?: string; // e.g. "Whole Wheat Flour, Pure Ghee, Sugar, Cardamom"
-  allergen_info?: string; // e.g. "Contains Wheat (Gluten), Tree Nuts"
-  fssai_license?: string; // e.g. "11521018000123"
-  net_weight?: string; // e.g. "250g", "500g", "1 Kg"
-  batch_no?: string; // e.g. "BAT-2026-08"
-  mfg_date?: string; // Date of manufacturing or packing (e.g. YYYY-MM-DD)
-  shelf_life_days?: number; // e.g. 180
-  best_before_text?: string; // e.g. "Best Before 6 Months from packaging"
-  storage_instructions?: string; // e.g. "Store in a cool & dry place"
-  mfg_by?: string; // Manufacturer name & address
-  mkt_by?: string; // Marketer name & address
-  customer_care?: string; // Customer care helpline / email
+  dietary_type?: 'veg' | 'non_veg' | 'vegan' | 'egg';
+  ingredients?: string;
+  allergen_info?: string;
+  fssai_license?: string;
+  net_weight?: string;
+  batch_no?: string;
+  mfg_date?: string;
+  shelf_life_days?: number;
+  best_before_text?: string;
+  storage_instructions?: string;
+  mfg_by?: string;
+  mkt_by?: string;
+  customer_care?: string;
   customer_care_phone?: string;
-  other_info?: string;
+  created_by?: string;
+  created_at?: string;
+  business_id?: string;
 }
 
 export interface Product {
   id: string;
   name: string;
   sku: string;
-  barcode: string; // unique scan barcode
-  qr_code: string; // custom qr contents or auto-generated
+  barcode: string;
   category_id: string;
-  brand: string;
+  category_name?: string;
   unit: string;
-  hsn_code: string;
-  gst_rate: number; // e.g., 18 for 18%
+  selling_unit?: string;
   purchase_price: number;
   selling_price: number;
-  mrp: number;
-  opening_stock: number;
-  current_stock: number;
-  minimum_stock: number;
-  maximum_stock: number;
-  image_url: string;
-  description: string;
-  active: boolean;
-  business_id: string;
-  created_at: string;
-  
-  // Multi-Level Pricing Rates
-  rate_lmr?: number; // LMR - Loyal Membership Rate
-  rate_abr?: number; // ABR - Advance Booking Rate
-  rate_ddr?: number; // DDR - Diwali Discount Rate
-  rate_nr?: number;  // NR - Normal Rate (defaults to selling_price)
-
-  // Purchase to Inventory Conversion
-  purchase_unit?: string; // e.g., 'Kg'
-  selling_unit?: string; // e.g., 'Packet'
-  pack_size?: number; // e.g., 250 (grams)
+  min_price?: number;
+  mrp?: number;
+  gst_rate: number;
+  hsn_code: string;
+  stock_quantity: number;
+  current_stock?: number;
+  opening_stock?: number;
   auto_conversion?: boolean;
-
-  // Combo Box / Product Bundle attributes
+  pack_size?: number;
+  purchase_unit?: string;
+  booked_quantity?: number;
+  min_stock_level: number;
+  minimum_stock?: number;
+  maximum_stock?: number;
+  brand?: string;
+  description?: string;
+  image_url?: string;
+  qr_code?: string;
   is_combo?: boolean;
   combo_items?: ComboItem[];
-
-  // Nutrition Facts & Food Packaging Info (Kokanastha / FSSAI standard)
-  nutrition_facts?: NutritionFacts;
-  food_packaging?: FoodPackagingInfo;
-}
-
-export interface ComboHistoryLog {
-  id: string;
+  batch_no?: string;
+  mfg_date?: string;
+  expiry_date?: string;
+  rate_nr?: number;
+  rate_lmr?: number;
+  rate_abr?: number;
+  rate_ddr?: number;
   business_id: string;
-  combo_id: string;
-  combo_name: string;
-  action: 'Created' | 'Updated' | 'Packed' | 'Unpacked' | 'Virtual Sale' | 'Packed Sale' | 'Auto-Broken';
-  qty: number;
-  performed_by: string;
-  details: string;
+  active: boolean;
   created_at: string;
+  food_packaging?: FoodPackagingInfo;
+  packaging_info?: FoodPackagingInfo;
+  nutrition_facts?: NutritionFacts;
+  custom_attributes?: Record<string, any>;
 }
 
 export interface Customer {
   id: string;
   name: string;
   image_url?: string;
-  group: string; // e.g. 'Retail', 'Wholesale', 'Distributor'
-  area?: string; // e.g. 'Dahisar', 'Borivali', 'Kandivali', 'Mira Road', 'Vasai', 'Virar'
+  group: string;
+  area?: string;
   gstin: string;
   pan: string;
   billing_address: string;
@@ -199,16 +191,17 @@ export interface Customer {
   outstanding_amount: number;
   loyalty_points?: number;
   lifetime_spend?: number;
-  loyalty_tier?: 'Silver' | 'Gold' | 'Platinum' | 'None';
-  loyalty_tier_override?: 'Silver' | 'Gold' | 'Platinum' | 'None';
-  loyalty_plan?: string; // e.g. 'Premium Annual'
-  is_loyal_member?: boolean; // Kokanastha Loyal Member Program enrollee
+  loyalty_tier?: LoyaltyTier;
+  loyalty_tier_override?: LoyaltyTier;
+  loyalty_plan?: string;
+  is_loyal_member?: boolean;
   loyalty_start_date?: string;
   loyalty_end_date?: string;
   loyalty_auto_renew?: boolean;
-  loyalty_discount_percentage?: number; // Added discount percentage
+  loyalty_discount_percentage?: number;
   birthday?: string;
   anniversary?: string;
+  preferred_delivery_mode?: string;
   business_id: string;
   active: boolean;
   created_at: string;
@@ -217,177 +210,197 @@ export interface Customer {
 export interface Supplier {
   id: string;
   name: string;
+  contact_person?: string;
   gstin: string;
-  phone: string;
-  email: string;
+  pan?: string;
   address: string;
+  email: string;
+  phone: string;
   outstanding_amount: number;
+  bank_account?: string;
+  ifsc?: string;
   business_id: string;
+  active?: boolean;
   created_at: string;
 }
 
 export interface PurchaseItem {
   product_id: string;
+  product_name?: string;
+  sku?: string;
   qty: number;
   received_qty: number;
   purchase_price: number;
   gst_rate: number;
-}
-
-export interface PaymentRecord {
-  id: string;
-  order_id: string;
-  order_number: string;
-  type: 'Sales' | 'Purchase';
-  amount: number;
-  payment_mode: string;
-  reference_no?: string;
-  bank_account?: string;
-  payment_date: string;
-  notes?: string;
-  receipt_number: string;
-  collected_by: string;
-  business_id: string;
-  created_at: string;
+  tax_amount?: number;
+  total_amount?: number;
 }
 
 export interface PurchaseOrder {
   id: string;
-  order_number: string;
+  po_number: string;
+  order_number?: string;
   supplier_id: string;
+  supplier_name: string;
   order_date: string;
-  delivery_date: string;
-  status: 'Draft' | 'Ordered' | 'Received' | 'Cancelled';
-  payment_status: 'Unpaid' | 'Partial' | 'Paid';
-  paid_amount?: number;
-  payment_mode?: 'Cash' | 'UPI' | 'Bank Transfer' | 'Cheque' | 'Credit Card' | 'Other' | string;
-  payment_reference?: string;
-  payment_bank?: string;
-  payment_notes?: string;
-  payment_date?: string;
-  payment_history?: PaymentRecord[];
-  invoice_image?: string;
+  expected_delivery_date?: string;
+  delivery_date?: string;
+  status: 'Draft' | 'Ordered' | 'Partially Received' | 'Received' | 'Cancelled';
   items: PurchaseItem[];
+  subtotal: number;
+  tax_amount: number;
+  discount_amount?: number;
   total_amount: number;
+  paid_amount: number;
+  payment_status: 'Unpaid' | 'Partial' | 'Paid';
+  payment_mode?: string;
+  payment_notes?: string;
+  payment_reference?: string;
+  notes?: string;
   business_id: string;
   created_at: string;
 }
 
+export type OrderStatus = 'Pending' | 'Packing' | 'Packed' | 'Dispatched' | 'Delivered' | 'Cancelled' | 'Returned';
+
 export interface SalesItem {
   id?: string;
   product_id: string;
-  product_name?: string;
+  product_name: string;
+  sku?: string;
+  unit?: string;
   qty: number;
-  scanned_qty: number; // for packing verification
-  selling_price: number; // Applied selling price
-  gst_rate: number;
-  
-  // Multi-Level Pricing Details
-  normal_rate?: number; // NR (Normal Reference Price)
-  rate_type?: 'LMR' | 'ABR' | 'DDR' | 'NR' | 'OVERRIDE';
-  rate_reason?: string; // e.g., 'Loyal Membership Discount', 'Advance Booking Benefit', 'Diwali Festival Discount', etc.
-  unit_savings?: number; // NR - selling_price
+  packed_qty?: number;
+  scanned_qty?: number;
+  price?: number;
+  selling_price?: number;
+  original_price?: number;
+  normal_rate?: number;
+  rate_reason?: string;
+  rate_type?: string;
   is_overridden?: boolean;
-  original_calc_price?: number;
+  unit_savings?: number;
+  mrp?: number;
+  gst_rate: number;
+  tax_amount?: number;
+  discount_amount?: number;
+  discount_percent?: number;
+  total_amount?: number;
+  hsn_code?: string;
+  batch_no?: string;
+  mfg_date?: string;
+  expiry_date?: string;
 }
-
-export type OrderStatus = 'Pending' | 'Packing' | 'Packed' | 'Dispatched' | 'Delivered' | 'Cancelled' | 'Returned';
 
 export interface SalesOrder {
   id: string;
   order_number: string;
   customer_id: string;
-  customer_name?: string;
+  customer_name: string;
   customer_phone?: string;
+  customer_address?: string;
+  customer_shipping_address?: string;
+  customer_pin_code?: string;
   pin_code?: string;
+  customer_gstin?: string;
   billing_address?: string;
   shipping_address?: string;
-  area?: string; // Dahisar, Borivali, Kandivali, Mira Road, Vasai, Virar, Other
-  channel?: string; // Walk-in, Direct, Swiggy, Zomato, Phone Order
-  time?: string; // e.g. '10:15 AM'
-  is_overdue?: boolean;
   order_date: string;
-  delivery_date?: string;
+  due_date?: string;
   status: OrderStatus;
-  payment_status: 'Unpaid' | 'Partial' | 'Paid';
-  payment_mode?: 'Cash' | 'UPI / QR' | 'Card' | 'Bank Transfer' | 'Credit / On Account' | string;
-  paid_amount?: number;
-  payment_reference?: string;
-  payment_bank?: string;
-  payment_notes?: string;
-  payment_date?: string;
-  payment_history?: PaymentRecord[];
-  delivery_status: OrderStatus;
-  delivery_type?: 'Self delivery' | 'Out of india courier' | 'Domestic courier' | 'Third party app delivery' | 'Self pickup' | string;
   items: SalesItem[];
-  advance_booking: boolean;
-  festive_booking?: boolean;
-  total_amount: number;
-  is_updated?: boolean;
+  subtotal?: number;
+  tax_amount?: number;
   discount_amount?: number;
-  discount_percentage?: number;
-  additional_charges?: number;
-  additional_charges_type?: 'Delivery' | 'Additional';
+  points_redeemed?: number;
+  special_discount_amount?: number;
+  delivery_charge?: number;
   delivery_charges?: number;
-  business_id: string;
-  created_at: string;
-  updated_at?: string;
-  qr_code_data: string; // Custom string packing verification scan
-  delivery_partner?: string; // Rapido, Dunzo, Courier, In-House, etc.
+  additional_charges?: number;
+  additional_charges_type?: string;
+  round_off?: number;
+  total_amount: number;
+  paid_amount?: number;
+  payment_status?: 'Unpaid' | 'Partial' | 'Paid';
+  payment_mode?: string;
+  payment_reference?: string;
+  payment_date?: string;
+  invoice_type?: 'Regular' | 'Festive' | 'Advance' | 'Festive_Advance';
+  delivery_type?: 'Delivery' | 'Pickup';
+  delivery_boy?: string;
   delivery_person_name?: string;
   delivery_person_phone?: string;
-  tracking_number?: string;
-  dispatch_notes?: string;
+  delivered_to?: string;
+  dispatch_zone?: string;
+  area?: string;
+  delivery_date?: string;
+  time?: string;
+  packed_by?: string;
   dispatched_at?: string;
-  packing_started_at?: string;
+  delivered_at?: string;
   packing_completed_at?: string;
+  return_reason?: string;
+  return_notes?: string;
+  qr_code_data?: string;
+  packing_started_at?: string;
+  delivery_status?: string;
+  advance_booking?: boolean;
+  ready_for_dispatch?: boolean;
+  is_overdue?: boolean;
+  discount_percentage?: number;
+  notes?: string;
+  channel?: string;
+  dispatch_notes?: string;
+  payment_notes?: string;
+  festive_booking?: boolean;
+  payment_history?: any[];
+  return_type?: string;
+  delivery_partner?: string;
   rack_location?: string;
   rack_section?: string;
   total_bags?: number;
-  ready_for_dispatch?: boolean;
   is_partially_packed?: boolean;
-  points_earned?: number;
-  points_redeemed?: number;
-  loyalty_discount?: number;
-  subscription_id?: string;
-  return_type?: 'Refund' | 'Damage';
-  return_reason?: string;
-  return_notes?: string;
-  returned_at?: string;
-  inventory_restocked?: boolean;
-  delivered_to?: string;
-  delivery_notes?: string;
+  tracking_number?: string;
   cod_collected?: boolean;
   cod_collected_amount?: number;
-  delivered_at?: string;
-}
-
-export interface AuditLogEntry {
-  id: string;
-  timestamp: string;
-  barcode: string;
-  success: boolean;
-  message: string;
+  is_updated?: boolean;
+  updated_at?: string;
+  subscription_id?: string;
+  business_id: string;
+  created_at: string;
 }
 
 export interface PackingSession {
   id: string;
   order_id: string;
-  packing_staff_id: string;
+  order_number: string;
+  status: 'In Progress' | 'Completed' | 'Aborted' | 'Packed';
+  packed_by: string;
+  packing_staff_id?: string;
+  total_scans?: number;
   start_time: string;
-  end_time: string | null;
-  total_scans: number;
-  status: 'Packing' | 'Packed' | 'Failed';
-  logs: AuditLogEntry[];
+  end_time?: string;
+  logs?: any[];
+  items_packed: {
+    product_id: string;
+    scanned_qty: number;
+    required_qty: number;
+  }[];
   business_id: string;
 }
 
 export interface StockLog {
   id: string;
   product_id: string;
-  change_qty: number;
-  type: 'In' | 'Out' | 'Adjustment' | 'Adjusted' | 'Transfer' | 'Damage' | 'Return';
-  notes: string;
+  product_name?: string;
+  type: 'In' | 'Out' | 'Adjustment' | 'Order Booking' | 'Order Cancellation' | 'Order Return' | 'Adjusted' | 'Return';
+  quantity?: number;
+  change_qty?: number;
+  previous_stock?: number;
+  new_stock?: number;
+  reference_type?: string;
+  reference_id?: string;
+  notes?: string;
   created_by: string;
   created_at: string;
   business_id: string;
@@ -398,10 +411,44 @@ export interface SystemAuditLog {
   user_id: string;
   user_name: string;
   user_role: string;
-  action: string; // e.g. 'Login', 'Create Customer', 'Scan Barcode', 'Complete Packing'
+  action: string;
   details: string;
   created_at: string;
   business_id: string;
+}
+
+export type AuditLogEntry = SystemAuditLog;
+
+export interface ComboHistoryLog {
+  id: string;
+  combo_id: string;
+  combo_name: string;
+  type: 'Build' | 'Break' | 'Stock Change' | string;
+  action?: string;
+  quantity?: number;
+  qty?: number;
+  performed_by: string;
+  details: string;
+  created_at: string;
+  business_id: string;
+}
+
+export interface PaymentRecord {
+  id: string;
+  reference_no?: string;
+  order_id?: string;
+  order_number?: string;
+  type: 'Sales' | 'Purchase';
+  amount: number;
+  payment_mode: string;
+  payment_date: string;
+  notes?: string;
+  receipt_number?: string;
+  bank_account?: string;
+  payment_reference?: string;
+  collected_by: string;
+  business_id: string;
+  created_at: string;
 }
 
 export interface ChatMessage {
@@ -427,25 +474,24 @@ export interface BusinessSettings {
   theme: 'light' | 'dark';
 }
 
-// ==================== LOYALTY PROGRAM TYPES ====================
 export type LoyaltyTier = 'Silver' | 'Gold' | 'Platinum' | 'None';
 
 export interface LoyaltyConfig {
   enabled: boolean;
-  spend_per_point: number; // e.g., 100 => 1 point per ₹100 spent
-  point_value: number; // e.g., 1 => 1 point = ₹1 discount
-  silver_min_spend: number; // 0
+  spend_per_point: number;
+  point_value: number;
+  silver_min_spend: number;
   silver_multiplier?: number;
-  gold_min_spend: number; // 5000
-  platinum_min_spend: number; // 20000
-  gold_multiplier: number; // 1.25
-  platinum_multiplier: number; // 1.5
+  gold_min_spend: number;
+  platinum_min_spend: number;
+  gold_multiplier: number;
+  platinum_multiplier: number;
   silver_bonus_points: number;
   gold_bonus_points: number;
   platinum_bonus_points: number;
-  welcome_bonus_points: number; // 50
-  birthday_bonus_points: number; // 100
-  point_expiry_days: number; // 365
+  welcome_bonus_points: number;
+  birthday_bonus_points: number;
+  point_expiry_days: number;
 }
 
 export interface LoyaltyLog {
@@ -460,7 +506,6 @@ export interface LoyaltyLog {
   business_id: string;
 }
 
-// ==================== SUBSCRIPTION MANAGEMENT TYPES ====================
 export type SubscriptionFrequency = 'Weekly' | 'Bi-Weekly' | 'Monthly' | 'Quarterly';
 export type SubscriptionStatus = 'Active' | 'Paused' | 'Cancelled';
 
@@ -515,14 +560,12 @@ export const DEFAULT_LOYALTY_CONFIG: LoyaltyConfig = {
 };
 
 export interface DraftInvoiceReservation {
-  id: string; // unique draft ID per open modal / session
+  id: string;
   userId: string;
   userName?: string;
   businessId: string;
   invoiceNumber: string;
   isFestive: boolean;
   isAdvance: boolean;
-  timestamp: number; // Unix epoch ms
+  timestamp: number;
 }
-
-

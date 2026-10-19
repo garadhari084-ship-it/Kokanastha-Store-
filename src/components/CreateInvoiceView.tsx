@@ -409,6 +409,54 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [previewZoom, setPreviewZoom] = useState<number>(100);
+  const [btnLoadingState, setBtnLoadingState] = useState<'preview' | 'save' | 'cancel' | 'preview-pdf' | 'preview-print' | null>(null);
+  const [btnProgress, setBtnProgress] = useState<number>(0);
+
+  const handlePreviewClick = async () => {
+    if (orderItems.length === 0 && !rowProductId) {
+      triggerToast('Please select or add at least one product to preview invoice.', 'info');
+      return;
+    }
+    setBtnLoadingState('preview');
+    setBtnProgress(20);
+    await new Promise(r => setTimeout(r, 80));
+    setBtnProgress(65);
+    await new Promise(r => setTimeout(r, 100));
+    setBtnProgress(100);
+    setIsPreviewModalOpen(true);
+    setBtnLoadingState(null);
+    setBtnProgress(0);
+  };
+
+  const handleSaveClick = async (actionType: 'close' | 'print' | 'share' = 'close') => {
+    if (!paymentStatus) {
+      triggerToast('Payment Status is mandatory! Please select Fully Paid, Partial, or Unpaid before saving.', 'error');
+      const el = document.getElementById('payment-status-section');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    setBtnLoadingState('save');
+    setBtnProgress(25);
+    await new Promise(r => setTimeout(r, 100));
+    setBtnProgress(70);
+    onSaveOrder(actionType);
+    setBtnProgress(100);
+    await new Promise(r => setTimeout(r, 100));
+    setBtnLoadingState(null);
+    setBtnProgress(0);
+  };
+
+  const handleCancelClick = async () => {
+    setBtnLoadingState('cancel');
+    setBtnProgress(35);
+    await new Promise(r => setTimeout(r, 80));
+    setBtnProgress(85);
+    await new Promise(r => setTimeout(r, 60));
+    setBtnProgress(100);
+    onClose();
+    setBtnLoadingState(null);
+    setBtnProgress(0);
+  };
 
   const getPreviewOrder = (): SalesOrder => {
     let itemsForPreview = [...orderItems];
@@ -455,13 +503,46 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
     const orderNum = customInvoiceNumber.trim() || getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking);
     const custName = selectedCustomerName?.trim() || selectedCust?.name || (selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer');
+    const shippingAddr = isSameShippingAddress 
+      ? (selectedCustomerAddress.trim() || selectedCust?.billing_address || '')
+      : (selectedCustomerShippingAddress.trim() || selectedCust?.shipping_address || selectedCustomerAddress.trim() || selectedCust?.billing_address || '');
+
+    const previewTaxable = itemsForPreview.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
+    const previewTax = itemsForPreview.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
+    const previewSubtotal = Math.round(previewTaxable + previewTax);
+
+    const config = dbStore.getLoyaltyConfig(businessId);
+    const pointVal = config?.point_value || 1;
+    const actualRedeem = calculatedTotals.actualRedeem || 0;
+
+    let percDiscVal = customDiscountPercentage !== '' && !isNaN(Number(customDiscountPercentage)) ? Math.max(0, Number(customDiscountPercentage)) : 0;
+    let amtDiscVal = customDiscountAmount !== '' && !isNaN(Number(customDiscountAmount)) ? Math.max(0, Number(customDiscountAmount)) : 0;
+
+    let discAmt = actualRedeem * pointVal;
+    if (discountType === 'Percentage') {
+      discAmt += (previewSubtotal * percDiscVal) / 100;
+    } else {
+      discAmt += amtDiscVal;
+    }
+    const previewDiscountAmount = Math.round(discAmt);
+    const previewAddCharges = additionalCharges !== '' && !isNaN(Number(additionalCharges)) ? Math.max(0, Number(additionalCharges)) : 0;
+    const previewDelCharges = deliveryCharges !== '' && !isNaN(Number(deliveryCharges)) ? Math.max(0, Number(deliveryCharges)) : 0;
+    const previewFinalAmount = Math.max(0, previewSubtotal - previewDiscountAmount + previewAddCharges + previewDelCharges);
+
+    const previewDiscountPerc = discountType === 'Percentage'
+      ? percDiscVal
+      : (previewSubtotal > 0 ? Number(((amtDiscVal / previewSubtotal) * 100).toFixed(2)) : 0);
 
     return {
       id: editingOrderId || 'draft-preview',
       order_number: orderNum,
       customer_id: selectedCustomerId,
       customer_name: custName,
-      area: selectedArea || 'Dahisar',
+      customer_phone: selectedCustomerPhone.trim() || selectedCust?.phone || '',
+      billing_address: selectedCustomerAddress.trim() || selectedCust?.billing_address || '',
+      shipping_address: shippingAddr,
+      pin_code: selectedPincode.trim() || selectedCust?.pin_code || '',
+      area: selectedArea || selectedCust?.area || 'Dahisar',
       channel: selectedCustomerId === 'WALK_IN' ? 'Walk-in' : 'Direct Order',
       time: orderTime || '12:00 PM',
       order_date: orderDate || (new Date().toISOString().split('T')[0]),
@@ -475,13 +556,13 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       items: itemsForPreview,
       advance_booking: isAdvanceBooking,
       festive_booking: isFestiveBooking,
-      total_amount: calculatedTotals.finalAmount,
-      discount_amount: calculatedTotals.discountAmount,
-      discount_percentage: calculatedTotals.discountPercentage,
-      additional_charges: Number(additionalCharges) || 0,
-      delivery_charges: Number(deliveryCharges) || 0,
+      total_amount: previewFinalAmount,
+      discount_amount: previewDiscountAmount,
+      discount_percentage: previewDiscountPerc,
+      additional_charges: previewAddCharges,
+      delivery_charges: previewDelCharges,
       additional_charges_type: additionalChargeType,
-      points_redeemed: calculatedTotals.actualRedeem,
+      points_redeemed: actualRedeem,
       qr_code_data: `${orderNum}|${selectedCustomerId}|${custName}|${itemsForPreview.length} items`,
       business_id: businessId,
       created_at: new Date().toISOString()
@@ -489,7 +570,17 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   };
 
   const handlePrintPreviewInvoice = async (order: SalesOrder) => {
-    const cust = customers.find(c => c.id === order.customer_id);
+    const existingCust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
+    const cust = {
+      ...(existingCust || {}),
+      id: order.customer_id,
+      name: order.customer_name || existingCust?.name || selectedCustomerName || 'Customer',
+      phone: order.customer_phone || existingCust?.phone || selectedCustomerPhone || '',
+      billing_address: order.billing_address || existingCust?.billing_address || selectedCustomerAddress || '',
+      shipping_address: order.shipping_address || (isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress) || existingCust?.shipping_address || '',
+      pin_code: order.pin_code || existingCust?.pin_code || selectedPincode || '',
+      area: order.area || existingCust?.area || selectedArea || 'Dahisar'
+    } as any;
     const businessObj = currentBiz || dbStore.getBusiness(businessId);
     const allProds = [
       ...(Array.isArray(products) ? products : []),
@@ -522,7 +613,17 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   };
 
   const handleDownloadPreviewPDF = async (order: SalesOrder) => {
-    const cust = customers.find(c => c.id === order.customer_id);
+    const existingCust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
+    const cust = {
+      ...(existingCust || {}),
+      id: order.customer_id,
+      name: order.customer_name || existingCust?.name || selectedCustomerName || 'Customer',
+      phone: order.customer_phone || existingCust?.phone || selectedCustomerPhone || '',
+      billing_address: order.billing_address || existingCust?.billing_address || selectedCustomerAddress || '',
+      shipping_address: order.shipping_address || (isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress) || existingCust?.shipping_address || '',
+      pin_code: order.pin_code || existingCust?.pin_code || selectedPincode || '',
+      area: order.area || existingCust?.area || selectedArea || 'Dahisar'
+    } as any;
     const businessObj = currentBiz || dbStore.getBusiness(businessId);
     const allProds = [
       ...(Array.isArray(products) ? products : []),
@@ -1610,9 +1711,16 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                         value={customDiscountPercentage}
                         onFocus={() => setDiscountType('Percentage')}
                         onChange={(e) => {
+                          const val = e.target.value;
                           setDiscountType('Percentage');
-                          setCustomDiscountPercentage(e.target.value);
-                          setCustomDiscountAmount('');
+                          setCustomDiscountPercentage(val);
+                          if (val !== '' && !isNaN(Number(val)) && taxVal + taxableVal > 0) {
+                            const sub = taxVal + taxableVal;
+                            const calcAmt = Math.round((sub * Number(val)) / 100);
+                            setCustomDiscountAmount(calcAmt || '');
+                          } else if (val === '') {
+                            setCustomDiscountAmount('');
+                          }
                         }}
                         className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                       />
@@ -1628,9 +1736,16 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                         value={customDiscountAmount}
                         onFocus={() => setDiscountType('Value')}
                         onChange={(e) => {
+                          const val = e.target.value;
                           setDiscountType('Value');
-                          setCustomDiscountAmount(e.target.value);
-                          setCustomDiscountPercentage('');
+                          setCustomDiscountAmount(val);
+                          if (val !== '' && !isNaN(Number(val)) && taxVal + taxableVal > 0) {
+                            const sub = taxVal + taxableVal;
+                            const calcPerc = Number(((Number(val) / sub) * 100).toFixed(2));
+                            setCustomDiscountPercentage(calcPerc || '');
+                          } else if (val === '') {
+                            setCustomDiscountPercentage('');
+                          }
                         }}
                         className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono font-bold rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                       />
@@ -1650,7 +1765,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       min={0}
                       placeholder="0"
                       value={deliveryCharges}
-                      onChange={(e) => setDeliveryCharges(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                      onChange={(e) => setDeliveryCharges(e.target.value)}
                       className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                     />
                   </div>
@@ -1664,7 +1779,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       min={0}
                       placeholder="0"
                       value={additionalCharges}
-                      onChange={(e) => setAdditionalCharges(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                      onChange={(e) => setAdditionalCharges(e.target.value)}
                       className="w-full h-8 px-2 text-right bg-slate-50 dark:bg-slate-800 text-xs font-mono rounded-lg border-2 border-slate-300 dark:border-slate-600 focus:outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
                     />
                   </div>
@@ -1775,41 +1890,42 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                 {/* Dedicated Preview Invoice Button */}
                 <button
                   type="button"
-                  onClick={() => {
-                    if (orderItems.length === 0 && !rowProductId) {
-                      triggerToast('Please select or add at least one product to preview invoice.', 'info');
-                      return;
-                    }
-                    setIsPreviewModalOpen(true);
-                  }}
-                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-[0.99]"
+                  disabled={btnLoadingState === 'preview'}
+                  onClick={handlePreviewClick}
+                  className="relative overflow-hidden w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black transition flex flex-col items-center justify-center cursor-pointer shadow-xs active:scale-[0.99] disabled:opacity-80"
                   title="Live Preview Commercial Tax Invoice & PDF before saving"
                 >
-                  <Eye size={15} />
-                  <span>Preview Invoice & PDF</span>
+                  <div className="flex items-center gap-1.5 z-10">
+                    {btnLoadingState === 'preview' ? <Loader2 size={15} className="animate-spin text-slate-950" /> : <Eye size={15} />}
+                    <span>{btnLoadingState === 'preview' ? `Previewing Invoice (${btnProgress}%)...` : 'Preview Invoice & PDF'}</span>
+                  </div>
+                  {btnLoadingState === 'preview' && (
+                    <div className="absolute bottom-0 left-0 h-1 bg-slate-950/60 transition-all duration-150" style={{ width: `${btnProgress}%` }} />
+                  )}
                 </button>
 
                 <div className="relative flex shadow-sm rounded-xl">
                   <button 
                     type="button" 
-                    disabled={isSubmitting}
-                    onClick={() => {
-                      if (!paymentStatus) {
-                        triggerToast('Payment Status is mandatory! Please select Fully Paid, Partial, or Unpaid before saving.', 'error');
-                        const el = document.getElementById('payment-status-section');
-                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        return;
-                      }
-                      onSaveOrder('close');
-                    }}
-                    className={`flex-1 py-3 text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 rounded-l-xl ${
-                      isSubmitting 
-                        ? 'bg-slate-700 cursor-not-allowed text-slate-400' 
+                    disabled={isSubmitting || btnLoadingState === 'save'}
+                    onClick={() => handleSaveClick('close')}
+                    className={`relative overflow-hidden flex-1 py-3 text-xs font-black transition cursor-pointer flex flex-col items-center justify-center rounded-l-xl ${
+                      (isSubmitting || btnLoadingState === 'save')
+                        ? 'bg-indigo-900 text-indigo-200 cursor-wait' 
                         : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white'
                     }`}
                   >
-                    {isSubmitting ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
-                    <span>{editingOrderId ? 'Update Order & Invoice' : 'Save & Create Invoice'}</span>
+                    <div className="flex items-center gap-2 z-10">
+                      {(isSubmitting || btnLoadingState === 'save') ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+                      <span>
+                        {(isSubmitting || btnLoadingState === 'save')
+                          ? `${editingOrderId ? 'Updating Invoice' : 'Creating Invoice'} (${btnProgress || 60}%)...` 
+                          : (editingOrderId ? 'Update Order & Invoice' : 'Save & Create Invoice')}
+                      </span>
+                    </div>
+                    {(isSubmitting || btnLoadingState === 'save') && (
+                      <div className="absolute bottom-0 left-0 h-1 bg-amber-400 transition-all duration-200" style={{ width: `${btnProgress || 60}%` }} />
+                    )}
                   </button>
                   <button
                     type="button"
@@ -1823,15 +1939,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     <div className="absolute bottom-full right-0 mb-2 w-52 bg-slate-800 text-slate-100 rounded-xl shadow-2xl border border-slate-700 overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-150">
                       <button 
                         type="button"
-                        onClick={() => {
-                          if (!paymentStatus) {
-                            triggerToast('Payment Status is mandatory! Please select Fully Paid, Partial, or Unpaid before saving.', 'error');
-                            const el = document.getElementById('payment-status-section');
-                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            return;
-                          }
-                          onSaveOrder('print');
-                        }}
+                        onClick={() => handleSaveClick('print')}
                         className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-slate-700 flex items-center justify-between transition cursor-pointer group"
                       >
                         <span className="group-hover:text-indigo-400">Save & Print Bill</span>
@@ -1839,15 +1947,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       </button>
                       <button 
                         type="button"
-                        onClick={() => {
-                          if (!paymentStatus) {
-                            triggerToast('Payment Status is mandatory! Please select Fully Paid, Partial, or Unpaid before saving.', 'error');
-                            const el = document.getElementById('payment-status-section');
-                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            return;
-                          }
-                          onSaveOrder('share');
-                        }}
+                        onClick={() => handleSaveClick('share')}
                         className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-slate-700 flex items-center justify-between border-t border-slate-700/60 transition cursor-pointer group"
                       >
                         <span className="group-hover:text-indigo-400">Save & WhatsApp Share</span>
@@ -1859,10 +1959,17 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
                 <button 
                   type="button" 
-                  onClick={onClose}
-                  className="w-full py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+                  disabled={btnLoadingState === 'cancel'}
+                  onClick={handleCancelClick}
+                  className="relative overflow-hidden w-full py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer flex flex-col items-center justify-center"
                 >
-                  Cancel / Discard
+                  <div className="flex items-center gap-1.5 z-10">
+                    {btnLoadingState === 'cancel' && <Loader2 size={13} className="animate-spin text-slate-500" />}
+                    <span>{btnLoadingState === 'cancel' ? `Discarding (${btnProgress}%)...` : 'Cancel / Discard'}</span>
+                  </div>
+                  {btnLoadingState === 'cancel' && (
+                    <div className="absolute bottom-0 left-0 h-1 bg-rose-500 transition-all duration-150" style={{ width: `${btnProgress}%` }} />
+                  )}
                 </button>
               </div>
             </div>
@@ -1874,14 +1981,18 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       {/* ================= LIVE INVOICE PREVIEW & CONFIRMATION MODAL ================= */}
       {isPreviewModalOpen && (() => {
         const previewOrder = getPreviewOrder();
-        const custObj = customers.find(c => c.id === previewOrder.customer_id) || 
-                        dbStore.getCustomers(businessId).find(c => c.id === previewOrder.customer_id) || 
-                        (dbStore as any).cache?.customers?.find((c: any) => c.id === previewOrder.customer_id) || {
+        const existingCust = customers.find(c => c.id === previewOrder.customer_id) || 
+                             dbStore.getCustomers(businessId).find(c => c.id === previewOrder.customer_id) || 
+                             (dbStore as any).cache?.customers?.find((c: any) => c.id === previewOrder.customer_id);
+        const custObj = {
+          ...(existingCust || {}),
           id: selectedCustomerId,
-          name: selectedCustomerName?.trim() || selectedCust?.name || (selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer'),
-          billing_address: selectedCustomerAddress,
-          phone: selectedCustomerPhone,
-          shipping_address: selectedCustomerShippingAddress || selectedCustomerAddress
+          name: selectedCustomerName?.trim() || selectedCust?.name || existingCust?.name || (selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer'),
+          billing_address: selectedCustomerAddress || existingCust?.billing_address || '',
+          phone: selectedCustomerPhone || existingCust?.phone || '',
+          shipping_address: (isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress) || existingCust?.shipping_address || selectedCustomerAddress || '',
+          pin_code: selectedPincode || existingCust?.pin_code || '',
+          area: selectedArea || existingCust?.area || 'Dahisar'
         } as any;
         const businessObj = currentBiz || dbStore.getBusiness(businessId);
 
@@ -1975,22 +2086,56 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
-                    onClick={() => handleDownloadPreviewPDF(previewOrder)}
-                    className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5 shadow-xs transition"
+                    disabled={btnLoadingState === 'preview-pdf'}
+                    onClick={async () => {
+                      setBtnLoadingState('preview-pdf');
+                      setBtnProgress(25);
+                      await new Promise(r => setTimeout(r, 80));
+                      setBtnProgress(75);
+                      await handleDownloadPreviewPDF(previewOrder);
+                      setBtnProgress(100);
+                      await new Promise(r => setTimeout(r, 100));
+                      setBtnLoadingState(null);
+                      setBtnProgress(0);
+                    }}
+                    className="relative overflow-hidden py-2.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold cursor-pointer flex flex-col items-center justify-center shadow-xs transition"
                     title="Save & Download Tax Invoice as PDF / HTML"
                   >
-                    <Download size={14} className="shrink-0" />
-                    <span className="truncate">Save / Download PDF</span>
+                    <div className="flex items-center gap-1.5 z-10">
+                      {btnLoadingState === 'preview-pdf' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} className="shrink-0" />}
+                      <span className="truncate">{btnLoadingState === 'preview-pdf' ? `Saving (${btnProgress}%)...` : 'Save / Download PDF'}</span>
+                    </div>
+                    {btnLoadingState === 'preview-pdf' && (
+                      <div className="absolute bottom-0 left-0 h-1 bg-amber-300 transition-all duration-150" style={{ width: `${btnProgress}%` }} />
+                    )}
                   </button>
+
                   <button
                     type="button"
-                    onClick={() => handlePrintPreviewInvoice(previewOrder)}
-                    className="py-2.5 px-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5 shadow-xs transition"
+                    disabled={btnLoadingState === 'preview-print'}
+                    onClick={async () => {
+                      setBtnLoadingState('preview-print');
+                      setBtnProgress(30);
+                      await new Promise(r => setTimeout(r, 80));
+                      setBtnProgress(85);
+                      await handlePrintPreviewInvoice(previewOrder);
+                      setBtnProgress(100);
+                      await new Promise(r => setTimeout(r, 100));
+                      setBtnLoadingState(null);
+                      setBtnProgress(0);
+                    }}
+                    className="relative overflow-hidden py-2.5 px-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold cursor-pointer flex flex-col items-center justify-center shadow-xs transition"
                     title="Send to System Print Spooler"
                   >
-                    <Printer size={14} className="shrink-0" />
-                    <span className="truncate">Print Bill</span>
+                    <div className="flex items-center gap-1.5 z-10">
+                      {btnLoadingState === 'preview-print' ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} className="shrink-0" />}
+                      <span className="truncate">{btnLoadingState === 'preview-print' ? `Printing (${btnProgress}%)...` : 'Print Bill'}</span>
+                    </div>
+                    {btnLoadingState === 'preview-print' && (
+                      <div className="absolute bottom-0 left-0 h-1 bg-amber-300 transition-all duration-150" style={{ width: `${btnProgress}%` }} />
+                    )}
                   </button>
+
                   <button
                     type="button"
                     onClick={() => setIsPreviewModalOpen(false)}

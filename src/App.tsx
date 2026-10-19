@@ -51,6 +51,8 @@ import { UserProfile, Business, UserRole } from './types/erp';
 import { supabase, isSupabaseConfigured, fetchServerSupabaseConfig, saveSupabaseConfig, testSupabaseConnection, supabaseUrl, supabaseAnonKey } from './services/supabase';
 import { DatabaseConfigModal } from './components/DatabaseConfigModal';
 
+import { TopProgressBar } from './components/TopProgressBar';
+
 // Import Views
 import { PackingAlertBanner } from "./components/PackingAlertBanner";
 import { OverdueAlertBanner } from "./components/OverdueAlertBanner";
@@ -2517,6 +2519,7 @@ export default function App() {
   // Main system portal dashboard layout
   return (
     <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 flex font-sans antialiased text-slate-800 dark:text-slate-100" id="portal-root">
+      <TopProgressBar />
       
       {/* Mobile/Tablet Backdrop Overlay */}
       {isMobileMenuOpen && (

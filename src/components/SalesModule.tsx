@@ -311,7 +311,7 @@ interface SalesModuleProps {
   onClearDeepLink?: () => void;
 }
 
-export const SalesModule: React.FC<SalesModuleProps> = ({ 
+export const SalesModule: React.FC<SalesModuleProps> = React.memo(({ 
   businessId, 
   user, 
   triggerToast,
@@ -443,10 +443,19 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const [deliveryCharges, setDeliveryCharges] = useState<number | string>('');
   const [additionalChargeType, setAdditionalChargeType] = useState<'Delivery' | 'Additional'>('Delivery');
   const [orderItems, setOrderItems] = useState<SalesItem[]>([]);
+  const [globalGstRate, setGlobalGstRate] = useState<number | string>(defaultTenantTax);
   const [isNewCustomerSelected, setIsNewCustomerSelected] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerAddress, setNewCustomerAddress] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
+
+  const updateAllItemsTax = (newTax: number | string) => {
+    setGlobalGstRate(newTax);
+    const taxNum = typeof newTax === 'number' ? newTax : parseFloat(newTax);
+    if (isNaN(taxNum)) return;
+    setOrderItems(prev => prev.map(it => ({ ...it, gst_rate: taxNum })));
+    setRowTaxRate(newTax);
+  };
 
   // Editable fields for selected existing customer
   const [selectedCustomerPhone, setSelectedCustomerPhone] = useState('');
@@ -946,6 +955,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
     setAdditionalCharges(order.additional_charges || 0);
     setDeliveryCharges(order.delivery_charges ?? (order as any).delivery_charge ?? 0);
     setAdditionalChargeType(order.additional_charges_type || 'Delivery');
+    const firstGst = order.items.length > 0 ? order.items[0].gst_rate : defaultTenantTax;
+    setGlobalGstRate(firstGst);
     setOrderItems([...order.items]);
     setIsCreateModalOpen(true);
     
@@ -1022,7 +1033,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
   const calculatedTotals = useMemo(() => {
     const taxableVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
     const taxVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
-    const subtotalBeforeDiscount = Math.round(taxableVal + taxVal);
+    const subtotalBeforeDiscount = Number((taxableVal + taxVal).toFixed(2));
 
     const config = dbStore.getLoyaltyConfig(businessId);
     const pointVal = config?.point_value || 1;
@@ -1040,7 +1051,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       discAmt += amtDiscVal;
     }
 
-    const discountAmount = Math.round(discAmt);
+    const discountAmount = Number(discAmt.toFixed(2));
     
     const addCharges = additionalCharges !== '' && !isNaN(Number(additionalCharges)) ? Math.max(0, Number(additionalCharges)) : 0;
     const delCharges = deliveryCharges !== '' && !isNaN(Number(deliveryCharges)) ? Math.max(0, Number(deliveryCharges)) : 0;
@@ -1277,7 +1288,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       // Recalculate totals directly from cleanItems so deleted items or edited prices/quantities reflect accurately
       const taxableVal = cleanItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
       const taxVal = cleanItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
-      const subtotalBeforeDiscount = Math.round(taxableVal + taxVal);
+      const subtotalBeforeDiscount = Number((taxableVal + taxVal).toFixed(2));
 
       const config = dbStore.getLoyaltyConfig(businessId);
       const pointVal = config?.point_value || 1;
@@ -1294,7 +1305,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       } else {
         discAmt += amtDiscVal;
       }
-      const calculatedDiscount = Math.round(discAmt);
+      const calculatedDiscount = Number(discAmt.toFixed(2));
 
       const addCharges = additionalCharges !== '' && !isNaN(Number(additionalCharges)) ? Math.max(0, Number(additionalCharges)) : 0;
       const delCharges = deliveryCharges !== '' && !isNaN(Number(deliveryCharges)) ? Math.max(0, Number(deliveryCharges)) : 0;
@@ -2836,6 +2847,8 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
           calculatedTotals={calculatedTotals}
           upcoming7DaysLoad={upcoming7DaysLoad}
           scheduledCountForSelectedDate={scheduledCountForSelectedDate}
+          globalGstRate={globalGstRate}
+          onUpdateAllItemsTax={updateAllItemsTax}
           onClose={handleCloseCreateModal}
           onSaveOrder={handleCreateSalesOrder}
           onOpenQuickCreateCustomer={handleOpenQuickCreateCustomer}
@@ -3038,4 +3051,4 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       )}
     </div>
   );
-};
+});

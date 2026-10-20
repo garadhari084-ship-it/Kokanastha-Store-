@@ -620,24 +620,11 @@ CREATE TRIGGER update_sales_orders_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 
--- Automatic Stock Inventory Level Management Function
--- Updates product "current_stock" when stock logs are written
-CREATE OR REPLACE FUNCTION update_product_current_stock()
-RETURNS TRIGGER AS $$
-BEGIN
-    UPDATE products
-    SET current_stock = COALESCE(current_stock, 0) + NEW.change_qty,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = NEW.product_id;
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
-
+-- Stock Inventory Level Management:
+-- Application store manages authoritative product current_stock.
+-- Drop any conflicting triggers to prevent double stock increments/decrements.
 DROP TRIGGER IF EXISTS trg_stock_logs_on_insert ON stock_logs;
-CREATE TRIGGER trg_stock_logs_on_insert
-    AFTER INSERT ON stock_logs
-    FOR EACH ROW
-    EXECUTE FUNCTION update_product_current_stock();
+DROP FUNCTION IF EXISTS update_product_current_stock();
 
 -- ====================================================================
 -- 8. ROW LEVEL SECURITY (RLS) POLICIES

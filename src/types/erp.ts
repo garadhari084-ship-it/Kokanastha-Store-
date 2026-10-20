@@ -142,14 +142,14 @@ export interface Product {
   mrp?: number;
   gst_rate: number;
   hsn_code: string;
-  stock_quantity: number;
+  stock_quantity?: number;
   current_stock?: number;
   opening_stock?: number;
   auto_conversion?: boolean;
   pack_size?: number;
   purchase_unit?: string;
   booked_quantity?: number;
-  min_stock_level: number;
+  min_stock_level?: number;
   minimum_stock?: number;
   maximum_stock?: number;
   brand?: string;
@@ -256,7 +256,10 @@ export interface PurchaseOrder {
   payment_mode?: string;
   payment_notes?: string;
   payment_reference?: string;
+  payment_date?: string;
   notes?: string;
+  payment_bank?: string;
+  payment_history?: any[];
   business_id: string;
   created_at: string;
 }
@@ -366,6 +369,10 @@ export interface SalesOrder {
   is_updated?: boolean;
   updated_at?: string;
   subscription_id?: string;
+  delivery_notes?: string;
+  returned_at?: string;
+  payment_bank?: string;
+  inventory_restocked?: boolean;
   business_id: string;
   created_at: string;
 }

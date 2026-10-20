@@ -1825,7 +1825,7 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
       bizUpdates.barcode_fssai = updates.fssai;
       bizUpdates.fssai_number = updates.fssai;
     }
-    if (updates.ingredients !== undefined) bizUpdates.barcode_ingredients = updates.ingredients;
+    // Ingredients are strictly per-product; do not propagate globally
     if (updates.company_name !== undefined) bizUpdates.barcode_company_name = updates.company_name;
     if (updates.show_company !== undefined) bizUpdates.barcode_show_company = updates.show_company;
     if (updates.label_size !== undefined) bizUpdates.barcode_label_size = updates.label_size;
@@ -1946,11 +1946,10 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
         '11521018000123';
       setPrintFssaiNumber(initialFssai);
 
-      // Ingredients
+      // Ingredients (strictly product-specific)
       const initialIngredients = 
         printingBarcodeProduct.food_packaging?.ingredients ||
-        savedDefaults.ingredients ||
-        currentBiz?.barcode_ingredients ||
+        printingBarcodeProduct.description ||
         'Roasted Rice Flour, Bengal Gram, Spices, Edible Oil, Salt';
       setPrintIngredients(initialIngredients);
 
@@ -2140,15 +2139,17 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     }
 
     try {
+      const targetBalance = currentStock + changeQty;
+      dbStore.setAuthoritativeStock(freshProd.id, targetBalance, changeQty, freshProd.sku, freshProd.name);
       dbStore.addStockLog(
-        quickStockProduct.id,
+        freshProd.id,
         changeQty,
         logType,
         quickStockNote.trim() || `Quick stock adjust (${quickStockMode} ${qtyVal})`,
         user.id,
         businessId
       );
-      triggerToast(`Stock updated for "${quickStockProduct.name}". New balance: ${currentStock + changeQty} ${quickStockProduct.unit}`, 'success');
+      triggerToast(`Stock updated for "${freshProd.name}": ${changeQty > 0 ? '+' : ''}${changeQty} ${freshProd.unit}. New balance: ${targetBalance} ${freshProd.unit}`, 'success');
       setIsQuickStockModalOpen(false);
       setQuickStockProduct(null);
     } catch (err: any) {
@@ -7245,19 +7246,19 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
     
       {/* ==================== QUICK STOCK ADJUSTMENT MODAL ==================== */}
       {isQuickStockModalOpen && quickStockProduct && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in duration-150 border border-slate-200 dark:border-slate-800">
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md max-h-[92vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in duration-150 border border-slate-200 dark:border-slate-800 my-auto">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <PackagePlus size={18} className="text-emerald-400" />
                 <h2 className="text-xs font-bold uppercase tracking-wider">Quick Stock Adjustment</h2>
               </div>
-              <button onClick={() => setIsQuickStockModalOpen(false)} className="text-white/80 hover:text-white cursor-pointer">
+              <button onClick={() => setIsQuickStockModalOpen(false)} className="text-white/80 hover:text-white cursor-pointer" title="Close">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0 overscroll-contain">
               {/* Product Card */}
               <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
                 <img src={quickStockProduct.image_url} alt={quickStockProduct.name} className="w-12 h-12 object-cover rounded-lg border border-slate-300 dark:border-slate-600" />
@@ -7344,8 +7345,11 @@ export const ProductModule: React.FC<ProductModuleProps> = ({
                 />
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            </div>
+
+            {/* Action Buttons - Fixed at Bottom */}
+            <div className="p-4 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-xs border-t border-slate-100 dark:border-slate-800 shrink-0">
+              <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setIsQuickStockModalOpen(false)}

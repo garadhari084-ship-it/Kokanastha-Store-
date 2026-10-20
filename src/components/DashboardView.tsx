@@ -93,7 +93,7 @@ interface DashboardViewProps {
 type ColorTheme = 'midnight-gold' | 'emerald-pro' | 'royal-sapphire' | 'titanium-dark';
 type TabView = 'operations' | 'analytics' | 'logistics' | 'inventory';
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ 
+export const DashboardView: React.FC<DashboardViewProps> = React.memo(({ 
   businessId, 
   user, 
   onNavigate, 
@@ -146,7 +146,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   useEffect(() => {
     const validIds = allowedTabs.map(t => t.id);
     if (!validIds.includes(activeTab)) {
-      setActiveTab(validIds[0].id as TabView);
+      setActiveTab(validIds[0] as TabView);
     }
   }, [userRole, allowedTabs, activeTab]);
 
@@ -3086,4 +3086,4 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
     </div>
   );
-};
+});

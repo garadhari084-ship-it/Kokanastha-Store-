@@ -699,7 +699,40 @@ class ERPStorage {
   private pendingUploads = new Set<string>();
   private realtimeChannel: any = null;
   private knownMissingTables = new Set<string>();
+  // Tracks authoritative target stock level set recently by application for each product ID
+  // Prevents any remote trigger (like trg_stock_logs_on_insert) or race condition from doubling the stock
+  private localStockExpectations = new Map<string, { expectedStock: number; changeQty: number; timestamp: number; sku?: string; name?: string }>();
   
+  public getLocalStockExpectation(key: string): { expectedStock: number; changeQty: number; timestamp: number; sku?: string; name?: string } | undefined {
+    if (!key) return undefined;
+    const cleanKey = String(key).trim();
+    const exp = this.localStockExpectations.get(cleanKey) ||
+                this.localStockExpectations.get(cleanKey.toLowerCase());
+    if (exp && (Date.now() - exp.timestamp < 15 * 60 * 1000)) {
+      return exp;
+    }
+    return undefined;
+  }
+
+  public setAuthoritativeStock(productId: string, expectedStock: number, changeQty: number, sku?: string, name?: string) {
+    const expData = { expectedStock, changeQty, timestamp: Date.now(), sku, name };
+    if (productId) {
+      this.localStockExpectations.set(productId, expData);
+      this.localStockExpectations.set(productId.toLowerCase(), expData);
+    }
+    if (sku) {
+      this.localStockExpectations.set(sku, expData);
+      this.localStockExpectations.set(sku.toLowerCase(), expData);
+    }
+    if (name) {
+      this.localStockExpectations.set(name, expData);
+      this.localStockExpectations.set(name.toLowerCase(), expData);
+    }
+    try {
+      safeStorage.setItem('omnipack_erp_stock_expectations', JSON.stringify(Array.from(this.localStockExpectations.entries())));
+    } catch (_) {}
+  }
+
   public setRealtimeChannel(channel: any) {
     this.realtimeChannel = channel;
   }
@@ -761,12 +794,19 @@ class ERPStorage {
     }
   }
 
+  private notificationTimer: number | null = null;
   public subscribe(listener: () => void) {
     this.listeners.push(listener);
     return () => { this.listeners = this.listeners.filter(l => l !== listener); };
   }
   public notify() {
-    this.listeners.forEach(l => l());
+    if (this.notificationTimer !== null) return;
+    this.notificationTimer = window.requestAnimationFrame(() => {
+      this.listeners.forEach(l => {
+        try { l(); } catch (e) { console.error('Listener error', e); }
+      });
+      this.notificationTimer = null;
+    });
   }
 
   public patchIncomingRecord(key: string, record: any) {
@@ -778,10 +818,26 @@ class ERPStorage {
         (key === 'sales' && record.order_number && item.order_number === record.order_number) ||
         (key === 'purchases' && record.po_number && item.po_number === record.po_number)
       );
+
+      let patchedRecord = { ...record };
+      if (key === 'products') {
+        const exp = (record.id ? this.getLocalStockExpectation(record.id) : undefined) ||
+                    (record.sku ? this.getLocalStockExpectation(record.sku) : undefined) ||
+                    (record.name ? this.getLocalStockExpectation(record.name) : undefined);
+        if (exp) {
+          if (patchedRecord.current_stock !== exp.expectedStock) {
+            patchedRecord.current_stock = exp.expectedStock;
+            if (isSupabaseConfigured && supabase) {
+              Promise.resolve(supabase.from('products').update({ current_stock: exp.expectedStock }).eq('id', record.id)).catch(() => {});
+            }
+          }
+        }
+      }
+
       if (idx !== -1) {
-        cacheArr[idx] = { ...cacheArr[idx], ...record };
+        cacheArr[idx] = { ...cacheArr[idx], ...patchedRecord };
       } else {
-        cacheArr.unshift(record);
+        cacheArr.unshift(patchedRecord);
       }
       safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
       this.notify();
@@ -858,6 +914,22 @@ class ERPStorage {
     };
     this.draftReservations = this.load('draftReservations', []);
     this.activeDeviceSessions = this.load('deviceSessions', []);
+
+    // Load persisted stock expectations to safeguard against remote triggers on refresh
+    try {
+      const savedExp = safeStorage.getItem('omnipack_erp_stock_expectations');
+      if (savedExp) {
+        const parsed = JSON.parse(savedExp);
+        if (Array.isArray(parsed)) {
+          const now = Date.now();
+          parsed.forEach(([k, v]: [string, any]) => {
+            if (v && v.timestamp && (now - v.timestamp < 15 * 60 * 1000)) {
+              this.localStockExpectations.set(k, v);
+            }
+          });
+        }
+      }
+    } catch (_) {}
 
     // One-time migration: Reset all current customers' loyalty tier to 'None'
     const tierMigrationKey = 'omnipack_erp_tier_reset_none_v2';
@@ -1368,7 +1440,22 @@ class ERPStorage {
                  rate_ddr: typeof remoteProd.rate_ddr === 'number' ? remoteProd.rate_ddr : localProd?.rate_ddr,
                  is_combo: remoteProd.is_combo ?? (localProd?.is_combo || (remoteProd.combo_items && remoteProd.combo_items.length > 0)),
                  combo_items: remoteProd.combo_items || localProd?.combo_items,
-                 current_stock: typeof remoteProd.current_stock === 'number' ? remoteProd.current_stock : (localProd?.current_stock || 0)
+                 current_stock: (() => {
+                   const exp = (remoteProd.id ? this.getLocalStockExpectation(remoteProd.id) : undefined) ||
+                               (remoteProd.sku ? this.getLocalStockExpectation(remoteProd.sku) : undefined) ||
+                               (remoteProd.name ? this.getLocalStockExpectation(remoteProd.name) : undefined) ||
+                               (localProd?.id ? this.getLocalStockExpectation(localProd.id) : undefined);
+                   const remoteStock = typeof remoteProd.current_stock === 'number' ? remoteProd.current_stock : (localProd?.current_stock || 0);
+                   if (exp) {
+                     if (remoteStock !== exp.expectedStock) {
+                       if (isSupabaseConfigured && supabase) {
+                         Promise.resolve(supabase.from('products').update({ current_stock: exp.expectedStock }).eq('id', remoteProd.id)).catch(() => {});
+                       }
+                       return exp.expectedStock;
+                     }
+                   }
+                   return remoteStock;
+                 })()
                };
              });
 
@@ -2310,18 +2397,28 @@ class ERPStorage {
     return dedupeById(
       (this.cache.products || [])
         .filter(p => p && (p.id || p.name))
-        .map(p => ({
-          ...p,
-          id: p.id || crypto.randomUUID(),
-          name: p.name || 'Unnamed Product',
-          sku: String(p.sku || ''),
-          barcode: String(p.barcode || ''),
-          current_stock: Number(p.current_stock || 0),
-          purchase_price: Number(p.purchase_price || 0),
-          selling_price: Number(p.selling_price || 0),
-          business_id: businessId,
-          is_combo: isComboProduct(p)
-        }))
+        .map(p => {
+          let stock = Number(p.current_stock || 0);
+          const exp = (p.id ? this.getLocalStockExpectation(p.id) : undefined) ||
+                      (p.sku ? this.getLocalStockExpectation(p.sku) : undefined) ||
+                      (p.name ? this.getLocalStockExpectation(p.name) : undefined);
+          if (exp && stock !== exp.expectedStock) {
+            stock = exp.expectedStock;
+            p.current_stock = exp.expectedStock;
+          }
+          return {
+            ...p,
+            id: p.id || crypto.randomUUID(),
+            name: p.name || 'Unnamed Product',
+            sku: String(p.sku || ''),
+            barcode: String(p.barcode || ''),
+            current_stock: stock,
+            purchase_price: Number(p.purchase_price || 0),
+            selling_price: Number(p.selling_price || 0),
+            business_id: businessId,
+            is_combo: isComboProduct(p)
+          };
+        })
     );
   }
 
@@ -2371,7 +2468,7 @@ class ERPStorage {
       ...prod,
       business_id: normBizId,
       id: crypto.randomUUID(),
-      current_stock: initialStock,
+      current_stock: 0, // Will be updated by addStockLog below
       is_combo: false,
       created_at: new Date().toISOString()
     };
@@ -2572,6 +2669,7 @@ class ERPStorage {
       combo_id: comboId,
       combo_name: comboName,
       action,
+      type: action || 'Stock Change',
       qty,
       performed_by: performedBy,
       details,
@@ -4780,16 +4878,24 @@ class ERPStorage {
       // Update product current stock level in memory cache
       const productIndex = this.cache.products.findIndex(p => p.id === targetId || p.id === productId);
       if (productIndex !== -1) {
-        this.cache.products[productIndex].current_stock = (this.cache.products[productIndex].current_stock || 0) + changeQty;
+        const prod = this.cache.products[productIndex];
+        const currentVal = Number(prod.current_stock) || 0;
+        const newStock = currentVal + changeQty;
+        prod.current_stock = newStock;
+        
+        // Record authoritative expectation to safeguard against database triggers doubling stock
+        this.setAuthoritativeStock(targetId, newStock, changeQty, prod.sku, prod.name);
+        this.setAuthoritativeStock(productId, newStock, changeQty, prod.sku, prod.name);
+        if (prod.id) this.setAuthoritativeStock(prod.id, newStock, changeQty, prod.sku, prod.name);
+
+        safeStorage.setItem('omnipack_erp_products', JSON.stringify(this.cache.products));
         // Immediately save updated product to Supabase DB so it persists and broadcasts live to other users
-        this.save('products', this.cache.products[productIndex]);
+        this.save('products', prod);
       }
     }
 
     this.cache.stockLogs.push(newLog);
     this.save('stockLogs', newLog);
-    // Immediately notify all UI subscribers so UI reflects stock changes live
-    this.notify();
     return newLog;
   }
 
@@ -4808,11 +4914,15 @@ class ERPStorage {
       if (diffQty !== 0) {
         const productIndex = this.cache.products.findIndex(p => p.id === newLog.product_id);
         if (productIndex !== -1) {
-          this.cache.products[productIndex].current_stock = (this.cache.products[productIndex].current_stock || 0) + diffQty;
-          this.save('products', this.cache.products[productIndex]);
+          const prod = this.cache.products[productIndex];
+          const currentVal = Number(prod.current_stock) || 0;
+          const newStock = currentVal + diffQty;
+          prod.current_stock = newStock;
+          this.setAuthoritativeStock(newLog.product_id, newStock, diffQty, prod.sku, prod.name);
+          safeStorage.setItem('omnipack_erp_products', JSON.stringify(this.cache.products));
+          this.save('products', prod);
         }
       }
-      this.notify();
       return newLog;
     }
     throw new Error('Stock log not found');
@@ -5124,12 +5234,19 @@ class ERPStorage {
     const session: PackingSession = {
       id: crypto.randomUUID(),
       order_id: orderId,
+      order_number: order.order_number,
+      packed_by: staffName,
       packing_staff_id: staffId,
       start_time: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // Simulated 5 min duration
       end_time: new Date().toISOString(),
       total_scans: totalScans,
       status: 'Packed',
       logs: auditLogs,
+      items_packed: (order.items || []).map(item => ({
+        product_id: item.product_id,
+        scanned_qty: item.scanned_qty || 0,
+        required_qty: item.qty
+      })),
       business_id: businessId
     };
 

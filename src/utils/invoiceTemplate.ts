@@ -233,7 +233,7 @@ export async function generateBillOfSupplyHTML(
     );
     const qty = Math.max(1, Number(it.qty) || Number((it as any).quantity) || 1);
     const rate = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
-    const gst = Number(it.gst_rate) || (p ? Number(p.gst_rate) : 0);
+    const gst = (typeof it.gst_rate === 'number') ? it.gst_rate : (p ? Number(p.gst_rate) : 0);
     return sum + (qty * rate * (gst / 100));
   }, 0);
 

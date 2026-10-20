@@ -293,6 +293,8 @@ export interface CreateInvoiceViewProps {
   triggerToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
   getSuggestedInvoiceNumber: (festive: boolean, advance: boolean) => string;
   recalculateOrderPrices: (items: SalesItem[], customer?: Customer, isAdvance?: boolean, isFestive?: boolean) => SalesItem[];
+  globalGstRate: number | string;
+  onUpdateAllItemsTax: (newTax: number | string) => void;
 }
 
 export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
@@ -382,7 +384,9 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   setOutOfStockProduct,
   triggerToast,
   getSuggestedInvoiceNumber,
-  recalculateOrderPrices
+  recalculateOrderPrices,
+  globalGstRate,
+  onUpdateAllItemsTax
 }) => {
   const selectedCust = customers.find(c => c.id === selectedCustomerId) || 
                        dbStore.getCustomers(businessId).find(c => c.id === selectedCustomerId) || 
@@ -1245,9 +1249,11 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                             orderDate
                           });
                           
-                          const defaultTax = (defaultTenantTax === 0 || p.gst_rate === 18 || typeof p.gst_rate !== 'number' || isNaN(p.gst_rate))
-                            ? defaultTenantTax
-                            : p.gst_rate;
+                          const defaultTax = globalGstRate !== '' && !isNaN(Number(globalGstRate))
+                            ? Number(globalGstRate)
+                            : ((defaultTenantTax === 0 || p.gst_rate === 18 || typeof p.gst_rate !== 'number' || isNaN(p.gst_rate))
+                                ? defaultTenantTax
+                                : p.gst_rate);
                             
                           const existingItem = orderItems.find(it => it.product_id === p.id);
                           if (existingItem) {
@@ -1659,12 +1665,25 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 pt-2">
-                  <span className="flex items-center gap-1">
-                    <span>Tax (GST)</span>
-                    <span className="text-[9px] text-slate-400">Total</span>
-                  </span>
-                  <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                <div className="flex items-center justify-between pt-2">
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <ShieldCheck size={11} className="text-indigo-500" />
+                      <span>Tax (GST Option)</span>
+                    </span>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={globalGstRate}
+                        onChange={(e) => onUpdateAllItemsTax(e.target.value)}
+                        className="w-10 h-6 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[10px] font-bold text-center focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <span className="text-[9px] font-bold text-slate-400">% Apply All</span>
+                    </div>
+                  </div>
+                  <span className="font-mono font-black text-indigo-600 dark:text-indigo-400 text-sm">
                     +{currencySymbol}{taxVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>

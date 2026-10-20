@@ -102,12 +102,6 @@ const ItemStockLiveReportModule = lazyWithReload(() => import('./components/Item
 const PublicInvoiceView = lazyWithReload(() => import('./components/PublicInvoiceView').then(m => ({ default: m.PublicInvoiceView })));
 const PublicProductView = lazyWithReload(() => import('./components/PublicProductView').then(m => ({ default: m.PublicProductView })));
 
-interface Toast {
-  id: string;
-  message: string;
-  type: 'success' | 'error' | 'info';
-}
-
 const getDeviceId = (): string => {
   try {
     let devId = safeStorage.getItem('omnipack_device_id');
@@ -119,6 +113,72 @@ const getDeviceId = (): string => {
   } catch (e) {
     return 'dev_default';
   }
+};
+
+interface Toast {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
+interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  timestamp: string;
+  type: 'order' | 'stock' | 'system' | 'info';
+  targetView: string;
+  read: boolean;
+}
+
+interface AppErrorDetail {
+  message: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  stack?: string;
+  timestamp: string;
+}
+
+// Sidebar menu configuration moved outside for stability
+const sidebarMenuItems = [
+  { id: 'dashboard', label: 'Executive Desk', icon: LayoutDashboard },
+  { id: 'sales', label: 'Sales & Bookings', icon: FileText },
+  { id: 'packing', label: 'Packing Verification', icon: ClipboardCheck, highlight: true },
+  { id: 'item_stock_live_report', label: 'Item Stock Live Report', icon: Package },
+  { id: 'delivery', label: 'Delivery & Dispatch', icon: Truck },
+  { id: 'inventory', label: 'Inventory Ledger', icon: Layers },
+  { id: 'products', label: 'Product Catalog', icon: Package },
+  { id: 'categories', label: 'Inventory Categories', icon: Layers },
+  { id: 'parties', label: 'Parties', icon: Users },
+  { id: 'loyalty', label: 'Loyalty Program', icon: Award },
+  { id: 'suppliers', label: 'Suppliers directory', icon: Truck },
+  { id: 'purchases', label: 'Purchase & Expense', icon: ShoppingBag },
+  { id: 'reports', label: 'Compliance Reports', icon: BarChart3 },
+  { id: 'users', label: 'User Management', icon: UserCheck, adminOnly: true },
+  { id: 'settings', label: 'Tenant settings', icon: Settings, adminOnly: true },
+  { id: 'audit', label: 'Security Logs', icon: ShieldAlert, adminOnly: true }
+];
+
+// Helper to check for overdue orders
+const isOrderOverdue = (deliveryDateStr: string | undefined, orderStatus?: string): boolean => {
+  if (!deliveryDateStr) return false;
+  if (orderStatus === 'Delivered' || orderStatus === 'Cancelled' || orderStatus === 'Returned') return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let dDate: Date;
+  if (deliveryDateStr.includes('/') && deliveryDateStr.split('/').length === 3) {
+    const [d, m, y] = deliveryDateStr.split('/').map(Number);
+    dDate = new Date(y, m - 1, d);
+  } else {
+    dDate = new Date(deliveryDateStr);
+  }
+  dDate.setHours(0, 0, 0, 0);
+
+  if (isNaN(dDate.getTime())) return false;
+  return dDate.getTime() < today.getTime();
 };
 
 export default function App() {
@@ -220,15 +280,6 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [syncTick, setSyncTick] = useState(0);
 
-  // Database connection and application error tracking states
-  interface AppErrorDetail {
-    message: string;
-    filename?: string;
-    lineno?: number;
-    colno?: number;
-    stack?: string;
-    timestamp: string;
-  }
   const [dbConnected, setDbConnected] = useState(true);
   const [appErrors, setAppErrors] = useState<AppErrorDetail[]>([]);
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -595,27 +646,6 @@ export default function App() {
     return unreadMessages.filter(m => !dismissedAlertMsgIds.includes(m.id));
   }, [unreadMessages, dismissedAlertMsgIds]);
 
-  // Calculate overdue sales orders count
-  const isOrderOverdue = (deliveryDateStr: string | undefined, orderStatus?: string): boolean => {
-    if (!deliveryDateStr) return false;
-    if (orderStatus === 'Delivered' || orderStatus === 'Cancelled' || orderStatus === 'Returned') return false;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    let dDate: Date;
-    if (deliveryDateStr.includes('/') && deliveryDateStr.split('/').length === 3) {
-      const [d, m, y] = deliveryDateStr.split('/').map(Number);
-      dDate = new Date(y, m - 1, d);
-    } else {
-      dDate = new Date(deliveryDateStr);
-    }
-    dDate.setHours(0, 0, 0, 0);
-
-    if (isNaN(dDate.getTime())) return false;
-    return dDate.getTime() < today.getTime();
-  };
-
   const overdueOrdersCount = useMemo(() => {
     if (!currentBusiness) return 0;
     const sales = dbStore.getSalesOrders(currentBusiness.id);
@@ -886,7 +916,17 @@ export default function App() {
               try {
                 const { businessId } = JSON.parse(sessionData);
                 if (businessId) {
-                  await dbStore.syncFromSupabase(businessId, payload?.table || payload?.payload?.table);
+                  const incomingTable = payload?.table || payload?.payload?.table;
+                  if (incomingTable === 'products' && payload?.new) {
+                    const rec = { ...payload.new };
+                    const exp = (rec.id ? dbStore.getLocalStockExpectation(rec.id) : undefined) ||
+                                (rec.sku ? dbStore.getLocalStockExpectation(rec.sku) : undefined);
+                    if (exp && rec.current_stock !== exp.expectedStock) {
+                      rec.current_stock = exp.expectedStock;
+                    }
+                    dbStore.patchIncomingRecord('products', rec);
+                  }
+                  await dbStore.syncFromSupabase(businessId, incomingTable);
                   // Force re-render of App to trickle down changes
                   setSyncTick(prev => prev + 1);
                 }
@@ -1391,11 +1431,11 @@ export default function App() {
   };
 
   // Deep linking helper
-  const handleDeepLinkNavigate = (view: string, actionData?: any) => {
+  const handleDeepLinkNavigate = useCallback((view: string, actionData?: any) => {
     setActiveView(view);
     setDeepLinkData(actionData ? { ...actionData, _ts: Date.now() } : null);
     setIsMobileMenuOpen(false);
-  };
+  }, []);
 
   const handleClearDeepLink = useCallback(() => {
     setDeepLinkData(null);
@@ -1535,18 +1575,7 @@ export default function App() {
     }
   };
 
-  // Dynamic Notifications Computation
-  interface AppNotification {
-    id: string;
-    title: string;
-    message: string;
-    timestamp: string;
-    type: 'order' | 'stock' | 'system' | 'info';
-    targetView: string;
-    read: boolean;
-  }
-
-  const notifications = React.useMemo(() => {
+  const notifications = useMemo(() => {
     if (!currentBusiness) return [];
     const bizId = currentBusiness.id;
     const list: AppNotification[] = [];
@@ -1617,6 +1646,16 @@ export default function App() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Sidebar access redirect
+  useEffect(() => {
+    if (currentUser && !hasAccessToView(activeView)) {
+      const firstAvailable = sidebarMenuItems.find(item => hasAccessToView(item.id));
+      if (firstAvailable) {
+        setActiveView(firstAvailable.id);
+      }
+    }
+  }, [currentUser?.id, activeView]);
+
   const handleMarkAllNotificationsRead = () => {
     const allIds = notifications.map(n => n.id);
     const updatedRead = Array.from(new Set([...readNotificationIds, ...allIds]));
@@ -1654,35 +1693,6 @@ export default function App() {
     safeStorage.removeItem('omnipack_read_notifications');
     triggerToast('Cleared notification read memory', 'info');
   };
-
-  // Define sidebar menu items
-  useEffect(() => {
-    if (currentUser && !hasAccessToView(activeView)) {
-      const firstAvailable = menuItems.find(item => hasAccessToView(item.id));
-      if (firstAvailable) {
-        setActiveView(firstAvailable.id);
-      }
-    }
-  }, [currentUser?.id, activeView]);
-
-  const menuItems = [
-    { id: 'dashboard', label: 'Executive Desk', icon: LayoutDashboard },
-    { id: 'sales', label: 'Sales & Bookings', icon: FileText },
-    { id: 'packing', label: 'Packing Verification', icon: ClipboardCheck, highlight: true },
-    { id: 'item_stock_live_report', label: 'Item Stock Live Report', icon: Package },
-    { id: 'delivery', label: 'Delivery & Dispatch', icon: Truck },
-    { id: 'inventory', label: 'Inventory Ledger', icon: Layers },
-    { id: 'products', label: 'Product Catalog', icon: Package },
-    { id: 'categories', label: 'Inventory Categories', icon: Layers },
-    { id: 'parties', label: 'Parties', icon: Users },
-    { id: 'loyalty', label: 'Loyalty Program', icon: Award },
-    { id: 'suppliers', label: 'Suppliers directory', icon: Truck },
-    { id: 'purchases', label: 'Purchase & Expense', icon: ShoppingBag },
-    { id: 'reports', label: 'Compliance Reports', icon: BarChart3 },
-    { id: 'users', label: 'User Management', icon: UserCheck, adminOnly: true },
-    { id: 'settings', label: 'Tenant settings', icon: Settings, adminOnly: true },
-    { id: 'audit', label: 'Security Logs', icon: ShieldAlert, adminOnly: true }
-  ];
 
   
   const handleEditProfile = async () => {
@@ -1785,7 +1795,8 @@ export default function App() {
   };
 
   // Render view router
-  const renderActiveModule = () => {
+  // Render view router
+  const activeModule = useMemo(() => {
     if (!currentUser || !currentBusiness) return null;
 
     if (!hasAccessToView(activeView)) {
@@ -1808,7 +1819,6 @@ export default function App() {
       case 'dashboard':
         return (
           <DashboardView 
-            
             businessId={currentBusiness.id} 
             user={currentUser} 
             onNavigate={handleDeepLinkNavigate} 
@@ -1848,6 +1858,9 @@ export default function App() {
             onCreateOrder={() => {
               handleDeepLinkNavigate('sales', { openAddModal: true });
             }}
+            onOpenInventory={(prodId) => {
+              handleDeepLinkNavigate('inventory', { openInwardModal: true, productId: prodId });
+            }}
           />
         );
       case 'delivery':
@@ -1861,6 +1874,7 @@ export default function App() {
       case 'inventory':
         return (
           <InventoryModule 
+            key={deepLinkData?._ts ? `inventory-${deepLinkData._ts}` : 'inventory'}
             businessId={currentBusiness.id} 
             user={currentUser} 
             triggerToast={triggerToast}
@@ -1981,7 +1995,7 @@ export default function App() {
       default:
         return <div>Module view not resolved.</div>;
     }
-  };
+  }, [activeView, currentUser, currentBusiness, deepLinkData, handleClearDeepLink, handleDeepLinkNavigate, triggerToast]);
 
   // Render Public Invoice view if requested via link
   if (publicInvoiceNum) {
@@ -2556,7 +2570,7 @@ export default function App() {
         </div>
         {/* Navigation Items list */}
         <nav className={`flex-1 overflow-y-auto py-6 space-y-1 px-4 overscroll-contain scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent ${isSidebarMinimized ? 'lg:px-3' : ''}`}>
-          {menuItems.filter(item => hasAccessToView(item.id)).map(item => {
+          {sidebarMenuItems.filter(item => hasAccessToView(item.id)).map(item => {
             const isActive = activeView === item.id;
 
             return (
@@ -2887,7 +2901,7 @@ export default function App() {
           }`}
         >
           <Suspense fallback={<div className="flex items-center justify-center p-12 h-[60vh] text-slate-500"><Loader2 className="animate-spin w-8 h-8 text-indigo-500" /></div>}>
-            {renderActiveModule()}
+            {activeModule}
           </Suspense>
         </main>
 

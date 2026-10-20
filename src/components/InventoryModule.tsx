@@ -51,8 +51,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   }, [businessId]);
 
 
-  const handleCreateAdjustment = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleCreateAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     if (!selectedProductId) {
       triggerToast('Please select a valid product to adjust.', 'error');
@@ -77,6 +80,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       return;
     }
 
+    setIsSubmitting(true);
     try {
       if (editingLogId) {
         dbStore.updateStockLog(editingLogId, {
@@ -116,13 +120,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
         triggerToast(`Inventory stock adjusted successfully.`, 'success');
       }
-      setProducts(dbStore.getProducts(businessId));
-      setStockLogs(dbStore.getStockLogs(businessId));
+      
+      // Removed redundant manual setProducts/setStockLogs as the store subscription handles it
       setIsAdjustModalOpen(false);
       setAdjustNotes('');
       setAdjustQty(10);
     } catch (err: any) {
       triggerToast(err.message || 'Error occurred.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

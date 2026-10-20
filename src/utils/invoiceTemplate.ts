@@ -224,18 +224,11 @@ export async function generateBillOfSupplyHTML(
     return sum + (qty * rate);
   }, 0);
 
-  const taxVal = items.reduce((sum, it) => {
-    const p = allAvailableProds.find(prod => 
-      prod.id === it.product_id || 
-      ((it as any).barcode && prod.barcode === (it as any).barcode) || 
-      ((it as any).sku && prod.sku === (it as any).sku) || 
-      ((it as any).product_name && prod.name === (it as any).product_name)
-    );
-    const qty = Math.max(1, Number(it.qty) || Number((it as any).quantity) || 1);
-    const rate = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
-    const gst = (typeof it.gst_rate === 'number') ? it.gst_rate : (p ? Number(p.gst_rate) : 0);
-    return sum + (qty * rate * (gst / 100));
-  }, 0);
+  const taxVal = (order.tax_amount !== undefined && order.tax_amount !== null && !isNaN(Number(order.tax_amount)))
+    ? Number(order.tax_amount)
+    : ((order as any).tax !== undefined && (order as any).tax !== null && !isNaN(Number((order as any).tax)))
+      ? Number((order as any).tax)
+      : 0;
 
   const discount = Number(order.discount_amount) || Number((order as any).discount) || Number(order.special_discount_amount) || 0;
   const additionalCharges = Number(order.additional_charges) || 0;

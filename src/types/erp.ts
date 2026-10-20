@@ -260,6 +260,7 @@ export interface PurchaseOrder {
   notes?: string;
   payment_bank?: string;
   payment_history?: any[];
+  is_bill?: boolean;
   business_id: string;
   created_at: string;
 }

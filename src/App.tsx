@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -57,50 +57,27 @@ import { TopProgressBar } from './components/TopProgressBar';
 import { PackingAlertBanner } from "./components/PackingAlertBanner";
 import { OverdueAlertBanner } from "./components/OverdueAlertBanner";
 import { RightScrollWidget } from "./components/RightScrollWidget";
-// Helper to handle dynamic import failures (e.g. chunk missing after new deployment)
-const lazyWithReload = (importFunc: () => Promise<any>) => {
-  return lazy(async () => {
-    try {
-      const module = await importFunc();
-      window.sessionStorage.removeItem('chunk-reload-attempted');
-      return module;
-    } catch (error) {
-      // If the chunk failed to load, reload the page once
-      const isChunkLoadFailed = error instanceof TypeError && (error.message.includes('dynamically imported module') || error.message.includes('Failed to fetch dynamically imported module') || error.message.includes('importing a dynamic module'));
-      const hasReloaded = window.sessionStorage.getItem('chunk-reload-attempted');
-      
-      if (isChunkLoadFailed && !hasReloaded) {
-        window.sessionStorage.setItem('chunk-reload-attempted', 'true');
-        window.location.reload();
-        // Return a promise that never resolves so React doesn't crash while reloading
-        return new Promise(() => {}) as any;
-      }
-      throw error;
-    }
-  });
-};
-
-const DashboardView = lazyWithReload(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
-const SalesModule = lazyWithReload(() => import('./components/SalesModule').then(m => ({ default: m.SalesModule })));
-const PackingVerificationModule = lazyWithReload(() => import('./components/PackingVerificationModule').then(m => ({ default: m.PackingVerificationModule })));
-const DeliveryModule = lazyWithReload(() => import('./components/DeliveryModule').then(m => ({ default: m.DeliveryModule })));
-const InventoryModule = lazyWithReload(() => import('./components/InventoryModule').then(m => ({ default: m.InventoryModule })));
-const ProductModule = lazyWithReload(() => import('./components/ProductModule').then(m => ({ default: m.ProductModule })));
-const CategoryModule = lazyWithReload(() => import('./components/CategoryModule').then(m => ({ default: m.CategoryModule })));
-const PartiesLayout = lazyWithReload(() => import('./components/PartiesLayout').then(m => ({ default: m.PartiesLayout })));
-const CustomerModule = lazyWithReload(() => import('./components/CustomerModule').then(m => ({ default: m.CustomerModule })));
-const PartiesModule = lazyWithReload(() => import('./components/PartiesModule').then(m => ({ default: m.PartiesModule })));
-const SupplierModule = lazyWithReload(() => import('./components/SupplierModule').then(m => ({ default: m.SupplierModule })));
-const PurchaseModule = lazyWithReload(() => import('./components/PurchaseModule').then(m => ({ default: m.PurchaseModule })));
-const ReportsModule = lazyWithReload(() => import('./components/ReportsModule').then(m => ({ default: m.ReportsModule })));
-const AuditLogView = lazyWithReload(() => import('./components/AuditLogView').then(m => ({ default: m.AuditLogView })));
-const SettingsModule = lazyWithReload(() => import('./components/SettingsModule').then(m => ({ default: m.SettingsModule })));
-const UsersModule = lazyWithReload(() => import('./components/UsersModule').then(m => ({ default: m.UsersModule })));
-const InboxModule = lazyWithReload(() => import('./components/InboxModule').then(m => ({ default: m.InboxModule })));
-const LoyaltySubscriptionModule = lazyWithReload(() => import('./components/LoyaltySubscriptionModule').then(m => ({ default: m.LoyaltySubscriptionModule })));
-const ItemStockLiveReportModule = lazyWithReload(() => import('./components/ItemStockLiveReportModule').then(m => ({ default: m.ItemStockLiveReportModule })));
-const PublicInvoiceView = lazyWithReload(() => import('./components/PublicInvoiceView').then(m => ({ default: m.PublicInvoiceView })));
-const PublicProductView = lazyWithReload(() => import('./components/PublicProductView').then(m => ({ default: m.PublicProductView })));
+import { DashboardView } from './components/DashboardView';
+import { SalesModule } from './components/SalesModule';
+import { PackingVerificationModule } from './components/PackingVerificationModule';
+import { DeliveryModule } from './components/DeliveryModule';
+import { InventoryModule } from './components/InventoryModule';
+import { ProductModule } from './components/ProductModule';
+import { CategoryModule } from './components/CategoryModule';
+import { PartiesLayout } from './components/PartiesLayout';
+import { CustomerModule } from './components/CustomerModule';
+import { PartiesModule } from './components/PartiesModule';
+import { SupplierModule } from './components/SupplierModule';
+import { PurchaseModule } from './components/PurchaseModule';
+import { ReportsModule } from './components/ReportsModule';
+import { AuditLogView } from './components/AuditLogView';
+import { SettingsModule } from './components/SettingsModule';
+import { UsersModule } from './components/UsersModule';
+import { InboxModule } from './components/InboxModule';
+import { LoyaltySubscriptionModule } from './components/LoyaltySubscriptionModule';
+import { ItemStockLiveReportModule } from './components/ItemStockLiveReportModule';
+import { PublicInvoiceView } from './components/PublicInvoiceView';
+import { PublicProductView } from './components/PublicProductView';
 
 const getDeviceId = (): string => {
   try {
@@ -2900,9 +2877,7 @@ export default function App() {
               : 'overflow-y-auto overflow-x-hidden px-0 pt-0.5 pb-4 sm:px-0 lg:px-0 sm:pt-1 sm:pb-6 space-y-4'
           }`}
         >
-          <Suspense fallback={<div className="flex items-center justify-center p-12 h-[60vh] text-slate-500"><Loader2 className="animate-spin w-8 h-8 text-indigo-500" /></div>}>
-            {activeModule}
-          </Suspense>
+          {activeModule}
         </main>
 
         {/* Right side slim scrolling icon navigation widget */}

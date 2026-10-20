@@ -3795,6 +3795,35 @@ class ERPStorage {
     return `${prefix}${nextSeq}`;
   }
 
+  public getNextAvailableBillNumber(businessId: string): string {
+    const normBiz = normalizeBusinessId(businessId);
+    const existingPOs = this.cache.purchases.filter(p => isSameBusiness(p.business_id, normBiz));
+    const prefix = 'BILL-';
+    const usedSequences = new Set<number>();
+
+    existingPOs.forEach(p => {
+      if (p.order_number && p.order_number.startsWith('BILL-')) {
+        const match = p.order_number.match(/(\d+)$/);
+        if (match) {
+          const parsed = parseInt(match[1], 10);
+          if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
+            usedSequences.add(parsed);
+          }
+        }
+      }
+    });
+
+    let nextSeq = 1;
+    while (
+      usedSequences.has(nextSeq) ||
+      existingPOs.some(p => p.order_number === `${prefix}${nextSeq}`)
+    ) {
+      nextSeq++;
+    }
+
+    return `${prefix}${nextSeq}`;
+  }
+
   public createPurchaseOrder(po: Omit<PurchaseOrder, 'id' | 'created_at'>): PurchaseOrder {
     const normBiz = normalizeBusinessId(po.business_id);
     let finalOrderNumber = po.order_number?.trim();

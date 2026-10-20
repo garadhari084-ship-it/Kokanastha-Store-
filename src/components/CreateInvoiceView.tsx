@@ -515,7 +515,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
     const previewTaxable = itemsForPreview.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
     const previewTax = itemsForPreview.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
-    const previewSubtotal = Math.round(previewTaxable + previewTax);
+    const previewSubtotal = Number(previewTaxable.toFixed(2));
 
     const config = dbStore.getLoyaltyConfig(businessId);
     const pointVal = config?.point_value || 1;
@@ -530,10 +530,10 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     } else {
       discAmt += amtDiscVal;
     }
-    const previewDiscountAmount = Math.round(discAmt);
+    const previewDiscountAmount = Number(discAmt.toFixed(2));
     const previewAddCharges = additionalCharges !== '' && !isNaN(Number(additionalCharges)) ? Math.max(0, Number(additionalCharges)) : 0;
     const previewDelCharges = deliveryCharges !== '' && !isNaN(Number(deliveryCharges)) ? Math.max(0, Number(deliveryCharges)) : 0;
-    const previewFinalAmount = Math.max(0, previewSubtotal - previewDiscountAmount + previewAddCharges + previewDelCharges);
+    const previewFinalAmount = Math.max(0, previewTaxable + previewTax - previewDiscountAmount + previewAddCharges + previewDelCharges);
 
     const previewDiscountPerc = discountType === 'Percentage'
       ? percDiscVal

@@ -235,7 +235,10 @@ export async function generateBillOfSupplyHTML(
   const deliveryCharges = Number(order.delivery_charges) || Number(order.delivery_charge) || 0;
 
   const computedTotal = Math.max(0, subTotal + taxVal + additionalCharges + deliveryCharges - discount);
-  const totalAmount = computedTotal;
+  let totalAmount = computedTotal;
+  if (taxVal === 0 && additionalCharges === 0 && deliveryCharges === 0 && discount === 0) {
+    totalAmount = subTotal;
+  }
   const totalQty = items.reduce((sum, it) => sum + (Number(it.qty) || Number((it as any).quantity) || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
 
@@ -918,7 +921,12 @@ export async function generate3InchBillHTML(
   const deliveryCharges = Number(order.delivery_charges) || Number(order.delivery_charge) || 0;
 
   const computedTotal = Math.max(0, subTotal + additionalCharges + deliveryCharges - discount);
-  const total = (typeof order.total_amount === 'number' && order.total_amount > 0) ? order.total_amount : computedTotal;
+  let total = computedTotal;
+  if (additionalCharges === 0 && deliveryCharges === 0 && discount === 0) {
+    total = subTotal;
+  } else if (typeof order.total_amount === 'number' && order.total_amount > 0) {
+    total = order.total_amount;
+  }
 
   const rawPaid = order.paid_amount ?? (order as any).paidAmount ?? (order as any).advance_amount ?? (order as any).advance;
   const numPaid = typeof rawPaid === 'number' ? rawPaid : (typeof rawPaid === 'string' && rawPaid.trim() !== '' && !isNaN(Number(rawPaid)) ? Number(rawPaid) : undefined);

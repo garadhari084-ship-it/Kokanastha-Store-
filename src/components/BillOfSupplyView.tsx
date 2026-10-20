@@ -73,7 +73,12 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const deliveryCharges = Number(order.delivery_charges) || Number(order.delivery_charge) || 0;
 
   const computedTotal = Math.max(0, subTotal + taxVal + additionalCharges + deliveryCharges - discount);
-  const totalAmount = (typeof order.total_amount === 'number' && order.total_amount > 0) ? order.total_amount : computedTotal;
+  let totalAmount = computedTotal;
+  if (taxVal === 0 && additionalCharges === 0 && deliveryCharges === 0 && discount === 0) {
+    totalAmount = subTotal;
+  } else if (typeof order.total_amount === 'number' && order.total_amount > 0) {
+    totalAmount = order.total_amount;
+  }
   const totalQty = items.reduce((sum, it) => sum + (Number(it.qty) || Number((it as any).quantity) || 0), 0);
   const amountInWords = numberToWordsIndian(totalAmount);
 

@@ -1033,7 +1033,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
   const calculatedTotals = useMemo(() => {
     const taxableVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0)), 0);
     const taxVal = orderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.selling_price) || 0) * ((Number(item.gst_rate) || 0) / 100)), 0);
-    const subtotalBeforeDiscount = Number((taxableVal + taxVal).toFixed(2));
+    const subtotalBeforeDiscount = Number(taxableVal.toFixed(2));
 
     const config = dbStore.getLoyaltyConfig(businessId);
     const pointVal = config?.point_value || 1;
@@ -1056,7 +1056,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
     const addCharges = additionalCharges !== '' && !isNaN(Number(additionalCharges)) ? Math.max(0, Number(additionalCharges)) : 0;
     const delCharges = deliveryCharges !== '' && !isNaN(Number(deliveryCharges)) ? Math.max(0, Number(deliveryCharges)) : 0;
     
-    const finalAmount = Math.max(0, subtotalBeforeDiscount - discountAmount + addCharges + delCharges);
+    const finalAmount = Math.max(0, taxableVal + taxVal - discountAmount + addCharges + delCharges);
     
     let computedPaid = 0;
     if (paymentStatus === 'Paid') {

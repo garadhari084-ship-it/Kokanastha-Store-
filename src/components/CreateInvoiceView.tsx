@@ -404,7 +404,9 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     finalAmount,
     computedPaid,
     balance,
-    actualRedeem
+    actualRedeem,
+    addCharges,
+    delCharges
   } = calculatedTotals;
 
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
@@ -561,6 +563,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       discount_percentage: previewDiscountPerc,
       additional_charges: previewAddCharges,
       delivery_charges: previewDelCharges,
+      delivery_charge: previewDelCharges,
       additional_charges_type: additionalChargeType,
       points_redeemed: actualRedeem,
       qr_code_data: `${orderNum}|${selectedCustomerId}|${custName}|${itemsForPreview.length} items`,
@@ -1676,6 +1679,25 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   </div>
                 )}
 
+                {/* Additional & Delivery Charges Summary Rows */}
+                {delCharges > 0 && (
+                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 pt-2 font-bold">
+                    <span>Delivery Charges</span>
+                    <span className="font-mono">
+                      +{currencySymbol}{delCharges.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+
+                {addCharges > 0 && (
+                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 pt-2 font-bold">
+                    <span>{additionalChargeType || 'Additional Fee'}</span>
+                    <span className="font-mono">
+                      +{currencySymbol}{addCharges.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+
                 {/* Custom Discount Box */}
                 <div className="pt-2 space-y-1.5">
                   <div className="flex items-center justify-between">
@@ -1797,7 +1819,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                   </span>
                 </div>
                 <div className="text-2xl font-black font-mono text-emerald-400">
-                  {currencySymbol}{finalAmount.toLocaleString()}
+                  {currencySymbol}{finalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
 

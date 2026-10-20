@@ -944,7 +944,7 @@ export const SalesModule: React.FC<SalesModuleProps> = ({
       setCustomDiscountAmount('');
     }
     setAdditionalCharges(order.additional_charges || 0);
-    setDeliveryCharges(order.delivery_charges || 0);
+    setDeliveryCharges(order.delivery_charges ?? (order as any).delivery_charge ?? 0);
     setAdditionalChargeType(order.additional_charges_type || 'Delivery');
     setOrderItems([...order.items]);
     setIsCreateModalOpen(true);

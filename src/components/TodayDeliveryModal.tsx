@@ -36,6 +36,9 @@ export const TodayDeliveryModal: React.FC<TodayDeliveryModalProps> = ({
   
   const todayOrders = useMemo(() => {
     return orders.filter(o => {
+      if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || o.customer_name === 'Walk-in Customer') {
+        return false;
+      }
       const isTodayDelivery = o.delivery_date === todayStr;
       const isTodayOrder = !o.delivery_date && o.order_date === todayStr;
       return isTodayDelivery || isTodayOrder;

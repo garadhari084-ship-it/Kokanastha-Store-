@@ -1362,10 +1362,10 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
           channel: isWalkIn ? 'Walk-in' : 'Direct Order',
           time: orderTime ? format12HourTime(orderTime) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           order_date: orderDate || getLocalTodayDate(),
-          delivery_date: deliveryDate || null,
+          delivery_date: isWalkIn ? null : (deliveryDate || null),
           delivery_type: deliveryType,
-          status: (isFulfilledImmediately || isWalkIn) ? 'Delivered' : existingOrder?.status === 'Packed' ? 'Packing' : (existingOrder?.status || 'Pending'),
-          delivery_status: (isFulfilledImmediately || isWalkIn) ? 'Delivered' : existingOrder?.delivery_status || 'Pending',
+          status: (isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : existingOrder?.status === 'Packed' ? 'Packing' : (existingOrder?.status || 'Pending'),
+          delivery_status: (isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : existingOrder?.delivery_status || 'Pending',
           payment_status: finalPaymentStatusToSave as any,
           payment_mode: paymentMode,
           paid_amount: actualPaid,
@@ -1442,13 +1442,13 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
           channel: isWalkIn ? 'Walk-in' : 'Direct Order',
           time: orderTime ? format12HourTime(orderTime) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           order_date: orderDate || getLocalTodayDate(),
-          delivery_date: deliveryDate || null,
+          delivery_date: isWalkIn ? null : (deliveryDate || null),
           delivery_type: deliveryType,
-          status: (isFulfilledImmediately || isWalkIn) ? 'Delivered' : 'Pending',
+          status: (isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : 'Pending',
           payment_status: finalPaymentStatusToSave as any,
           payment_mode: paymentMode,
           paid_amount: actualPaid,
-          delivery_status: (isFulfilledImmediately || isWalkIn) ? 'Delivered' : 'Pending',
+          delivery_status: (isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : 'Pending',
           items: cleanItems,
           advance_booking: isAdvanceBooking,
           festive_booking: isFestiveBooking,
@@ -1501,7 +1501,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
         // Send message from Order System with order details
         const itemsSummary = cleanItems.map((i: any) => `${i.product_name || 'Product'} (x${i.qty || i.quantity || 1})`).join(', ');
         const itemsCount = cleanItems.reduce((acc: number, i: any) => acc + (Number(i.qty) || Number(i.quantity) || 0), 0);
-        const newOrderMsg = `📦 New Sales Order: ${createdOrder.order_number}\n\nCustomer: ${finalCustomerName || 'Walk-in'}\nTotal Amount: ${currencySymbol}${finalAmount.toLocaleString()}\nItems (${itemsCount} units): ${itemsSummary}\nDelivery Date: ${deliveryDate || 'Standard Delivery'}\nDelivery Type: ${deliveryType || 'Standard'}\nStatus: ${(isFulfilledImmediately || isWalkIn) ? 'Delivered' : 'Pending Packing'}`;
+        const newOrderMsg = `📦 New Sales Order: ${createdOrder.order_number}\n\nCustomer: ${finalCustomerName || 'Walk-in'}\nTotal Amount: ${currencySymbol}${finalAmount.toLocaleString()}\nItems (${itemsCount} units): ${itemsSummary}\nDelivery Date: ${deliveryDate || 'Standard Delivery'}\nDelivery Type: ${deliveryType || 'Standard'}\nStatus: ${(isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : 'Pending Packing'}`;
         
         const allUsers = dbStore.getUsers(businessId);
         const packingStaff = allUsers.filter(u => u.role && (u.role === 'Packing Staff' || u.role.toLowerCase().includes('pack')));
@@ -1517,7 +1517,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
           });
         }
 
-        if (isWalkIn || isFulfilledImmediately) {
+        if ((isWalkIn && !isAdvanceBooking && !isFestiveBooking) || isFulfilledImmediately) {
           triggerToast(`Order ${createdOrder.order_number} created and marked as delivered.`, 'success');
         } else {
           triggerToast(`Order ${createdOrder.order_number} compiled. Added to pending packing list.`, 'success');
@@ -1583,7 +1583,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
         resetForm();
       }
 
-      if (isWalkIn || isFulfilledImmediately) {
+      if ((isWalkIn && !isAdvanceBooking && !isFestiveBooking) || isFulfilledImmediately) {
         if (typeof window !== 'undefined') {
           try {
             window.history.replaceState({}, document.title, window.location.pathname);

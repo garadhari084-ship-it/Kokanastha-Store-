@@ -74,7 +74,6 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
   }, [businessId]);
 
   const reportData = useMemo(() => {
-    // Optimization: Pre-calculate aggregates from orders to avoid nested loops
     const statsMap = new Map<string, {
       booked: number;
       packed: number;
@@ -83,37 +82,97 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
       totalOrdered: number;
     }>();
 
+    const norm = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
     allOrders.forEach(order => {
-      if (order.status === 'Cancelled' || order.status === 'Returned') return;
+      if (!order || order.status === 'Cancelled' || order.status === 'Returned') return;
 
       (order.items || []).forEach(item => {
-        if (!item.product_id) return;
-        const stats = statsMap.get(item.product_id) || { booked: 0, packed: 0, outForDelivery: 0, delivered: 0, totalOrdered: 0 };
-        const qty = Number(item.qty || 0);
+        if (!item) return;
+
+        const qty = Number(item.qty) || Number((item as any).quantity) || 0;
+        if (qty <= 0) return;
+
         const scanned = Number(item.scanned_qty || 0);
+
+        const itemProdId = String(item.product_id || item.id || '').trim();
+        const rawItemName = String(item.product_name || (item as any).name || '').trim();
+        const itemName = rawItemName.toLowerCase();
+        const itemSku = String(item.sku || '').trim().toLowerCase();
+        const normItemName = norm(rawItemName);
+
+        const prodMatch = products.find(p => {
+          if (!p) return false;
+          if (p.id && itemProdId && p.id === itemProdId) return true;
+          if (p.sku && itemProdId && p.sku.toLowerCase() === itemProdId.toLowerCase()) return true;
+          if (p.sku && itemSku && p.sku.toLowerCase() === itemSku) return true;
+          if (p.name && itemName && p.name.trim().toLowerCase() === itemName) return true;
+          if (p.barcode && itemProdId && p.barcode.toLowerCase() === itemProdId.toLowerCase()) return true;
+          if (p.name && normItemName && norm(p.name) === normItemName && normItemName.length > 2) return true;
+          return false;
+        });
+
+        const targetProdId = prodMatch ? prodMatch.id : itemProdId;
+        if (!targetProdId && !itemName) return;
+
+        const lookupKey = targetProdId || itemName;
+        let stats = statsMap.get(lookupKey);
+        if (!stats && prodMatch) {
+          stats = statsMap.get(prodMatch.id) || 
+                  statsMap.get(prodMatch.name.trim().toLowerCase()) || 
+                  (prodMatch.sku ? statsMap.get(prodMatch.sku.trim().toLowerCase()) : undefined) ||
+                  statsMap.get(norm(prodMatch.name));
+        }
+
+        if (!stats) {
+          stats = { booked: 0, packed: 0, outForDelivery: 0, delivered: 0, totalOrdered: 0 };
+        }
+
+        // Always register stats under all identifier keys for this product
+        if (targetProdId) statsMap.set(targetProdId, stats);
+        if (prodMatch) {
+          if (prodMatch.id) statsMap.set(prodMatch.id, stats);
+          if (prodMatch.name) statsMap.set(prodMatch.name.trim().toLowerCase(), stats);
+          if (prodMatch.sku && prodMatch.sku.trim()) statsMap.set(prodMatch.sku.trim().toLowerCase(), stats);
+          if (prodMatch.name) statsMap.set(norm(prodMatch.name), stats);
+        } else {
+          if (itemName) statsMap.set(itemName, stats);
+          if (itemSku) statsMap.set(itemSku, stats);
+          if (normItemName) statsMap.set(normItemName, stats);
+        }
 
         stats.totalOrdered += qty;
 
-        if (order.status === 'Pending' || order.status === 'Packing') {
-          stats.booked += Math.max(0, qty - scanned);
-          stats.packed += Math.min(qty, scanned);
-        } else if (order.status === 'Packed') {
-          stats.packed += qty;
-        } else if (order.status === 'Dispatched' || order.delivery_status === 'Dispatched') {
-          stats.outForDelivery += qty;
-        } else if (order.status === 'Delivered' || order.delivery_status === 'Delivered') {
+        const isAdvOrFest = Boolean(order.advance_booking || order.festive_booking);
+        const isDelivered = (order.status === 'Delivered' || order.delivery_status === 'Delivered') && 
+                            (!isAdvOrFest || Boolean(order.delivered_at));
+        const isDispatched = order.status === 'Dispatched' || order.delivery_status === 'Dispatched';
+        const isPacked = order.status === 'Packed' || order.delivery_status === 'Packed';
+
+        if (isDelivered) {
           stats.delivered += qty;
         } else {
-          // Fallback
-          stats.booked += Math.max(0, qty - scanned);
-          stats.packed += Math.min(qty, scanned);
+          // ANY active undelivered order (Pending, Packing, Packed, Dispatched, Advance Booking, Festive Booking) is BOOKED quantity!
+          stats.booked += qty;
+
+          if (isDispatched) {
+            stats.outForDelivery += qty;
+          } else if (isPacked) {
+            stats.packed += qty;
+          } else {
+            stats.packed += Math.min(qty, scanned);
+          }
         }
-        statsMap.set(item.product_id, stats);
       });
     });
 
     return products.map(prod => {
-      const stats = statsMap.get(prod.id) || { booked: 0, packed: 0, outForDelivery: 0, delivered: 0, totalOrdered: 0 };
+      const stats = statsMap.get(prod.id) || 
+                     statsMap.get(prod.name.trim().toLowerCase()) || 
+                     (prod.sku ? statsMap.get(prod.sku.trim().toLowerCase()) : undefined) || 
+                     statsMap.get(norm(prod.name)) ||
+                     { booked: 0, packed: 0, outForDelivery: 0, delivered: 0, totalOrdered: 0 };
+
       const availableStock = Number(prod.current_stock) || 0;
 
       // Category Name
@@ -131,7 +190,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         packQty: stats.packed,
         outForDeliveryQty: stats.outForDelivery,
         deliveredQty: stats.delivered,
-        activePipelineQty: stats.booked + stats.packed + stats.outForDelivery,
+        activePipelineQty: stats.booked,
         totalOrderQty: stats.totalOrdered,
         availableStock,
         categoryName,

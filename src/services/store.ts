@@ -2178,21 +2178,23 @@ class ERPStorage {
   }
 
   private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string, secondaryDeleteKey?: string) {
-    this.syncToSupabase(key, dataItem, isDelete, deleteId, secondaryDeleteKey);
-    try {
-      const cacheVal = this.cache[key];
-      const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
-        ? cacheVal.slice(0, 50)
-        : cacheVal;
-      safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
-    } catch (e) {
-      console.warn(`Error saving state for key ${key}`, e);
-    }
-    if (this.bc) {
+    setTimeout(() => {
+      this.syncToSupabase(key, dataItem, isDelete, deleteId, secondaryDeleteKey);
       try {
-        this.bc.postMessage({ type: 'SYNC_STATE', key });
-      } catch (e) {}
-    }
+        const cacheVal = this.cache[key];
+        const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
+          ? cacheVal.slice(0, 50)
+          : cacheVal;
+        safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
+      } catch (e) {
+        console.warn(`Error saving state for key ${key}`, e);
+      }
+      if (this.bc) {
+        try {
+          this.bc.postMessage({ type: 'SYNC_STATE', key });
+        } catch (e) {}
+      }
+    }, 0);
     this.notify();
   }
 
@@ -4452,8 +4454,15 @@ class ERPStorage {
             }
           }
 
+          const isAdvanceOrFestive = Boolean(s.advance_booking || s.festive_booking);
+          const needsPendingFix = isAdvanceOrFestive && !s.delivered_at && s.status === 'Delivered';
+          const finalStatus = needsPendingFix ? 'Pending' : (s.status || 'Pending');
+          const finalDeliveryStatus = needsPendingFix ? 'Pending' : (s.delivery_status || 'Pending');
+
           return {
             ...s,
+            status: finalStatus,
+            delivery_status: finalDeliveryStatus,
             area: resolvedArea,
             customer_name: resolvedCustomerName || cust?.name || 'Walk-in Customer',
             items: rawItems.map((it: any) => ({
@@ -4565,8 +4574,14 @@ class ERPStorage {
       }
     } catch (_) {}
 
+    const isAdvOrFest = Boolean(so.advance_booking || so.festive_booking);
+    const initialStatus = (isAdvOrFest && !so.delivered_at) ? 'Pending' : (so.status || 'Pending');
+    const initialDelivStatus = (isAdvOrFest && !so.delivered_at) ? 'Pending' : (so.delivery_status || 'Pending');
+
     const newSO: SalesOrder = {
       ...so,
+      status: initialStatus,
+      delivery_status: initialDelivStatus,
       order_number: finalOrderNumber,
       paid_amount: numPaid,
       id: crypto.randomUUID(),

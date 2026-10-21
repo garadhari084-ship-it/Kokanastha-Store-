@@ -115,10 +115,6 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
     return products.map(prod => {
       const stats = statsMap.get(prod.id) || { booked: 0, packed: 0, outForDelivery: 0, delivered: 0, totalOrdered: 0 };
       const availableStock = Number(prod.current_stock) || 0;
-      
-      // Estimated Physical Stock (What is currently on shelf/premises)
-      // Since current_stock is decreased on order creation, Physical on Shelf = Available + (Booked + Packed)
-      const physicalStock = availableStock + stats.booked + stats.packed;
 
       // Category Name
       const catObj = categories.find(c => c.id === prod.category_id);
@@ -138,7 +134,6 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         activePipelineQty: stats.booked + stats.packed + stats.outForDelivery,
         totalOrderQty: stats.totalOrdered,
         availableStock,
-        physicalStock,
         categoryName,
         lastMovement: lastLog ? lastLog.created_at : null,
         lastMovementType: lastLog ? lastLog.type : null,
@@ -280,7 +275,6 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         p.sku || 'N/A',
         p.categoryName,
         p.availableStock,
-        p.physicalStock,
         p.bookQty,
         p.packQty,
         p.activePipelineQty,
@@ -289,7 +283,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
 
       autoTable(doc, {
         startY: 40,
-        head: [['Product Name', 'SKU', 'Category', 'Available', 'Physical', 'Booked', 'Packed', 'Pipeline', 'Total Orders']],
+        head: [['Product Name', 'SKU', 'Category', 'Available', 'Booked', 'Packed', 'Pipeline', 'Total Orders']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
@@ -314,7 +308,6 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         'SKU': p.sku,
         'Category': p.categoryName,
         'Available Stock': p.availableStock,
-        'Physical Stock': p.physicalStock,
         'Booked Qty': p.bookQty,
         'Packed Qty': p.packQty,
         'Active Pipeline': p.activePipelineQty,
@@ -342,7 +335,6 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
       acc.totalDispatched += item.outForDeliveryQty;
       acc.totalDelivered += item.deliveredQty;
       acc.totalAvailable += item.availableStock;
-      acc.totalPhysical += item.physicalStock;
       if (item.availableStock < 0) acc.negativeCount += 1;
       if (item.availableStock < (item.minimum_stock || 5) && item.availableStock >= 0) acc.lowStockCount += 1;
       return acc;
@@ -352,7 +344,6 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
       totalDispatched: 0,
       totalDelivered: 0,
       totalAvailable: 0,
-      totalPhysical: 0,
       negativeCount: 0,
       lowStockCount: 0
     });
@@ -444,19 +435,12 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         </div>
 
         {/* Global Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
           <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
             <p className="text-indigo-300/60 text-[10px] font-black uppercase tracking-widest">Available Stock</p>
             <div className="flex items-end justify-between mt-1">
               <h3 className="text-2xl font-black font-mono">{totals.totalAvailable.toLocaleString()}</h3>
               <TrendingUp size={16} className="text-emerald-400 mb-1" />
-            </div>
-          </div>
-          <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-            <p className="text-indigo-300/60 text-[10px] font-black uppercase tracking-widest">Physical on Shelf</p>
-            <div className="flex items-end justify-between mt-1">
-              <h3 className="text-2xl font-black font-mono">{totals.totalPhysical.toLocaleString()}</h3>
-              <Package size={16} className="text-blue-400 mb-1" />
             </div>
           </div>
           <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
@@ -508,6 +492,8 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
               </div>
             </div>
           </div>
+
+
 
           {/* Filtering & Table Section */}
           <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -563,17 +549,17 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                   <tr>
                     <th className="py-4 px-6">Product Details</th>
                     <th className="py-4 px-3 text-center">Available Stock</th>
+                    <th className="py-4 px-3 text-center">Book Quantity</th>
                     <th className="py-4 px-3 text-center">In Pipeline</th>
-                    <th className="py-4 px-3 text-center">Shelf Stock</th>
                     <th className="py-4 px-3 text-center">Last Move</th>
-                    <th className="py-4 px-3 text-right">Activity Level</th>
+                    <th className="py-4 px-3 text-right">Activity</th>
                     <th className="py-4 px-6 text-center">Stock Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {reportData.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-20 text-center">
+                      <td colSpan={6} className="py-20 text-center">
                         <div className="flex flex-col items-center gap-3">
                           <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-300">
                             <PackageOpen size={40} />
@@ -650,6 +636,19 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                           </td>
 
                           <td className="py-4 px-3 text-center">
+                            <div className="inline-flex flex-col items-center">
+                              <span className={`text-sm font-black font-mono px-3 py-1 rounded-xl border ${
+                                item.bookQty > 0 
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/50' 
+                                  : 'bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                              }`}>
+                                {item.bookQty}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-bold mt-1 uppercase">Book Quantity</span>
+                            </div>
+                          </td>
+
+                          <td className="py-4 px-3 text-center">
                             <div className="flex flex-col items-center gap-1">
                               <div className="flex -space-x-2">
                                 {item.bookQty > 0 && <div className="w-6 h-6 rounded-full bg-amber-500 border-2 border-white dark:border-slate-900 flex items-center justify-center text-[8px] font-black text-white" title={`Booked: ${item.bookQty}`}>B</div>}
@@ -662,14 +661,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                             </div>
                           </td>
 
-                          <td className="py-4 px-3 text-center">
-                            <div className="inline-flex flex-col items-center" title={`Physical items on premises: Available (${item.availableStock}) + Active Orders (${item.bookQty + item.packQty})`}>
-                              <span className="text-sm font-bold text-slate-600 dark:text-slate-300 font-mono">
-                                {item.physicalStock}
-                              </span>
-                              <span className="text-[8px] text-slate-400 uppercase font-bold tracking-tight">On Premises</span>
-                            </div>
-                          </td>
+
 
                           <td className="py-4 px-3 text-center">
                             {item.lastMovement ? (

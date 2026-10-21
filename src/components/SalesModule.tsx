@@ -1583,6 +1583,15 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
         resetForm();
       }
 
+      if (isWalkIn || isFulfilledImmediately) {
+        if (typeof window !== 'undefined') {
+          try {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } catch (e) {}
+        }
+        onClearDeepLink?.();
+      }
+
     } catch (err: any) {
       console.error(err); triggerToast(err.message || 'Error occurred.', 'error');
     } finally {
@@ -1599,17 +1608,9 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
   const confirmDeleteInvoice = async () => {
     if (!invoiceToDelete || isDeletingInvoice) return;
     setIsDeletingInvoice(true);
-    setDeleteProgress(15);
+    setDeleteProgress(50);
     try {
-      setDeleteProgress(35);
-      await new Promise(r => setTimeout(r, 180));
-
-      setDeleteProgress(65);
       await dbStore.deleteSalesOrder(invoiceToDelete.id);
-      
-      setDeleteProgress(90);
-      await new Promise(r => setTimeout(r, 180));
-
       setDeleteProgress(100);
       dbStore.logActivity(user.id, user.name, user.role, 'Delete Invoice', `Permanently deleted invoice ${invoiceToDelete.orderNumber}`, businessId);
       triggerToast(`Invoice ${invoiceToDelete.orderNumber} permanently deleted from database.`, 'success');

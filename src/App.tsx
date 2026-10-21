@@ -203,10 +203,9 @@ export default function App() {
 
     window.addEventListener('resize', handleResize);
     
-    // Support visualViewport API for touchpad pinch-to-zoom gestures
+    // Support visualViewport API for touchpad pinch-to-zoom gestures (resize only, scroll removed to prevent lag)
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', handleResize);
-      window.visualViewport.addEventListener('scroll', handleResize);
     }
 
     // Shield 1: Prevent keyboard zoom shortcuts (Ctrl/Cmd +, -, 0)
@@ -238,7 +237,6 @@ export default function App() {
       window.removeEventListener('resize', handleResize);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', handleResize);
-        window.visualViewport.removeEventListener('scroll', handleResize);
       }
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
       window.removeEventListener('wheel', handleWheel, { capture: true });

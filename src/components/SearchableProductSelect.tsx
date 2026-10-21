@@ -176,7 +176,11 @@ export const SearchableProductSelect: React.FC<SearchableProductSelectProps> = (
             ) : (
               filteredProducts.map((prod) => {
                 const isSelected = prod.id === selectedProductId;
-                const stock = prod.stock_quantity ?? prod.current_stock ?? 0;
+                const physicalStock = Number(prod.current_stock ?? prod.stock_quantity ?? 0);
+                const bookedQty = Number(prod.booked_quantity ?? prod.bookQty ?? 0);
+                const availStock = typeof prod.available_stock === 'number'
+                  ? prod.available_stock
+                  : (typeof prod.availableStock === 'number' ? prod.availableStock : (physicalStock - bookedQty));
                 return (
                   <div
                     key={prod.id}
@@ -220,13 +224,13 @@ export const SearchableProductSelect: React.FC<SearchableProductSelectProps> = (
                           ₹{prod.purchase_price ?? 0}
                         </span>
                         <span className={`text-[10px] font-semibold ${
-                          stock > 10 
+                          availStock > 10 
                             ? 'text-slate-500 dark:text-slate-400' 
-                            : stock > 0 
+                            : availStock > 0 
                               ? 'text-amber-600 dark:text-amber-400' 
                               : 'text-rose-500 dark:text-rose-400'
                         }`}>
-                          Stock: {stock}
+                          {availStock < 0 ? `Deficit: ${availStock}` : `Avail: ${availStock}`}
                         </span>
                       </div>
                       {isSelected && (

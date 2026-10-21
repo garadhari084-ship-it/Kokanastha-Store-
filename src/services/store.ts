@@ -960,6 +960,38 @@ class ERPStorage {
       }
     }
 
+    // Clean legacy non-delivered sales order stock logs that were double-deducting physical stock
+    const legacyStockMigrationKey = 'omnipack_erp_stock_deduction_fix_v3';
+    if (safeStorage.getItem(legacyStockMigrationKey) !== 'true') {
+      if (Array.isArray(this.cache.stockLogs) && this.cache.stockLogs.length > 0) {
+        this.cache.stockLogs = this.cache.stockLogs.filter(log => {
+          if (!log || !log.notes) return true;
+          const isOrderLog = log.notes.startsWith('Order ');
+          if (isOrderLog) {
+            const isDeliveredLog = log.notes.includes('Delivered') || log.notes.includes('Returned') || log.notes.includes('Restocked');
+            if (!isDeliveredLog) return false;
+          }
+          return true;
+        });
+        safeStorage.setItem('omnipack_erp_stockLogs', JSON.stringify(this.cache.stockLogs));
+      }
+
+      if (Array.isArray(this.cache.products)) {
+        this.cache.products.forEach(p => {
+          const logsForP = (this.cache.stockLogs || []).filter(l => l.product_id === p.id);
+          if (logsForP.length > 0) {
+            let logSum = 0;
+            logsForP.forEach(l => { logSum += Number(l.change_qty) || 0; });
+            p.current_stock = logSum;
+          } else if (p.opening_stock !== undefined) {
+            p.current_stock = p.opening_stock;
+          }
+        });
+        safeStorage.setItem('omnipack_erp_products', JSON.stringify(this.cache.products));
+      }
+      safeStorage.setItem(legacyStockMigrationKey, 'true');
+    }
+
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         this.bc = new BroadcastChannel('omnipack_erp_sync_channel');
@@ -4792,30 +4824,35 @@ class ERPStorage {
     throw new Error('Sales Order not found');
   }
 
-  private syncOrderStock(order: SalesOrder, oldStatus?: OrderStatus, oldItems?: SalesItem[]) {
-    const isStockAffecting = (status: OrderStatus) => status !== 'Cancelled' && status !== 'Returned';
-    const wasAffecting = oldStatus ? isStockAffecting(oldStatus) : false;
-    const nowAffecting = isStockAffecting(order.status);
+  private isDeliveredState(status?: OrderStatus, deliveryStatus?: string, deliveredAt?: string): boolean {
+    if (status === 'Cancelled' || status === 'Returned') return false;
+    return status === 'Delivered' || deliveryStatus === 'Delivered' || Boolean(deliveredAt);
+  }
 
-    if (!wasAffecting && nowAffecting) {
-      // Stock OUT: Order became active (created or un-cancelled/un-returned)
+  private syncOrderStock(order: SalesOrder, oldStatus?: OrderStatus, oldItems?: SalesItem[]) {
+    // PHYSICAL STOCK is only deducted when the order is physically DELIVERED out of the warehouse.
+    // While an order is active but undelivered (Pending, Packing, Packed, Dispatched, Advance Booking, Festive Booking),
+    // it is tracked in "Booked Quantity". Available Stock = Physical Stock - Booked Quantity automatically accounts for the reservation without double deduction!
+
+    const wasDelivered = oldStatus === 'Delivered';
+    const nowDelivered = this.isDeliveredState(order.status, order.delivery_status, order.delivered_at);
+
+    if (!wasDelivered && nowDelivered) {
+      // Stock OUT: Order physically delivered out of warehouse
       order.items.forEach(item => {
         const prod = this.cache.products.find(p => p.id === item.product_id);
         if (prod && isComboProduct(prod)) {
           this.processComboSale(order.business_id, item.product_id, item.qty, 'System');
         } else if (prod) {
-          // Individual product: check if auto-break combo is required for missing stock
           if (prod.current_stock < item.qty) {
             this.autoBreakComboForMissingItem(order.business_id, item.product_id, item.qty, 'System');
           }
-          this.addStockLog(item.product_id, -item.qty, 'Out', `Order ${order.order_number} ${order.status}`, 'System', order.business_id);
+          this.addStockLog(item.product_id, -item.qty, 'Out', `Order ${order.order_number} Delivered`, 'System', order.business_id);
         }
       });
-    } else if (wasAffecting && !nowAffecting) {
-      // Stock IN: Order became inactive (cancelled or returned)
-      // Check if it's a damaged item return (Damage => DO NOT add to inventory)
+    } else if (wasDelivered && !nowDelivered) {
+      // Stock IN: Previously delivered order returned or reverted from delivered
       if (order.status === 'Returned' && order.return_type === 'Damage') {
-        // Damaged goods are written off - DO NOT increase stock!
         order.items.forEach(item => {
           const prod = this.cache.products.find(p => p.id === item.product_id);
           if (prod) {
@@ -4824,7 +4861,7 @@ class ERPStorage {
               product_id: item.product_id,
               change_qty: 0,
               type: 'Out',
-              notes: `Order ${order.order_number} returned as DAMAGED (${order.return_reason || 'Damage in Transit'}) - Inventory NOT restocked (Scrap Write-off)`,
+              notes: `Order ${order.order_number} returned as DAMAGED - Inventory NOT restocked (Scrap Write-off)`,
               created_by: 'Delivery System',
               created_at: new Date().toISOString(),
               business_id: order.business_id
@@ -4834,11 +4871,10 @@ class ERPStorage {
           }
         });
       } else {
-        // Regular return or refund => ADD BACK TO INVENTORY
         const logType: StockLog['type'] = order.status === 'Returned' ? 'Return' : 'In';
         const logNote = order.status === 'Returned' 
           ? `Order ${order.order_number} refunded/returned (${order.return_reason || 'Customer Return'}) - Restocked to Inventory`
-          : `Order ${order.order_number} cancelled - Restocked to Inventory`;
+          : `Order ${order.order_number} un-delivered / status reverted`;
         
         order.items.forEach(item => {
           const prod = this.cache.products.find(p => p.id === item.product_id);
@@ -4847,9 +4883,8 @@ class ERPStorage {
           }
         });
       }
-    } else if (wasAffecting && nowAffecting && oldItems) {
-      // Both affecting, meaning order was updated (e.g. products changed)
-      // We calculate the net difference in quantities for each product.
+    } else if (wasDelivered && nowDelivered && oldItems) {
+      // Both delivered, but quantities/items changed
       const oldQtyMap = new Map<string, number>();
       oldItems.forEach(item => {
         oldQtyMap.set(item.product_id, (oldQtyMap.get(item.product_id) || 0) + item.qty);
@@ -4868,7 +4903,6 @@ class ERPStorage {
         const diff = newQty - oldQty;
 
         if (diff > 0) {
-          // Quantity increased (or new item added) => We need to reduce more stock
           const prod = this.cache.products.find(p => p.id === productId);
           if (prod && isComboProduct(prod)) {
             this.processComboSale(order.business_id, productId, diff, 'System');
@@ -4876,14 +4910,13 @@ class ERPStorage {
             if (prod.current_stock < diff) {
               this.autoBreakComboForMissingItem(order.business_id, productId, diff, 'System');
             }
-            this.addStockLog(productId, -diff, 'Out', `Order ${order.order_number} updated (Added ${diff})`, 'System', order.business_id);
+            this.addStockLog(productId, -diff, 'Out', `Delivered Order ${order.order_number} updated (Added ${diff})`, 'System', order.business_id);
           }
         } else if (diff < 0) {
-          // Quantity decreased (or item removed) => We need to add back stock
           const absDiff = Math.abs(diff);
           const prod = this.cache.products.find(p => p.id === productId);
           if (prod) {
-            this.addStockLog(productId, absDiff, 'In', `Order ${order.order_number} updated (Removed ${absDiff})`, 'System', order.business_id);
+            this.addStockLog(productId, absDiff, 'In', `Delivered Order ${order.order_number} updated (Removed ${absDiff})`, 'System', order.business_id);
           }
         }
       });

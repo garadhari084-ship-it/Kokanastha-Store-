@@ -394,6 +394,44 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   const savingsInfo = calculateOrderSavings(orderItems, products);
   const totalItemQty = orderItems.reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
 
+  const activeBookedMap = React.useMemo(() => {
+    const map = new Map<string, number>();
+    const norm = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const allOrders = dbStore.getSalesOrders(businessId);
+    allOrders.forEach(o => {
+      if (!o || o.status === 'Cancelled' || o.status === 'Returned') return;
+      if (editingOrderId && o.id === editingOrderId) return;
+      const isAdvOrFest = Boolean(o.advance_booking || o.festive_booking);
+      const isDelivered = (o.status === 'Delivered' || o.delivery_status === 'Delivered') && (!isAdvOrFest || Boolean(o.delivered_at));
+      if (!isDelivered) {
+        (o.items || []).forEach(item => {
+          if (!item) return;
+          const q = Number(item.qty) || Number((item as any).quantity) || 0;
+          if (q <= 0) return;
+          const itemProdId = String(item.product_id || item.id || '').trim();
+          const rawItemName = String(item.product_name || (item as any).name || '').trim();
+          const itemName = rawItemName.toLowerCase();
+          const normItemName = norm(rawItemName);
+
+          const prodMatch = products.find(p => {
+            if (!p) return false;
+            if (p.id && itemProdId && p.id === itemProdId) return true;
+            if (p.sku && itemProdId && p.sku.toLowerCase() === itemProdId.toLowerCase()) return true;
+            if (p.name && itemName && p.name.trim().toLowerCase() === itemName) return true;
+            if (p.name && normItemName && norm(p.name) === normItemName && normItemName.length > 2) return true;
+            return false;
+          });
+
+          const key = prodMatch ? prodMatch.id : itemProdId;
+          if (key) {
+            map.set(key, (map.get(key) || 0) + q);
+          }
+        });
+      }
+    });
+    return map;
+  }, [businessId, editingOrderId, products]);
+
   const todayDate = new Date();
   const fifteenDaysFromNow = new Date();
   fifteenDaysFromNow.setDate(fifteenDaysFromNow.getDate() + 15);
@@ -1354,7 +1392,13 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     options={[
                       { value: '', label: '-- Choose Product SKU --' },
                       ...products.map(p => {
-                        const isOut = (p.current_stock ?? 0) <= 0;
+                        const physicalStock = Number(p.current_stock) || 0;
+                        const bookedQty = activeBookedMap.get(p.id) || 0;
+                        const inCartQty = orderItems
+                          .filter(it => it.product_id === p.id)
+                          .reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+                        const availStock = physicalStock - bookedQty - inCartQty;
+
                         const selCust = customers.find(c => c.id === selectedCustomerId);
                         const evalRes = calculateApplicablePrice(p, {
                           isLoyalMember: isLoyalMember(selCust),
@@ -1363,13 +1407,18 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                           business: currentBiz,
                           orderDate
                         });
-                        const stockBadge = isOut 
-                          ? ` [⚠️ OUT OF STOCK]` 
-                          : ` [Stock: ${p.current_stock ?? 0} ${p.unit || ''}]`;
+
+                        let stockBadge = ` [Avail: ${availStock} ${p.unit || 'Pcs'}]`;
+                        if (availStock < 0) {
+                          stockBadge = ` [⚠️ Deficit: ${availStock} ${p.unit || 'Pcs'}]`;
+                        } else if (availStock === 0) {
+                          stockBadge = ` [⚠️ OUT OF STOCK (0 ${p.unit || 'Pcs'})]`;
+                        }
+
                         return {
                           value: p.id,
                           label: `${p.name} (${currencySymbol}${evalRes.appliedPrice.toLocaleString()})${stockBadge}`,
-                          searchKeywords: `${p.barcode} ${p.sku} ${isOut ? 'out of stock 0' : ''}`
+                          searchKeywords: `${p.barcode} ${p.sku} ${availStock <= 0 ? 'out of stock 0 deficit' : ''}`
                         };
                       })
                     ]}

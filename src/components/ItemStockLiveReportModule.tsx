@@ -173,7 +173,8 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                      statsMap.get(norm(prod.name)) ||
                      { booked: 0, packed: 0, outForDelivery: 0, delivered: 0, totalOrdered: 0 };
 
-      const availableStock = Number(prod.current_stock) || 0;
+      const physicalStock = Number(prod.current_stock) || 0;
+      const availableStock = physicalStock - stats.booked;
 
       // Category Name
       const catObj = categories.find(c => c.id === prod.category_id);
@@ -186,6 +187,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
 
       return {
         ...prod,
+        physicalStock,
         bookQty: stats.booked,
         packQty: stats.packed,
         outForDeliveryQty: stats.outForDelivery,
@@ -394,6 +396,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
       acc.totalDispatched += item.outForDeliveryQty;
       acc.totalDelivered += item.deliveredQty;
       acc.totalAvailable += item.availableStock;
+      acc.totalPhysical += (item.physicalStock || 0);
       if (item.availableStock < 0) acc.negativeCount += 1;
       if (item.availableStock < (item.minimum_stock || 5) && item.availableStock >= 0) acc.lowStockCount += 1;
       return acc;
@@ -403,6 +406,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
       totalDispatched: 0,
       totalDelivered: 0,
       totalAvailable: 0,
+      totalPhysical: 0,
       negativeCount: 0,
       lowStockCount: 0
     });
@@ -423,9 +427,11 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
     return products.find(p => p.id === quickAdjustProduct.id) || quickAdjustProduct;
   }, [quickAdjustProduct, products]);
   const modalCurrentStock = modalFreshProduct ? (Number(modalFreshProduct.current_stock) || 0) : 0;
+  const modalBookedQty = modalFreshProduct ? (reportData.find(r => r.id === modalFreshProduct.id)?.bookQty || 0) : 0;
   const modalAdjustQty = Math.max(0, Number(adjustQtyInput) || 0);
   const modalCalculatedDelta = adjustMode === 'add' ? modalAdjustQty : adjustMode === 'deduct' ? -modalAdjustQty : (modalAdjustQty - modalCurrentStock);
-  const modalNewBalance = modalCurrentStock + modalCalculatedDelta;
+  const modalNewPhysicalBalance = modalCurrentStock + modalCalculatedDelta;
+  const modalNewAvailable = modalNewPhysicalBalance - modalBookedQty;
 
   return (
     <div className="space-y-6 pb-12">
@@ -678,10 +684,10 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                               <button
                                 type="button"
                                 onClick={() => handleOpenQuickAdjust(item, 'add', 5)}
-                                title="Click to adjust stock for this SKU"
+                                title={`Available Stock: ${item.availableStock} (Physical: ${item.physicalStock} - Booked: ${item.bookQty})`}
                                 className={`text-sm font-black font-mono px-3 py-1 rounded-xl shadow-xs border cursor-pointer hover:scale-105 active:scale-95 transition-transform ${
                                   isShort 
-                                    ? 'bg-rose-500 text-white border-rose-600' 
+                                    ? 'bg-rose-500 text-white border-rose-600 shadow-sm' 
                                     : isLow 
                                       ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/50' 
                                       : 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50'
@@ -689,8 +695,9 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                               >
                                 {item.availableStock}
                               </button>
-                              {isShort && <span className="text-[9px] text-rose-500 font-black mt-1 uppercase">Deficit</span>}
-                              {isLow && <span className="text-[9px] text-amber-500 font-black mt-1 uppercase">Refill</span>}
+                              {isShort && <span className="text-[9px] text-rose-500 font-black mt-1 uppercase tracking-wider">Deficit ({item.availableStock})</span>}
+                              {isLow && <span className="text-[9px] text-amber-500 font-black mt-1 uppercase tracking-wider">Refill Needed</span>}
+                              {!isShort && !isLow && <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 uppercase tracking-wider">In Stock</span>}
                             </div>
                           </td>
 
@@ -1021,26 +1028,34 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                   Real-time Stock Impact Preview
                 </p>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">Current Stock</span>
-                    <h5 className="text-base font-black font-mono text-slate-700 dark:text-slate-200 mt-0.5">{modalCurrentStock}</h5>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <span className="text-[8px] font-bold text-slate-400 uppercase">Physical</span>
+                    <h5 className="text-sm font-black font-mono text-slate-700 dark:text-slate-200 mt-0.5">{modalCurrentStock}</h5>
                   </div>
-                  <div className={`p-2.5 rounded-xl border ${
+                  <div className={`p-2 rounded-xl border ${
                     modalCalculatedDelta > 0 
                       ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 text-emerald-700 dark:text-emerald-400' 
                       : modalCalculatedDelta < 0
                         ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 text-rose-700 dark:text-rose-400'
                         : 'bg-slate-100 dark:bg-slate-900 border-slate-200 text-slate-500'
                   }`}>
-                    <span className="text-[9px] font-bold uppercase">Delta</span>
-                    <h5 className="text-base font-black font-mono mt-0.5">
+                    <span className="text-[8px] font-bold uppercase">Delta</span>
+                    <h5 className="text-sm font-black font-mono mt-0.5">
                       {modalCalculatedDelta > 0 ? `+${modalCalculatedDelta}` : modalCalculatedDelta}
                     </h5>
                   </div>
-                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                    <span className="text-[9px] font-bold text-indigo-500 uppercase">New Balance</span>
-                    <h5 className="text-base font-black font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">{modalNewBalance}</h5>
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <span className="text-[8px] font-bold text-amber-500 uppercase">Booked Qty</span>
+                    <h5 className="text-sm font-black font-mono text-amber-600 dark:text-amber-400 mt-0.5">{modalBookedQty}</h5>
+                  </div>
+                  <div className={`p-2 rounded-xl border ${
+                    modalNewAvailable < 0 
+                      ? 'bg-rose-500 text-white border-rose-600' 
+                      : 'bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 text-indigo-700 dark:text-indigo-400'
+                  }`}>
+                    <span className="text-[8px] font-bold uppercase">Net Available</span>
+                    <h5 className="text-sm font-black font-mono mt-0.5">{modalNewAvailable}</h5>
                   </div>
                 </div>
               </div>

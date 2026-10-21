@@ -283,6 +283,12 @@ const getLocalTodayDate = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+const getLocalTomorrowDate = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const getLocalCurrentTimeInput = () => {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -425,6 +431,8 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
   const [selectedCustomerId, setSelectedCustomerId] = useState('WALK_IN');
   const [selectedCustomerName, setSelectedCustomerName] = useState<string>('Walk-in Customer');
   const [selectedArea, setSelectedArea] = useState('Dahisar');
+  const [isDeliveryRequirementModalOpen, setIsDeliveryRequirementModalOpen] = useState(false);
+  const [requirementReportDate, setRequirementReportDate] = useState<string>(getLocalTomorrowDate());
   const [orderDate, setOrderDate] = useState<string>(getLocalTodayDate);
   const [orderTime, setOrderTime] = useState<string>(getLocalCurrentTimeInput);
   const [deliveryDate, setDeliveryDate] = useState<string>('');
@@ -1831,6 +1839,16 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
         hideCreateOrderButton={true}
         rightContent={
           <div className="flex items-center gap-3">
+            {/* Delivery Item Requirement Report Button */}
+            <button
+              onClick={() => setIsDeliveryRequirementModalOpen(true)}
+              className="h-8 px-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-[11px] transition cursor-pointer shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+              title="View Product / Packet Requirement Report for Delivery Date"
+            >
+              <Package size={15} />
+              <span>📦 Delivery Requirement Report</span>
+            </button>
+
             {/* Create Order Button */}
             <button
               onClick={handleOpenAddModal}
@@ -3049,6 +3067,203 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
           triggerToast={triggerToast}
         />
       )}
+
+      {/* ================= DELIVERY REQUIREMENT REPORT MODAL ================= */}
+      {isDeliveryRequirementModalOpen && (() => {
+        const targetDateOrders = orders.filter(o => {
+          if (o.status === 'Cancelled') return false;
+          const dStr = normalizeToYMD(o.delivery_date || o.order_date);
+          return dStr === requirementReportDate;
+        });
+
+        const itemMap = new Map<string, {
+          productName: string;
+          sku: string;
+          barcode: string;
+          totalQty: number;
+          orderCount: number;
+          unitPrice: number;
+        }>();
+
+        targetDateOrders.forEach(ord => {
+          const items = ord.items || [];
+          items.forEach(it => {
+            const pName = (it.product_name || (it as any).name || 'Unnamed Product').trim();
+            const sku = String(it.sku || (it as any).product_sku || '');
+            const barcode = String(it.barcode || (it as any).product_barcode || '');
+            const qty = Number(it.qty) || Number((it as any).quantity) || 1;
+            const price = Number(it.selling_price) || Number((it as any).price) || 0;
+            const key = (sku || pName).toLowerCase();
+
+            if (itemMap.has(key)) {
+              const existing = itemMap.get(key)!;
+              existing.totalQty += qty;
+              existing.orderCount += 1;
+            } else {
+              itemMap.set(key, {
+                productName: pName,
+                sku,
+                barcode,
+                totalQty: qty,
+                orderCount: 1,
+                unitPrice: price
+              });
+            }
+          });
+        });
+
+        const aggregatedItems = Array.from(itemMap.values()).sort((a, b) => b.totalQty - a.totalQty);
+        const totalPackets = aggregatedItems.reduce((sum, i) => sum + i.totalQty, 0);
+        const totalOrdersCount = targetDateOrders.length;
+        const totalRevenue = targetDateOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="bg-slate-950 text-white px-5 sm:px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-2xl">
+                    <Package size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-indigo-400">Delivery Date Product & Packet Requirement Report</h2>
+                    <p className="text-[10px] sm:text-xs text-slate-400">Aggregated stock and packet requirements to fulfill all scheduled delivery orders</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsDeliveryRequirementModalOpen(false)}
+                  className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Delivery Date:</span>
+                  <input
+                    type="date"
+                    value={requirementReportDate}
+                    onChange={(e) => setRequirementReportDate(e.target.value)}
+                    className="h-9 px-3 bg-white dark:bg-slate-900 text-xs font-mono font-bold rounded-xl border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <div className="flex items-center gap-1.5 ml-2">
+                    <button
+                      onClick={() => setRequirementReportDate(getLocalTodayDate())}
+                      className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-indigo-600 hover:text-white transition text-slate-700 dark:text-slate-200 cursor-pointer"
+                    >
+                      Today
+                    </button>
+                    <button
+                      onClick={() => setRequirementReportDate(getLocalTomorrowDate())}
+                      className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-600 hover:text-white transition cursor-pointer"
+                    >
+                      Tomorrow
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const printContent = document.getElementById('delivery-requirement-print-area');
+                      if (!printContent) return;
+                      const win = window.open('', '_blank');
+                      if (!win) return;
+                      win.document.write(`<html><head><title>Delivery Requirement Report - ${requirementReportDate}</title><style>body{font-family:sans-serif;padding:20px;}table{width:100%;border-collapse:collapse;margin-top:15px;}th,td{border:1px solid #cbd5e1;padding:8px 12px;text-align:left;font-size:12px;}th{background:#f1f5f9;}h1{font-size:18px;margin-bottom:4px;}</style></head><body>${printContent.innerHTML}</body></html>`);
+                      win.document.close();
+                      win.focus();
+                      setTimeout(() => { win.print(); win.close(); }, 300);
+                    }}
+                    className="h-9 px-3.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Printer size={15} />
+                    <span>Print Report</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 flex flex-col items-center justify-center text-center">
+                  <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Scheduled Orders</span>
+                  <span className="text-lg sm:text-xl font-black text-indigo-900 dark:text-indigo-200 font-mono mt-0.5">{totalOrdersCount}</span>
+                </div>
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-100 dark:border-emerald-900/60 flex flex-col items-center justify-center text-center">
+                  <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Total Packets / Units Required</span>
+                  <span className="text-lg sm:text-xl font-black text-emerald-900 dark:text-emerald-200 font-mono mt-0.5">{totalPackets.toLocaleString()}</span>
+                </div>
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-2xl border border-amber-100 dark:border-amber-900/60 flex flex-col items-center justify-center text-center">
+                  <span className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Total Delivery Value</span>
+                  <span className="text-lg sm:text-xl font-black text-amber-900 dark:text-amber-200 font-mono mt-0.5">{currencySymbol}{totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6" id="delivery-requirement-print-area">
+                <div className="hidden print:block mb-4">
+                  <h1 className="text-xl font-black">Delivery Product & Packet Requirement Report</h1>
+                  <p className="text-sm text-slate-600">Delivery Date: <strong>{requirementReportDate}</strong> | Generated on: {new Date().toLocaleDateString()}</p>
+                </div>
+
+                {aggregatedItems.length === 0 ? (
+                  <div className="py-16 text-center space-y-3">
+                    <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-full flex items-center justify-center mx-auto">
+                      <Package size={24} />
+                    </div>
+                    <div className="text-slate-600 dark:text-slate-400 font-bold text-sm">No orders or deliveries scheduled for {requirementReportDate}</div>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto">Select another date or create sales orders with this delivery date to view the packet requirement breakdown.</p>
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 dark:bg-slate-800/80 text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
+                          <th className="py-3 px-4 w-12 text-center">#</th>
+                          <th className="py-3 px-4">Product Name</th>
+                          <th className="py-3 px-4">SKU / Barcode</th>
+                          <th className="py-3 px-4 text-center">Orders Count</th>
+                          <th className="py-3 px-4 text-right">Total Packets / Units Required</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200">
+                        {aggregatedItems.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                            <td className="py-3 px-4 text-center font-mono text-slate-400">{idx + 1}</td>
+                            <td className="py-3 px-4 font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>
+                              <span>{item.productName}</span>
+                            </td>
+                            <td className="py-3 px-4 font-mono text-slate-500">{item.sku || item.barcode || '—'}</td>
+                            <td className="py-3 px-4 text-center font-bold text-indigo-600 dark:text-indigo-400">
+                              <span className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800">
+                                {item.orderCount} {item.orderCount === 1 ? 'order' : 'orders'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                              {item.totalQty.toLocaleString()} units
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900 px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <div className="text-[11px] text-slate-500 font-medium">
+                  Tip: Use this report in your packaging or production station to prep exact quantities before dispatch.
+                </div>
+                <button
+                  onClick={() => setIsDeliveryRequirementModalOpen(false)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 });

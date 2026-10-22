@@ -4559,22 +4559,29 @@ class ERPStorage {
             }
           }
 
+          const lowCustName = (resolvedCustomerName || s.customer_name || cust?.name || '').toLowerCase();
+          const isWalkIn = s.channel === 'Walk-in' || s.customer_id === 'WALK_IN' || lowCustName.includes('walk-in') || lowCustName.includes('walkin') || lowCustName.includes('walk in') || (Boolean(cust?.group) && cust!.group!.toLowerCase().includes('walk'));
+
           const isAdvanceOrFestive = Boolean(s.advance_booking || s.festive_booking);
-          const needsPendingFix = isAdvanceOrFestive && !s.delivered_at && s.status === 'Delivered';
-          const finalStatus = needsPendingFix ? 'Pending' : (s.status || 'Pending');
-          const finalDeliveryStatus = needsPendingFix ? 'Pending' : (s.delivery_status || 'Pending');
+          const needsPendingFix = !isWalkIn && isAdvanceOrFestive && !s.delivered_at && s.status === 'Delivered';
+          const finalStatus = isWalkIn ? 'Delivered' : (needsPendingFix ? 'Pending' : (s.status || 'Pending'));
+          const finalDeliveryStatus = isWalkIn ? 'Delivered' : (needsPendingFix ? 'Pending' : (s.delivery_status || 'Pending'));
+          const finalDeliveryDate = isWalkIn ? null : s.delivery_date;
 
           const addCharges = Number(s.additional_charges) || 0;
           const delCharges = Number(s.delivery_charges) || Number((s as any).delivery_charge) || 0;
 
           return {
             ...s,
+            channel: isWalkIn ? 'Walk-in' : (s.channel || 'Direct Order'),
+            delivery_date: finalDeliveryDate,
             additional_charges: addCharges,
             delivery_charges: delCharges,
             delivery_charge: delCharges,
             additional_charges_type: s.additional_charges_type || 'Delivery',
             status: finalStatus,
             delivery_status: finalDeliveryStatus,
+            delivered_at: isWalkIn ? (s.delivered_at || s.created_at || new Date().toISOString()) : s.delivered_at,
             area: resolvedArea,
             customer_name: resolvedCustomerName || cust?.name || 'Walk-in Customer',
             items: rawItems.map((it: any) => ({

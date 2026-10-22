@@ -34,11 +34,21 @@ export const TodayDeliveryModal: React.FC<TodayDeliveryModalProps> = ({
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   
+  const isWalkInOrder = (o: SalesOrder) => {
+    if (!o) return false;
+    if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN') return true;
+    if (o.status === 'Delivered' && (!o.delivery_date || o.channel === 'Walk-in')) return true;
+    const lowName = (o.customer_name || '').toLowerCase();
+    if (lowName.includes('walk-in') || lowName.includes('walkin') || lowName.includes('walk in')) return true;
+    return false;
+  };
+
   const todayOrders = useMemo(() => {
     return orders.filter(o => {
-      if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || o.customer_name === 'Walk-in Customer') {
-        return false;
-      }
+      // Exclude ALL walk-in counter orders and cancelled/returned orders
+      if (isWalkInOrder(o)) return false;
+      if (o.status === 'Cancelled' || o.status === 'Returned') return false;
+
       const isTodayDelivery = o.delivery_date === todayStr;
       const isTodayOrder = !o.delivery_date && o.order_date === todayStr;
       return isTodayDelivery || isTodayOrder;

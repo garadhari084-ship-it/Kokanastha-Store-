@@ -1,7 +1,60 @@
 import React, { useState, useMemo } from 'react';
 import { Package, Calendar, Truck, CheckCircle2, Search, FileText } from 'lucide-react';
 import { dbStore } from '../services/store';
-import { Product, SalesOrder, PackingSession } from '../types/erp';
+import { Product, SalesOrder } from '../types/erp';
+
+const normalizeDateStr = (dateVal?: string | null): string => {
+  if (!dateVal) return '';
+  const clean = dateVal.trim().split('T')[0];
+  if (!clean) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(clean)) {
+    const [y, m, d] = clean.split('-');
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(clean)) {
+    const parts = clean.split(/[-\/]/);
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  }
+  try {
+    const d = new Date(dateVal);
+    if (!isNaN(d.getTime())) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    return clean;
+  } catch (_) {
+    return '';
+  }
+};
+
+const getOrderItemsList = (order: SalesOrder): any[] => {
+  if (!order || !order.items) return [];
+  let items = order.items;
+  if (typeof items === 'string') {
+    try {
+      items = JSON.parse(items);
+    } catch (e) {
+      items = [];
+    }
+  }
+  return Array.isArray(items) ? items : [];
+};
+
+const isItemMatchingProduct = (item: any, prod: Product): boolean => {
+  if (!item || !prod) return false;
+  const pId = String(prod.id || '').trim().toLowerCase();
+  const pSku = String(prod.sku || '').trim().toLowerCase();
+  const pName = String(prod.name || '').trim().toLowerCase();
+
+  const itProdId = String(item.product_id || item.id || '').trim().toLowerCase();
+  const itName = String(item.product_name || item.name || '').trim().toLowerCase();
+
+  if (pId && itProdId && pId === itProdId) return true;
+  if (pSku && itProdId && pSku === itProdId) return true;
+  if (pName && itName && pName === itName) return true;
+
+  return false;
+};
 
 interface DeliveryReportsProps {
   businessId: string;
@@ -20,7 +73,12 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
   const packingSessions = dbStore.getPackingSessions(businessId);
 
   const filteredOrders = useMemo(() => {
-    return orders.filter(o => o.order_date >= appliedStartDate && o.order_date <= appliedEndDate && o.status !== 'Cancelled' && o.status !== 'Returned');
+    return orders.filter(o => {
+      if (!o || o.status === 'Cancelled' || o.status === 'Returned') return false;
+      const oDate = normalizeDateStr(o.order_date) || normalizeDateStr(o.created_at);
+      if (!oDate) return true; // Keep if date unparsed so no orders are accidentally dropped
+      return oDate >= appliedStartDate && oDate <= appliedEndDate;
+    });
   }, [orders, appliedStartDate, appliedEndDate]);
 
   const productReport = useMemo(() => {
@@ -31,13 +89,16 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
       let delivered = 0;
 
       filteredOrders.forEach(order => {
-        const item = (order.items || []).find(i => i.product_id === prod.id);
-        if (item) {
-          const qty = item.qty || 0;
+        const itemsList = getOrderItemsList(order);
+        const matchingItems = itemsList.filter(i => isItemMatchingProduct(i, prod));
+
+        matchingItems.forEach(item => {
+          const qty = Number(item.qty) || Number(item.quantity) || 0;
           ordered += qty;
           
           if (['Packed', 'Dispatched', 'Delivered'].includes(order.status)) {
-            packed += (item.scanned_qty || qty); // fallback to qty if scanned_qty is not set
+            const scanned = typeof item.scanned_qty === 'number' && !isNaN(item.scanned_qty) ? item.scanned_qty : qty;
+            packed += scanned;
           }
           if (['Dispatched', 'Delivered'].includes(order.status)) {
             dispatched += qty;
@@ -45,7 +106,7 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
           if (order.status === 'Delivered') {
             delivered += qty;
           }
-        }
+        });
       });
 
       const pendingPacking = Math.max(0, ordered - packed);
@@ -83,11 +144,13 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
     
     filteredOrders.forEach(order => {
       if (order.status === 'Delivered') {
-        const date = order.delivery_date || order.order_date;
+        const rawDate = order.delivery_date || order.order_date || order.created_at;
+        const date = normalizeDateStr(rawDate) || 'Unknown Date';
         if (!dates[date]) dates[date] = { orders: 0, items: 0, amount: 0 };
         dates[date].orders += 1;
-        dates[date].amount += order.total_amount;
-        dates[date].items += (order.items || []).reduce((sum, item) => sum + (item.qty || 0), 0);
+        dates[date].amount += (Number(order.total_amount) || 0);
+        const itemsList = getOrderItemsList(order);
+        dates[date].items += itemsList.reduce((sum, item) => sum + (Number(item.qty) || Number(item.quantity) || 0), 0);
       }
     });
 
@@ -100,11 +163,12 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
     const dates: Record<string, { sessions: number; scans: number; }> = {};
     
     packingSessions.forEach(session => {
-      const date = (session.end_time || session.start_time).split('T')[0];
-      if (date >= appliedStartDate && date <= appliedEndDate) {
+      const rawDate = session.end_time || session.start_time;
+      const date = normalizeDateStr(rawDate);
+      if (date && date >= appliedStartDate && date <= appliedEndDate) {
         if (!dates[date]) dates[date] = { sessions: 0, scans: 0 };
         dates[date].sessions += 1;
-        dates[date].scans += (session.total_scans || 0);
+        dates[date].scans += (Number(session.total_scans) || 0);
       }
     });
 

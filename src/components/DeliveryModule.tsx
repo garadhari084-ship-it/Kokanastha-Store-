@@ -534,7 +534,8 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
     // Count orders for a specific date in current view
     const countForDate = (dateKey: string) => {
       return orders.filter(o => {
-        if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || o.customer_name === 'Walk-in Customer') return false;
+        const lowName = (o.customer_name || '').toLowerCase();
+        if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || lowName.includes('walk-in') || lowName.includes('walkin') || lowName.includes('walk in')) return false;
         if (bookingFilter === 'advance' && !o.advance_booking) return false;
         if (bookingFilter === 'festive' && !o.festive_booking) return false;
 
@@ -599,7 +600,8 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
 
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
-      if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || o.customer_name === 'Walk-in Customer') return false;
+      const lowName = (o.customer_name || '').toLowerCase();
+      if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || lowName.includes('walk-in') || lowName.includes('walkin') || lowName.includes('walk in')) return false;
       // Apply status filter based on view or internal filter
       if (activeView === 'PackingCompleted') {
         if (o.status !== 'Packed' || o.ready_for_dispatch) return false;

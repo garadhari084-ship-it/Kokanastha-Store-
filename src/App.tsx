@@ -628,6 +628,7 @@ export default function App() {
       o.status !== 'Delivered' && 
       o.status !== 'Cancelled' && 
       o.status !== 'Returned' && 
+      !(o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || (Boolean(o.customer_name) && o.customer_name.toLowerCase().includes('walk-in'))) &&
       isOrderOverdue(o.delivery_date, o.status)
     ).length;
   }, [currentBusiness?.id, syncTick]);
@@ -711,8 +712,9 @@ export default function App() {
         if (m.receiver_id === currentUser.id) return true;
         return false;
       }));
+      const isNotWalkInOrder = (o: any) => !(o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || (Boolean(o.customer_name) && o.customer_name.toLowerCase().includes('walk-in')));
       const orders = dbStore.getSalesOrders(currentBusiness.id);
-      setPendingPackingCount(orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length);
+      setPendingPackingCount(orders.filter(o => isNotWalkInOrder(o) && (o.status === 'Pending' || o.status === 'Packing')).length);
     }
 
     return dbStore.subscribe(() => {
@@ -745,8 +747,9 @@ export default function App() {
           if (m.receiver_id === currentUser.id) return true;
           return false;
         }));
+        const isNotWalkInOrder = (o: any) => !(o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || (Boolean(o.customer_name) && o.customer_name.toLowerCase().includes('walk-in')));
         const orders = dbStore.getSalesOrders(currentBusiness.id);
-        setPendingPackingCount(orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length);
+        setPendingPackingCount(orders.filter(o => isNotWalkInOrder(o) && (o.status === 'Pending' || o.status === 'Packing')).length);
       }
     });
   }, [currentBusiness?.id, currentUser?.id]);

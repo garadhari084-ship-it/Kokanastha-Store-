@@ -568,50 +568,53 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     } else {
       discAmt += amtDiscVal;
     }
-    const previewDiscountAmount = Number(discAmt.toFixed(2));
-    const previewAddCharges = additionalCharges !== '' && !isNaN(Number(additionalCharges)) ? Math.max(0, Number(additionalCharges)) : 0;
-    const previewDelCharges = deliveryCharges !== '' && !isNaN(Number(deliveryCharges)) ? Math.max(0, Number(deliveryCharges)) : 0;
-    const previewFinalAmount = Math.max(0, previewTaxable + previewTax - previewDiscountAmount + previewAddCharges + previewDelCharges);
 
-    const previewDiscountPerc = discountType === 'Percentage'
-      ? percDiscVal
-      : (previewSubtotal > 0 ? Number(((amtDiscVal / previewSubtotal) * 100).toFixed(2)) : 0);
+    const calcAddCharges = Number(additionalCharges) || 0;
+    const calcDelCharges = Number(deliveryCharges) || 0;
+    const grossTotal = previewSubtotal + previewTax + calcAddCharges + calcDelCharges;
+    const finalAmt = Math.max(0, grossTotal - discAmt);
+    const paidAmt = Number(paidAmount) || 0;
+    const balAmt = Math.max(0, finalAmt - paidAmt);
+
+    const isWalkIn = selectedCustomerId === 'WALK_IN' || selectedCustomerName?.toLowerCase().includes('walk-in');
 
     return {
-      id: editingOrderId || 'draft-preview',
+      id: editingOrderId || 'preview-order',
+      business_id: businessId,
       order_number: orderNum,
-      customer_id: selectedCustomerId,
+      customer_id: selectedCustomerId || 'WALK_IN',
       customer_name: custName,
-      customer_phone: selectedCustomerPhone.trim() || selectedCust?.phone || '',
-      billing_address: selectedCustomerAddress.trim() || selectedCust?.billing_address || '',
+      customer_phone: selectedCustomerPhone || '',
+      billing_address: selectedCustomerAddress || '',
       shipping_address: shippingAddr,
-      pin_code: selectedPincode.trim() || selectedCust?.pin_code || '',
-      area: selectedArea || selectedCust?.area || 'Dahisar',
-      channel: selectedCustomerId === 'WALK_IN' ? 'Walk-in' : 'Direct Order',
-      time: orderTime || '12:00 PM',
-      order_date: orderDate || (new Date().toISOString().split('T')[0]),
-      delivery_date: deliveryDate || null,
-      delivery_type: deliveryType,
-      status: isFulfilledImmediately ? 'Delivered' : 'Pending',
-      payment_status: (paymentStatus || 'Unpaid') as any,
+      pin_code: selectedPincode || '',
+      area: selectedArea || 'Dahisar',
+      created_at: `${orderDate}T${orderTime || '12:00'}:00Z`,
+      order_date: orderDate || new Date().toISOString().split('T')[0],
+      delivery_date: (isWalkIn || isFulfilledImmediately) ? null : (deliveryDate || orderDate),
+      delivery_type: deliveryType || 'Doorstep Delivery',
+      channel: isWalkIn ? 'Walk-in' : 'Direct',
+      status: (isFulfilledImmediately || isWalkIn) ? 'Delivered' : 'Pending',
+      delivery_status: (isFulfilledImmediately || isWalkIn) ? 'Delivered' : 'Pending',
+      total_amount: finalAmt,
+      taxable_amount: previewSubtotal,
+      tax_amount: previewTax,
+      discount_amount: discAmt,
+      discount_percentage: percDiscVal,
+      additional_charges: calcAddCharges,
+      additional_charge_type: additionalChargeType || 'Service Charge',
+      delivery_charges: calcDelCharges,
+      points_redeemed: actualRedeem,
+      points_earned: Math.floor(finalAmt / 100),
+      payment_status: paymentStatus || (balAmt <= 0 ? 'Paid' : paidAmt > 0 ? 'Partial' : 'Unpaid'),
       payment_mode: paymentMode || 'Cash',
-      paid_amount: typeof calculatedTotals.computedPaid === 'number' && calculatedTotals.computedPaid > 0 ? calculatedTotals.computedPaid : (Number(paidAmount) || 0),
-      delivery_status: isFulfilledImmediately ? 'Delivered' : 'Pending',
+      paid_amount: paidAmt,
+      balance_amount: balAmt,
       items: itemsForPreview,
       advance_booking: isAdvanceBooking,
       festive_booking: isFestiveBooking,
-      total_amount: previewFinalAmount,
-      discount_amount: previewDiscountAmount,
-      discount_percentage: previewDiscountPerc,
-      additional_charges: previewAddCharges,
-      delivery_charges: previewDelCharges,
-      delivery_charge: previewDelCharges,
-      additional_charges_type: additionalChargeType,
-      points_redeemed: actualRedeem,
-      qr_code_data: `${orderNum}|${selectedCustomerId}|${custName}|${itemsForPreview.length} items`,
-      business_id: businessId,
-      created_at: new Date().toISOString()
-    };
+      delivered_at: (isFulfilledImmediately || isWalkIn) ? new Date().toISOString() : undefined
+    } as SalesOrder;
   };
 
   const handlePrintPreviewInvoice = async (order: SalesOrder) => {

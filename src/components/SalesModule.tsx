@@ -1334,7 +1334,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
       const unpaidBalance = actualBalance;
       
       let customerObj = customers.find(c => c.id === finalCustomerId) || dbStore.getCustomers(businessId).find(c => c.id === finalCustomerId);
-      const isWalkIn = customerObj?.name === 'Walk-in Customer' || finalCustomerId === 'WALK_IN' || !finalCustomerId;
+      const isWalkIn = customerObj?.name === 'Walk-in Customer' || finalCustomerId === 'WALK_IN' || selectedCustomerId === 'WALK_IN' || !finalCustomerId || (Boolean(finalCustomerName) && finalCustomerName.toLowerCase().includes('walk-in'));
 
       // Credit limit bypass check for registered customers with actual debt
       // Only warn if a positive credit limit is set for the customer

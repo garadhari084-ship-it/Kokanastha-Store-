@@ -70,8 +70,10 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   deepLinkData = null,
   onNavigate
 }) => {
+  const isNotWalkInOrder = (o: SalesOrder) => !(o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || (Boolean(o.customer_name) && o.customer_name.toLowerCase().includes('walk-in')));
+
   const [pendingOrders, setPendingOrders] = useState<SalesOrder[]>(
-    dbStore.getSalesOrders(businessId).filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled')
+    dbStore.getSalesOrders(businessId).filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled' && isNotWalkInOrder(o))
   );
   const [products, setProducts] = useState<Product[]>(dbStore.getProducts(businessId));
   const [categories, setCategories] = useState<Category[]>(dbStore.getCategories(businessId));
@@ -169,7 +171,7 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   const reloadOrders = () => {
     const allSales = dbStore.getSalesOrders(businessId);
     setPendingOrders(
-      allSales.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled')
+      allSales.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled' && isNotWalkInOrder(o))
     );
     
     // Refresh current selected order data if it exists in the new list

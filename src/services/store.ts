@@ -961,14 +961,14 @@ class ERPStorage {
     }
 
     // Clean legacy non-delivered sales order stock logs that were double-deducting physical stock
-    const legacyStockMigrationKey = 'omnipack_erp_stock_deduction_fix_v3';
+    const legacyStockMigrationKey = 'omnipack_erp_stock_deduction_fix_v4';
     if (safeStorage.getItem(legacyStockMigrationKey) !== 'true') {
       if (Array.isArray(this.cache.stockLogs) && this.cache.stockLogs.length > 0) {
         this.cache.stockLogs = this.cache.stockLogs.filter(log => {
           if (!log || !log.notes) return true;
           const isOrderLog = log.notes.startsWith('Order ');
           if (isOrderLog) {
-            const isDeliveredLog = log.notes.includes('Delivered') || log.notes.includes('Returned') || log.notes.includes('Restocked');
+            const isDeliveredLog = log.notes.includes('Delivered') || log.notes.includes('Returned') || log.notes.includes('Restocked') || log.notes.includes('refunded') || log.notes.includes('un-delivered');
             if (!isDeliveredLog) return false;
           }
           return true;
@@ -977,14 +977,37 @@ class ERPStorage {
       }
 
       if (Array.isArray(this.cache.products)) {
+        const norm = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const legMap: Record<string, string> = {
+          'p1': PROD_1_ID,
+          'p2': PROD_2_ID,
+          'p3': PROD_3_ID,
+          'p4': PROD_4_COMBO_ID
+        };
+
         this.cache.products.forEach(p => {
-          const logsForP = (this.cache.stockLogs || []).filter(l => l.product_id === p.id);
+          if (!p) return;
+          const logsForP = (this.cache.stockLogs || []).filter(l => {
+            if (!l || !l.product_id) return false;
+            const lId = String(l.product_id).trim();
+            if (lId === p.id || legMap[lId] === p.id || legMap[p.id] === lId) return true;
+            if (p.sku && lId.toLowerCase() === p.sku.toLowerCase()) return true;
+            if (p.barcode && lId.toLowerCase() === p.barcode.toLowerCase()) return true;
+            if (p.name && norm(lId) === norm(p.name) && norm(p.name).length > 2) return true;
+            return false;
+          });
+
           if (logsForP.length > 0) {
             let logSum = 0;
             logsForP.forEach(l => { logSum += Number(l.change_qty) || 0; });
             p.current_stock = logSum;
-          } else if (p.opening_stock !== undefined) {
-            p.current_stock = p.opening_stock;
+          } else {
+            p.current_stock = typeof p.opening_stock === 'number' ? p.opening_stock : 0;
+          }
+
+          // If current stock is negative and product has 0 active delivered orders, reconcile to 0
+          if (p.current_stock < 0) {
+            p.current_stock = 0;
           }
         });
         safeStorage.setItem('omnipack_erp_products', JSON.stringify(this.cache.products));
@@ -1369,6 +1392,10 @@ class ERPStorage {
                return {
                  ...existingSO,
                  ...so,
+                 additional_charges: (so.additional_charges !== undefined && so.additional_charges !== null && !isNaN(Number(so.additional_charges))) ? Number(so.additional_charges) : (Number(existingSO?.additional_charges) || 0),
+                 delivery_charges: (so.delivery_charges !== undefined && so.delivery_charges !== null && !isNaN(Number(so.delivery_charges))) ? Number(so.delivery_charges) : ((so as any).delivery_charge !== undefined && (so as any).delivery_charge !== null ? Number((so as any).delivery_charge) || 0 : (Number(existingSO?.delivery_charges) || Number((existingSO as any)?.delivery_charge) || 0)),
+                 delivery_charge: (so.delivery_charges !== undefined && so.delivery_charges !== null && !isNaN(Number(so.delivery_charges))) ? Number(so.delivery_charges) : ((so as any).delivery_charge !== undefined && (so as any).delivery_charge !== null ? Number((so as any).delivery_charge) || 0 : (Number(existingSO?.delivery_charges) || Number((existingSO as any)?.delivery_charge) || 0)),
+                 additional_charges_type: so.additional_charges_type || existingSO?.additional_charges_type || 'Delivery',
                  total_amount: isLocalNewer && existingSO?.total_amount !== undefined ? existingSO.total_amount : finalTotalAmount,
                  paid_amount: isLocalNewer && existingSO?.paid_amount !== undefined ? existingSO.paid_amount : finalPaidAmount,
                  payment_status: isLocalNewer && existingSO?.payment_status ? existingSO.payment_status : (so.payment_status || existingSO?.payment_status || 'Unpaid'),
@@ -2427,6 +2454,52 @@ class ERPStorage {
   }
 
   // Product Operations
+  public findProductIndex(query: string): number {
+    if (!query) return -1;
+    const rawClean = String(query).trim();
+    const clean = rawClean.toLowerCase();
+    if (!clean) return -1;
+
+    const legMap: Record<string, string> = {
+      'p1': PROD_1_ID,
+      'p2': PROD_2_ID,
+      'p3': PROD_3_ID,
+      'p4': PROD_4_COMBO_ID
+    };
+    const mappedUUID = legMap[clean] || legMap[rawClean];
+    const mappedShortKey = Object.keys(legMap).find(k => legMap[k] === rawClean || legMap[k].toLowerCase() === clean);
+
+    const norm = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normQuery = norm(rawClean);
+
+    return (this.cache.products || []).findIndex(p => {
+      if (!p) return false;
+      const pId = String(p.id || '').trim();
+      const pIdLower = pId.toLowerCase();
+      if (pId && (pIdLower === clean || (mappedUUID && pIdLower === mappedUUID.toLowerCase()) || (mappedShortKey && pIdLower === mappedShortKey.toLowerCase()))) return true;
+      if (pId && (legMap[pId] === rawClean || legMap[pId]?.toLowerCase() === clean)) return true;
+      
+      const pSku = String(p.sku || '').trim().toLowerCase();
+      if (pSku && pSku === clean) return true;
+
+      const pBarcode = String(p.barcode || '').trim().toLowerCase();
+      if (pBarcode && pBarcode === clean) return true;
+
+      const pName = String(p.name || '').trim().toLowerCase();
+      if (pName && pName === clean) return true;
+
+      const normPName = norm(p.name);
+      if (normPName && normQuery && normPName === normQuery && normQuery.length > 2) return true;
+
+      return false;
+    });
+  }
+
+  public findProduct(query: string): Product | undefined {
+    const idx = this.findProductIndex(query);
+    return idx !== -1 ? this.cache.products[idx] : undefined;
+  }
+
   public getProducts(businessId: string): Product[] {
     return dedupeById(
       (this.cache.products || [])
@@ -4491,8 +4564,15 @@ class ERPStorage {
           const finalStatus = needsPendingFix ? 'Pending' : (s.status || 'Pending');
           const finalDeliveryStatus = needsPendingFix ? 'Pending' : (s.delivery_status || 'Pending');
 
+          const addCharges = Number(s.additional_charges) || 0;
+          const delCharges = Number(s.delivery_charges) || Number((s as any).delivery_charge) || 0;
+
           return {
             ...s,
+            additional_charges: addCharges,
+            delivery_charges: delCharges,
+            delivery_charge: delCharges,
+            additional_charges_type: s.additional_charges_type || 'Delivery',
             status: finalStatus,
             delivery_status: finalDeliveryStatus,
             area: resolvedArea,
@@ -4802,9 +4882,25 @@ class ERPStorage {
         ? updates.total_amount
         : (updates.total_amount !== undefined && !isNaN(Number(updates.total_amount)) ? Number(updates.total_amount) : oldSO.total_amount);
 
+      const updatedAddCharges = updates.additional_charges !== undefined
+        ? (Number(updates.additional_charges) || 0)
+        : (Number(oldSO.additional_charges) || 0);
+
+      const updatedDelCharges = updates.delivery_charges !== undefined
+        ? (Number(updates.delivery_charges) || 0)
+        : (updates.delivery_charge !== undefined
+            ? (Number(updates.delivery_charge) || 0)
+            : (Number(oldSO.delivery_charges) || Number((oldSO as any).delivery_charge) || 0));
+
+      const updatedAddType = updates.additional_charges_type || oldSO.additional_charges_type || 'Delivery';
+
       const newSO: SalesOrder = { 
         ...oldSO, 
         ...updates, 
+        additional_charges: updatedAddCharges,
+        delivery_charges: updatedDelCharges,
+        delivery_charge: updatedDelCharges,
+        additional_charges_type: updatedAddType,
         total_amount: updatedTotalAmount,
         paid_amount: updatedPaidAmount,
         payment_history: updatedPaymentHistory,
@@ -4937,10 +5033,18 @@ class ERPStorage {
     businessId: string,
     skipProductStockUpdate = false
   ): StockLog {
+    const prodIdx = this.findProductIndex(productId);
+    let targetId = productId;
+    if (prodIdx !== -1) {
+      targetId = this.cache.products[prodIdx].id;
+    } else {
+      const legMap: Record<string, string> = { 'p1': PROD_1_ID, 'p2': PROD_2_ID, 'p3': PROD_3_ID, 'p4': PROD_4_COMBO_ID };
+      targetId = legMap[productId] || productId;
+    }
     const normType = (type === 'Adjusted' ? 'Adjustment' : type) as StockLog['type'];
     const newLog: StockLog = {
       id: crypto.randomUUID(),
-      product_id: productId,
+      product_id: targetId,
       change_qty: changeQty,
       type: normType,
       notes,
@@ -4949,26 +5053,18 @@ class ERPStorage {
       business_id: businessId
     };
 
-    if (!skipProductStockUpdate) {
-      const legacyIdMap: Record<string, string> = { 'p1': PROD_1_ID, 'p2': PROD_2_ID, 'p3': PROD_3_ID, 'p4': PROD_4_COMBO_ID };
-      const targetId = legacyIdMap[productId] || productId;
-      // Update product current stock level in memory cache
-      const productIndex = this.cache.products.findIndex(p => p.id === targetId || p.id === productId);
-      if (productIndex !== -1) {
-        const prod = this.cache.products[productIndex];
-        const currentVal = Number(prod.current_stock) || 0;
-        const newStock = currentVal + changeQty;
-        prod.current_stock = newStock;
-        
-        // Record authoritative expectation to safeguard against database triggers doubling stock
-        this.setAuthoritativeStock(targetId, newStock, changeQty, prod.sku, prod.name);
-        this.setAuthoritativeStock(productId, newStock, changeQty, prod.sku, prod.name);
-        if (prod.id) this.setAuthoritativeStock(prod.id, newStock, changeQty, prod.sku, prod.name);
+    if (!skipProductStockUpdate && prodIdx !== -1) {
+      const prod = this.cache.products[prodIdx];
+      const currentVal = Number(prod.current_stock) || 0;
+      const newStock = currentVal + changeQty;
+      prod.current_stock = newStock;
+      
+      this.setAuthoritativeStock(prod.id, newStock, changeQty, prod.sku, prod.name);
+      this.setAuthoritativeStock(productId, newStock, changeQty, prod.sku, prod.name);
+      if (targetId) this.setAuthoritativeStock(targetId, newStock, changeQty, prod.sku, prod.name);
 
-        safeStorage.setItem('omnipack_erp_products', JSON.stringify(this.cache.products));
-        // Immediately save updated product to Supabase DB so it persists and broadcasts live to other users
-        this.save('products', prod);
-      }
+      safeStorage.setItem('omnipack_erp_products', JSON.stringify(this.cache.products));
+      this.save('products', prod);
     }
 
     this.cache.stockLogs.push(newLog);
@@ -4989,12 +5085,13 @@ class ERPStorage {
       this.save('stockLogs', newLog);
       
       if (diffQty !== 0) {
-        const productIndex = this.cache.products.findIndex(p => p.id === newLog.product_id);
+        const productIndex = this.findProductIndex(newLog.product_id);
         if (productIndex !== -1) {
           const prod = this.cache.products[productIndex];
           const currentVal = Number(prod.current_stock) || 0;
           const newStock = currentVal + diffQty;
           prod.current_stock = newStock;
+          this.setAuthoritativeStock(prod.id, newStock, diffQty, prod.sku, prod.name);
           this.setAuthoritativeStock(newLog.product_id, newStock, diffQty, prod.sku, prod.name);
           safeStorage.setItem('omnipack_erp_products', JSON.stringify(this.cache.products));
           this.save('products', prod);

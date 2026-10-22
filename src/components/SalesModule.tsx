@@ -960,8 +960,10 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
       setCustomDiscountPercentage('');
       setCustomDiscountAmount('');
     }
-    setAdditionalCharges(order.additional_charges || 0);
-    setDeliveryCharges(order.delivery_charges ?? (order as any).delivery_charge ?? 0);
+    const addCh = Number(order.additional_charges) || 0;
+    const delCh = Number(order.delivery_charges) || Number((order as any).delivery_charge) || 0;
+    setAdditionalCharges(addCh > 0 ? addCh : (addCh === 0 ? 0 : ''));
+    setDeliveryCharges(delCh > 0 ? delCh : (delCh === 0 ? 0 : ''));
     setAdditionalChargeType(order.additional_charges_type || 'Delivery');
     const firstGst = order.items.length > 0 ? order.items[0].gst_rate : defaultTenantTax;
     setGlobalGstRate(firstGst);

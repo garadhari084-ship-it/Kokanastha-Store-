@@ -96,6 +96,13 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         const scanned = Number(item.scanned_qty || 0);
 
         const itemProdId = String(item.product_id || item.id || '').trim();
+        const legacyIdMap: Record<string, string> = {
+          'p1': 'b1111111-1111-4111-8111-111111111111',
+          'p2': 'b2222222-2222-4222-8222-222222222222',
+          'p3': 'b3333333-3333-4333-8333-333333333333',
+          'p4': 'b4444444-4444-4444-8444-444444444444'
+        };
+        const resolvedItemProdId = legacyIdMap[itemProdId] || itemProdId;
         const rawItemName = String(item.product_name || (item as any).name || '').trim();
         const itemName = rawItemName.toLowerCase();
         const itemSku = String(item.sku || '').trim().toLowerCase();
@@ -103,7 +110,9 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
 
         const prodMatch = products.find(p => {
           if (!p) return false;
-          if (p.id && itemProdId && p.id === itemProdId) return true;
+          const resolvedPId = legacyIdMap[p.id] || p.id;
+          if (resolvedPId && resolvedItemProdId && resolvedPId === resolvedItemProdId) return true;
+          if (p.id && itemProdId && (p.id === itemProdId || legacyIdMap[p.id] === itemProdId || legacyIdMap[itemProdId] === p.id)) return true;
           if (p.sku && itemProdId && p.sku.toLowerCase() === itemProdId.toLowerCase()) return true;
           if (p.sku && itemSku && p.sku.toLowerCase() === itemSku) return true;
           if (p.name && itemName && p.name.trim().toLowerCase() === itemName) return true;
@@ -112,13 +121,14 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
           return false;
         });
 
-        const targetProdId = prodMatch ? prodMatch.id : itemProdId;
+        const targetProdId = prodMatch ? prodMatch.id : resolvedItemProdId;
         if (!targetProdId && !itemName) return;
 
         const lookupKey = targetProdId || itemName;
         let stats = statsMap.get(lookupKey);
         if (!stats && prodMatch) {
           stats = statsMap.get(prodMatch.id) || 
+                  statsMap.get(legacyIdMap[prodMatch.id] || '') ||
                   statsMap.get(prodMatch.name.trim().toLowerCase()) || 
                   (prodMatch.sku ? statsMap.get(prodMatch.sku.trim().toLowerCase()) : undefined) ||
                   statsMap.get(norm(prodMatch.name));
@@ -129,9 +139,17 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         }
 
         // Always register stats under all identifier keys for this product
-        if (targetProdId) statsMap.set(targetProdId, stats);
+        if (targetProdId) {
+          statsMap.set(targetProdId, stats);
+          if (legacyIdMap[targetProdId]) statsMap.set(legacyIdMap[targetProdId], stats);
+        }
         if (prodMatch) {
-          if (prodMatch.id) statsMap.set(prodMatch.id, stats);
+          if (prodMatch.id) {
+            statsMap.set(prodMatch.id, stats);
+            if (legacyIdMap[prodMatch.id]) statsMap.set(legacyIdMap[prodMatch.id], stats);
+            const foundLegacy = Object.keys(legacyIdMap).find(k => legacyIdMap[k] === prodMatch.id);
+            if (foundLegacy) statsMap.set(foundLegacy, stats);
+          }
           if (prodMatch.name) statsMap.set(prodMatch.name.trim().toLowerCase(), stats);
           if (prodMatch.sku && prodMatch.sku.trim()) statsMap.set(prodMatch.sku.trim().toLowerCase(), stats);
           if (prodMatch.name) statsMap.set(norm(prodMatch.name), stats);
@@ -166,8 +184,20 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
       });
     });
 
+    const legacyIdMap: Record<string, string> = {
+      'p1': 'b1111111-1111-4111-8111-111111111111',
+      'p2': 'b2222222-2222-4222-8222-222222222222',
+      'p3': 'b3333333-3333-4333-8333-333333333333',
+      'p4': 'b4444444-4444-4444-8444-444444444444'
+    };
+
     return products.map(prod => {
+      const normProdId = legacyIdMap[prod.id] || prod.id;
+      const legacyKey = Object.keys(legacyIdMap).find(k => legacyIdMap[k] === prod.id);
+
       const stats = statsMap.get(prod.id) || 
+                     statsMap.get(normProdId) ||
+                     (legacyKey ? statsMap.get(legacyKey) : undefined) ||
                      statsMap.get(prod.name.trim().toLowerCase()) || 
                      (prod.sku ? statsMap.get(prod.sku.trim().toLowerCase()) : undefined) || 
                      statsMap.get(norm(prod.name)) ||
@@ -181,8 +211,26 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
       const categoryName = catObj ? catObj.name : 'Uncategorized';
 
       // Last Movement
+      const isLogForProd = (log: StockLog, p: any) => {
+        if (!log || !p) return false;
+        const lId = String(log.product_id || '').trim();
+        if (!lId) return false;
+        if (lId === p.id || legMap[lId] === p.id || legMap[p.id] === lId) return true;
+        if (p.sku && lId.toLowerCase() === p.sku.toLowerCase()) return true;
+        if (p.barcode && lId.toLowerCase() === p.barcode.toLowerCase()) return true;
+        if (p.name && norm(lId) === norm(p.name) && norm(p.name).length > 2) return true;
+        return false;
+      };
+
+      const legMap: Record<string, string> = {
+        'p1': 'b1111111-1111-4111-8111-111111111111',
+        'p2': 'b2222222-2222-4222-8222-222222222222',
+        'p3': 'b3333333-3333-4333-8333-333333333333',
+        'p4': 'b4444444-4444-4444-8444-444444444444'
+      };
+
       const lastLog = stockLogs
-        .filter(l => l.product_id === prod.id)
+        .filter(l => isLogForProd(l, prod))
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
       return {
@@ -242,8 +290,12 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
       return;
     }
 
-    // Always fetch latest authoritative product from store to prevent stale state
-    const freshProd = dbStore.getProducts(businessId).find(p => p.id === quickAdjustProduct.id) || quickAdjustProduct;
+    // Always fetch latest authoritative product from store using multi-alias lookup
+    const freshProd = dbStore.findProduct(quickAdjustProduct.id) ||
+                      (quickAdjustProduct.sku ? dbStore.findProduct(quickAdjustProduct.sku) : undefined) ||
+                      (quickAdjustProduct.name ? dbStore.findProduct(quickAdjustProduct.name) : undefined) ||
+                      dbStore.getProducts(businessId).find(p => p.id === quickAdjustProduct.id) ||
+                      quickAdjustProduct;
     const currentStock = Number(freshProd.current_stock) || 0;
     let changeQty = 0;
     let logType: StockLog['type'] = 'Adjustment';

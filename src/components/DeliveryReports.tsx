@@ -48,10 +48,13 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
         }
       });
 
+      const pendingPacking = Math.max(0, ordered - packed);
+
       return {
         ...prod,
         ordered,
         packed,
+        pendingPacking,
         dispatched,
         delivered
       };
@@ -63,6 +66,17 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
       })
       .sort((a, b) => b.ordered - a.ordered);
   }, [products, filteredOrders, searchQuery]);
+
+  const reportTotals = useMemo(() => {
+    return productReport.reduce((acc, p) => {
+      acc.ordered += p.ordered;
+      acc.packed += p.packed;
+      acc.pendingPacking += p.pendingPacking;
+      acc.dispatched += p.dispatched;
+      acc.delivered += p.delivered;
+      return acc;
+    }, { ordered: 0, packed: 0, pendingPacking: 0, dispatched: 0, delivered: 0 });
+  }, [productReport]);
 
   const datewiseDelivery = useMemo(() => {
     const dates: Record<string, { orders: number; items: number; amount: number; }> = {};
@@ -158,6 +172,32 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
         </div>
       </div>
 
+      {/* Summary metric banner for product report */}
+      {activeTab === 'product' && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Ordered Qty</div>
+            <div className="text-xl font-bold font-mono text-slate-800 dark:text-slate-100 mt-1">{reportTotals.ordered}</div>
+          </div>
+          <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Packed Qty</div>
+            <div className="text-xl font-bold font-mono text-blue-600 dark:text-blue-400 mt-1">{reportTotals.packed}</div>
+          </div>
+          <div className="bg-amber-50/70 dark:bg-amber-950/20 p-3.5 rounded-xl border border-amber-200/80 dark:border-amber-900/40 shadow-sm col-span-2 sm:col-span-1">
+            <div className="text-xs text-amber-700 dark:text-amber-400 font-bold uppercase tracking-wider">Pending Packing Qty</div>
+            <div className="text-xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-1">{reportTotals.pendingPacking}</div>
+          </div>
+          <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Dispatched Qty</div>
+            <div className="text-xl font-bold font-mono text-indigo-600 dark:text-indigo-400 mt-1">{reportTotals.dispatched}</div>
+          </div>
+          <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Delivered Qty</div>
+            <div className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">{reportTotals.delivered}</div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         {activeTab === 'product' && (
           <div>
@@ -181,6 +221,7 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
                     <th className="px-4 py-3">Barcode/SKU</th>
                     <th className="px-4 py-3 text-right">Ordered Qty</th>
                     <th className="px-4 py-3 text-right">Packed Qty</th>
+                    <th className="px-4 py-3 text-right text-amber-700 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20">Pending Packing Qty</th>
                     <th className="px-4 py-3 text-right">Dispatched Qty</th>
                     <th className="px-4 py-3 text-right">Delivered Qty</th>
                   </tr>
@@ -188,7 +229,7 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {productReport.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                         <FileText size={32} className="mx-auto mb-3 opacity-20" />
                         <p>No product data found in this date range.</p>
                       </td>
@@ -199,7 +240,16 @@ export const DeliveryReports: React.FC<DeliveryReportsProps> = ({ businessId }) 
                         <td className="px-4 py-3 font-semibold text-slate-800 dark:text-slate-200">{item.name}</td>
                         <td className="px-4 py-3 text-slate-500 dark:text-slate-400 font-mono text-xs">{item.barcode || item.sku || '-'}</td>
                         <td className="px-4 py-3 text-right font-mono font-medium">{item.ordered}</td>
-                        <td className="px-4 py-3 text-right font-mono font-medium text-amber-600 dark:text-amber-400">{item.packed}</td>
+                        <td className="px-4 py-3 text-right font-mono font-medium text-blue-600 dark:text-blue-400">{item.packed}</td>
+                        <td className="px-4 py-3 text-right font-mono font-medium bg-amber-50/30 dark:bg-amber-950/10">
+                          {item.pendingPacking > 0 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                              {item.pendingPacking}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-500 font-normal">0</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right font-mono font-medium text-indigo-600 dark:text-indigo-400">{item.dispatched}</td>
                         <td className="px-4 py-3 text-right font-mono font-medium text-emerald-600 dark:text-emerald-400">{item.delivered}</td>
                       </tr>

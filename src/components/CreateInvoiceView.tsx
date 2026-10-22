@@ -41,7 +41,7 @@ import {
 import { SalesItem, SalesOrder, Customer, Product, UserProfile, Business } from '../types/erp';
 import { dbStore } from '../services/store';
 import { BillOfSupplyView } from './BillOfSupplyView';
-import { generateBillOfSupplyHTML } from '../utils/invoiceTemplate';
+import { generateBillOfSupplyHTML, printInvoiceHTML } from '../utils/invoiceTemplate';
 
 import { fetchAreaFromPincode, syncMapPincodeToArea, fetchPincodeFromArea, syncMapAreaToPincode } from '../utils/pincodeUtils';
 import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
@@ -633,28 +633,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       ...((dbStore as any).cache?.products || [])
     ];
     const printHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
-    let printFrame = document.getElementById('tax-invoice-print-frame') as HTMLIFrameElement;
-    if (!printFrame) {
-      printFrame = document.createElement('iframe');
-      printFrame.id = 'tax-invoice-print-frame';
-      printFrame.style.position = 'fixed';
-      printFrame.style.right = '0';
-      printFrame.style.bottom = '0';
-      printFrame.style.width = '0';
-      printFrame.style.height = '0';
-      printFrame.style.border = '0';
-      document.body.appendChild(printFrame);
-    }
-    const frameDoc = printFrame.contentWindow?.document || printFrame.contentDocument;
-    if (frameDoc) {
-      frameDoc.open();
-      frameDoc.write(printHtml);
-      frameDoc.close();
-      setTimeout(() => {
-        printFrame.contentWindow?.focus();
-        printFrame.contentWindow?.print();
-      }, 500);
-    }
+    printInvoiceHTML(printHtml);
   };
 
   const handleDownloadPreviewPDF = async (order: SalesOrder) => {
@@ -686,7 +665,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     triggerToast(`Bill of Supply for "${order.order_number}" downloaded & opening print spooler!`, 'success');
-    handlePrintPreviewInvoice(order);
+    printInvoiceHTML(fullHtml);
   };
 
   return (

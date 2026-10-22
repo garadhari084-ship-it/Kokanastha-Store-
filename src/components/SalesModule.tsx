@@ -57,7 +57,7 @@ import {
 import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone, formatOrderDisplayDate } from '../services/store';
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
 import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
-import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
+import { generateBillOfSupplyHTML, generate3InchBillHTML, printInvoiceHTML } from '../utils/invoiceTemplate';
 import { BillOfSupplyView } from './BillOfSupplyView';
 
 interface CustomDropdownOption {
@@ -1565,8 +1565,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
         setIsCreateModalOpen(false);
         setViewingInvoiceOrder(finalCreatedOrder);
         setTimeout(() => {
-          const btn = document.getElementById('print-invoice-btn');
-          if (btn) btn.click();
+          handlePrintInvoice(finalCreatedOrder);
         }, 300);
       } else if (postAction === 'share' && finalCreatedOrder) {
         isCreateModalOpenRef.current = false;
@@ -1641,42 +1640,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
       ...((dbStore as any).cache?.products || [])
     ];
     const printHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
-
-    try {
-      let printFrame = document.getElementById('tax-invoice-print-frame') as HTMLIFrameElement;
-      if (!printFrame) {
-        printFrame = document.createElement('iframe');
-        printFrame.id = 'tax-invoice-print-frame';
-        printFrame.style.position = 'fixed';
-        printFrame.style.right = '0';
-        printFrame.style.bottom = '0';
-        printFrame.style.width = '0';
-        printFrame.style.height = '0';
-        printFrame.style.border = '0';
-        document.body.appendChild(printFrame);
-      }
-
-      const doc = printFrame.contentWindow?.document;
-      if (doc) {
-        doc.open();
-        doc.write(printHtml);
-        doc.close();
-
-        setTimeout(() => {
-          try {
-            printFrame.contentWindow?.focus();
-            printFrame.contentWindow?.print();
-          } catch (e) {
-            window.print();
-          }
-        }, 500);
-      } else {
-        window.print();
-      }
-    } catch (err) {
-      console.error('Print error:', err);
-      window.print();
-    }
+    printInvoiceHTML(printHtml);
   };
 
   const handleDownload3InchBill = async (order: SalesOrder) => {
@@ -1698,7 +1662,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     
-    // Download as HTML (similar to standard PDF download feature which uses HTML)
+    // Download as HTML
     const a = document.createElement('a');
     a.href = url;
     a.download = `3_Inch_Bill_${order.order_number}.html`;
@@ -1706,18 +1670,9 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
-    // Also open print window directly for convenience
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
-    if (printWindow) {
-      printWindow.document.open();
-      printWindow.document.write(fullHtml);
-      printWindow.document.close();
-      setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-      }, 500);
-    }
+
+    // Print 3-Inch Bill cleanly via temporary isolated iframe
+    printInvoiceHTML(fullHtml);
 
     setActionProgress(100);
     await new Promise(r => setTimeout(r, 100));
@@ -1762,7 +1717,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
     triggerToast(`Bill of Supply for "${order.order_number}" downloaded & opening print spooler!`, 'success');
     dbStore.logActivity(user.id, user.name, user.role, 'Download Invoice', `Downloaded Bill of Supply for ${order.order_number}`, businessId);
 
-    handlePrintInvoice(order);
+    printInvoiceHTML(fullHtml);
   };
 
   const handleEmailInvoice = (orderNumber: string, emailStr: string) => {

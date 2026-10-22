@@ -811,16 +811,72 @@ export async function generateBillOfSupplyHTML(
     </tr>
   </table>
 
-  <script>
-    window.onload = function() {
-      setTimeout(function() {
-        window.print();
-      }, 300);
-    };
-  </script>
 </body>
 </html>
   `;
+}
+
+/**
+ * Safely prints HTML content (Bill of Supply or 3-Inch Bill) using a fresh,
+ * isolated, hidden temporary iframe that is properly cleaned up after printing.
+ * Guarantees that stale document buffers or duplicate print triggers NEVER occur.
+ */
+export function printInvoiceHTML(htmlContent: string): void {
+  try {
+    // 1. Remove any existing print frame to guarantee no stale document buffers from previous bills
+    const existingFrame = document.getElementById('tax-invoice-print-frame');
+    if (existingFrame && existingFrame.parentNode) {
+      existingFrame.parentNode.removeChild(existingFrame);
+    }
+
+    // 2. Create a clean, isolated temporary print iframe
+    const printFrame = document.createElement('iframe');
+    printFrame.id = 'tax-invoice-print-frame';
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    printFrame.style.visibility = 'hidden';
+    document.body.appendChild(printFrame);
+
+    const doc = printFrame.contentWindow?.document || printFrame.contentDocument;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    // 3. Write fresh HTML content to the document
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+
+    // 4. Trigger print ONCE after DOM, images, and barcodes render
+    setTimeout(() => {
+      try {
+        if (printFrame.contentWindow) {
+          printFrame.contentWindow.focus();
+          printFrame.contentWindow.print();
+        } else {
+          window.print();
+        }
+      } catch (err) {
+        console.error('Print execution error:', err);
+        window.print();
+      } finally {
+        // 5. Clean up temporary iframe after spooling completes
+        setTimeout(() => {
+          if (printFrame && printFrame.parentNode) {
+            printFrame.parentNode.removeChild(printFrame);
+          }
+        }, 2500);
+      }
+    }, 350);
+  } catch (e) {
+    console.error('printInvoiceHTML failure:', e);
+    window.print();
+  }
 }
 
 
@@ -1196,13 +1252,6 @@ export async function generate3InchBillHTML(
   <div style="text-align: center; margin-top: 15px; font-size: 11px; font-weight: bold;">
     - End of Bill -
   </div>
-  <script>
-    window.onload = function() {
-      setTimeout(function() {
-        window.print();
-      }, 300);
-    };
-  </script>
 </body>
 </html>`;
 }

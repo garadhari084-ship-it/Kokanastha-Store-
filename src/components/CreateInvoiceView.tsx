@@ -1949,11 +1949,19 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                 )}
 
                 {/* Balance Due / Status Indicator */}
-                <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border-2 border-slate-300 dark:border-slate-600 flex items-center justify-between text-xs font-bold">
-                  <span className="text-slate-500">Balance Due:</span>
-                  <span className={`font-mono ${balance > 0 ? 'text-rose-600 dark:text-rose-400 font-black' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                    {currencySymbol}{balance.toLocaleString()}
-                  </span>
+                <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border-2 border-slate-300 dark:border-slate-600 space-y-1.5 text-xs">
+                  {computedPaid > 0 && (
+                    <div className="flex items-center justify-between font-bold text-emerald-700 dark:text-emerald-400">
+                      <span>Advance Payment Paid:</span>
+                      <span className="font-mono">{currencySymbol}{computedPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between font-bold">
+                    <span className="text-slate-500">Remaining Balance Due:</span>
+                    <span className={`font-mono ${balance > 0 ? 'text-rose-600 dark:text-rose-400 font-black' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                      {currencySymbol}{balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
                 </div>
               </div>
 

@@ -369,7 +369,12 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
   };
 
   const handleQuickStatusChange = (orderId: string, newStatus: OrderStatus) => {
-    dbStore.updateSalesOrder(orderId, { status: newStatus });
+    const nowIso = new Date().toISOString();
+    dbStore.updateSalesOrder(orderId, { 
+      status: newStatus,
+      ...(newStatus === 'Delivered' ? { delivery_status: 'Delivered', delivered_at: nowIso } : {}),
+      updated_at: nowIso
+    });
     
     // Add notification to packing staff only
     const orderNum = orders.find(o => o.id === orderId)?.order_number || orderId;
@@ -390,7 +395,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
     }
 
     setOrders(dbStore.getSalesOrders(businessId));
-    triggerToast(`Order status updated to ${newStatus}`, 'success');
+    triggerToast(`Order ${orderNum} status updated to ${newStatus}`, 'success');
   };
 
   
@@ -2083,6 +2088,9 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
                 }
               }
               const isSelected = selectedOrderIds.includes(o.id);
+              const totalAmt = Number(o.total_amount) || 0;
+              const paidAmt = Number(o.paid_amount) || (o.payment_status === 'Paid' ? totalAmt : 0);
+              const balAmt = Math.max(0, totalAmt - paidAmt);
 
               return (
                 <tr 
@@ -2126,6 +2134,22 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
                         </span>
                       )}
                     </div>
+                    {(paidAmt > 0 || o.payment_status === 'Partial' || o.advance_booking || o.payment_status === 'Paid') && (
+                      <div className="flex items-center gap-1.5 text-[9.5px] font-bold mt-1 flex-wrap">
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 whitespace-nowrap">
+                          Adv Paid: {currencySymbol}{paidAmt.toLocaleString()}
+                        </span>
+                        {balAmt > 0 ? (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 whitespace-nowrap">
+                            Due: {currencySymbol}{balAmt.toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 whitespace-nowrap">
+                            Fully Paid
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </td>
 
                   <td className="py-2 px-3 font-semibold text-slate-700 dark:text-slate-300 text-xs">
@@ -2141,8 +2165,26 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
                     </div>
                   </td>
 
-                  <td className="py-2 px-3 font-black text-slate-900 dark:text-white">
-                    {currencySymbol}{(Number(o.total_amount) || 0).toLocaleString()}
+                  <td className="py-2 px-3">
+                    <div className="flex flex-col">
+                      <span className="font-black text-slate-900 dark:text-white text-xs sm:text-[12.5px]">
+                        {currencySymbol}{totalAmt.toLocaleString()}
+                      </span>
+                      {paidAmt > 0 ? (
+                        <div className="flex flex-col gap-0.5 mt-0.5 text-[9.5px]">
+                          <span className="font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <span className="text-slate-400 font-medium">Adv Paid:</span> {currencySymbol}{paidAmt.toLocaleString()}
+                          </span>
+                          <span className={`font-extrabold flex items-center gap-1 ${balAmt > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            <span className="text-slate-400 font-medium">{balAmt > 0 ? 'Remaining:' : 'Bal:'}</span> {balAmt > 0 ? `${currencySymbol}${balAmt.toLocaleString()}` : '₹0'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[9.5px] font-semibold text-rose-500 dark:text-rose-400 mt-0.5">
+                          Unpaid
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   <td className="py-2 px-3">
@@ -2257,6 +2299,23 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
                       >
                         <Send size={15} />
                       </button>
+
+                      {/* Quick Mark as Delivered / Completed */}
+                      {o.status !== 'Delivered' ? (
+                        <button 
+                          onClick={() => handleQuickStatusChange(o.id, 'Delivered')}
+                          className="p-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-200 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-lg transition cursor-pointer flex items-center gap-1 font-bold text-[10px]"
+                          title="Mark as Delivered & Complete Order"
+                        >
+                          <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400" />
+                          <span className="hidden xl:inline">Mark Delivered</span>
+                        </button>
+                      ) : (
+                        <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-lg font-bold text-[10px] inline-flex items-center gap-1" title="Order Completed & Delivered">
+                          <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400 fill-emerald-200 dark:fill-emerald-900" />
+                          <span>Delivered</span>
+                        </span>
+                      )}
 
                     </div>
                   </td>

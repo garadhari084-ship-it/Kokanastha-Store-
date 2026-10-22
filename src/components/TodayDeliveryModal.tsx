@@ -29,7 +29,7 @@ export const TodayDeliveryModal: React.FC<TodayDeliveryModalProps> = ({
   onAction
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'All' | 'Pending' | 'Dispatched' | 'Delivered'>('All');
+  const [activeTab, setActiveTab] = useState<'All' | 'Pending' | 'Dispatched' | 'Delivered'>('Pending');
   
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -56,13 +56,13 @@ export const TodayDeliveryModal: React.FC<TodayDeliveryModalProps> = ({
   }, [orders, todayStr]);
 
   const stats = useMemo(() => {
-    const pending = todayOrders.filter(o => o.status === 'Pending' || o.status === 'Packed').length;
+    const pending = todayOrders.filter(o => o.status === 'Pending' || o.status === 'Packing' || o.status === 'Packed').length;
     const dispatched = todayOrders.filter(o => o.status === 'Dispatched').length;
     const delivered = todayOrders.filter(o => o.status === 'Delivered').length;
     const totalAmount = todayOrders.reduce((sum, o) => sum + o.total_amount, 0);
     
     return {
-      total: todayOrders.length,
+      total: todayOrders.filter(o => o.status !== 'Delivered').length,
       pending,
       dispatched,
       delivered,
@@ -75,11 +75,13 @@ export const TodayDeliveryModal: React.FC<TodayDeliveryModalProps> = ({
     
     // Tab filtering
     if (activeTab === 'Pending') {
-      result = result.filter(o => o.status === 'Pending' || o.status === 'Packed');
+      result = result.filter(o => o.status !== 'Delivered' && o.status !== 'Returned');
     } else if (activeTab === 'Dispatched') {
       result = result.filter(o => o.status === 'Dispatched');
     } else if (activeTab === 'Delivered') {
       result = result.filter(o => o.status === 'Delivered');
+    } else if (activeTab === 'All') {
+      result = result.filter(o => o.status !== 'Delivered' && o.status !== 'Returned');
     }
 
     // Search filtering

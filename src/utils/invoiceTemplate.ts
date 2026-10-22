@@ -657,6 +657,8 @@ export async function generateBillOfSupplyHTML(
           Invoice No. : <strong>${order.order_number}</strong><br/>
           Date : ${order.order_date}<br/>
           Time : ${formatOrderTime(order.time, order.created_at)}
+          ${received > 0 ? `<br/><span style="color: #047857; font-weight: bold;">Adv Payment Paid: ₹ ${received.toFixed(2)}</span>` : ''}
+          ${received > 0 ? `<br/><span style="color: ${balance > 0 ? '#dc2626' : '#047857'}; font-weight: bold;">Remaining Due: ₹ ${balance.toFixed(2)}</span>` : ''}
         </div>
       </td>
     </tr>
@@ -760,13 +762,15 @@ export async function generateBillOfSupplyHTML(
           <td>Total Amount</td>
           <td style="text-align: right;">₹ ${totalAmount.toFixed(2)}</td>
         </tr>
-        <tr>
-          <td>Advance / Received</td>
-          <td style="text-align: right; font-weight: bold; color: #047857;">₹ ${received.toFixed(2)}</td>
+        ${received > 0 ? `
+        <tr style="background-color: #f0fdf4;">
+          <td style="font-weight: bold; color: #047857; padding: 4px 0;">Advance Payment Paid</td>
+          <td style="text-align: right; font-weight: bold; color: #047857; padding: 4px 0;">₹ ${received.toFixed(2)}</td>
         </tr>
-        <tr>
-          <td><strong>Balance Due</strong></td>
-          <td style="text-align: right; color: ${balance > 0 ? '#dc2626' : '#0f172a'};"><strong>₹ ${balance.toFixed(2)}</strong></td>
+        ` : ''}
+        <tr style="border-top: 1.5px solid #0f172a; border-bottom: 1.5px solid #0f172a;">
+          <td style="padding: 4px 0;"><strong>Remaining Balance Due</strong></td>
+          <td style="text-align: right; color: ${balance > 0 ? '#dc2626' : '#047857'}; padding: 4px 0;"><strong>₹ ${balance.toFixed(2)}</strong></td>
         </tr>
       </table>
 
@@ -1180,8 +1184,8 @@ export async function generate3InchBillHTML(
         ${deliveryCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Delivery</span><span>:</span></div>` : ''}
         ${additionalCharges > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Additional</span><span>:</span></div>` : ''}
         <div style="display: flex; justify-content: space-between;"><span>Total</span><span>:</span></div>
-        <div style="display: flex; justify-content: space-between;"><span>Adv / Recd</span><span>:</span></div>
-        <div style="display: flex; justify-content: space-between;"><span>Balance</span><span>:</span></div>
+        <div style="display: flex; justify-content: space-between; font-weight: bold;"><span>Adv Paid</span><span>:</span></div>
+        <div style="display: flex; justify-content: space-between; font-weight: bold;"><span>Bal Due</span><span>:</span></div>
       </td>
       <td style="text-align: right; vertical-align: top; width: 80px;">
         <div style="margin-bottom: 2px;">${subTotal.toFixed(2)}</div>

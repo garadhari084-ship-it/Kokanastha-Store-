@@ -257,6 +257,16 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
             <div><span className="text-slate-500 font-sans">Invoice No. :</span> <strong className="text-slate-950 font-bold text-sm bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">{order.order_number}</strong></div>
             <div><span className="text-slate-500 font-sans">Date :</span> <strong>{order.order_date}</strong></div>
             <div><span className="text-slate-500 font-sans">Time :</span> {formatOrderTime(order.time, order.created_at)}</div>
+            {received > 0 && (
+              <div className="text-emerald-700 font-bold text-[11px] pt-1 border-t border-slate-200">
+                <span className="text-slate-500 font-sans">Adv Payment Paid:</span> {currencySymbol} {received.toFixed(2)}
+              </div>
+            )}
+            {received > 0 && (
+              <div className={`font-bold text-[11px] ${balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                <span className="text-slate-500 font-sans">Remaining Due:</span> {currencySymbol} {balance.toFixed(2)}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -459,13 +469,20 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
               <span className="font-sans">Total</span>
               <span>{currencySymbol} {totalAmount.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between font-mono text-slate-600 text-xs sm:text-[13px]">
-              <span className="font-sans">Received</span>
-              <span>{currencySymbol} {received.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between font-mono font-extrabold text-slate-900 border-b border-slate-300 pb-1.5 text-xs sm:text-[13px]">
-              <span className="font-sans">Balance Due</span>
-              <span className={balance > 0 ? 'text-rose-600' : 'text-emerald-600'}>{currencySymbol} {balance.toFixed(2)}</span>
+            {received > 0 ? (
+              <div className="flex justify-between font-mono font-bold text-emerald-800 dark:text-emerald-300 text-xs sm:text-[13px] bg-emerald-50 dark:bg-emerald-950/40 p-1.5 rounded border border-emerald-200 dark:border-emerald-800">
+                <span className="font-sans font-extrabold">Advance Payment Paid</span>
+                <span>{currencySymbol} {received.toFixed(2)}</span>
+              </div>
+            ) : (
+              <div className="flex justify-between font-mono text-slate-600 text-xs sm:text-[13px]">
+                <span className="font-sans">Received</span>
+                <span>{currencySymbol} {received.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-mono font-black border-b-2 border-slate-950 pb-1.5 pt-1 text-xs sm:text-[13px]">
+              <span className="font-sans font-extrabold">Remaining Balance Due</span>
+              <span className={balance > 0 ? 'text-rose-600 dark:text-rose-400 font-black' : 'text-emerald-600 dark:text-emerald-400 font-black'}>{currencySymbol} {balance.toFixed(2)}</span>
             </div>
           </div>
 

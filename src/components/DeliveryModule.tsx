@@ -629,6 +629,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
           todayStart.setHours(0, 0, 0, 0);
           if (o.status === 'Delivered' || o.status === 'Returned' || !o.delivery_date || new Date(o.delivery_date) >= todayStart) return false;
         } else if (activeFilter === 'All') {
+          if (o.status === 'Delivered' || o.status === 'Returned') return false;
           if (o.status === 'Packed' && !o.ready_for_dispatch) return false;
         }
       }

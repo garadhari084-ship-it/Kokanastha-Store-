@@ -1400,6 +1400,9 @@ class ERPStorage {
                  paid_amount: isLocalNewer && existingSO?.paid_amount !== undefined ? existingSO.paid_amount : finalPaidAmount,
                  payment_status: isLocalNewer && existingSO?.payment_status ? existingSO.payment_status : (so.payment_status || existingSO?.payment_status || 'Unpaid'),
                  payment_mode: isLocalNewer && existingSO?.payment_mode ? existingSO.payment_mode : (so.payment_mode || existingSO?.payment_mode || 'Cash'),
+                  status: (isLocalNewer || existingSO?.status === 'Delivered' || existingSO?.status === 'Returned' || existingSO?.status === 'Cancelled') && existingSO?.status ? existingSO.status : (so.status || existingSO?.status || 'Pending'),
+                  delivery_status: (isLocalNewer || existingSO?.delivery_status === 'Delivered' || existingSO?.status === 'Delivered') && existingSO?.delivery_status ? existingSO.delivery_status : (so.delivery_status || existingSO?.delivery_status || (so.status === 'Delivered' ? 'Delivered' : 'Pending')),
+                  delivered_at: (isLocalNewer || existingSO?.delivered_at) && existingSO?.delivered_at ? existingSO.delivered_at : (so.delivered_at || existingSO?.delivered_at || (existingSO?.status === 'Delivered' ? new Date().toISOString() : undefined)),
                  order_date: isLocalNewer && existingSO?.order_date ? existingSO.order_date : (so.order_date || existingSO?.order_date),
                  delivery_date: isLocalNewer && existingSO?.delivery_date ? existingSO.delivery_date : ((so.delivery_date !== undefined && so.delivery_date !== null && so.delivery_date !== '') ? so.delivery_date : (existingSO?.delivery_date || null)),
                  customer_id: (so.customer_id && so.customer_id !== 'WALK_IN') ? so.customer_id : (existingSO?.customer_id || 'WALK_IN'),
@@ -4912,11 +4915,20 @@ class ERPStorage {
         paid_amount: updatedPaidAmount,
         payment_history: updatedPaymentHistory,
         is_updated: true,
-        updated_at: new Date().toISOString()
+        updated_at: updates.updated_at || new Date().toISOString()
       };
+      if (updates.status === 'Delivered' || updates.delivery_status === 'Delivered') {
+        newSO.status = 'Delivered';
+        newSO.delivery_status = 'Delivered';
+        if (!newSO.delivered_at) {
+          newSO.delivered_at = new Date().toISOString();
+        }
+      }
       if (updates.items && Array.isArray(updates.items)) {
         newSO.items = updates.items;
       }
+      this.pendingUploads.add(newSO.id);
+      if (newSO.order_number) this.pendingUploads.add(newSO.order_number);
       this.cache.sales[index] = newSO;
       this.save('sales', newSO);
       // Handle stock synchronization

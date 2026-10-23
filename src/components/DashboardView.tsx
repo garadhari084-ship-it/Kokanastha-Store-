@@ -201,23 +201,13 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
   const [deleteProgress, setDeleteProgress] = useState(0);
 
   const handleDeleteInvoiceConfirm = async (id: string, orderNumber: string) => {
-    setIsDeletingInvoice(true);
-    setDeleteProgress(15);
     try {
-      await new Promise(r => setTimeout(r, 100));
-      setDeleteProgress(45);
-      await dbStore.deleteSalesOrder(id);
-      setDeleteProgress(80);
-      await new Promise(r => setTimeout(r, 120));
-      setDeleteProgress(100);
+      dbStore.deleteSalesOrder(id);
       dbStore.logActivity(user.id, user.name, user.role, 'Delete Invoice', `Permanently deleted invoice ${orderNumber}`, businessId);
       triggerToast(`Invoice ${orderNumber} permanently deleted from database.`, 'success');
       setInvoiceToDelete(null);
     } catch (err: any) {
       triggerToast(err.message || 'Failed to delete invoice.', 'error');
-    } finally {
-      setIsDeletingInvoice(false);
-      setDeleteProgress(0);
     }
   };
 

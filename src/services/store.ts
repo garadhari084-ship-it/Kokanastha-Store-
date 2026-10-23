@@ -440,7 +440,204 @@ const d40Seed = new Date(nowSeed);
 d40Seed.setDate(d40Seed.getDate() - 40);
 const days40SeedStr = `${d40Seed.getFullYear()}-${String(d40Seed.getMonth() + 1).padStart(2, '0')}-${String(d40Seed.getDate()).padStart(2, '0')}`;
 
-const PRE_SEEDED_SALES: SalesOrder[] = [];
+const tomSeed = new Date(nowSeed);
+tomSeed.setDate(tomSeed.getDate() + 1);
+const tomSeedStr = `${tomSeed.getFullYear()}-${String(tomSeed.getMonth() + 1).padStart(2, '0')}-${String(tomSeed.getDate()).padStart(2, '0')}`;
+
+const daSeed = new Date(nowSeed);
+daSeed.setDate(daSeed.getDate() + 2);
+const daSeedStr = `${daSeed.getFullYear()}-${String(daSeed.getMonth() + 1).padStart(2, '0')}-${String(daSeed.getDate()).padStart(2, '0')}`;
+
+const PRE_SEEDED_SALES: SalesOrder[] = [
+  // Tomorrow's 5 orders (3 Delivery, 2 Pickup)
+  {
+    id: SO_1001_ID,
+    order_number: 'INV-2026-1001',
+    customer_id: CUST_1_ID,
+    customer_name: 'Rajesh Shinde',
+    customer_phone: '+91 98201 12345',
+    shipping_address: 'Flat 402, Sai Darshan CHS, Station Road, Borivali West',
+    billing_address: 'Flat 402, Sai Darshan CHS, Station Road, Borivali West',
+    area: 'Borivali',
+    order_date: tomSeedStr,
+    time: '10:30 AM',
+    status: 'Pending',
+    payment_status: 'Paid',
+    delivery_status: 'Pending',
+    delivery_type: 'Delivery',
+    channel: 'Direct Order',
+    items: [
+      { product_id: PROD_1_ID, product_name: 'Bhajani Chakli 1kg', qty: 2, selling_price: 320, gst_rate: 5 }
+    ],
+    total_amount: 672,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: SO_1002_ID,
+    order_number: 'INV-2026-1002',
+    customer_id: CUST_2_ID,
+    customer_name: 'Sunita Kulkarni',
+    customer_phone: '+91 98202 23456',
+    shipping_address: 'B-12, Anand Vihar, Ashokvan, Dahisar East',
+    billing_address: 'B-12, Anand Vihar, Ashokvan, Dahisar East',
+    area: 'Dahisar',
+    order_date: tomSeedStr,
+    time: '11:15 AM',
+    status: 'Packing',
+    payment_status: 'Unpaid',
+    delivery_status: 'Pending',
+    delivery_type: 'Delivery',
+    channel: 'Swiggy',
+    items: [
+      { product_id: PROD_3_ID, product_name: 'Besan Laddu 500g', qty: 3, selling_price: 240, gst_rate: 5 }
+    ],
+    total_amount: 756,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: SO_1003_ID,
+    order_number: 'INV-2026-1003',
+    customer_id: CUST_3_ID,
+    customer_name: 'Amit Deshmukh',
+    customer_phone: '+91 98203 34567',
+    shipping_address: 'Shop 2, Market Plaza, MG Road, Kandivali West',
+    billing_address: 'Shop 2, Market Plaza, MG Road, Kandivali West',
+    area: 'Kandivali',
+    order_date: tomSeedStr,
+    time: '01:00 PM',
+    status: 'Pending',
+    payment_status: 'Paid',
+    delivery_status: 'Pending',
+    delivery_type: 'Delivery',
+    channel: 'Direct Order',
+    items: [
+      { product_id: PROD_4_COMBO_ID, product_name: 'Diwali Festive Delight Combo Box', qty: 1, selling_price: 699, gst_rate: 5 }
+    ],
+    total_amount: 734,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: SO_1004_ID,
+    order_number: 'INV-2026-1004',
+    customer_id: CUST_1_ID,
+    customer_name: 'Pooja Joshi',
+    customer_phone: '+91 98204 45678',
+    shipping_address: 'Counter Pickup - Borivali Main Store',
+    billing_address: 'Counter Pickup - Borivali Main Store',
+    area: 'Borivali',
+    order_date: tomSeedStr,
+    time: '02:30 PM',
+    status: 'Packed',
+    payment_status: 'Paid',
+    delivery_status: 'Packed',
+    delivery_type: 'Pickup',
+    channel: 'Walk-in',
+    items: [
+      { product_id: PROD_1_ID, product_name: 'Bhajani Chakli 1kg', qty: 1, selling_price: 320, gst_rate: 5 },
+      { product_id: PROD_3_ID, product_name: 'Besan Laddu 500g', qty: 1, selling_price: 240, gst_rate: 5 }
+    ],
+    total_amount: 588,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: SO_1005_ID,
+    order_number: 'INV-2026-1005',
+    customer_id: CUST_2_ID,
+    customer_name: 'Vikram Sawant',
+    customer_phone: '+91 98205 56789',
+    shipping_address: 'Counter Pickup - Dahisar Depot',
+    billing_address: 'Counter Pickup - Dahisar Depot',
+    area: 'Dahisar',
+    order_date: tomSeedStr,
+    time: '04:00 PM',
+    status: 'Pending',
+    payment_status: 'Unpaid',
+    delivery_status: 'Pending',
+    delivery_type: 'Pickup',
+    channel: 'Zomato',
+    items: [
+      { product_id: PROD_2_ID, product_name: 'Poha Chivda 500g', qty: 2, selling_price: 180, gst_rate: 5 }
+    ],
+    total_amount: 378,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  },
+  // Day After Tomorrow's 2 orders
+  {
+    id: SO_1006_ID,
+    order_number: 'INV-2026-1006',
+    customer_id: CUST_3_ID,
+    customer_name: 'Nikhil Apte',
+    customer_phone: '+91 98206 67890',
+    shipping_address: 'Flat 101, Omkar CHS, Link Road, Malad West',
+    billing_address: 'Flat 101, Omkar CHS, Link Road, Malad West',
+    area: 'Malad',
+    order_date: daSeedStr,
+    time: '12:00 PM',
+    status: 'Pending',
+    payment_status: 'Paid',
+    delivery_status: 'Pending',
+    delivery_type: 'Delivery',
+    channel: 'Direct Order',
+    items: [
+      { product_id: PROD_4_COMBO_ID, product_name: 'Diwali Festive Delight Combo Box', qty: 2, selling_price: 699, gst_rate: 5 }
+    ],
+    total_amount: 1468,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: SO_1007_ID,
+    order_number: 'INV-2026-1007',
+    customer_id: CUST_1_ID,
+    customer_name: 'Snehal Gokhale',
+    customer_phone: '+91 98207 78901',
+    shipping_address: 'Counter Pickup - Borivali Store',
+    billing_address: 'Counter Pickup - Borivali Store',
+    area: 'Borivali',
+    order_date: daSeedStr,
+    time: '03:00 PM',
+    status: 'Pending',
+    payment_status: 'Unpaid',
+    delivery_status: 'Pending',
+    delivery_type: 'Pickup',
+    channel: 'Walk-in',
+    items: [
+      { product_id: PROD_1_ID, product_name: 'Bhajani Chakli 1kg', qty: 3, selling_price: 320, gst_rate: 5 }
+    ],
+    total_amount: 1008,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  },
+  // Today's orders
+  {
+    id: SO_1008_ID,
+    order_number: 'INV-2026-1008',
+    customer_id: CUST_2_ID,
+    customer_name: 'Manoj Patil',
+    customer_phone: '+91 98208 89012',
+    shipping_address: 'Flat 203, Shivneri Apartments, SV Road, Borivali East',
+    billing_address: 'Flat 203, Shivneri Apartments, SV Road, Borivali East',
+    area: 'Borivali',
+    order_date: todaySeedStr,
+    time: '09:30 AM',
+    status: 'Delivered',
+    payment_status: 'Paid',
+    delivery_status: 'Delivered',
+    delivery_type: 'Delivery',
+    channel: 'Direct Order',
+    items: [
+      { product_id: PROD_3_ID, product_name: 'Besan Laddu 500g', qty: 2, selling_price: 240, gst_rate: 5 }
+    ],
+    total_amount: 504,
+    business_id: BIZ_ID,
+    created_at: new Date().toISOString()
+  }
+];
 
 const PRE_SEEDED_SETTINGS: BusinessSettings[] = [
   {
@@ -892,6 +1089,13 @@ class ERPStorage {
        console.log('Clearing old invalid profiles with non-UUIDs...');
        safeStorage.removeItem('omnipack_erp_profiles');
     }
+    const salesSeedKey = 'omnipack_erp_sales_seeded_v4';
+    const lsSales = safeStorage.getItem('omnipack_erp_sales');
+    if (safeStorage.getItem(salesSeedKey) !== 'true' || !lsSales || lsSales === '[]') {
+       safeStorage.setItem('omnipack_erp_sales', JSON.stringify(PRE_SEEDED_SALES));
+       safeStorage.setItem(salesSeedKey, 'true');
+    }
+
     const isInitialized = safeStorage.getItem('omnipack_erp_initialized') === 'true';
     this.cache = {
       businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),

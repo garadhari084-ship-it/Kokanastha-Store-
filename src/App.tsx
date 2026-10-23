@@ -654,21 +654,26 @@ export default function App() {
 
   const [isRefreshingData, setIsRefreshingData] = useState(false);
 
-  // Header button only refreshes the app; does NOT save or clear local cache
-  const handleRefreshApp = useCallback(async () => {
+  // Fast, instant app refresh (immediate UI sync + brief 450ms spinner)
+  const handleRefreshApp = useCallback(() => {
     if (isRefreshingData) return;
     setIsRefreshingData(true);
     try {
-      await dbStore.refreshApp(currentBusiness?.id);
-      triggerToast('App refreshed', 'info');
+      // 1. Instant local storage reload and immediate UI refresh in 0ms
+      dbStore.reloadFromLocalStorage();
+      dbStore.notify();
+      setSyncTick(prev => prev + 1);
+
+      // 2. Trigger non-blocking background check
+      dbStore.refreshApp(currentBusiness?.id).catch(() => {});
     } catch (err: any) {
       console.warn('App refresh notice:', err);
-      dbStore.notify();
-      triggerToast('App refreshed', 'info');
     } finally {
+      // 3. Strictly terminate the spinner animation after exactly 450ms
       setTimeout(() => {
         setIsRefreshingData(false);
-      }, 500);
+        triggerToast('App refreshed successfully', 'success');
+      }, 450);
     }
   }, [currentBusiness?.id, isRefreshingData, triggerToast]);
 

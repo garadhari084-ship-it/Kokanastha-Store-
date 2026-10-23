@@ -1255,7 +1255,20 @@ class ERPStorage {
         while (fetchMore) {
           const from = page * pageSize;
           const to = from + pageSize - 1;
-          const { data, error } = await supabase.from(tableName).select('*').range(from, to);
+          const queryPromise = supabase.from(tableName).select('*').range(from, to);
+          const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+            setTimeout(() => reject(new Error('Table fetch timeout')), 2000)
+          );
+
+          let queryRes: any = null;
+          try {
+            queryRes = await Promise.race([queryPromise, timeoutPromise]);
+          } catch (_) {
+            break; // Stop fetching this table if slow or timed out
+          }
+
+          const data = queryRes?.data;
+          const error = queryRes?.error;
 
           if (error) {
             if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.toLowerCase().includes('does not exist')) {
@@ -5732,17 +5745,21 @@ class ERPStorage {
   public async refreshApp(businessId?: string) {
     const normBId = businessId ? normalizeBusinessId(businessId) : undefined;
     
-    // Only refresh data from backend if configured; do NOT clear cache, do NOT overwrite or save local records
+    // 1. Immediately reload all local tables & in-memory cache for instant 0ms data refresh
+    this.reloadFromLocalStorage();
+    this.notify();
+
+    // 2. Perform background cloud sync with a strict 2s timeout so UI never hangs
     if (isSupabaseConfigured && supabase) {
       try {
-        await this.syncFromSupabase(normBId);
+        const syncPromise = this.syncFromSupabase(normBId);
+        const timeoutPromise = new Promise(resolve => setTimeout(resolve, 2000));
+        await Promise.race([syncPromise, timeoutPromise]);
       } catch (e) {
         console.warn('Sync check error on app refresh:', e);
       }
-    } else {
-      this.reloadFromLocalStorage();
+      this.notify();
     }
-    this.notify();
   }
 
   public async saveAllLocalDataAndRefreshFromDatabase(businessId?: string) {

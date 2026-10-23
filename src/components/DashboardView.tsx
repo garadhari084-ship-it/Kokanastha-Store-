@@ -1593,14 +1593,14 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
 
               const activeOrders = allOrders.filter(o => o.status !== 'Cancelled');
 
-              const homeDeliveryCount = activeOrders.filter(o => {
-                const dt = (o.delivery_type || '').toLowerCase();
-                return dt.includes('deliver') || !o.delivery_type || dt === 'delivery';
-              }).length;
-
               const selfPickupCount = activeOrders.filter(o => {
                 const dt = (o.delivery_type || '').toLowerCase();
                 return dt.includes('pickup') || dt.includes('self');
+              }).length;
+
+              const homeDeliveryCount = activeOrders.filter(o => {
+                const dt = (o.delivery_type || '').toLowerCase();
+                return !(dt.includes('pickup') || dt.includes('self'));
               }).length;
 
               const tomorrowCount = activeOrders.filter(o => {
@@ -1774,7 +1774,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
                         const orderDateClean = getCleanDateStr(o.order_date || o.created_at);
 
                         if (fulfillmentFilter === 'delivery') {
-                          return dt.includes('deliver') || !o.delivery_type || dt === 'delivery';
+                          return !(dt.includes('pickup') || dt.includes('self'));
                         }
                         if (fulfillmentFilter === 'pickup') {
                           return dt.includes('pickup') || dt.includes('self');

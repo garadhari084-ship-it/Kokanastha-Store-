@@ -717,6 +717,7 @@ class ERPStorage {
   // Tracks authoritative target stock level set recently by application for each product ID
   // Prevents any remote trigger (like trg_stock_logs_on_insert) or race condition from doubling the stock
   private localStockExpectations = new Map<string, { expectedStock: number; changeQty: number; timestamp: number; sku?: string; name?: string }>();
+  private salesOrdersMemo: Record<string, { data: SalesOrder[], timestamp: number }> = {};
   
   public getLocalStockExpectation(key: string): { expectedStock: number; changeQty: number; timestamp: number; sku?: string; name?: string } | undefined {
     if (!key) return undefined;
@@ -815,8 +816,10 @@ class ERPStorage {
     return () => { this.listeners = this.listeners.filter(l => l !== listener); };
   }
   public notify() {
+    this.salesOrdersMemo = {};
     if (this.notificationTimer !== null) return;
     this.notificationTimer = window.requestAnimationFrame(() => {
+      // Group listeners to avoid UI thrashing
       this.listeners.forEach(l => {
         try { l(); } catch (e) { console.error('Listener error', e); }
       });

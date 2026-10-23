@@ -249,10 +249,25 @@ export async function exportOrderAsDirectPdf(
       doc.text('VERIFY BILL QR', 58, y, { align: 'center' });
       y += 1.5;
 
-      try {
-        doc.addImage(upiQrData, 'PNG', 12, y, 20, 20);
-        doc.addImage(billQrData, 'PNG', 48, y, 20, 20);
-      } catch (e) {}
+      const addQrImage = (data: string, x: number, y: number) => {
+        try {
+          const img = new Image();
+          img.src = data;
+          // Only add image if already loaded/cached
+          if (img.complete) {
+            doc.addImage(data, 'PNG', x, y, 20, 20);
+          } else {
+            // Skip or use placeholder to avoid hanging
+            console.warn('QR Image not fully loaded, skipping.');
+          }
+        } catch (e) {
+          console.warn('QR Image error', e);
+        }
+      };
+      
+      addQrImage(upiQrData, 12, y);
+      addQrImage(billQrData, 48, y);
+      
       y += 22;
     }
 
@@ -475,30 +490,34 @@ export async function exportOrderAsDirectPdf(
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(10, qrBoxY, 190, 36, 2, 2, 'D');
 
-  if (upiQrData) {
-    try {
-      doc.addImage(upiQrData, 'PNG', 16, qrBoxY + 3, 24, 24);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(15, 23, 42);
-      doc.text('UPI PAY QR', 28, qrBoxY + 30, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
-      doc.text('Scan to Pay', 28, qrBoxY + 33, { align: 'center' });
-    } catch (e) {}
-  }
+  if (upiQrData || billQrData) {
+    const addQrImage = (data: string, x: number, y: number) => {
+      try {
+        const img = new Image();
+        img.src = data;
+        // Only add image if already loaded/cached
+        if (img.complete) {
+          doc.addImage(data, 'PNG', x, y, 24, 24);
+        } else {
+          console.warn('QR Image not fully loaded, skipping.');
+        }
+      } catch (e) {
+        console.warn('QR Image error', e);
+      }
+    };
+    
+    if (upiQrData) addQrImage(upiQrData, 16, qrBoxY + 3);
+    if (billQrData) addQrImage(billQrData, 56, qrBoxY + 3);
 
-  if (billQrData) {
-    try {
-      doc.addImage(billQrData, 'PNG', 56, qrBoxY + 3, 24, 24);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(15, 23, 42);
-      doc.text('BILL QR', 68, qrBoxY + 30, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
-      doc.text('Verify Online', 68, qrBoxY + 33, { align: 'center' });
-    } catch (e) {}
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(15, 23, 42);
+    if (upiQrData) doc.text('UPI PAY QR', 28, qrBoxY + 30, { align: 'center' });
+    if (billQrData) doc.text('BILL QR', 68, qrBoxY + 30, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    if (upiQrData) doc.text('Scan to Pay', 28, qrBoxY + 33, { align: 'center' });
+    if (billQrData) doc.text('Verify Online', 68, qrBoxY + 33, { align: 'center' });
   }
 
   // Terms & Conditions and Signature

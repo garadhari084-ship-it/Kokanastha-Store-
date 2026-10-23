@@ -1416,6 +1416,7 @@ export default function App() {
           }
 
           clearTimeout(watchdog);
+          setIsLoggingIn(false);
           if (retryLocal?.error === 'Incorrect password.') {
             setAuthError('Incorrect password. Please verify your password or use Quick Login.');
           } else {
@@ -1427,9 +1428,11 @@ export default function App() {
 
       // If user wasn't in local cache and Supabase was not configured
       clearTimeout(watchdog);
+      setIsLoggingIn(false);
       setAuthError(localResult.error || 'Invalid email or password.');
     } catch (globalErr: any) {
       clearTimeout(watchdog);
+      setIsLoggingIn(false);
       setAuthError(globalErr?.message || 'Unexpected login error occurred.');
     } finally {
       clearTimeout(watchdog);

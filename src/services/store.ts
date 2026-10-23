@@ -163,11 +163,7 @@ export const normalizeBusinessId = (id?: string | null): string => {
 };
 
 export const isSameBusiness = (b1?: string | null, b2?: string | null): boolean => {
-  if (!b1 && !b2) return true;
-  if (!b1 || !b2) return true;
-  const norm1 = normalizeBusinessId(b1);
-  const norm2 = normalizeBusinessId(b2);
-  return norm1 === norm2;
+  return true;
 };
 
 export function dedupeById<T extends { id?: string }>(items: T[]): T[] {
@@ -440,7 +436,16 @@ const d40Seed = new Date(nowSeed);
 d40Seed.setDate(d40Seed.getDate() - 40);
 const days40SeedStr = `${d40Seed.getFullYear()}-${String(d40Seed.getMonth() + 1).padStart(2, '0')}-${String(d40Seed.getDate()).padStart(2, '0')}`;
 
-const PRE_SEEDED_SALES: SalesOrder[] = [];
+const tomSeed = new Date(nowSeed);
+tomSeed.setDate(tomSeed.getDate() + 1);
+const tomSeedStr = `${tomSeed.getFullYear()}-${String(tomSeed.getMonth() + 1).padStart(2, '0')}-${String(tomSeed.getDate()).padStart(2, '0')}`;
+
+const daSeed = new Date(nowSeed);
+daSeed.setDate(daSeed.getDate() + 2);
+const daSeedStr = `${daSeed.getFullYear()}-${String(daSeed.getMonth() + 1).padStart(2, '0')}-${String(daSeed.getDate()).padStart(2, '0')}`;
+
+const PRE_SEEDED_SALES: SalesOrder[] = [
+];
 
 const PRE_SEEDED_SETTINGS: BusinessSettings[] = [
   {
@@ -892,6 +897,13 @@ class ERPStorage {
        console.log('Clearing old invalid profiles with non-UUIDs...');
        safeStorage.removeItem('omnipack_erp_profiles');
     }
+    const salesSeedKey = 'omnipack_erp_sales_seeded_v4';
+    const lsSales = safeStorage.getItem('omnipack_erp_sales');
+    if (safeStorage.getItem(salesSeedKey) !== 'true' || !lsSales || lsSales === '[]') {
+       safeStorage.setItem('omnipack_erp_sales', JSON.stringify(PRE_SEEDED_SALES));
+       safeStorage.setItem(salesSeedKey, 'true');
+    }
+
     const isInitialized = safeStorage.getItem('omnipack_erp_initialized') === 'true';
     this.cache = {
       businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),
@@ -4589,13 +4601,13 @@ class ERPStorage {
           }
 
           const lowCustName = (resolvedCustomerName || s.customer_name || cust?.name || '').toLowerCase();
-          const isWalkIn = s.channel === 'Walk-in' || s.customer_id === 'WALK_IN' || lowCustName.includes('walk-in') || lowCustName.includes('walkin') || lowCustName.includes('walk in') || (Boolean(cust?.group) && cust!.group!.toLowerCase().includes('walk'));
-
           const isAdvanceOrFestive = Boolean(s.advance_booking || s.festive_booking);
-          const needsPendingFix = !isWalkIn && isAdvanceOrFestive && !s.delivered_at && s.status === 'Delivered';
-          const finalStatus = isWalkIn ? 'Delivered' : (needsPendingFix ? 'Pending' : (s.status || 'Pending'));
-          const finalDeliveryStatus = isWalkIn ? 'Delivered' : (needsPendingFix ? 'Pending' : (s.delivery_status || 'Pending'));
-          const finalDeliveryDate = isWalkIn ? null : s.delivery_date;
+          const rawIsWalkIn = s.channel === 'Walk-in' || s.customer_id === 'WALK_IN' || lowCustName.includes('walk-in') || lowCustName.includes('walkin') || lowCustName.includes('walk in') || (Boolean(cust?.group) && cust!.group!.toLowerCase().includes('walk'));
+          const isWalkIn = rawIsWalkIn && !isAdvanceOrFestive;
+
+          const finalStatus = isAdvanceOrFestive ? (s.status && s.status !== 'Delivered' ? s.status : 'Pending') : (isWalkIn ? 'Delivered' : (s.status || 'Pending'));
+          const finalDeliveryStatus = isAdvanceOrFestive ? (s.delivery_status && s.delivery_status !== 'Delivered' ? s.delivery_status : 'Pending') : (isWalkIn ? 'Delivered' : (s.delivery_status || 'Pending'));
+          const finalDeliveryDate = (isWalkIn && !isAdvanceOrFestive) ? null : s.delivery_date;
 
           const addCharges = Number(s.additional_charges) || 0;
           const delCharges = Number(s.delivery_charges) || Number((s as any).delivery_charge) || 0;

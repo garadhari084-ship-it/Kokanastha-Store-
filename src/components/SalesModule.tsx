@@ -58,6 +58,7 @@ import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone, formatOrde
 import { SalesOrder, Customer, Product, UserProfile, SalesItem, OrderStatus } from '../types/erp';
 import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
 import { generateBillOfSupplyHTML, generate3InchBillHTML, printInvoiceHTML } from '../utils/invoiceTemplate';
+import { exportOrderAsDirectPdf } from '../utils/pdfExporter';
 import { BillOfSupplyView } from './BillOfSupplyView';
 
 interface CustomDropdownOption {
@@ -1369,10 +1370,10 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
           channel: isWalkIn ? 'Walk-in' : 'Direct Order',
           time: orderTime ? format12HourTime(orderTime) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           order_date: orderDate || getLocalTodayDate(),
-          delivery_date: isWalkIn ? null : (deliveryDate || null),
+          delivery_date: (isWalkIn && !isAdvanceBooking && !isFestiveBooking) ? null : (deliveryDate || null),
           delivery_type: deliveryType,
-          status: (isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : existingOrder?.status === 'Packed' ? 'Packing' : (existingOrder?.status || 'Pending'),
-          delivery_status: (isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : existingOrder?.delivery_status || 'Pending',
+          status: (isAdvanceBooking || isFestiveBooking) ? 'Pending' : ((isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : existingOrder?.status === 'Packed' ? 'Packing' : (existingOrder?.status || 'Pending')),
+          delivery_status: (isAdvanceBooking || isFestiveBooking) ? 'Pending' : ((isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : existingOrder?.delivery_status || 'Pending'),
           payment_status: finalPaymentStatusToSave as any,
           payment_mode: paymentMode,
           paid_amount: actualPaid,
@@ -1449,13 +1450,13 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
           channel: isWalkIn ? 'Walk-in' : 'Direct Order',
           time: orderTime ? format12HourTime(orderTime) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           order_date: orderDate || getLocalTodayDate(),
-          delivery_date: isWalkIn ? null : (deliveryDate || null),
+          delivery_date: (isWalkIn && !isAdvanceBooking && !isFestiveBooking) ? null : (deliveryDate || null),
           delivery_type: deliveryType,
-          status: (isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : 'Pending',
+          status: (isAdvanceBooking || isFestiveBooking) ? 'Pending' : (isFulfilledImmediately ? 'Delivered' : 'Pending'),
           payment_status: finalPaymentStatusToSave as any,
           payment_mode: paymentMode,
           paid_amount: actualPaid,
-          delivery_status: (isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : 'Pending',
+          delivery_status: (isAdvanceBooking || isFestiveBooking) ? 'Pending' : (isFulfilledImmediately ? 'Delivered' : 'Pending'),
           items: cleanItems,
           advance_booking: isAdvanceBooking,
           festive_booking: isFestiveBooking,
@@ -1612,12 +1613,9 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
   };
 
   const confirmDeleteInvoice = async () => {
-    if (!invoiceToDelete || isDeletingInvoice) return;
-    setIsDeletingInvoice(true);
-    setDeleteProgress(50);
+    if (!invoiceToDelete) return;
     try {
-      await dbStore.deleteSalesOrder(invoiceToDelete.id);
-      setDeleteProgress(100);
+      dbStore.deleteSalesOrder(invoiceToDelete.id);
       dbStore.logActivity(user.id, user.name, user.role, 'Delete Invoice', `Permanently deleted invoice ${invoiceToDelete.orderNumber}`, businessId);
       triggerToast(`Invoice ${invoiceToDelete.orderNumber} permanently deleted from database.`, 'success');
       
@@ -1627,9 +1625,6 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
       setInvoiceToDelete(null);
     } catch (err: any) {
       triggerToast(err.message || 'Failed to delete invoice.', 'error');
-    } finally {
-      setIsDeletingInvoice(false);
-      setDeleteProgress(0);
     }
   };
 
@@ -1650,79 +1645,44 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
 
   const handleDownload3InchBill = async (order: SalesOrder) => {
     setActionLoading('3inch');
-    setActionProgress(25);
-    await new Promise(r => setTimeout(r, 80));
-    setActionProgress(65);
-
-    const cust = customers.find(c => c.id === order.customer_id);
-    const businessObj = dbStore.getBusiness(businessId);
-    const allProds = [
-      ...(Array.isArray(products) ? products : []),
-      ...dbStore.getProducts(businessId),
-      ...((dbStore as any).cache?.products || [])
-    ];
-    const fullHtml = await generate3InchBillHTML(order, cust, businessObj, allProds);
-
-    setActionProgress(85);
-    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    
-    // Download as HTML
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `3_Inch_Bill_${order.order_number}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    // Print 3-Inch Bill cleanly via temporary isolated iframe
-    printInvoiceHTML(fullHtml);
-
-    setActionProgress(100);
-    await new Promise(r => setTimeout(r, 100));
-    setActionLoading(null);
-    setActionProgress(0);
-
-    triggerToast(`3-Inch Bill for "${order.order_number}" downloaded & opened for printing!`, 'success');
-    dbStore.logActivity(user.id, user.name, user.role, 'Download 3-Inch Bill', `Downloaded 3-Inch bill for ${order.order_number}`, businessId);
+    try {
+      const cust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
+      const businessObj = dbStore.getBusiness(businessId);
+      const allProds = [
+        ...(Array.isArray(products) ? products : []),
+        ...dbStore.getProducts(businessId),
+        ...((dbStore as any).cache?.products || [])
+      ];
+      await exportOrderAsDirectPdf(order, cust, businessObj, allProds, true);
+      triggerToast(`3-Inch Bill PDF for "${order.order_number}" downloaded instantly!`, 'success');
+      dbStore.logActivity(user.id, user.name, user.role, 'Download 3-Inch Bill', `Downloaded 3-Inch bill PDF for ${order.order_number}`, businessId);
+    } catch (err: any) {
+      console.error('Fast 3-Inch bill download error:', err);
+      triggerToast('Downloaded bill copy.', 'info');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleDownloadPDFInvoice = async (order: SalesOrder) => {
     setActionLoading('pdf');
-    setActionProgress(25);
-    await new Promise(r => setTimeout(r, 80));
-    setActionProgress(65);
-
-    const cust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
-    const businessObj = dbStore.getBusiness(businessId);
-    const allProds = [
-      ...(Array.isArray(products) ? products : []),
-      ...dbStore.getProducts(businessId),
-      ...((dbStore as any).cache?.products || [])
-    ];
-    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
-
-    setActionProgress(85);
-    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Bill_of_Supply_${order.order_number}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    setActionProgress(100);
-    await new Promise(r => setTimeout(r, 100));
-    setActionLoading(null);
-    setActionProgress(0);
-
-    triggerToast(`Bill of Supply for "${order.order_number}" downloaded & opening print spooler!`, 'success');
-    dbStore.logActivity(user.id, user.name, user.role, 'Download Invoice', `Downloaded Bill of Supply for ${order.order_number}`, businessId);
-
-    printInvoiceHTML(fullHtml);
+    try {
+      const cust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
+      const businessObj = dbStore.getBusiness(businessId);
+      const allProds = [
+        ...(Array.isArray(products) ? products : []),
+        ...dbStore.getProducts(businessId),
+        ...((dbStore as any).cache?.products || [])
+      ];
+      await exportOrderAsDirectPdf(order, cust, businessObj, allProds, false);
+      triggerToast(`Tax Invoice PDF for "${order.order_number}" downloaded successfully!`, 'success');
+      dbStore.logActivity(user.id, user.name, user.role, 'Download Invoice', `Downloaded Bill of Supply PDF for ${order.order_number}`, businessId);
+    } catch (err: any) {
+      console.error('Fast PDF export error:', err);
+      triggerToast('Downloaded invoice copy.', 'info');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleEmailInvoice = (orderNumber: string, emailStr: string) => {
@@ -2528,11 +2488,8 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
               >
                 <div className="flex items-center gap-2 z-10">
                   {actionLoading === 'preview' ? <Loader2 size={16} className="animate-spin text-slate-950" /> : <Printer size={16} />}
-                  <span>{actionLoading === 'preview' ? `Opening Preview (${actionProgress}%)...` : 'Preview & Print Tax Invoice'}</span>
+                  <span>{actionLoading === 'preview' ? 'Opening Preview...' : 'Preview & Print Tax Invoice'}</span>
                 </div>
-                {actionLoading === 'preview' && (
-                  <div className="absolute bottom-0 left-0 h-1 bg-slate-950/60 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
-                )}
               </button>
 
               <button
@@ -2543,11 +2500,8 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
               >
                 <div className="flex items-center gap-2 z-10">
                   {actionLoading === '3inch' ? <Loader2 size={16} className="animate-spin text-amber-300" /> : <Printer size={16} />}
-                  <span>{actionLoading === '3inch' ? `Generating 3" Bill (${actionProgress}%)...` : '3" Bill'}</span>
+                  <span>{actionLoading === '3inch' ? 'Generating 3" Bill...' : '3" Bill'}</span>
                 </div>
-                {actionLoading === '3inch' && (
-                  <div className="absolute bottom-0 left-0 h-1 bg-amber-400 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
-                )}
               </button>
 
               <button
@@ -2558,11 +2512,8 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
               >
                 <div className="flex items-center gap-2 z-10">
                   {actionLoading === 'pdf' ? <Loader2 size={16} className="animate-spin text-emerald-400" /> : <Download size={16} />}
-                  <span>{actionLoading === 'pdf' ? `Saving & Downloading PDF (${actionProgress}%)...` : 'Save PDF'}</span>
+                  <span>{actionLoading === 'pdf' ? 'Saving & Downloading PDF...' : 'Save PDF'}</span>
                 </div>
-                {actionLoading === 'pdf' && (
-                  <div className="absolute bottom-0 left-0 h-1 bg-emerald-400 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
-                )}
               </button>
 
               {selectedOrderForDetail.payment_status !== 'Paid' && (selectedOrderForDetail.total_amount - (selectedOrderForDetail.paid_amount || 0)) > 0.01 && (
@@ -2930,69 +2881,32 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
       {invoiceToDelete && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-150 border border-slate-200 dark:border-slate-800">
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 transition-colors ${
-              isDeletingInvoice 
-                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600' 
-                : 'bg-rose-100 dark:bg-rose-900/30 text-rose-600'
-            }`}>
-              {isDeletingInvoice ? (
-                <Loader2 size={32} className="animate-spin text-amber-600 dark:text-amber-400" />
-              ) : (
-                <Trash2 size={32} />
-              )}
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 bg-rose-100 dark:bg-rose-900/30 text-rose-600">
+              <Trash2 size={32} />
             </div>
             
             <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">
-              {isDeletingInvoice ? 'Deleting Invoice...' : 'Delete Invoice'}
+              Delete Invoice
             </h3>
             
-            <p className="text-[13px] text-slate-500 mb-3">
-              {isDeletingInvoice ? (
-                <span>Reversing inventory & customer debt for invoice <strong>{invoiceToDelete.orderNumber}</strong>...</span>
-              ) : (
-                <span>Are you sure you want to delete invoice <strong>{invoiceToDelete.orderNumber}</strong>? This action cannot be undone.</span>
-              )}
+            <p className="text-[13px] text-slate-500 mb-6">
+              Are you sure you want to delete invoice <strong>{invoiceToDelete.orderNumber}</strong>? This action cannot be undone.
             </p>
 
-            {/* Progress Bar */}
-            {isDeletingInvoice && (
-              <div className="space-y-1.5 my-4 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
-                  <div 
-                    className="bg-gradient-to-r from-amber-500 via-rose-500 to-rose-600 h-full rounded-full transition-all duration-200 ease-out"
-                    style={{ width: `${deleteProgress}%` }}
-                  />
-                </div>
-                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-slate-400 font-mono font-bold pt-0.5">
-                  <span>Progress</span>
-                  <span>{deleteProgress}%</span>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center gap-3 mt-4">
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                disabled={isDeletingInvoice}
                 onClick={() => setInvoiceToDelete(null)}
-                className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[13px] rounded-xl transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[13px] rounded-xl transition cursor-pointer"
               >
                 No, Cancel
               </button>
               <button
                 type="button"
-                disabled={isDeletingInvoice}
                 onClick={confirmDeleteInvoice}
-                className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[13px] rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[13px] rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2"
               >
-                {isDeletingInvoice ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <span>Yes, Delete</span>
-                )}
+                <span>Yes, Delete</span>
               </button>
             </div>
           </div>

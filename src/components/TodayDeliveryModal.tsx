@@ -36,6 +36,8 @@ export const TodayDeliveryModal: React.FC<TodayDeliveryModalProps> = ({
   
   const isWalkInOrder = (o: SalesOrder) => {
     if (!o) return false;
+    const hasRealName = o.customer_name && o.customer_name.trim() !== '' && o.customer_name !== 'Walk-in Customer' && o.customer_name !== 'Walk-in';
+    if (hasRealName) return false;
     if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN') return true;
     if (o.status === 'Delivered' && (!o.delivery_date || o.channel === 'Walk-in')) return true;
     const lowName = (o.customer_name || '').toLowerCase();
@@ -251,7 +253,7 @@ export const TodayDeliveryModal: React.FC<TodayDeliveryModalProps> = ({
                       </div>
 
                       <h3 className="font-bold text-slate-800 dark:text-slate-100 text-lg mb-3">
-                        {order.customer_name || 'Walk-in Customer'}
+                        {order.customer_name && order.customer_name !== 'Walk-in Customer' ? order.customer_name : 'Walk-in Customer'}
                       </h3>
 
                       <div className="flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">

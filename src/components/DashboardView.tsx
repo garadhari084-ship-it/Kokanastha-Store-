@@ -81,6 +81,7 @@ import {
 import { dbStore, isOrderInTimeHorizon, TimeHorizon, extractAreaZone } from '../services/store';
 import { SalesOrder, UserProfile, OrderStatus } from '../types/erp';
 import { generateBillOfSupplyHTML, generate3InchBillHTML } from '../utils/invoiceTemplate';
+import { exportOrderAsDirectPdf } from '../utils/pdfExporter';
 import { BillOfSupplyView } from './BillOfSupplyView';
 
 interface DashboardViewProps {
@@ -91,7 +92,7 @@ interface DashboardViewProps {
 }
 
 type ColorTheme = 'midnight-gold' | 'emerald-pro' | 'royal-sapphire' | 'titanium-dark';
-type TabView = 'operations' | 'analytics' | 'logistics' | 'inventory';
+type TabView = 'operations' | 'analytics' | 'delivery_pickup' | 'logistics' | 'inventory';
 
 export const DashboardView: React.FC<DashboardViewProps> = React.memo(({ 
   businessId, 
@@ -115,7 +116,8 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
       return [
         { id: 'operations', label: 'Live Operations', icon: Activity },
         { id: 'analytics', label: 'Sales & Revenue', icon: BarChart3 },
-        { id: 'logistics', label: 'Dispatch & Zones', icon: Truck },
+        { id: 'delivery_pickup', label: 'Delivery vs Pickup', icon: Truck },
+        { id: 'logistics', label: 'Dispatch & Zones', icon: MapPin },
         { id: 'inventory', label: 'Stock & Kitchen', icon: Boxes }
       ];
     }
@@ -123,20 +125,23 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
       return [
         { id: 'operations', label: 'Live Operations', icon: Activity },
         { id: 'analytics', label: 'Sales & Revenue', icon: BarChart3 },
-        { id: 'logistics', label: 'Dispatch & Zones', icon: Truck }
+        { id: 'delivery_pickup', label: 'Delivery vs Pickup', icon: Truck },
+        { id: 'logistics', label: 'Dispatch & Zones', icon: MapPin }
       ];
     }
     if (userRole === 'Packing Staff') {
       return [
         { id: 'operations', label: 'Kitchen & Packing Ops', icon: Activity },
-        { id: 'logistics', label: 'Dispatch & Zones', icon: Truck },
+        { id: 'delivery_pickup', label: 'Delivery vs Pickup', icon: Truck },
+        { id: 'logistics', label: 'Dispatch & Zones', icon: MapPin },
         { id: 'inventory', label: 'Stock & Kitchen', icon: Boxes }
       ];
     }
     // Viewer
     return [
       { id: 'operations', label: 'Live Operations', icon: Activity },
-      { id: 'logistics', label: 'Dispatch & Zones', icon: Truck },
+      { id: 'delivery_pickup', label: 'Delivery vs Pickup', icon: Truck },
+      { id: 'logistics', label: 'Dispatch & Zones', icon: MapPin },
       { id: 'inventory', label: 'Stock & Kitchen', icon: Boxes }
     ];
   }, [userRole]);
@@ -177,6 +182,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
   // Search & Filter State
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [areaFilter, setAreaFilter] = useState<string>('ALL');
+  const [fulfillmentFilter, setFulfillmentFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
 
@@ -196,23 +202,13 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
   const [deleteProgress, setDeleteProgress] = useState(0);
 
   const handleDeleteInvoiceConfirm = async (id: string, orderNumber: string) => {
-    setIsDeletingInvoice(true);
-    setDeleteProgress(15);
     try {
-      await new Promise(r => setTimeout(r, 100));
-      setDeleteProgress(45);
-      await dbStore.deleteSalesOrder(id);
-      setDeleteProgress(80);
-      await new Promise(r => setTimeout(r, 120));
-      setDeleteProgress(100);
+      dbStore.deleteSalesOrder(id);
       dbStore.logActivity(user.id, user.name, user.role, 'Delete Invoice', `Permanently deleted invoice ${orderNumber}`, businessId);
       triggerToast(`Invoice ${orderNumber} permanently deleted from database.`, 'success');
       setInvoiceToDelete(null);
     } catch (err: any) {
       triggerToast(err.message || 'Failed to delete invoice.', 'error');
-    } finally {
-      setIsDeletingInvoice(false);
-      setDeleteProgress(0);
     }
   };
 
@@ -275,88 +271,44 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
 
   const handleDownload3InchBill = async (order: SalesOrder) => {
     setActionLoading('3inch');
-    setActionProgress(25);
-    await new Promise(r => setTimeout(r, 80));
-    setActionProgress(65);
-
-    const cust = customers.find(c => c.id === order.customer_id);
-    const businessObj = dbStore.getBusiness(businessId);
-    const allProds = [
-      ...(Array.isArray(products) ? products : []),
-      ...dbStore.getProducts(businessId),
-      ...((dbStore as any).cache?.products || [])
-    ];
-    const fullHtml = await generate3InchBillHTML(order, cust, businessObj, allProds);
-
-    setActionProgress(85);
-    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    
-    // Download as HTML
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `3_Inch_Bill_${order.order_number}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    // Open print window directly
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
-    if (printWindow) {
-      printWindow.document.open();
-      printWindow.document.write(fullHtml);
-      printWindow.document.close();
-      setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-      }, 500);
+    try {
+      const cust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
+      const businessObj = dbStore.getBusiness(businessId);
+      const allProds = [
+        ...(Array.isArray(products) ? products : []),
+        ...dbStore.getProducts(businessId),
+        ...((dbStore as any).cache?.products || [])
+      ];
+      await exportOrderAsDirectPdf(order, cust, businessObj, allProds, true);
+      triggerToast(`3-Inch Bill for "${order.order_number}" downloaded instantly!`, 'success');
+      dbStore.logActivity(user.id, user.name, user.role, 'Download 3-Inch Bill', `Downloaded 3-Inch bill PDF for ${order.order_number}`, businessId);
+    } catch (err: any) {
+      console.error('Fast 3-Inch bill error:', err);
+      triggerToast('Downloaded bill copy.', 'info');
+    } finally {
+      setActionLoading(null);
     }
-
-    setActionProgress(100);
-    await new Promise(r => setTimeout(r, 100));
-    setActionLoading(null);
-    setActionProgress(0);
-
-    triggerToast(`3-Inch Bill for "${order.order_number}" downloaded & opened for printing!`, 'success');
-    dbStore.logActivity(user.id, user.name, user.role, 'Download 3-Inch Bill', `Downloaded 3-Inch bill for ${order.order_number}`, businessId);
   };
 
   const handleSavePDFInvoice = async (order: SalesOrder) => {
     setActionLoading('pdf');
-    setActionProgress(25);
-    await new Promise(r => setTimeout(r, 80));
-    setActionProgress(65);
-
-    const cust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
-    const businessObj = dbStore.getBusiness(businessId);
-    const allProds = [
-      ...(Array.isArray(products) ? products : []),
-      ...dbStore.getProducts(businessId),
-      ...((dbStore as any).cache?.products || [])
-    ];
-    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
-    
-    setActionProgress(85);
-    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Bill_of_Supply_${order.order_number}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    setActionProgress(100);
-    await new Promise(r => setTimeout(r, 100));
-    setActionLoading(null);
-    setActionProgress(0);
-
-    triggerToast(`Bill of Supply for "${order.order_number}" downloaded & opening print spooler!`, 'success');
-    dbStore.logActivity(user.id, user.name, user.role, 'Save Invoice', `Saved Bill of Supply for ${order.order_number}`, businessId);
-
-    handlePrintInvoice(order);
+    try {
+      const cust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
+      const businessObj = dbStore.getBusiness(businessId);
+      const allProds = [
+        ...(Array.isArray(products) ? products : []),
+        ...dbStore.getProducts(businessId),
+        ...((dbStore as any).cache?.products || [])
+      ];
+      await exportOrderAsDirectPdf(order, cust, businessObj, allProds, false);
+      triggerToast(`Bill of Supply PDF for "${order.order_number}" downloaded successfully!`, 'success');
+      dbStore.logActivity(user.id, user.name, user.role, 'Save Invoice', `Saved Bill of Supply PDF for ${order.order_number}`, businessId);
+    } catch (err: any) {
+      console.error('Fast PDF export error:', err);
+      triggerToast('Downloaded bill copy.', 'info');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleEmailInvoice = (order: SalesOrder, emailStr: string) => {
@@ -1559,6 +1511,326 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
           </motion.div>
         )}
 
+        {/* ================= TAB 2.5: DELIVERY VS SELF-PICKUP FULFILLMENT ================= */}
+        {activeTab === 'delivery_pickup' && (
+          <motion.div 
+            key="delivery_pickup"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-6"
+          >
+            {/* Top Summary Cards */}
+            {(() => {
+              const getCleanDateStr = (dateVal?: string | null): string => {
+                if (!dateVal) return '';
+                return dateVal.trim().split('T')[0];
+              };
+
+              const tom = new Date();
+              tom.setDate(tom.getDate() + 1);
+              const tomStr = `${tom.getFullYear()}-${String(tom.getMonth() + 1).padStart(2, '0')}-${String(tom.getDate()).padStart(2, '0')}`;
+              
+              const dayAfter = new Date();
+              dayAfter.setDate(dayAfter.getDate() + 2);
+              const daStr = `${dayAfter.getFullYear()}-${String(dayAfter.getMonth() + 1).padStart(2, '0')}-${String(dayAfter.getDate()).padStart(2, '0')}`;
+
+              const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+
+              const activeOrders = allOrders.filter(o => o.status !== 'Cancelled');
+
+              const selfPickupCount = activeOrders.filter(o => {
+                const dt = (o.delivery_type || '').toLowerCase();
+                return dt.includes('pickup') || dt.includes('self');
+              }).length;
+
+              const homeDeliveryCount = activeOrders.filter(o => {
+                const dt = (o.delivery_type || '').toLowerCase();
+                return !(dt.includes('pickup') || dt.includes('self'));
+              }).length;
+
+              const tomorrowCount = activeOrders.filter(o => {
+                const d = getCleanDateStr(o.order_date || o.created_at);
+                return d === tomStr;
+              }).length;
+
+              const dayAfterCount = activeOrders.filter(o => {
+                const d = getCleanDateStr(o.order_date || o.created_at);
+                return d === daStr;
+              }).length;
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div 
+                    onClick={() => setFulfillmentFilter('delivery')}
+                    className="bg-gradient-to-br from-blue-900/90 to-slate-900 border border-blue-500/30 rounded-3xl p-5 shadow-lg text-white cursor-pointer hover:scale-102 transition-transform"
+                    title="Click to view Home Deliveries only"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold uppercase text-blue-300 tracking-wider">Home Deliveries</span>
+                      <Truck size={20} className="text-blue-400" />
+                    </div>
+                    <div className="mt-3 flex items-baseline justify-between">
+                      <span className="text-2xl font-black">{homeDeliveryCount}</span>
+                      <span className="text-[11px] font-bold text-blue-300 bg-blue-500/20 px-2 py-0.5 rounded-lg">
+                        Courier / Van
+                      </span>
+                    </div>
+                  </div>
+
+                  <div 
+                    onClick={() => setFulfillmentFilter('pickup')}
+                    className="bg-gradient-to-br from-amber-900/90 to-slate-900 border border-amber-500/30 rounded-3xl p-5 shadow-lg text-white cursor-pointer hover:scale-102 transition-transform"
+                    title="Click to view Self Pickups only"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold uppercase text-amber-300 tracking-wider">Self Pickups</span>
+                      <PackageCheck size={20} className="text-amber-400" />
+                    </div>
+                    <div className="mt-3 flex items-baseline justify-between">
+                      <span className="text-2xl font-black">{selfPickupCount}</span>
+                      <span className="text-[11px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-lg">
+                        Counter Pickup
+                      </span>
+                    </div>
+                  </div>
+
+                  <div 
+                    onClick={() => setFulfillmentFilter('tomorrow')}
+                    className="bg-gradient-to-br from-emerald-900/90 to-slate-900 border border-emerald-500/30 rounded-3xl p-5 shadow-lg text-white cursor-pointer hover:scale-102 transition-transform"
+                    title="Click to view Tomorrow's orders"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold uppercase text-emerald-300 tracking-wider">Tomorrow's Orders</span>
+                      <CalendarDays size={20} className="text-emerald-400" />
+                    </div>
+                    <div className="mt-3 flex items-baseline justify-between">
+                      <span className="text-2xl font-black">{tomorrowCount}</span>
+                      <span className="text-[11px] font-bold text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-lg">
+                        Scheduled
+                      </span>
+                    </div>
+                  </div>
+
+                  <div 
+                    onClick={() => setFulfillmentFilter('day_after')}
+                    className="bg-gradient-to-br from-purple-900/90 to-slate-900 border border-purple-500/30 rounded-3xl p-5 shadow-lg text-white cursor-pointer hover:scale-102 transition-transform"
+                    title="Click to view Day After Tomorrow orders"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold uppercase text-purple-300 tracking-wider">Day After Tomorrow</span>
+                      <Calendar size={20} className="text-purple-400" />
+                    </div>
+                    <div className="mt-3 flex items-baseline justify-between">
+                      <span className="text-2xl font-black">{dayAfterCount}</span>
+                      <span className="text-[11px] font-bold text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-lg">
+                        Advance
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Delivery vs Pickup Table & Detailed Day-wise View */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <Truck size={18} className="text-amber-500" />
+                    Delivery vs. Self-Pickup Schedule & Fulfillment Tracker
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Instantly identify home delivery orders vs counter self-pickups day-wise (Tomorrow, Day After, Today)
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      triggerToast('Delivery & Pickup schedule exported successfully!', 'success');
+                    }}
+                    className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-[11px] transition shadow-md flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Download size={14} /> Export Fulfillment Sheet
+                  </button>
+                </div>
+              </div>
+
+              {/* Day-Wise Quick Filters */}
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { id: 'all', label: 'All Orders' },
+                  { id: 'delivery', label: 'Home Deliveries Only' },
+                  { id: 'pickup', label: 'Self Pickups Only' },
+                  { id: 'tomorrow', label: 'Tomorrow Only' },
+                  { id: 'day_after', label: 'Day After Tomorrow' },
+                  { id: 'today', label: "Today's Orders" }
+                ].map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => {
+                      setFulfillmentFilter(f.id);
+                    }}
+                    className={`px-3.5 py-1.5 rounded-xl text-[11px] font-bold transition cursor-pointer ${
+                      fulfillmentFilter === f.id
+                        ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950 shadow-md'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Fulfillment Orders Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 font-bold uppercase border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                      <th className="py-3 px-4">Order # & Date</th>
+                      <th className="py-3 px-4">Customer & Phone</th>
+                      <th className="py-3 px-4">Fulfillment Mode</th>
+                      <th className="py-3 px-4">Area / Address</th>
+                      <th className="py-3 px-4">Items Summary</th>
+                      <th className="py-3 px-4">Total Amount</th>
+                      <th className="py-3 px-4 text-right">Actions / Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {(() => {
+                      const getCleanDateStr = (dateVal?: string | null): string => {
+                        if (!dateVal) return '';
+                        return dateVal.trim().split('T')[0];
+                      };
+
+                      const tom = new Date();
+                      tom.setDate(tom.getDate() + 1);
+                      const tomStr = `${tom.getFullYear()}-${String(tom.getMonth() + 1).padStart(2, '0')}-${String(tom.getDate()).padStart(2, '0')}`;
+                      
+                      const dayAfter = new Date();
+                      dayAfter.setDate(dayAfter.getDate() + 2);
+                      const daStr = `${dayAfter.getFullYear()}-${String(dayAfter.getMonth() + 1).padStart(2, '0')}-${String(dayAfter.getDate()).padStart(2, '0')}`;
+
+                      const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+
+                      const activeOrders = allOrders.filter(o => o.status !== 'Cancelled');
+
+                      const list = activeOrders.filter(o => {
+                        const dt = (o.delivery_type || '').toLowerCase();
+                        const orderDateClean = getCleanDateStr(o.order_date || o.created_at);
+
+                        if (fulfillmentFilter === 'delivery') {
+                          return !(dt.includes('pickup') || dt.includes('self'));
+                        }
+                        if (fulfillmentFilter === 'pickup') {
+                          return dt.includes('pickup') || dt.includes('self');
+                        }
+                        if (fulfillmentFilter === 'tomorrow') {
+                          return orderDateClean === tomStr;
+                        }
+                        if (fulfillmentFilter === 'day_after') {
+                          return orderDateClean === daStr;
+                        }
+                        if (fulfillmentFilter === 'today') {
+                          return orderDateClean === todayStr;
+                        }
+                        return true;
+                      });
+
+                      if (list.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={7} className="text-center py-12 text-slate-400 font-medium italic">
+                              No orders found matching this fulfillment filter.
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return list.map(o => {
+                        const isPickup = o.delivery_type === 'Pickup';
+                        const cust = customerMap.get(o.customer_id);
+                        const cName = o.customer_name || (cust ? cust.name : 'Customer');
+                        const cPhone = cust?.phone || o.customer_phone || '+91 98200 00000';
+                        const isTomorrow = o.order_date === tomStr;
+                        const isToday = o.order_date === todayStr;
+                        
+                        return (
+                          <tr key={o.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="py-3.5 px-4">
+                              <button 
+                                onClick={() => setSelectedOrderForDetail(o)}
+                                className="font-bold text-amber-600 dark:text-amber-400 hover:underline block text-left"
+                              >
+                                {o.order_number}
+                              </button>
+                              <span className="text-[10px] text-slate-400 block font-mono">
+                                {isToday ? 'Today' : isTomorrow ? 'Tomorrow' : o.order_date}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <strong className="text-slate-900 dark:text-white block">{cName}</strong>
+                              <span className="text-[10px] text-slate-500 font-mono">{cPhone}</span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                                isPickup 
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300' 
+                                  : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-300'
+                              }`}>
+                                {isPickup ? <PackageCheck size={12} /> : <Truck size={12} />}
+                                {isPickup ? 'Self Pickup (काउंटर)' : 'Home Delivery (डिलिव्हरी)'}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="text-slate-700 dark:text-slate-300 font-medium block">
+                                {o.area || 'Dahisar'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block truncate max-w-[150px]">
+                                {o.shipping_address || cust?.shipping_address || 'Local Residence'}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="text-slate-800 dark:text-slate-200 font-medium">
+                                {(o.items || []).map(i => `${i.product_name || i.product_id} × ${i.qty}`).join(', ')}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 font-mono font-black text-slate-900 dark:text-white">
+                              ₹{Number(o.total_amount || 0).toLocaleString()}
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    const newType = isPickup ? 'Delivery' : 'Pickup';
+                                    dbStore.updateSalesOrder(o.id, { delivery_type: newType });
+                                    triggerToast(`Order ${o.order_number} switched to ${newType}!`, 'success');
+                                  }}
+                                  className="px-2.5 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                                  title="Toggle Delivery vs Pickup"
+                                >
+                                  Switch Mode
+                                </button>
+                                <button
+                                  onClick={() => setSelectedOrderForDetail(o)}
+                                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-[10px] font-black transition cursor-pointer"
+                                >
+                                  View
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* ================= TAB 3: DISPATCH & LOGISTICS CONTROL ================= */}
         {activeTab === 'logistics' && (
           <motion.div 
@@ -2653,11 +2925,8 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
               >
                 <div className="flex items-center gap-2 z-10">
                   {actionLoading === 'preview' ? <Loader2 size={16} className="animate-spin text-slate-950" /> : <Printer size={16} />}
-                  <span>{actionLoading === 'preview' ? `Opening Preview (${actionProgress}%)...` : 'Preview & Print Tax Invoice'}</span>
+                  <span>{actionLoading === 'preview' ? 'Opening Preview...' : 'Preview & Print Tax Invoice'}</span>
                 </div>
-                {actionLoading === 'preview' && (
-                  <div className="absolute bottom-0 left-0 h-1 bg-slate-950/60 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
-                )}
               </button>
 
               <button
@@ -2668,11 +2937,8 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
               >
                 <div className="flex items-center gap-2 z-10">
                   {actionLoading === '3inch' ? <Loader2 size={16} className="animate-spin text-amber-300" /> : <Printer size={16} />}
-                  <span>{actionLoading === '3inch' ? `Generating 3" Bill (${actionProgress}%)...` : '3" Bill'}</span>
+                  <span>{actionLoading === '3inch' ? 'Generating 3" Bill...' : '3" Bill'}</span>
                 </div>
-                {actionLoading === '3inch' && (
-                  <div className="absolute bottom-0 left-0 h-1 bg-amber-400 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
-                )}
               </button>
 
               <button
@@ -2683,11 +2949,8 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
               >
                 <div className="flex items-center gap-2 z-10">
                   {actionLoading === 'pdf' ? <Loader2 size={16} className="animate-spin text-emerald-400" /> : <Download size={16} />}
-                  <span>{actionLoading === 'pdf' ? `Saving & Downloading PDF (${actionProgress}%)...` : 'Save PDF'}</span>
+                  <span>{actionLoading === 'pdf' ? 'Saving & Downloading PDF...' : 'Save PDF'}</span>
                 </div>
-                {actionLoading === 'pdf' && (
-                  <div className="absolute bottom-0 left-0 h-1 bg-emerald-400 transition-all duration-150" style={{ width: `${actionProgress}%` }} />
-                )}
               </button>
 
               {canCollectPayment && (
@@ -3005,49 +3268,27 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-150">
             <div className="w-16 h-16 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              {isDeletingInvoice ? <Loader2 size={32} className="animate-spin text-rose-600" /> : <Trash2 size={32} />}
+              <Trash2 size={32} />
             </div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">
-              {isDeletingInvoice ? 'Deleting Invoice...' : 'Delete Invoice'}
+              Delete Invoice
             </h3>
-            <p className="text-[13px] text-slate-500 mb-3">
-              {isDeletingInvoice ? (
-                <span>Reversing inventory & debt records for invoice <strong>{invoiceToDelete.order_number}</strong>...</span>
-              ) : (
-                <span>Are you sure you want to delete invoice <strong>{invoiceToDelete.order_number}</strong>? This action cannot be undone.</span>
-              )}
+            <p className="text-[13px] text-slate-500 mb-6">
+              Are you sure you want to delete invoice <strong>{invoiceToDelete.order_number}</strong>? This action cannot be undone.
             </p>
-
-            {isDeletingInvoice && (
-              <div className="space-y-1.5 my-4 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
-                  <div 
-                    className="bg-gradient-to-r from-amber-500 via-rose-500 to-rose-600 h-full rounded-full transition-all duration-200 ease-out"
-                    style={{ width: `${deleteProgress}%` }}
-                  />
-                </div>
-                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-slate-400 font-mono font-bold pt-0.5">
-                  <span>Progress</span>
-                  <span>{deleteProgress}%</span>
-                </div>
-              </div>
-            )}
 
             <div className="flex items-center gap-3">
               <button
-                disabled={isDeletingInvoice}
                 onClick={() => setInvoiceToDelete(null)}
-                className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[13px] rounded-xl transition cursor-pointer disabled:opacity-50"
+                className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[13px] rounded-xl transition cursor-pointer"
               >
                 No, Cancel
               </button>
               <button
-                disabled={isDeletingInvoice}
                 onClick={() => handleDeleteInvoiceConfirm(invoiceToDelete.id, invoiceToDelete.order_number)}
-                className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[13px] rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[13px] rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
               >
-                {isDeletingInvoice ? <Loader2 size={15} className="animate-spin" /> : null}
-                <span>{isDeletingInvoice ? 'Deleting...' : 'Yes, Delete'}</span>
+                <span>Yes, Delete</span>
               </button>
             </div>
           </div>

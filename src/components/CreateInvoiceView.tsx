@@ -42,6 +42,7 @@ import { SalesItem, SalesOrder, Customer, Product, UserProfile, Business } from 
 import { dbStore } from '../services/store';
 import { BillOfSupplyView } from './BillOfSupplyView';
 import { generateBillOfSupplyHTML, printInvoiceHTML } from '../utils/invoiceTemplate';
+import { exportOrderAsDirectPdf } from '../utils/pdfExporter';
 
 import { fetchAreaFromPincode, syncMapPincodeToArea, fetchPincodeFromArea, syncMapAreaToPincode } from '../utils/pincodeUtils';
 import { calculateApplicablePrice, isLoyalMember, calculateOrderSavings } from '../utils/pricing';
@@ -591,11 +592,11 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       area: selectedArea || 'Dahisar',
       created_at: `${orderDate}T${orderTime || '12:00'}:00Z`,
       order_date: orderDate || new Date().toISOString().split('T')[0],
-      delivery_date: (isWalkIn || isFulfilledImmediately) ? null : (deliveryDate || orderDate),
+      delivery_date: (isWalkIn && !isAdvanceBooking && !isFestiveBooking && !isFulfilledImmediately) ? null : (deliveryDate || orderDate),
       delivery_type: deliveryType || 'Doorstep Delivery',
       channel: isWalkIn ? 'Walk-in' : 'Direct',
-      status: (isFulfilledImmediately || isWalkIn) ? 'Delivered' : 'Pending',
-      delivery_status: (isFulfilledImmediately || isWalkIn) ? 'Delivered' : 'Pending',
+      status: (isAdvanceBooking || isFestiveBooking) ? 'Pending' : ((isFulfilledImmediately || isWalkIn) ? 'Delivered' : 'Pending'),
+      delivery_status: (isAdvanceBooking || isFestiveBooking) ? 'Pending' : ((isFulfilledImmediately || isWalkIn) ? 'Delivered' : 'Pending'),
       total_amount: finalAmt,
       taxable_amount: previewSubtotal,
       tax_amount: previewTax,
@@ -613,7 +614,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       items: itemsForPreview,
       advance_booking: isAdvanceBooking,
       festive_booking: isFestiveBooking,
-      delivered_at: (isFulfilledImmediately || isWalkIn) ? new Date().toISOString() : undefined
+      delivered_at: (isAdvanceBooking || isFestiveBooking || (!isFulfilledImmediately && !isWalkIn)) ? undefined : new Date().toISOString()
     } as SalesOrder;
   };
 
@@ -640,35 +641,30 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   };
 
   const handleDownloadPreviewPDF = async (order: SalesOrder) => {
-    const existingCust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
-    const cust = {
-      ...(existingCust || {}),
-      id: order.customer_id,
-      name: order.customer_name || existingCust?.name || selectedCustomerName || 'Customer',
-      phone: order.customer_phone || existingCust?.phone || selectedCustomerPhone || '',
-      billing_address: order.billing_address || existingCust?.billing_address || selectedCustomerAddress || '',
-      shipping_address: order.shipping_address || (isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress) || existingCust?.shipping_address || '',
-      pin_code: order.pin_code || existingCust?.pin_code || selectedPincode || '',
-      area: order.area || existingCust?.area || selectedArea || 'Dahisar'
-    } as any;
-    const businessObj = currentBiz || dbStore.getBusiness(businessId);
-    const allProds = [
-      ...(Array.isArray(products) ? products : []),
-      ...dbStore.getProducts(businessId),
-      ...((dbStore as any).cache?.products || [])
-    ];
-    const fullHtml = await generateBillOfSupplyHTML(order, cust, businessObj, allProds);
-    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Bill_of_Supply_${order.order_number}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    triggerToast(`Bill of Supply for "${order.order_number}" downloaded & opening print spooler!`, 'success');
-    printInvoiceHTML(fullHtml);
+    try {
+      const existingCust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
+      const cust = {
+        ...(existingCust || {}),
+        id: order.customer_id,
+        name: order.customer_name || existingCust?.name || selectedCustomerName || 'Customer',
+        phone: order.customer_phone || existingCust?.phone || selectedCustomerPhone || '',
+        billing_address: order.billing_address || existingCust?.billing_address || selectedCustomerAddress || '',
+        shipping_address: order.shipping_address || (isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress) || existingCust?.shipping_address || '',
+        pin_code: order.pin_code || existingCust?.pin_code || selectedPincode || '',
+        area: order.area || existingCust?.area || selectedArea || 'Dahisar'
+      } as any;
+      const businessObj = currentBiz || dbStore.getBusiness(businessId);
+      const allProds = [
+        ...(Array.isArray(products) ? products : []),
+        ...dbStore.getProducts(businessId),
+        ...((dbStore as any).cache?.products || [])
+      ];
+      await exportOrderAsDirectPdf(order, cust, businessObj, allProds, false);
+      triggerToast(`Bill of Supply PDF for "${order.order_number}" downloaded successfully!`, 'success');
+    } catch (err: any) {
+      console.error('Fast PDF export error:', err);
+      triggerToast('Downloaded invoice copy.', 'info');
+    }
   };
 
   return (

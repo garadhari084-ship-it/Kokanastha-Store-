@@ -527,6 +527,37 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
+  const getCustomerName = (o: SalesOrder) => {
+    const cust = customers.find(c => c.id === o.customer_id);
+    if (o.customer_name && o.customer_name.trim() !== '' && o.customer_name !== 'Walk-in Customer' && o.customer_name !== 'Walk-in') {
+      return o.customer_name;
+    }
+    if (cust?.name && cust.name.trim() !== '' && cust.name !== 'Walk-in Customer' && cust.name !== 'Walk-in') {
+      return cust.name;
+    }
+    return o.customer_name || cust?.name || 'Walk-in Customer';
+  };
+
+  const getCustomerPhone = (o: SalesOrder) => {
+    const cust = customers.find(c => c.id === o.customer_id);
+    return o.customer_phone || cust?.phone || '';
+  };
+
+  const getCustomerAddress = (o: SalesOrder) => {
+    const cust = customers.find(c => c.id === o.customer_id);
+    return o.customer_shipping_address || o.shipping_address || o.customer_address || cust?.shipping_address || cust?.billing_address || '';
+  };
+
+  const isWalkInOnly = (o: SalesOrder) => {
+    const cust = customers.find(c => c.id === o.customer_id);
+    const hasRealName = (o.customer_name && o.customer_name.trim() !== '' && o.customer_name !== 'Walk-in Customer' && o.customer_name !== 'Walk-in') ||
+                        (cust?.name && cust.name.trim() !== '' && cust.name !== 'Walk-in Customer' && cust.name !== 'Walk-in');
+    if (hasRealName) return false;
+    const lowName = (o.customer_name || cust?.name || '').toLowerCase();
+    if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || lowName.includes('walk-in') || lowName.includes('walkin') || lowName.includes('walk in')) return true;
+    return false;
+  };
+
   const dateTabs = useMemo(() => {
     const now = new Date();
     const todayStr = formatToYYYYMMDD(now);
@@ -534,8 +565,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
     // Count orders for a specific date in current view
     const countForDate = (dateKey: string) => {
       return orders.filter(o => {
-        const lowName = (o.customer_name || '').toLowerCase();
-        if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || lowName.includes('walk-in') || lowName.includes('walkin') || lowName.includes('walk in')) return false;
+        if (isWalkInOnly(o)) return false;
         if (bookingFilter === 'advance' && !o.advance_booking) return false;
         if (bookingFilter === 'festive' && !o.festive_booking) return false;
 
@@ -600,8 +630,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
 
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
-      const lowName = (o.customer_name || '').toLowerCase();
-      if (o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || lowName.includes('walk-in') || lowName.includes('walkin') || lowName.includes('walk in')) return false;
+      if (isWalkInOnly(o)) return false;
       // Apply status filter based on view or internal filter
       if (activeView === 'PackingCompleted') {
         if (o.status !== 'Packed' || o.ready_for_dispatch) return false;
@@ -654,9 +683,9 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
       }
       
       if (searchQuery) {
-        const cust = customers.find(c => c.id === o.customer_id);
         const q = searchQuery.toLowerCase();
-        if (!(o.order_number.toLowerCase().includes(q) || (cust && cust.name.toLowerCase().includes(q)))) {
+        const custName = getCustomerName(o).toLowerCase();
+        if (!(o.order_number.toLowerCase().includes(q) || custName.includes(q))) {
           return false;
         }
       }
@@ -1478,7 +1507,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                           <div className="flex justify-between items-start">
                             <div>
                               <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate pr-2 max-w-[180px]">
-                                {cust?.name || 'Walk-in Customer'}
+                                {getCustomerName(o)}
                               </p>
                               <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-1">
                                 <MapPin size={10} className="text-emerald-500" />
@@ -1765,20 +1794,20 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                     </td>
                     <td className="py-2.5 px-3">
                       <div className="flex flex-col">
-                        <span className="font-bold text-slate-800 dark:text-slate-200">{cust?.name || 'Walk-in Customer'}</span>
-                        <span className="text-[9px] text-slate-500 truncate max-w-[150px]">{cust?.shipping_address || 'No address'}</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{getCustomerName(o)}</span>
+                        <span className="text-[9px] text-slate-500 truncate max-w-[150px]">{getCustomerAddress(o) || 'No address'}</span>
                       </div>
                     </td>
                     <td className="py-2.5 px-3">
-                      {cust?.phone ? (
+                      {getCustomerPhone(o) ? (
                         <div className="flex gap-1.5">
-                          <a href={`tel:${cust.phone}`} className="p-1 bg-sky-50 dark:bg-sky-900/20 text-sky-600 rounded hover:bg-sky-100 transition-colors" title="Call">
+                          <a href={`tel:${getCustomerPhone(o)}`} className="p-1 bg-sky-50 dark:bg-sky-900/20 text-sky-600 rounded hover:bg-sky-100 transition-colors" title="Call">
                             <Phone size={12} />
                           </a>
-                          <a href={`https://wa.me/${formatWhatsAppPhone(cust.phone)}`} target="_blank" rel="noreferrer" className="p-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded hover:bg-emerald-100 transition-colors" title="WhatsApp">
+                          <a href={`https://wa.me/${formatWhatsAppPhone(getCustomerPhone(o))}`} target="_blank" rel="noreferrer" className="p-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded hover:bg-emerald-100 transition-colors" title="WhatsApp">
                             <MessageCircle size={12} />
                           </a>
-                          <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((cust?.shipping_address || '') + ' ' + (cust?.area || ''))}`} target="_blank" rel="noreferrer" className="p-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-200 transition-colors" title="Maps">
+                          <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getCustomerAddress(o) + ' ' + (o.area || ''))}`} target="_blank" rel="noreferrer" className="p-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-200 transition-colors" title="Maps">
                             <Navigation size={12} />
                           </a>
                         </div>
@@ -1788,7 +1817,7 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
                     </td>
                     {activeView !== 'PackingCompleted' && (
                       <td className="py-2.5 px-3 font-bold text-slate-700 dark:text-slate-300">
-                        {extractAreaZone(o.area, cust?.shipping_address)}
+                        {extractAreaZone(o.area, getCustomerAddress(o))}
                       </td>
                     )}
                     {(activeView === 'PackingCompleted' || activeView === 'ReadyToDispatch' || activeView === 'Operations') && (

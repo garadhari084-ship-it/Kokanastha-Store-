@@ -3,9 +3,13 @@ export async function urlToBase64(url: string): Promise<string> {
   if (url.startsWith('data:')) return url;
   
   return new Promise((resolve) => {
+    // Failsafe timeout to prevent any hanging if external image fails to respond
+    const timer = setTimeout(() => resolve(url), 1200);
+
     const img = new Image();
     img.crossOrigin = 'Anonymous';
     img.onload = () => {
+      clearTimeout(timer);
       let canvas = document.createElement('canvas');
       canvas.width = img.width;
       canvas.height = img.height;
@@ -22,6 +26,7 @@ export async function urlToBase64(url: string): Promise<string> {
       }
     };
     img.onerror = () => {
+      clearTimeout(timer);
       resolve(url); // fallback
     };
     // Add cache buster to avoid iOS caching issues with CORS

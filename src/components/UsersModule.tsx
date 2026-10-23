@@ -95,7 +95,7 @@ export const UsersModule: React.FC<UsersModuleProps> = ({
         business_id: businessId,
         active: true,
         password_hash: newUserPassword,
-        allowed_pages: selectedAllowedPages
+        allowed_pages: selectedAllowedPages && selectedAllowedPages.length > 0 ? selectedAllowedPages : ALL_PAGES
       });
       if (isSupabaseConfigured && supabase && newUserPassword) {
         await supabase.auth.signUp({

@@ -1085,7 +1085,20 @@ class ERPStorage {
       customers: (() => { const lc = this.load('customers', []); return Array.isArray(lc) && lc.length > 0 ? lc : PRE_SEEDED_CUSTOMERS; })(),
       suppliers: (() => { const ls = this.load('suppliers', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SUPPLIERS; })(),
       purchases: (() => { const lp = this.load('purchases', []); return Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PURCHASES; })(),
-      sales: (() => { const ls = this.load('sales', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES; })(),
+      sales: (() => { 
+        const ls = this.load('sales', []); 
+        const loadedSales = Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES;
+        if (this.cache && Array.isArray(this.cache.sales) && this.cache.sales.length > 0) {
+          const merged = [...loadedSales];
+          this.cache.sales.forEach(memOrder => {
+            if (memOrder && memOrder.id && !merged.some(m => m.id === memOrder.id || (m.order_number && m.order_number === memOrder.order_number))) {
+              merged.unshift(memOrder);
+            }
+          });
+          return merged;
+        }
+        return loadedSales;
+      })(),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
       auditLogs: this.load('auditLogs', isInitialized ? [] : PRE_SEEDED_SYSTEM_AUDIT_LOGS),
@@ -2252,30 +2265,48 @@ class ERPStorage {
   }
 
   private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string, secondaryDeleteKey?: string) {
+    try {
+      const cacheVal = this.cache[key];
+      const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
+        ? cacheVal.slice(0, 50)
+        : cacheVal;
+      safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
+    } catch (e) {
+      console.warn(`Error saving state for key ${key}`, e);
+    }
+    if (this.bc) {
+      try {
+        this.bc.postMessage({ type: 'SYNC_STATE', key });
+      } catch (e) {}
+    }
     setTimeout(() => {
       this.syncToSupabase(key, dataItem, isDelete, deleteId, secondaryDeleteKey);
-      try {
-        const cacheVal = this.cache[key];
-        const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
-          ? cacheVal.slice(0, 50)
-          : cacheVal;
-        safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
-      } catch (e) {
-        console.warn(`Error saving state for key ${key}`, e);
-      }
-      if (this.bc) {
-        try {
-          this.bc.postMessage({ type: 'SYNC_STATE', key });
-        } catch (e) {}
-      }
     }, 0);
     this.notify();
   }
 
   // Auth Operations
   public login(email: string, password_raw: string, deviceId?: string): { success: boolean; user?: UserProfile; business?: Business; error?: string; conflictDetected?: boolean } {
-    const cleanEmail = email.trim().toLowerCase();
-    const profile = this.cache.profiles.find(p => p.email.toLowerCase().trim() === cleanEmail);
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanPassword = (password_raw || '').trim();
+    
+    let profile = this.cache.profiles.find(p => p.email && p.email.toLowerCase().trim() === cleanEmail);
+    if (!profile) {
+      try {
+        const rawProfs = safeStorage.getItem('omnipack_erp_profiles');
+        if (rawProfs) {
+          const parsed = JSON.parse(rawProfs);
+          if (Array.isArray(parsed)) {
+            const found = parsed.find((p: any) => p && p.email && p.email.toLowerCase().trim() === cleanEmail);
+            if (found) {
+              profile = found;
+              this.cache.profiles.push(found);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     if (!profile) {
       return { success: false, error: 'User account not found.' };
     }
@@ -2283,16 +2314,23 @@ class ERPStorage {
       return { success: false, error: 'This user account is suspended.' };
     }
     
-    // If password_hash is defined and doesn't match
-    if (profile.password_hash && profile.password_hash !== password_raw) {
+    // Check saved passwords store
+    let savedPass = '';
+    try {
+      const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
+      savedPass = saved[cleanEmail] || '';
+    } catch (e) {}
+
+    const expectedPass = profile.password_hash || savedPass;
+    if (expectedPass && expectedPass !== cleanPassword) {
       return { success: false, error: 'Incorrect password.' };
     }
 
     // Persist password in local storage cache for seamless future syncs
-    profile.password_hash = password_raw;
+    profile.password_hash = cleanPassword;
     // Generate new unique session token to enforce single active session (logs out all other devices)
     profile.session_token = 'st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
-    this.updateUser(profile.id, { password_hash: password_raw, session_token: profile.session_token });
+    this.updateUser(profile.id, { password_hash: cleanPassword, session_token: profile.session_token });
 
     if (deviceId) {
       this.registerDeviceSession(profile.id, deviceId, profile.session_token, profile.business_id);
@@ -2300,11 +2338,11 @@ class ERPStorage {
 
     try {
       const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
-      saved[cleanEmail] = password_raw;
+      saved[cleanEmail] = cleanPassword;
       safeStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
     } catch (e) {}
 
-    const business = this.cache.businesses.find(b => b.id === profile.business_id) || this.cache.businesses[0];
+    const business = this.getBusiness(profile.business_id);
     
     // Add audit log
     this.logActivity(profile.id, profile.name, profile.role, 'User Login', `Logged in successfully via email: ${email}`, profile.business_id);
@@ -2318,11 +2356,15 @@ class ERPStorage {
 
   // Tenant / Business Management
   public getBusinesses(): Business[] {
-    return dedupeById(this.cache.businesses);
+    const list = dedupeById(this.cache.businesses);
+    return list.length > 0 ? list : PRE_SEEDED_BUSINESSES;
   }
 
-  public getBusiness(id: string): Business | undefined {
-    return this.cache.businesses.find(b => b.id === id);
+  public getBusiness(id?: string): Business {
+    const all = this.getBusinesses();
+    if (!id) return all[0] || PRE_SEEDED_BUSINESSES[0];
+    const found = all.find(b => b.id === id || isSameBusiness(b.id, id));
+    return found || all[0] || PRE_SEEDED_BUSINESSES[0];
   }
 
   public updateBusiness(id: string, updates: Partial<Business>): Business {
@@ -4605,16 +4647,17 @@ class ERPStorage {
           const rawIsWalkIn = s.channel === 'Walk-in' || s.customer_id === 'WALK_IN' || lowCustName.includes('walk-in') || lowCustName.includes('walkin') || lowCustName.includes('walk in') || (Boolean(cust?.group) && cust!.group!.toLowerCase().includes('walk'));
           const isWalkIn = rawIsWalkIn && !isAdvanceOrFestive;
 
-          const finalStatus = isAdvanceOrFestive ? (s.status && s.status !== 'Delivered' ? s.status : 'Pending') : (isWalkIn ? 'Delivered' : (s.status || 'Pending'));
-          const finalDeliveryStatus = isAdvanceOrFestive ? (s.delivery_status && s.delivery_status !== 'Delivered' ? s.delivery_status : 'Pending') : (isWalkIn ? 'Delivered' : (s.delivery_status || 'Pending'));
-          const finalDeliveryDate = (isWalkIn && !isAdvanceOrFestive) ? null : s.delivery_date;
+          // Never hijack an explicit order status to 'Delivered'. Always respect the actual order status!
+          const finalStatus: OrderStatus = (s.status as OrderStatus) || (isAdvanceOrFestive ? 'Pending' : 'Pending');
+          const finalDeliveryStatus = s.delivery_status || (finalStatus === 'Delivered' ? 'Delivered' : 'Pending');
+          const finalDeliveryDate = s.delivery_date || null;
 
           const addCharges = Number(s.additional_charges) || 0;
           const delCharges = Number(s.delivery_charges) || Number((s as any).delivery_charge) || 0;
 
           return {
             ...s,
-            channel: isWalkIn ? 'Walk-in' : (s.channel || 'Direct Order'),
+            channel: s.channel || (isWalkIn ? 'Walk-in' : 'Direct Order'),
             delivery_date: finalDeliveryDate,
             additional_charges: addCharges,
             delivery_charges: delCharges,
@@ -4622,7 +4665,7 @@ class ERPStorage {
             additional_charges_type: s.additional_charges_type || 'Delivery',
             status: finalStatus,
             delivery_status: finalDeliveryStatus,
-            delivered_at: isWalkIn ? (s.delivered_at || s.created_at || new Date().toISOString()) : s.delivered_at,
+            delivered_at: finalStatus === 'Delivered' ? (s.delivered_at || s.created_at || new Date().toISOString()) : s.delivered_at,
             area: resolvedArea,
             customer_name: resolvedCustomerName || cust?.name || 'Walk-in Customer',
             items: rawItems.map((it: any) => ({
@@ -4737,9 +4780,10 @@ class ERPStorage {
     const isAdvOrFest = Boolean(so.advance_booking || so.festive_booking);
     const initialStatus = (isAdvOrFest && !so.delivered_at) ? 'Pending' : (so.status || 'Pending');
     const initialDelivStatus = (isAdvOrFest && !so.delivered_at) ? 'Pending' : (so.delivery_status || 'Pending');
-
+    const normBusinessId = normalizeBusinessId(so.business_id);
     const newSO: SalesOrder = {
       ...so,
+      business_id: normBusinessId,
       status: initialStatus,
       delivery_status: initialDelivStatus,
       order_number: finalOrderNumber,

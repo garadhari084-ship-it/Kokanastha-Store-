@@ -628,7 +628,6 @@ export default function App() {
       o.status !== 'Delivered' && 
       o.status !== 'Cancelled' && 
       o.status !== 'Returned' && 
-      !(o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || (Boolean(o.customer_name) && o.customer_name.toLowerCase().includes('walk-in'))) &&
       isOrderOverdue(o.delivery_date, o.status)
     ).length;
   }, [currentBusiness?.id, syncTick]);
@@ -706,15 +705,13 @@ export default function App() {
     // Initial fetch
     if (currentBusiness && currentUser) {
       const messages = dbStore.getMessages(currentBusiness.id);
-      const isPacking = Boolean(currentUser.role && (currentUser.role === 'Packing Staff' || currentUser.role.toLowerCase().includes('pack')));
       setUnreadMessages(messages.filter(m => {
         if (m.is_read) return false;
         if (m.receiver_id === currentUser.id) return true;
         return false;
       }));
-      const isNotWalkInOrder = (o: any) => !(o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || (Boolean(o.customer_name) && o.customer_name.toLowerCase().includes('walk-in')));
       const orders = dbStore.getSalesOrders(currentBusiness.id);
-      setPendingPackingCount(orders.filter(o => isNotWalkInOrder(o) && (o.status === 'Pending' || o.status === 'Packing')).length);
+      setPendingPackingCount(orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length);
     }
 
     return dbStore.subscribe(() => {
@@ -741,15 +738,13 @@ export default function App() {
 
       if (currentBusiness && currentUser) {
         const messages = dbStore.getMessages(currentBusiness.id);
-        const isPacking = Boolean(currentUser.role && (currentUser.role === 'Packing Staff' || currentUser.role.toLowerCase().includes('pack')));
         setUnreadMessages(messages.filter(m => {
           if (m.is_read) return false;
           if (m.receiver_id === currentUser.id) return true;
           return false;
         }));
-        const isNotWalkInOrder = (o: any) => !(o.channel === 'Walk-in' || o.customer_id === 'WALK_IN' || (Boolean(o.customer_name) && o.customer_name.toLowerCase().includes('walk-in')));
         const orders = dbStore.getSalesOrders(currentBusiness.id);
-        setPendingPackingCount(orders.filter(o => isNotWalkInOrder(o) && (o.status === 'Pending' || o.status === 'Packing')).length);
+        setPendingPackingCount(orders.filter(o => o.status === 'Pending' || o.status === 'Packing').length);
       }
     });
   }, [currentBusiness?.id, currentUser?.id]);
@@ -766,6 +761,7 @@ export default function App() {
 
     const restoreSession = async () => {
       try {
+        dbStore.reloadFromLocalStorage();
         const savedSession = safeStorage.getItem('omnipack_session');
         const deviceId = getDeviceId();
         let localSessionToken = '';
@@ -805,27 +801,34 @@ export default function App() {
         }
 
         if (isSupabaseConfigured && supabase) {
-          // Sync ONLY businesses table first so logo and cover images load instantly on login screen (blazing fast!)
-          try {
-            await dbStore.syncFromSupabase(undefined, 'businesses');
-          } catch (syncErr) {
-            console.warn("Businesses sync notice:", syncErr);
-          }
+          // Sync businesses table in background so logo and cover images load without blocking UI mount
+          dbStore.syncFromSupabase(undefined, 'businesses').catch(() => {});
 
-          // Try supabase session asynchronously to avoid blocking the main thread or page load
+          // Try supabase session with strict timeout to avoid blocking page load
           try {
-            const { data: { session } } = await supabase.auth.getSession();
+            const sessionPromise = supabase.auth.getSession();
+            const sessionResult = await Promise.race([
+              sessionPromise,
+              new Promise<{ data: { session: any } }>((_, r) => setTimeout(() => r(new Error('Session timeout')), 1000))
+            ]);
+            const session = sessionResult?.data?.session;
             if (session && session.user) {
-              const { data: dbProfile } = await supabase
+              const profilePromise = supabase
                 .from('users_profiles')
                 .select('*')
                 .eq('id', session.user.id)
                 .maybeSingle();
+
+              const profileResult = await Promise.race([
+                profilePromise,
+                new Promise<{ data: any; error: any }>((_, r) => setTimeout(() => r(new Error('Profile timeout')), 1000))
+              ]);
+              const dbProfile = profileResult?.data;
                     
               if (dbProfile) {
                 dbStore.registerDeviceSession(dbProfile.id, deviceId, localSessionToken || dbProfile.session_token || '', dbProfile.business_id);
                 setCurrentUser(dbProfile as UserProfile);
-                const biz = dbStore.getBusiness(dbProfile.business_id) || dbStore.getBusinesses()[0];
+                const biz = dbStore.getBusiness(dbProfile.business_id);
                 setCurrentBusiness(biz);
                 setDbMode('supabase');
                 setIsInitializing(false);
@@ -835,7 +838,7 @@ export default function App() {
                 // Fetch rest of tables in background so UI remains perfectly responsive and fast
                 dbStore.syncFromSupabase(dbProfile.business_id).then(() => {
                   setSyncTick(prev => prev + 1);
-                });
+                }).catch(() => {});
                 return;
               }
             }
@@ -1073,11 +1076,14 @@ export default function App() {
     if (isSupabaseConfigured && supabase) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         console.log("Supabase Auth Event:", event, session);
-        // Only logout if explicitly signed out and we are currently using supabase mode
-        if (event === 'SIGNED_OUT' && dbMode === 'supabase') {
-           setCurrentUser(null);
-           setCurrentBusiness(null);
-           safeStorage.removeItem('omnipack_session');
+        // Only logout if explicitly signed out and there is no active local session
+        if (event === 'SIGNED_OUT') {
+           const activeSess = safeStorage.getItem('omnipack_session');
+           if (!activeSess) {
+             setCurrentUser(null);
+             setCurrentBusiness(null);
+             setIsLoggingIn(false);
+           }
         }
       });
       return () => {
@@ -1131,147 +1137,180 @@ export default function App() {
     setIsLoggingIn(true);
     const deviceId = getDeviceId();
 
+    // 1. Safety watchdog: force isLoggingIn to false after 4.5 seconds under any network or execution circumstance
+    const watchdog = setTimeout(() => {
+      setIsLoggingIn(false);
+    }, 4500);
+
+    const cleanEmail = emailInput.trim().toLowerCase();
+    const cleanPassword = passwordInput.trim();
+
+    if (!cleanEmail || !cleanPassword) {
+      clearTimeout(watchdog);
+      setAuthError('Please enter both email address and password.');
+      setIsLoggingIn(false);
+      return;
+    }
+
     try {
-    
-    if (dbMode === 'supabase' && supabase) {
-      try {
-        // Live Supabase Sign In
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: emailInput,
-          password: passwordInput,
-        });
+      dbStore.reloadFromLocalStorage();
+      // 2. FAST-PATH: First verify local credentials in dbStore
+      // This grants instant sub-50ms login without waiting on slow network/cloud roundtrips!
+      const localResult = dbStore.login(cleanEmail, cleanPassword, deviceId);
+      if (localResult.success && localResult.user && localResult.business) {
+        clearTimeout(watchdog);
+        const newSessionToken = localResult.user.session_token || ('st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11));
+        localResult.user.session_token = newSessionToken;
+        dbStore.updateUser(localResult.user.id, { session_token: newSessionToken });
 
-        if (error) {
-          // Fallback for users created via the UI (since they don't exist in Supabase Auth, only in users_profiles)
-          let fallbackResult = dbStore.login(emailInput, passwordInput, deviceId);
+        dbStore.registerDeviceSession(localResult.user.id, deviceId, newSessionToken, localResult.business.id);
+        safeStorage.setItem('omnipack_session', JSON.stringify({
+          userId: localResult.user.id,
+          businessId: localResult.business.id,
+          mode: isSupabaseConfigured ? 'supabase' : 'local',
+          sessionToken: newSessionToken,
+          deviceId
+        }));
+        setCurrentUser(localResult.user);
+        setCurrentBusiness(localResult.business);
+        dbStore.reloadFromLocalStorage();
+        
+        dbStore.broadcastForceLogout(localResult.user.id, newSessionToken, deviceId);
+        
+        setActiveView('dashboard');
+        triggerToast(`Welcome back, ${localResult.user.name}!`, 'success');
 
-          if (!fallbackResult.success && isSupabaseConfigured && supabase) {
-            // Try to find them in users_profiles directly since local cache might be empty on a new device
-            const { data: profiles } = await supabase
-              .from('users_profiles')
-              .select('*')
-              .eq('email', emailInput.toLowerCase().trim())
-              .eq('active', true)
-              .limit(1);
-              
-            if (profiles && profiles.length > 0) {
-              const p = profiles[0];
-              
-              if (!p.password_hash || p.password_hash !== passwordInput) {
-                  setAuthError('Invalid credentials.');
-                  setIsLoggingIn(false);
-                  return;
-              }
-
-              // Fetch business
-              const { data: businesses } = await supabase
-                .from('businesses')
-                .select('*')
-                .eq('id', p.business_id)
-                .limit(1);
-                
-              const biz = (businesses && businesses.length > 0) ? businesses[0] : dbStore.getBusinesses()[0];
-
-              const userObj = dbStore.createUser({
-                id: p.id,
-                email: p.email,
-                name: p.name,
-                role: p.role,
-                business_id: p.business_id,
-                active: p.active,
-                password_hash: passwordInput
-              });
-
-              fallbackResult = {
-                success: true,
-                user: userObj,
-                business: biz as any
-              };
-            }
-          }
-
-          if (fallbackResult.success && fallbackResult.user && fallbackResult.business) {
-             const newSessionToken = 'st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
-             fallbackResult.user.session_token = newSessionToken;
-             dbStore.updateUser(fallbackResult.user.id, { session_token: newSessionToken });
-
-             dbStore.registerDeviceSession(fallbackResult.user.id, deviceId, newSessionToken, fallbackResult.business.id);
-             safeStorage.setItem('omnipack_session', JSON.stringify({ userId: fallbackResult.user.id, businessId: fallbackResult.business.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
-             setCurrentUser(fallbackResult.user);
-             setCurrentBusiness(fallbackResult.business);
-             
-             dbStore.broadcastForceLogout(fallbackResult.user.id, newSessionToken, deviceId);
-             
-             // Instantly open dashboard in 0ms!
-             setActiveView('dashboard');
-             triggerToast(`Session Established. Welcome, ${fallbackResult.user.name}!`, 'success');
-
-             // Fast background sync so data updates smoothly without locking UI
-             dbStore.syncFromSupabase(fallbackResult.business.id).then(() => {
-               // dbStore.purgeLocalEntityCaches();
-               setSyncTick(prev => prev + 1);
-             }).catch(() => {});
-             return;
-          }
-          
-          setAuthError(fallbackResult.error || error.message || 'Invalid credentials.');
-          return;
+        // Silent non-blocking background sync if Supabase is active
+        if (isSupabaseConfigured && supabase) {
+          supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword })
+            .catch(() => {});
+          dbStore.syncFromSupabase(localResult.business.id).then(() => {
+            setSyncTick(prev => prev + 1);
+          }).catch(() => {});
         }
+        return;
+      }
 
-        if (data.user) {
-          // Check for profile record in Supabase database table
-            let profile: UserProfile | null = null;
-            
+      // 3. SLOW-PATH: If user is not yet cached locally, check Supabase Cloud with strict 4s timeout
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+            setTimeout(() => reject(new Error('Cloud authentication timed out.')), 3800)
+          );
+
+          const { data, error } = await Promise.race([
+            supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword }),
+            timeoutPromise
+          ]);
+
+          if (error) {
+            // Check users_profiles in Supabase with timeout in case user was created via admin/UI
             try {
-              const { data: dbProfile, error: profileErr } = await supabase
+              const profileQuery = supabase
+                .from('users_profiles')
+                .select('*')
+                .eq('email', cleanEmail)
+                .eq('active', true)
+                .limit(1);
+
+              const { data: profiles } = await Promise.race([
+                profileQuery,
+                new Promise<{ data: any; error: any }>((_, r) => setTimeout(() => r(new Error('Profile timeout')), 2500))
+              ]);
+
+              if (profiles && profiles.length > 0) {
+                const p = profiles[0];
+                if (p.password_hash && p.password_hash !== cleanPassword) {
+                  clearTimeout(watchdog);
+                  setAuthError('Incorrect password.');
+                  return;
+                }
+
+                const biz = dbStore.getBusiness(p.business_id);
+                const userObj = dbStore.createUser({
+                  id: p.id,
+                  email: p.email,
+                  name: p.name,
+                  role: p.role,
+                  business_id: p.business_id,
+                  active: p.active,
+                  password_hash: cleanPassword
+                });
+
+                const newSessionToken = 'st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
+                userObj.session_token = newSessionToken;
+                dbStore.updateUser(userObj.id, { session_token: newSessionToken });
+                dbStore.registerDeviceSession(userObj.id, deviceId, newSessionToken, biz.id);
+
+                safeStorage.setItem('omnipack_session', JSON.stringify({
+                  userId: userObj.id,
+                  businessId: biz.id,
+                  mode: 'supabase',
+                  sessionToken: newSessionToken,
+                  deviceId
+                }));
+                setCurrentUser(userObj);
+                setCurrentBusiness(biz);
+
+                dbStore.broadcastForceLogout(userObj.id, newSessionToken, deviceId);
+                setActiveView('dashboard');
+                triggerToast(`Session Established. Welcome, ${userObj.name}!`, 'success');
+
+                dbStore.syncFromSupabase(biz.id).then(() => {
+                  setSyncTick(prev => prev + 1);
+                }).catch(() => {});
+                return;
+              }
+            } catch (_) {}
+
+            clearTimeout(watchdog);
+            setAuthError(error.message || 'Invalid email or password.');
+            return;
+          }
+
+          if (data?.user) {
+            let profile: UserProfile | null = null;
+            try {
+              const fetchProfilePromise = supabase
                 .from('users_profiles')
                 .select('*')
                 .eq('id', data.user.id)
                 .maybeSingle();
+
+              const { data: dbProfile } = await Promise.race([
+                fetchProfilePromise,
+                new Promise<{ data: any; error: any }>((_, r) => setTimeout(() => r(new Error('Profile fetch timeout')), 2500))
+              ]);
+
               if (dbProfile) {
-                // Polyfill for allowed_pages if Supabase column is missing but local cache has it
-                const localUsers = JSON.parse(safeStorage.getItem('omnipack_erp_db') || '{}')?.profiles || [];
-                const localUser = localUsers.find(u => u.id === dbProfile.id);
-                if (localUser && localUser.allowed_pages && !dbProfile.allowed_pages) {
-                    dbProfile.allowed_pages = localUser.allowed_pages;
-                }
                 profile = dbProfile as UserProfile;
               }
             } catch (err) {
               console.warn('Could not select from users_profiles in Supabase:', err);
             }
 
-            // If no profile record exists in the users_profiles database table (e.g. user created via Supabase Auth Console directly),
-            // we dynamically auto-create and save one for them so they can log in perfectly!
             if (!profile) {
-              const existingLocal = dbStore.getUsers('b1111111-1111-1111-1111-111111111111')
-                .find(p => p.email.toLowerCase() === emailInput.toLowerCase());
-
+              const existingLocal = dbStore.getUsers().find(p => p.email.toLowerCase() === cleanEmail);
               profile = {
                 id: data.user.id,
-                email: data.user.email || emailInput,
+                email: data.user.email || cleanEmail,
                 name: existingLocal?.name || data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
                 role: (existingLocal?.role as UserRole) || 'Super Admin',
-                business_id: existingLocal?.business_id || 'b1111111-1111-1111-1111-111111111111',
+                business_id: existingLocal?.business_id || dbStore.getBusinesses()[0].id,
                 active: true,
                 created_at: new Date().toISOString()
               };
 
-              // Auto-insert into Supabase DB table
-              try {
-                await supabase.from('users_profiles').insert({
-                  id: profile.id,
-                  email: profile.email,
-                  name: profile.name,
-                  role: profile.role,
-                  business_id: profile.business_id,
-                  active: true
-                });
-              } catch (insErr) {
-                console.warn('Auto-creation of profile record in Supabase table failed:', insErr);
-              }
+              // Insert into Supabase in background
+              Promise.resolve(supabase.from('users_profiles').insert({
+                id: profile.id,
+                email: profile.email,
+                name: profile.name,
+                role: profile.role,
+                business_id: profile.business_id,
+                active: true
+              })).catch(() => {});
 
-              // Save in local storage cache
               try {
                 dbStore.createUser({
                   id: profile.id,
@@ -1280,7 +1319,7 @@ export default function App() {
                   role: profile.role,
                   business_id: profile.business_id,
                   active: true,
-                  password_hash: passwordInput
+                  password_hash: cleanPassword
                 });
               } catch (_) {}
             }
@@ -1290,57 +1329,67 @@ export default function App() {
             dbStore.updateUser(profile.id, { session_token: newSessionToken });
             dbStore.registerDeviceSession(profile.id, deviceId, newSessionToken, profile.business_id);
 
-            // Also update session_token in Supabase DB if possible
-            try {
-              await supabase.from('users_profiles').update({ session_token: newSessionToken }).eq('id', profile.id);
-            } catch (_) {}
-
-            const biz = dbStore.getBusiness(profile.business_id) || dbStore.getBusinesses()[0];
-            safeStorage.setItem('omnipack_session', JSON.stringify({ userId: profile.id, businessId: biz.id, mode: 'supabase', sessionToken: newSessionToken, deviceId }));
+            const biz = dbStore.getBusiness(profile.business_id);
+            safeStorage.setItem('omnipack_session', JSON.stringify({
+              userId: profile.id,
+              businessId: biz.id,
+              mode: 'supabase',
+              sessionToken: newSessionToken,
+              deviceId
+            }));
             setCurrentUser(profile);
             setCurrentBusiness(biz);
-            
+
             dbStore.broadcastForceLogout(profile.id, newSessionToken, deviceId);
-            
-            // Save password for offline fallback
+
             try {
               const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
-              saved[profile.email.toLowerCase().trim()] = passwordInput;
+              saved[cleanEmail] = cleanPassword;
               safeStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
             } catch(e) {}
-            
-            // Instantly open dashboard in 0ms!
+
             setActiveView('dashboard');
             triggerToast(`Supabase Cloud Session Established. Welcome, ${profile.name}!`, 'success');
 
-            // Fast background sync so data updates smoothly without freezing UI
             dbStore.syncFromSupabase(profile.business_id).then(() => {
-              // dbStore.purgeLocalEntityCaches();
               setSyncTick(prev => prev + 1);
             }).catch(() => {});
+            return;
           }
-      } catch (err: any) {
-        setAuthError(err.message || 'An unexpected error occurred during authentication.');
+        } catch (sbErr: any) {
+          console.warn('Supabase login timeout or error:', sbErr);
+          // Check local one more time
+          const retryLocal = dbStore.login(cleanEmail, cleanPassword, deviceId);
+          if (retryLocal.success && retryLocal.user && retryLocal.business) {
+            clearTimeout(watchdog);
+            const newSessionToken = retryLocal.user.session_token || ('st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11));
+            safeStorage.setItem('omnipack_session', JSON.stringify({
+              userId: retryLocal.user.id,
+              businessId: retryLocal.business.id,
+              mode: 'local',
+              sessionToken: newSessionToken,
+              deviceId
+            }));
+            setCurrentUser(retryLocal.user);
+            setCurrentBusiness(retryLocal.business);
+            setActiveView('dashboard');
+            triggerToast(`Welcome back, ${retryLocal.user.name}!`, 'success');
+            return;
+          }
+          clearTimeout(watchdog);
+          setAuthError(sbErr?.message || 'Authentication error. Please check credentials or try again.');
+          return;
+        }
       }
-    } else {
-      // Local Database Mode
-      const result = dbStore.login(emailInput, passwordInput, deviceId);
 
-      if (result.success && result.user && result.business) {
-        const newSessionToken = result.user.session_token || ('st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11));
-        safeStorage.setItem('omnipack_session', JSON.stringify({ userId: result.user.id, businessId: result.business.id, mode: 'local', sessionToken: newSessionToken, deviceId }));
-        setCurrentUser(result.user);
-        setCurrentBusiness(result.business);
-        
-        dbStore.broadcastForceLogout(result.user.id, newSessionToken, deviceId);
-        
-        setActiveView('dashboard');
-        triggerToast(`Welcome back, ${result.user.name}!`, 'success');
-      } else {
-        setAuthError(result.error || 'Authentication failed.');
-      }
-    }
+      // If user wasn't in local cache and Supabase was not configured
+      clearTimeout(watchdog);
+      setAuthError(localResult.error || 'Invalid email or password.');
+    } catch (globalErr: any) {
+      clearTimeout(watchdog);
+      setAuthError(globalErr?.message || 'Unexpected login error occurred.');
     } finally {
+      clearTimeout(watchdog);
       setIsLoggingIn(false);
     }
   };
@@ -1352,9 +1401,16 @@ export default function App() {
     setIsLoggingIn(true);
     const deviceId = getDeviceId();
 
+    const watchdog = setTimeout(() => {
+      setIsLoggingIn(false);
+    }, 3500);
+
     setTimeout(() => {
       try {
-        let result = dbStore.login(email, pass, deviceId);
+        dbStore.reloadFromLocalStorage();
+        const cleanEmail = (email || '').trim().toLowerCase();
+        const cleanPass = (pass || '').trim();
+        let result = dbStore.login(cleanEmail, cleanPass, deviceId);
 
         if (result.success && result.user && result.business) {
           const newSessionToken = result.user.session_token || ('st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11));
@@ -1368,6 +1424,7 @@ export default function App() {
           dbStore.registerDeviceSession(result.user.id, deviceId, newSessionToken, result.business.id);
           setCurrentUser(result.user);
           setCurrentBusiness(result.business);
+          dbStore.reloadFromLocalStorage();
           setActiveView('dashboard');
           triggerToast(`Logged in successfully as ${result.user.name} (${result.user.role})`, 'success');
         } else {
@@ -1376,13 +1433,16 @@ export default function App() {
       } catch (err: any) {
         setAuthError(err?.message || 'Login error occurred.');
       } finally {
+        clearTimeout(watchdog);
         setIsLoggingIn(false);
       }
-    }, 80);
+    }, 60);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     const deviceId = getDeviceId();
+    setIsLoggingIn(false);
+    setAuthError('');
     if (currentUser) {
       dbStore.removeDeviceSession(currentUser.id, deviceId);
       if (currentBusiness) {
@@ -1402,8 +1462,17 @@ export default function App() {
     setEmailInput('');
     setPasswordInput('');
     safeStorage.removeItem('omnipack_session');
-    if (dbMode === 'supabase' && supabase) {
-      supabase.auth.signOut();
+    dbStore.reloadFromLocalStorage();
+    
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await Promise.race([
+          supabase.auth.signOut(),
+          new Promise(r => setTimeout(r, 600))
+        ]);
+      } catch (sbErr) {
+        console.warn('Supabase signOut notice:', sbErr);
+      }
     }
     triggerToast('Logged out of system securely.', 'info');
   };
@@ -1501,56 +1570,25 @@ export default function App() {
     if (!currentUser) return false;
     const role = currentUser.role;
 
-    // Super Admin has total access to everything
+    // Super Admin & Admin have total access to everything
     if (role === 'Super Admin' || role === 'Admin') return true;
 
-    // Everyone has access to inbox
-    if (view === 'inbox') return true;
+    // Settings, User Management, and Security Audit Logs are strictly reserved for Super Admin and Admin
+    if (view === 'audit' || view === 'settings' || view === 'users') {
+      return false;
+    }
 
-    // If explicit allowed_pages are set, they OVERRIDE the default role behavior
+    // If explicit allowed_pages are set, check if the page is explicitly listed
     if (currentUser.allowed_pages && currentUser.allowed_pages.length > 0) {
       return currentUser.allowed_pages.includes(view);
     }
 
-    // Default Role-Based Access (Fallback)
-    // Admin used to have full access, now restricted to default switch or allowed_pages
-    
-    switch (view) {
-      case 'dashboard':
-        return role === 'Manager' || role === 'Admin' || role === 'Viewer';
-      case 'inbox':
-        return true;
-      case 'sales':
-        return role === 'Manager' || role === 'Sales Staff' || role === 'Viewer';
-      case 'packing':
-      case 'item_stock_live_report':
-        return role === 'Manager' || role === 'Packing Staff' || role === 'Viewer';
-      case 'delivery':
-        return role === 'Manager' || role === 'Packing Staff' || role === 'Viewer';
-      case 'inventory':
-        return role === 'Manager' || role === 'Packing Staff' || role === 'Viewer';
-      case 'products':
-      case 'categories':
-        return role === 'Manager' || role === 'Sales Staff' || role === 'Viewer';
-      case 'parties':
-      case 'customers':
-      case 'parties_history':
-      case 'loyalty_subscriptions':
-      case 'loyalty':
-      case 'subscriptions':
-      
-      case 'suppliers':
-      case 'purchases':
-        return role === 'Manager' || role === 'Viewer';
-      case 'reports':
-        return role === 'Manager' || role === 'Viewer';
-      case 'audit':
-      case 'settings':
-      case 'users':
-        return false; // restricted strictly to Admin and Super Admin
-      default:
-        return false;
-    }
+    // By default, ALL business users (Super Admin, Admin, Manager, Sales Staff, Packing Staff, Viewer)
+    // have full access to all operational views: Executive Dashboard, Sales & Bookings, Packing Verification,
+    // Delivery & Dispatch, Inventory Ledger, Item Stock Live Report, Product Catalog, Categories, Parties,
+    // Loyalty Program, Suppliers, Purchases, Compliance Reports, and Messages/Inbox!
+    // This guarantees orders created by any user are immediately accessible and visible across all users and screens!
+    return true;
   };
 
   const notifications = useMemo(() => {

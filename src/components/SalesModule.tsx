@@ -341,6 +341,17 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
   const topFilterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    setOrders(dbStore.getSalesOrders(businessId));
+    setCustomers(dbStore.getCustomers(businessId));
+    setProducts(dbStore.getProducts(businessId));
+    return dbStore.subscribe(() => {
+      setOrders(dbStore.getSalesOrders(businessId));
+      setCustomers(dbStore.getCustomers(businessId));
+      setProducts(dbStore.getProducts(businessId));
+    });
+  }, [businessId]);
+
+  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (topFilterRef.current && !topFilterRef.current.contains(event.target as Node)) {
         setIsTopFilterMenuOpen(false);

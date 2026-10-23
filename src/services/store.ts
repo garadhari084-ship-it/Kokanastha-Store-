@@ -3219,6 +3219,32 @@ class ERPStorage {
         userName,
         businessId
       );
+
+      // Deduct stock of individual component products inside the combo box
+      let comboItems: { product_id: string; qty: number }[] = [];
+      if (Array.isArray(combo.combo_items)) {
+        comboItems = combo.combo_items;
+      } else if (typeof combo.combo_items === 'string') {
+        try { comboItems = JSON.parse(combo.combo_items); } catch(e){}
+      }
+
+      if (comboItems.length > 0) {
+        comboItems.forEach(item => {
+          const reqQty = (Number(item.qty) || 1) * fromPacked;
+          const compProd = this.cache.products.find(p => p.id === item.product_id || p.sku === item.product_id || (p as any).barcode === item.product_id);
+          if (compProd) {
+            this.addStockLog(
+              compProd.id,
+              -reqQty,
+              'Out',
+              `Sold as component of Combo Box '${combo.name}' (x${fromPacked})`,
+              userName,
+              businessId
+            );
+          }
+        });
+      }
+
       this.addComboLog(
         businessId,
         combo.id,
@@ -3226,7 +3252,7 @@ class ERPStorage {
         'Packed Sale',
         fromPacked,
         userName,
-        `Sold ${fromPacked} packed unit(s) directly from finished goods inventory.`
+        `Sold ${fromPacked} packed unit(s) directly from finished goods inventory. Component product inventory updated.`
       );
     }
 
@@ -4993,7 +5019,21 @@ class ERPStorage {
         
         order.items.forEach(item => {
           const prod = this.cache.products.find(p => p.id === item.product_id);
-          if (prod) {
+          if (prod && isComboProduct(prod)) {
+            this.addStockLog(item.product_id, item.qty, logType, logNote, 'System', order.business_id);
+            let comboItems: { product_id: string; qty: number }[] = [];
+            if (Array.isArray(prod.combo_items)) comboItems = prod.combo_items;
+            else if (typeof prod.combo_items === 'string') {
+              try { comboItems = JSON.parse(prod.combo_items); } catch(e){}
+            }
+            comboItems.forEach(cItem => {
+              const returnQty = (Number(cItem.qty) || 1) * item.qty;
+              const compProd = this.cache.products.find(p => p.id === cItem.product_id || p.sku === cItem.product_id);
+              if (compProd) {
+                this.addStockLog(compProd.id, returnQty, logType, `Restocked component from reverted Combo '${prod.name}' in Order ${order.order_number}`, 'System', order.business_id);
+              }
+            });
+          } else if (prod) {
             this.addStockLog(item.product_id, item.qty, logType, logNote, 'System', order.business_id);
           }
         });
@@ -5030,7 +5070,21 @@ class ERPStorage {
         } else if (diff < 0) {
           const absDiff = Math.abs(diff);
           const prod = this.cache.products.find(p => p.id === productId);
-          if (prod) {
+          if (prod && isComboProduct(prod)) {
+            this.addStockLog(productId, absDiff, 'In', `Delivered Order ${order.order_number} updated (Removed ${absDiff})`, 'System', order.business_id);
+            let comboItems: { product_id: string; qty: number }[] = [];
+            if (Array.isArray(prod.combo_items)) comboItems = prod.combo_items;
+            else if (typeof prod.combo_items === 'string') {
+              try { comboItems = JSON.parse(prod.combo_items); } catch(e){}
+            }
+            comboItems.forEach(cItem => {
+              const returnQty = (Number(cItem.qty) || 1) * absDiff;
+              const compProd = this.cache.products.find(p => p.id === cItem.product_id || p.sku === cItem.product_id);
+              if (compProd) {
+                this.addStockLog(compProd.id, returnQty, 'In', `Restocked component from updated Combo '${prod.name}' in Order ${order.order_number}`, 'System', order.business_id);
+              }
+            });
+          } else if (prod) {
             this.addStockLog(productId, absDiff, 'In', `Delivered Order ${order.order_number} updated (Removed ${absDiff})`, 'System', order.business_id);
           }
         }

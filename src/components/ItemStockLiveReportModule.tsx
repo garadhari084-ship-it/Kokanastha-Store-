@@ -84,6 +84,77 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
 
     const norm = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+    const recordStatsForProduct = (
+      targetProd: Product | null,
+      targetId: string,
+      targetName: string,
+      targetSku: string,
+      addQty: number,
+      scannedQty: number,
+      isDelivered: boolean,
+      isDispatched: boolean,
+      isPacked: boolean
+    ) => {
+      if (addQty <= 0) return;
+      const legacyIdMap: Record<string, string> = {
+        'p1': 'b1111111-1111-4111-8111-111111111111',
+        'p2': 'b2222222-2222-4222-8222-222222222222',
+        'p3': 'b3333333-3333-4333-8333-333333333333',
+        'p4': 'b4444444-4444-4444-8444-444444444444'
+      };
+
+      const lookupKey = targetProd ? targetProd.id : (targetId || targetName);
+      if (!lookupKey) return;
+
+      let stats = statsMap.get(lookupKey);
+      if (!stats && targetProd) {
+        stats = statsMap.get(targetProd.id) || 
+                statsMap.get(legacyIdMap[targetProd.id] || '') ||
+                statsMap.get(targetProd.name.trim().toLowerCase()) || 
+                (targetProd.sku ? statsMap.get(targetProd.sku.trim().toLowerCase()) : undefined) ||
+                statsMap.get(norm(targetProd.name));
+      }
+
+      if (!stats) {
+        stats = { booked: 0, packed: 0, outForDelivery: 0, delivered: 0, totalOrdered: 0 };
+      }
+
+      if (targetId) {
+        statsMap.set(targetId, stats);
+        if (legacyIdMap[targetId]) statsMap.set(legacyIdMap[targetId], stats);
+      }
+      if (targetProd) {
+        if (targetProd.id) {
+          statsMap.set(targetProd.id, stats);
+          if (legacyIdMap[targetProd.id]) statsMap.set(legacyIdMap[targetProd.id], stats);
+          const foundLegacy = Object.keys(legacyIdMap).find(k => legacyIdMap[k] === targetProd.id);
+          if (foundLegacy) statsMap.set(foundLegacy, stats);
+        }
+        if (targetProd.name) statsMap.set(targetProd.name.trim().toLowerCase(), stats);
+        if (targetProd.sku && targetProd.sku.trim()) statsMap.set(targetProd.sku.trim().toLowerCase(), stats);
+        if (targetProd.name) statsMap.set(norm(targetProd.name), stats);
+      } else {
+        if (targetName) statsMap.set(targetName, stats);
+        if (targetSku) statsMap.set(targetSku, stats);
+        if (norm(targetName)) statsMap.set(norm(targetName), stats);
+      }
+
+      stats.totalOrdered += addQty;
+
+      if (isDelivered) {
+        stats.delivered += addQty;
+      } else {
+        stats.booked += addQty;
+        if (isDispatched) {
+          stats.outForDelivery += addQty;
+        } else if (isPacked) {
+          stats.packed += addQty;
+        } else {
+          stats.packed += Math.min(addQty, scannedQty);
+        }
+      }
+    };
+
     allOrders.forEach(order => {
       if (!order || order.status === 'Cancelled' || order.status === 'Returned') return;
 
@@ -122,44 +193,6 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         });
 
         const targetProdId = prodMatch ? prodMatch.id : resolvedItemProdId;
-        if (!targetProdId && !itemName) return;
-
-        const lookupKey = targetProdId || itemName;
-        let stats = statsMap.get(lookupKey);
-        if (!stats && prodMatch) {
-          stats = statsMap.get(prodMatch.id) || 
-                  statsMap.get(legacyIdMap[prodMatch.id] || '') ||
-                  statsMap.get(prodMatch.name.trim().toLowerCase()) || 
-                  (prodMatch.sku ? statsMap.get(prodMatch.sku.trim().toLowerCase()) : undefined) ||
-                  statsMap.get(norm(prodMatch.name));
-        }
-
-        if (!stats) {
-          stats = { booked: 0, packed: 0, outForDelivery: 0, delivered: 0, totalOrdered: 0 };
-        }
-
-        // Always register stats under all identifier keys for this product
-        if (targetProdId) {
-          statsMap.set(targetProdId, stats);
-          if (legacyIdMap[targetProdId]) statsMap.set(legacyIdMap[targetProdId], stats);
-        }
-        if (prodMatch) {
-          if (prodMatch.id) {
-            statsMap.set(prodMatch.id, stats);
-            if (legacyIdMap[prodMatch.id]) statsMap.set(legacyIdMap[prodMatch.id], stats);
-            const foundLegacy = Object.keys(legacyIdMap).find(k => legacyIdMap[k] === prodMatch.id);
-            if (foundLegacy) statsMap.set(foundLegacy, stats);
-          }
-          if (prodMatch.name) statsMap.set(prodMatch.name.trim().toLowerCase(), stats);
-          if (prodMatch.sku && prodMatch.sku.trim()) statsMap.set(prodMatch.sku.trim().toLowerCase(), stats);
-          if (prodMatch.name) statsMap.set(norm(prodMatch.name), stats);
-        } else {
-          if (itemName) statsMap.set(itemName, stats);
-          if (itemSku) statsMap.set(itemSku, stats);
-          if (normItemName) statsMap.set(normItemName, stats);
-        }
-
-        stats.totalOrdered += qty;
 
         const isAdvOrFest = Boolean(order.advance_booking || order.festive_booking);
         const isDelivered = (order.status === 'Delivered' || order.delivery_status === 'Delivered') && 
@@ -167,19 +200,64 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         const isDispatched = order.status === 'Dispatched' || order.delivery_status === 'Dispatched';
         const isPacked = order.status === 'Packed' || order.delivery_status === 'Packed';
 
-        if (isDelivered) {
-          stats.delivered += qty;
-        } else {
-          // ANY active undelivered order (Pending, Packing, Packed, Dispatched, Advance Booking, Festive Booking) is BOOKED quantity!
-          stats.booked += qty;
+        // 1. Record stats for the ordered item itself
+        recordStatsForProduct(
+          prodMatch || null,
+          targetProdId,
+          itemName,
+          itemSku,
+          qty,
+          scanned,
+          isDelivered,
+          isDispatched,
+          isPacked
+        );
 
-          if (isDispatched) {
-            stats.outForDelivery += qty;
-          } else if (isPacked) {
-            stats.packed += qty;
-          } else {
-            stats.packed += Math.min(qty, scanned);
+        // 2. If item is a combo box, ALSO record stats for every component product!
+        let comboItems: { product_id: string; qty: number }[] = [];
+        if (prodMatch) {
+          if (Array.isArray(prodMatch.combo_items)) {
+            comboItems = prodMatch.combo_items;
+          } else if (typeof prodMatch.combo_items === 'string') {
+            try { comboItems = JSON.parse(prodMatch.combo_items); } catch(e){}
           }
+        }
+        if (comboItems.length === 0 && (item as any).combo_items) {
+          if (Array.isArray((item as any).combo_items)) {
+            comboItems = (item as any).combo_items;
+          } else if (typeof (item as any).combo_items === 'string') {
+            try { comboItems = JSON.parse((item as any).combo_items); } catch(e){}
+          }
+        }
+
+        if (comboItems.length > 0) {
+          comboItems.forEach(cItem => {
+            const cReqQty = (Number(cItem.qty) || 1) * qty;
+            const cProdId = String(cItem.product_id || '').trim();
+            const resolvedCProdId = legacyIdMap[cProdId] || cProdId;
+
+            const cProd = products.find(p => {
+              if (!p) return false;
+              const resPId = legacyIdMap[p.id] || p.id;
+              if (resPId && resolvedCProdId && resPId === resolvedCProdId) return true;
+              if (p.id && cProdId && (p.id === cProdId || legacyIdMap[p.id] === cProdId)) return true;
+              if (p.sku && cProdId && p.sku.toLowerCase() === cProdId.toLowerCase()) return true;
+              if (p.barcode && cProdId && p.barcode.toLowerCase() === cProdId.toLowerCase()) return true;
+              return false;
+            });
+
+            recordStatsForProduct(
+              cProd || null,
+              cProd ? cProd.id : resolvedCProdId,
+              cProd ? cProd.name.trim().toLowerCase() : '',
+              cProd ? (cProd.sku || '').trim().toLowerCase() : '',
+              cReqQty,
+              0,
+              isDelivered,
+              isDispatched,
+              isPacked
+            );
+          });
         }
       });
     });

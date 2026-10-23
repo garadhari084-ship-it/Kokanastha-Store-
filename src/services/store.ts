@@ -440,16 +440,7 @@ const d40Seed = new Date(nowSeed);
 d40Seed.setDate(d40Seed.getDate() - 40);
 const days40SeedStr = `${d40Seed.getFullYear()}-${String(d40Seed.getMonth() + 1).padStart(2, '0')}-${String(d40Seed.getDate()).padStart(2, '0')}`;
 
-const tomSeed = new Date(nowSeed);
-tomSeed.setDate(tomSeed.getDate() + 1);
-const tomSeedStr = `${tomSeed.getFullYear()}-${String(tomSeed.getMonth() + 1).padStart(2, '0')}-${String(tomSeed.getDate()).padStart(2, '0')}`;
-
-const daSeed = new Date(nowSeed);
-daSeed.setDate(daSeed.getDate() + 2);
-const daSeedStr = `${daSeed.getFullYear()}-${String(daSeed.getMonth() + 1).padStart(2, '0')}-${String(daSeed.getDate()).padStart(2, '0')}`;
-
-const PRE_SEEDED_SALES: SalesOrder[] = [
-];
+const PRE_SEEDED_SALES: SalesOrder[] = [];
 
 const PRE_SEEDED_SETTINGS: BusinessSettings[] = [
   {
@@ -901,13 +892,6 @@ class ERPStorage {
        console.log('Clearing old invalid profiles with non-UUIDs...');
        safeStorage.removeItem('omnipack_erp_profiles');
     }
-    const salesSeedKey = 'omnipack_erp_sales_seeded_v4';
-    const lsSales = safeStorage.getItem('omnipack_erp_sales');
-    if (safeStorage.getItem(salesSeedKey) !== 'true' || !lsSales || lsSales === '[]') {
-       safeStorage.setItem('omnipack_erp_sales', JSON.stringify(PRE_SEEDED_SALES));
-       safeStorage.setItem(salesSeedKey, 'true');
-    }
-
     const isInitialized = safeStorage.getItem('omnipack_erp_initialized') === 'true';
     this.cache = {
       businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),

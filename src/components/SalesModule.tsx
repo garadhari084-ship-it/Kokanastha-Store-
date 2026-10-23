@@ -1451,11 +1451,11 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
           order_date: orderDate || getLocalTodayDate(),
           delivery_date: isWalkIn ? null : (deliveryDate || null),
           delivery_type: deliveryType,
-          status: isFulfilledImmediately ? 'Delivered' : 'Pending',
+          status: (isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : 'Pending',
           payment_status: finalPaymentStatusToSave as any,
           payment_mode: paymentMode,
           paid_amount: actualPaid,
-          delivery_status: isFulfilledImmediately ? 'Delivered' : 'Pending',
+          delivery_status: (isFulfilledImmediately || (isWalkIn && !isAdvanceBooking && !isFestiveBooking)) ? 'Delivered' : 'Pending',
           items: cleanItems,
           advance_booking: isAdvanceBooking,
           festive_booking: isFestiveBooking,
@@ -1612,9 +1612,12 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
   };
 
   const confirmDeleteInvoice = async () => {
-    if (!invoiceToDelete) return;
+    if (!invoiceToDelete || isDeletingInvoice) return;
+    setIsDeletingInvoice(true);
+    setDeleteProgress(50);
     try {
-      dbStore.deleteSalesOrder(invoiceToDelete.id);
+      await dbStore.deleteSalesOrder(invoiceToDelete.id);
+      setDeleteProgress(100);
       dbStore.logActivity(user.id, user.name, user.role, 'Delete Invoice', `Permanently deleted invoice ${invoiceToDelete.orderNumber}`, businessId);
       triggerToast(`Invoice ${invoiceToDelete.orderNumber} permanently deleted from database.`, 'success');
       
@@ -1624,6 +1627,9 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
       setInvoiceToDelete(null);
     } catch (err: any) {
       triggerToast(err.message || 'Failed to delete invoice.', 'error');
+    } finally {
+      setIsDeletingInvoice(false);
+      setDeleteProgress(0);
     }
   };
 

@@ -928,6 +928,9 @@ class ERPStorage {
   private bc: BroadcastChannel | null = null;
 
   constructor() {
+    // Clear stale deleted sales IDs filter so valid orders are never hidden
+    safeStorage.removeItem('omnipack_erp_deleted_sales_ids');
+
     const catStr = safeStorage.getItem('omnipack_erp_categories');
     const profStr = safeStorage.getItem('omnipack_erp_profiles');
     if (catStr && catStr.includes('"cat-')) {
@@ -1467,17 +1470,7 @@ class ERPStorage {
                itemsByOrder[item.sales_order_id].push(item);
              });
 
-             const deletedSalesIds = this.getDeletedSalesOrderIds();
-
-             // Exclude any orders that were permanently deleted
-             const validRemoteData = (data || []).filter((so: any) => {
-               if (so.id && deletedSalesIds.has(so.id)) {
-                 // Trigger background purge in Supabase if a deleted order was returned
-                 this.syncToSupabase('sales', null, true, so.id);
-                 return false;
-               }
-               return true;
-             });
+             const validRemoteData = data || [];
 
              const mergedSales = validRemoteData.map((so: any) => {
                const existingSO = (this.cache.sales || []).find(s => s.id === so.id || (s.order_number && s.order_number === so.order_number));
@@ -1594,10 +1587,10 @@ class ERPStorage {
                };
              });
 
-             // Preserve ALL existing sales orders in cache that are not explicitly deleted
+             // Preserve ALL existing sales orders in cache
              // (Guarantees newly created orders, offline orders, or concurrent orders are NEVER lost or hidden!)
              (this.cache.sales || []).forEach(localSO => {
-               if (localSO && localSO.id && !deletedSalesIds.has(localSO.id)) {
+               if (localSO && localSO.id) {
                  const alreadyMerged = mergedSales.some(s => s.id === localSO.id || (s.order_number && s.order_number === localSO.order_number));
                  if (!alreadyMerged) {
                    mergedSales.push(localSO);
@@ -1605,8 +1598,7 @@ class ERPStorage {
                }
              });
 
-             // Purge any deleted sales orders
-             const finalMergedSales = mergedSales.filter(s => s.id && !deletedSalesIds.has(s.id));
+             const finalMergedSales = mergedSales;
              this.cache.sales = finalMergedSales;
              safeStorage.setItem('omnipack_erp_sales', JSON.stringify(finalMergedSales));
              if (finalMergedSales.length > 0) {
@@ -2021,9 +2013,14 @@ class ERPStorage {
 
        const sanitizeUUID = (val: any, isNullable = false): string | null => {
            if (!val) return isNullable ? null : crypto.randomUUID();
+           if (typeof val === 'string') {
+               const cleanVal = val.trim().toUpperCase();
+               if (cleanVal === 'WALK_IN' || cleanVal === 'WALK_IN_CUSTOMER' || cleanVal === 'WALKIN' || cleanVal === 'WALK-IN' || cleanVal === 'NULL' || cleanVal === 'UNDEFINED') {
+                   return isNullable ? null : crypto.randomUUID();
+               }
+           }
            if (isValidUUID(val)) return val;
            if (legacyIdMap[val]) return legacyIdMap[val];
-           if (isNullable && (val === 'NULL' || val === 'null' || val === 'undefined')) return null;
            if (typeof val === 'string' && val.trim() !== '') return toDeterministicUUID(val.trim());
            return isNullable ? null : crypto.randomUUID();
        };
@@ -2254,6 +2251,22 @@ class ERPStorage {
          }
          return error;
        };
+
+        if (tableName === 'sales_orders') {
+          const itemsArr = Array.isArray(payload) ? payload : [payload];
+          const custIds = new Set<string>();
+          itemsArr.forEach((it: any) => {
+            if (it && it.customer_id && isValidUUID(it.customer_id)) {
+              custIds.add(it.customer_id);
+            }
+          });
+          for (const cId of custIds) {
+            const cust = (this.cache.customers || []).find((c: any) => c.id === cId);
+            if (cust) {
+              await this.syncToSupabase('customers', cust);
+            }
+          }
+        }
 
        if (Array.isArray(payload)) {
            payload = payload.map(cleanItem);
@@ -4788,6 +4801,26 @@ class ERPStorage {
     } catch (e) {}
   }
 
+  public unmarkDeletedSalesOrderId(id?: string): void {
+    if (!id) return;
+    try {
+      const deletedSet = this.getDeletedSalesOrderIds();
+      let changed = false;
+      if (deletedSet.has(id)) {
+        deletedSet.delete(id);
+        changed = true;
+      }
+      const detUuid = toDeterministicUUID(id);
+      if (deletedSet.has(detUuid)) {
+        deletedSet.delete(detUuid);
+        changed = true;
+      }
+      if (changed) {
+        safeStorage.setItem('omnipack_erp_deleted_sales_ids', JSON.stringify(Array.from(deletedSet)));
+      }
+    } catch (e) {}
+  }
+
   // Sales Order Operations
   public getSalesOrders(businessId: string): SalesOrder[] {
     const normBiz = normalizeBusinessId(businessId);
@@ -4796,11 +4829,9 @@ class ERPStorage {
     }
     const customers = this.getCustomers(normBiz);
     const customerMap = new Map(customers.map(c => [c.id, c]));
-    const deletedSalesIds = this.getDeletedSalesOrderIds();
-
     const res = dedupeById(
       (this.cache.sales || [])
-        .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === normBiz || isSameBusiness(s.business_id, normBiz)) && (!s.id || !deletedSalesIds.has(s.id)))
+        .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === normBiz || isSameBusiness(s.business_id, normBiz)))
         .map(s => {
           const cust = customerMap.get(s.customer_id);
           const resolvedArea = extractAreaZone(s.area, cust?.shipping_address || (s as any).shipping_address || cust?.area);
@@ -4975,15 +5006,6 @@ class ERPStorage {
     // Release any active draft reservation held for this invoice number
     this.releaseDraftReservationByInvoice(finalOrderNumber);
 
-    // Ensure newly created order is NOT marked as deleted
-    try {
-      const deletedSet = this.getDeletedSalesOrderIds();
-      if (deletedSet.has(finalOrderNumber)) {
-        deletedSet.delete(finalOrderNumber);
-        safeStorage.setItem('omnipack_erp_deleted_sales_ids', JSON.stringify(Array.from(deletedSet)));
-      }
-    } catch (_) {}
-
     const isAdvOrFest = Boolean(so.advance_booking || so.festive_booking);
     const initialStatus = (isAdvOrFest && !so.delivered_at) ? 'Pending' : (so.status || 'Pending');
     const initialDelivStatus = (isAdvOrFest && !so.delivered_at) ? 'Pending' : (so.delivery_status || 'Pending');
@@ -5003,6 +5025,10 @@ class ERPStorage {
       customer_name: so.customer_name || 'Walk-in Customer',
       dispatch_notes: `${so.dispatch_notes || ''} [CUSTOMER:${so.customer_name || 'Walk-in Customer'}]`.trim()
     };
+
+    // Ensure newly created order is NEVER marked as deleted
+    this.unmarkDeletedSalesOrderId(newSO.id);
+    this.unmarkDeletedSalesOrderId(finalOrderNumber);
 
     if (newSO.paid_amount > 0 && (!newSO.payment_history || newSO.payment_history.length === 0)) {
       newSO.payment_history = [{

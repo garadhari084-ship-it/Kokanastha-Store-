@@ -299,16 +299,8 @@ export async function generateBillOfSupplyHTML(
   const custAddr = billingInfo.fullAddress;
   const custShippingAddr = shippingInfo.fullAddress;
 
-  const bName = businessObj?.name || 'KOKANASTHA';
-  let bAddress = businessObj?.billing_address || 'SHOP NO 7 SITA BLDG MARUTI NAGAR SHIVVALLABH ROAD ASHOKVAN DAHISAR E MUMBAI 68, Ph. no.: 9820769697 Email: contact@kokanastha.in';
-  
-  if (businessObj?.mobile_number) {
-    const waIcon = `<img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21'/><path d='M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1Z'/><path d='M14 14a.5.5 0 0 0 1 0v-1a.5.5 0 0 0-1 0v1Z'/></svg>" style="vertical-align: text-bottom;" alt="WA"/>`;
-    bAddress += `<br/>Mobile: ${waIcon} ${businessObj.mobile_number}`;
-  }
-  if (businessObj?.fssai_number) {
-    bAddress += `<br/>FSSAI No: <strong>${businessObj.fssai_number}</strong>`;
-  }
+  const bName = businessObj?.name || 'KOKANASTHA FARAL & SWEETS';
+  const bAddress = businessObj?.billing_address || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092';
 
   // Real UPI QR Code and Bill QR Code parameters
   const upiId = businessObj?.upi_id || '9820769697@okicici';
@@ -349,11 +341,11 @@ export async function generateBillOfSupplyHTML(
   const bankName = businessObj?.bank_name || 'NKGSB COOPERATIVE BANK LIMITED, DAHISAR EAST ASHOKVAN';
   const accountNo = businessObj?.account_number || '092110100000085';
   const ifscCode = businessObj?.ifsc_code || 'NKGS0000092';
-  const accountHolder = businessObj?.account_holder || bName;
+  const accountHolder = businessObj?.account_holder || 'Kokanastha Faral & Sweets';
 
   const formattedItems = items.length === 0 ? `
     <tr>
-      <td colspan="7" style="padding: 16px; text-align: center; color: #64748b; font-style: italic;">No line items recorded for this order.</td>
+      <td colspan="7" style="padding: 12px; text-align: center; color: #64748b; font-style: italic;">No line items recorded for this order.</td>
     </tr>
   ` : items.map((it, idx) => {
     const p = allAvailableProds.find(prod => 
@@ -362,22 +354,22 @@ export async function generateBillOfSupplyHTML(
       ((it as any).sku && prod.sku === (it as any).sku) || 
       ((it as any).product_name && prod.name === (it as any).product_name)
     );
-    const itemCode = (it as any).barcode || (it as any).sku || (it as any).item_code || p?.barcode || p?.sku || p?.hsn_code || '';
-    const itemName = (it as any).product_name || (it as any).name || (it as any).title || p?.name || 'Product Item';
+    const itemCode = (it as any).barcode || (it as any).sku || (it as any).item_code || p?.barcode || p?.sku || p?.hsn_code || '8907571780245';
+    const itemName = ((it as any).product_name || (it as any).name || (it as any).title || p?.name || 'Product Item').toUpperCase();
     const priceUnit = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
-    const finalRate = Number(it.selling_price) || Number((it as any).price) || (p ? Number(p.selling_price) : 0);
+    const finalRate = priceUnit;
     const qty = Math.max(1, Number(it.qty) || Number((it as any).quantity) || 1);
     const itemAmount = qty * finalRate;
 
     return `
       <tr>
-        <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: center;">${idx + 1}</td>
-        <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; font-weight: bold; text-transform: uppercase;">${itemName}</td>
-        <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: center; font-family: monospace; color: #475569;">${itemCode}</td>
-        <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: center; font-weight: bold;">${qty}</td>
-        <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">₹ ${priceUnit.toFixed(2)}</td>
-        <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">${finalRate.toFixed(2)}</td>
-        <td style="padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold;">₹ ${itemAmount.toFixed(2)}</td>
+        <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; text-align: center;">${idx + 1}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-weight: 700; text-transform: uppercase;">${itemName}</td>
+        <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; text-align: center; font-family: monospace; color: #475569;">${itemCode}</td>
+        <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; text-align: center; font-weight: 700;">${qty}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: right;">₹ ${priceUnit.toFixed(2)}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: right;">${finalRate.toFixed(2)}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 700;">₹ ${itemAmount.toFixed(2)}</td>
       </tr>
     `;
   }).join('');
@@ -392,103 +384,106 @@ export async function generateBillOfSupplyHTML(
     @page { size: A4; margin: 8mm; }
     body {
       font-family: Arial, Helvetica, sans-serif;
-      color: #1e293b;
+      color: #0f172a;
       margin: 0;
-      padding: 20px;
-      font-size: 11.5pt;
+      padding: 16px;
+      font-size: 10.5pt;
       line-height: 1.4;
       background: #ffffff;
     }
     .top-label {
       text-align: right;
-      font-size: 7.5pt;
-      font-weight: 700;
-      color: #64748b;
+      font-size: 8pt;
+      font-weight: 800;
+      color: #1e293b;
       letter-spacing: 0.5px;
-      margin-bottom: 4px;
     }
-    .header-box {
-      text-align: center;
-      margin-bottom: 12px;
+    .header-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 8px;
     }
     .company-title {
-      font-size: 16pt;
+      font-size: 18pt;
       font-weight: 900;
-      letter-spacing: 1px;
-      margin: 0;
+      letter-spacing: 0.5px;
+      margin: 0 0 2px 0;
       text-transform: uppercase;
-      color: #0f172a;
+      color: #000000;
     }
     .company-address {
-      font-size: 7.5pt;
-      color: #334155;
-      margin-top: 4px;
+      font-size: 8.5pt;
+      color: #1e293b;
+      margin: 0;
       font-weight: 600;
-      letter-spacing: 0.2px;
     }
     .divider-double {
-      border-top: 2px solid #0f172a;
+      border-top: 2px solid #000000;
+      border-bottom: 1px solid #000000;
       margin: 8px 0;
+      height: 1px;
     }
     .bill-title {
       text-align: center;
-      font-size: 11pt;
-      font-weight: 800;
-      margin: 6px 0 12px 0;
-      color: #0f172a;
+      font-size: 13pt;
+      font-weight: 900;
+      margin: 8px 0 12px 0;
+      color: #000000;
     }
     .meta-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 12px;
+      margin-bottom: 14px;
     }
     .meta-table td {
       vertical-align: top;
-      padding: 0 4px;
-      width: 25%;
+      padding: 0 8px 0 0;
+      width: 33.33%;
     }
     .meta-heading {
-      font-size: 8.5pt;
+      font-size: 9.5pt;
       font-weight: 800;
-      color: #0f172a;
+      color: #000000;
       margin-bottom: 4px;
       border-bottom: 1px solid #cbd5e1;
       padding-bottom: 2px;
     }
     .meta-value {
       font-size: 8.5pt;
-      color: #334155;
+      color: #1e293b;
+      line-height: 1.45;
     }
     .meta-value strong {
-      color: #0f172a;
+      color: #000000;
     }
     table.items-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 12px;
+      margin-bottom: 14px;
       font-size: 8.5pt;
     }
     table.items-table th {
-      border-top: 1px solid #0f172a;
-      border-bottom: 1px solid #0f172a;
-      padding: 6px 4px;
+      border-top: 1px solid #000000;
+      border-bottom: 1px solid #000000;
+      padding: 6px 8px;
       text-align: left;
       font-weight: 800;
-      color: #0f172a;
+      color: #000000;
     }
     table.items-table td {
-      padding: 6px 4px;
+      padding: 6px 8px;
     }
     .total-row td {
-      border-top: 1px solid #0f172a;
-      border-bottom: 1px solid #0f172a;
+      border-top: 1px solid #000000;
+      border-bottom: 1px solid #000000;
       font-weight: 800;
-      padding: 6px 4px;
+      padding: 6px 8px;
+      color: #000000;
     }
     .bottom-section {
       display: table;
       width: 100%;
-      margin-top: 12px;
+      margin-top: 10px;
     }
     .left-col {
       display: table-cell;
@@ -502,9 +497,9 @@ export async function generateBillOfSupplyHTML(
       vertical-align: top;
     }
     .section-label {
-      font-size: 8pt;
+      font-size: 9pt;
       font-weight: 800;
-      color: #0f172a;
+      color: #000000;
       margin-top: 8px;
       margin-bottom: 2px;
     }
@@ -517,38 +512,23 @@ export async function generateBillOfSupplyHTML(
       padding: 3px 0;
     }
     .amounts-table tr.grand-row td {
-      border-top: 1px solid #0f172a;
-      border-bottom: 1px solid #0f172a;
+      border-top: 1px solid #000000;
+      border-bottom: 1px solid #000000;
       font-weight: 800;
       font-size: 9.5pt;
-    }
-    .bank-box {
-      margin-top: 10px;
-      display: table;
-      width: 100%;
-    }
-    .qr-cell {
-      display: table-cell;
-      width: 65px;
-      vertical-align: top;
-      padding-right: 8px;
-    }
-    .bank-details-cell {
-      display: table-cell;
-      vertical-align: top;
-      font-size: 7.5pt;
-      color: #334155;
+      color: #000000;
     }
     .sig-box {
-      margin-top: 30px;
+      margin-top: 25px;
       text-align: right;
       font-size: 8.5pt;
     }
     .sig-name {
       font-family: 'Brush Script MT', cursive, sans-serif;
-      font-size: 14pt;
-      color: #1e293b;
-      margin: 8px 0 2px 0;
+      font-size: 16pt;
+      color: #000000;
+      margin: 4px 0 1px 0;
+      font-weight: bold;
     }
     .tear-line {
       border-top: 1px dashed #64748b;
@@ -565,100 +545,57 @@ export async function generateBillOfSupplyHTML(
     }
     .ack-table td {
       vertical-align: top;
-      width: 25%;
-    }
-    .savings-banner {
-      background: #fdf2f8;
-      border: 1px solid #fbcfe8;
-      color: #9d174d;
-      padding: 10px;
-      border-radius: 8px;
-      margin-bottom: 15px;
-      text-align: center;
-      font-weight: bold;
-      font-size: 10pt;
-    }
-    .loyal-member-badge {
-      display: inline-block;
-      background: #f59e0b;
-      color: #fff;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 7.5pt;
-      font-weight: 800;
-      margin-left: 5px;
-      vertical-align: middle;
-      text-transform: uppercase;
+      width: 33.33%;
     }
   </style>
 </head>
 <body>
-  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 16px;">
-    <div style="display: flex; align-items: center; gap: 16px;">
-      ${logoBase64 ? `<img src="${logoBase64}" alt="${bName}" style="max-height: 100px; width: auto; object-fit: contain;" />` : ""}
-      <div style="text-align: left;">
-        <h1 class="company-title" style="margin: 0 0 4px 0; font-size: 20pt; text-align: left;">${bName}</h1>
-        <div class="company-address" style="text-align: left; margin: 0;">${bAddress}</div>
-        <div style="margin-top: 4px; font-size: 8pt; font-weight: bold; color: #16a34a; display: flex; align-items: center; gap: 4px; text-align: left; justify-content: flex-start;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
-          </svg>
-          9820769697
+
+  <table class="header-table">
+    <tr>
+      <td style="vertical-align: middle;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          ${logoBase64 ? `<img src="${logoBase64}" alt="${bName}" style="max-height: 70px; width: auto; object-fit: contain;" />` : ''}
+          <div>
+            <h1 class="company-title">${bName}</h1>
+            <p class="company-address">${bAddress}</p>
+          </div>
         </div>
-      </div>
-    </div>
-    <div style="text-align: right;">
-      <div class="top-label" style="margin-bottom: 8px; text-align: right;">ORIGINAL FOR RECIPIENT</div>
-    </div>
-  </div>
+      </td>
+      <td style="vertical-align: top; text-align: right; width: 180px;">
+        <div class="top-label">ORIGINAL FOR RECIPIENT</div>
+      </td>
+    </tr>
+  </table>
 
   <div class="divider-double"></div>
   <div class="bill-title">Bill of Supply</div>
 
-  ${loyaltyMessage}
-  ${savingsMessage}
-
   <table class="meta-table">
     <tr>
-      <td style="width: 26%;">
-        <div class="meta-heading">Bill To (Billing Address)</div>
-        <div class="meta-value">
-          <strong>${custName}</strong>${isLoyal ? '<span class="loyal-member-badge">LOYAL MEMBER</span>' : ''}<br/>
-          <div style="word-break: break-word; margin-top: 2px;">${billingInfo.fullAddress}</div>
-          <div style="margin-top: 3px;">Contact No. : <strong>${custPhone || 'N/A'}</strong></div>
-        </div>
-      </td>
-      <td style="width: 26%;">
-        <div class="meta-heading">Ship To (Shipping Address)</div>
+      <td>
+        <div class="meta-heading">Bill To</div>
         <div class="meta-value">
           <strong>${custName}</strong><br/>
-          <div style="word-break: break-word; margin-top: 2px;">${shippingInfo.streetAddress || 'Shipping Address not specified'}</div>
-          ${shippingInfo.zone || shippingInfo.pincode ? `
-            <div style="color: #475569; font-size: 7.5pt; margin-top: 2px; line-height: 1.3;">
-              ${shippingInfo.zone ? `Zone: <strong style="color: #0f172a;">${shippingInfo.zone}</strong>` : ''}
-              ${shippingInfo.zone && shippingInfo.pincode ? ` &bull; ` : ''}
-              ${shippingInfo.pincode ? `PIN Code: <strong style="color: #0f172a;">${shippingInfo.pincode}</strong>` : ''}
-            </div>
-          ` : ''}
+          ${custAddr || 'Retail POS'}<br/>
+          Contact No. : <strong>${custPhone || '8779792825'}</strong>
         </div>
       </td>
-      <td style="width: 24%;">
+      <td>
         <div class="meta-heading">Transportation Details</div>
         <div class="meta-value">
           Transport Name: ${order.delivery_type && order.delivery_type.toLowerCase().includes('courier') ? 'Global Courier' : 'Direct Express'}<br/>
           Delivery Date: ${order.delivery_date || order.order_date}<br/>
-          Delivery Location: ${shippingInfo.zone || order.area || 'Dahisar'}<br/>
+          Delivery Location: ${order.area || shippingInfo.zone || 'Retail POS'}<br/>
           Delivery Type: ${order.delivery_type || 'Local Dispatch'}
         </div>
       </td>
-      <td style="width: 24%;">
+      <td>
         <div class="meta-heading">Invoice Details</div>
         <div class="meta-value">
           Invoice No. : <strong>${order.order_number}</strong><br/>
           Date : ${order.order_date}<br/>
           Time : ${formatOrderTime(order.time, order.created_at)}
-          ${received > 0 ? `<br/><span style="color: #047857; font-weight: bold;">Adv Payment Paid: ₹ ${received.toFixed(2)}</span>` : ''}
-          ${received > 0 ? `<br/><span style="color: ${balance > 0 ? '#dc2626' : '#047857'}; font-weight: bold;">Remaining Due: ₹ ${balance.toFixed(2)}</span>` : ''}
         </div>
       </td>
     </tr>
@@ -667,7 +604,7 @@ export async function generateBillOfSupplyHTML(
   <table class="items-table">
     <thead>
       <tr>
-        <th style="width: 25px; text-align: center;">#</th>
+        <th style="width: 30px; text-align: center;">#</th>
         <th>Item name</th>
         <th style="text-align: center;">Item Code</th>
         <th style="text-align: center;">Quantity</th>
@@ -691,38 +628,38 @@ export async function generateBillOfSupplyHTML(
   <div class="bottom-section">
     <div class="left-col">
       <div class="section-label">Invoice Amount In Words</div>
-      <div style="font-size: 8.5pt; color: #1e293b; font-weight: 600;">${amountInWords}</div>
+      <div style="font-size: 8.5pt; color: #000000; font-weight: 700; font-style: normal;">${amountInWords}</div>
 
       <div class="section-label" style="margin-top: 10px;">Payment mode</div>
-      <div style="font-size: 8.5pt; color: #1e293b;">${paymentMode}</div>
+      <div style="font-size: 8.5pt; color: #000000;">${order.payment_status === 'Paid' ? 'Online / Paid' : paymentMode}</div>
 
       <div class="section-label" style="margin-top: 10px;">Terms and Conditions</div>
-      <div style="font-size: 7.5pt; color: #475569; line-height: 1.3;">
+      <div style="font-size: 7.5pt; color: #334155; line-height: 1.35;">
         Thanks for doing business with us!<br/>
-        NO REPLACEMENT AND NO REFUND FOR FOOD PRODUCTS<br/>
+        <strong>NO REPLACEMENT AND NO REFUND FOR FOOD PRODUCTS</strong><br/>
         STAY SAFE AND STAY HOME
       </div>
 
       <div class="section-label" style="margin-top: 10px;">Payment QRs & Bank Details</div>
-      <div style="display: flex; gap: 24px; margin-top: 6px; align-items: flex-start;">
-        ${order.payment_status !== 'Paid' ? `<!-- QR 1: Real UPI Payment QR -->
-        <div style="text-align: center; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; background: #ffffff; width: 80px; shrink: 0;">
+      <div style="display: flex; gap: 12px; margin-top: 6px; align-items: flex-start;">
+        <!-- QR 1: Real UPI Payment QR -->
+        <div style="text-align: center; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; background: #ffffff; width: 75px; shrink: 0;">
           <div style="font-size: 6pt; font-weight: 800; color: #0f172a; text-transform: uppercase; margin-bottom: 2px;">UPI PAY QR</div>
-          <img src="${upiQrImgSrc}" width="72" height="72" style="display: block; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff;" alt="UPI QR" />
-          <div style="font-size: 5.5pt; font-weight: 700; color: #047857; margin-top: 2px;">SCAN TO PAY</div>
-          <div style="font-size: 5pt; color: #475569; font-family: monospace; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 72px;">${upiId}</div>
-        </div>` : ''}
+          <img src="${upiQrImgSrc}" width="65" height="65" style="display: block; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff;" alt="UPI QR" />
+          <div style="font-size: 5.5pt; font-weight: 800; color: #000000; margin-top: 2px;">SCAN TO PAY</div>
+          <div style="font-size: 5pt; color: #475569; font-family: monospace; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 68px;">${upiId}</div>
+        </div>
 
         <!-- QR 2: Real Bill Verification QR -->
-        <div style="text-align: center; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; background: #ffffff; width: 80px; shrink: 0;">
+        <div style="text-align: center; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; background: #ffffff; width: 75px; shrink: 0;">
           <div style="font-size: 6pt; font-weight: 800; color: #0f172a; text-transform: uppercase; margin-bottom: 2px;">BILL QR</div>
-          <img src="${billQrImgSrc}" width="72" height="72" style="display: block; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff;" alt="Bill QR" />
-          <div style="font-size: 5.5pt; font-weight: 700; color: #1d4ed8; margin-top: 2px;">ONLINE INVOICE</div>
+          <img src="${billQrImgSrc}" width="65" height="65" style="display: block; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff;" alt="Bill QR" />
+          <div style="font-size: 5.5pt; font-weight: 800; color: #000000; margin-top: 2px;">VERIFIED BILL</div>
           <div style="font-size: 5pt; color: #475569; font-family: monospace;">${order.order_number}</div>
         </div>
 
         <!-- Bank Details -->
-        <div style="font-size: 7.2pt; color: #334155; line-height: 1.35; flex: 1; min-width: 0; padding-left: 2px;">
+        <div style="font-size: 7.2pt; color: #1e293b; line-height: 1.4; flex: 1; min-width: 0; padding-left: 2px;">
           <strong>Bank :</strong> ${bankName}<br/>
           <strong>Account No. :</strong> ${accountNo}<br/>
           <strong>IFSC code :</strong> ${ifscCode}<br/>
@@ -738,6 +675,10 @@ export async function generateBillOfSupplyHTML(
           <td>Sub Total</td>
           <td style="text-align: right;">₹ ${subTotal.toFixed(2)}</td>
         </tr>
+        <tr>
+          <td>DELIVERY:</td>
+          <td style="text-align: right;">₹ ${deliveryCharges.toFixed(2)}</td>
+        </tr>
         ${taxVal > 0 ? `
         <tr>
           <td>Tax (GST)</td>
@@ -746,31 +687,25 @@ export async function generateBillOfSupplyHTML(
         ` : ''}
         ${discount > 0 ? `
         <tr>
-          <td>Discount${order.discount_percentage ? ` (${order.discount_percentage}%)` : ''}</td>
+          <td>Discount</td>
           <td style="text-align: right; color: #dc2626; font-weight: bold;">-₹ ${discount.toFixed(2)}</td>
         </tr>
         ` : ''}
-        ${deliveryCharges > 0 ? `<tr>
-          <td>Delivery Charges:</td>
-          <td style="text-align: right; color: #0284c7; font-weight: bold;">+₹ ${deliveryCharges.toFixed(2)}</td>
-        </tr>` : ''}
         ${additionalCharges > 0 ? `<tr>
           <td>Additional Charges:</td>
           <td style="text-align: right;">+₹ ${additionalCharges.toFixed(2)}</td>
         </tr>` : ''}
         <tr class="grand-row">
-          <td>Total Amount</td>
+          <td>Total</td>
           <td style="text-align: right;">₹ ${totalAmount.toFixed(2)}</td>
         </tr>
-        ${received > 0 ? `
-        <tr style="background-color: #f0fdf4;">
-          <td style="font-weight: bold; color: #047857; padding: 4px 0;">Advance Payment Paid</td>
-          <td style="text-align: right; font-weight: bold; color: #047857; padding: 4px 0;">₹ ${received.toFixed(2)}</td>
+        <tr>
+          <td>Received</td>
+          <td style="text-align: right;">₹ ${received.toFixed(2)}</td>
         </tr>
-        ` : ''}
-        <tr style="border-top: 1.5px solid #0f172a; border-bottom: 1.5px solid #0f172a;">
-          <td style="padding: 4px 0;"><strong>Remaining Balance Due</strong></td>
-          <td style="text-align: right; color: ${balance > 0 ? '#dc2626' : '#047857'}; padding: 4px 0;"><strong>₹ ${balance.toFixed(2)}</strong></td>
+        <tr>
+          <td>Balance</td>
+          <td style="text-align: right;">₹ ${balance.toFixed(2)}</td>
         </tr>
       </table>
 
@@ -786,29 +721,24 @@ export async function generateBillOfSupplyHTML(
 
   <div class="ack-header">
     <strong style="font-size: 8.5pt;">Acknowledgement</strong><br/>
-    <strong style="font-size: 10pt; text-transform: uppercase; color: #0f172a;">${bName}</strong>
+    <strong style="font-size: 10pt; text-transform: uppercase; color: #000000;">${bName}</strong>
   </div>
 
   <table class="ack-table">
     <tr>
-      <td style="width: 26%;">
-        <strong>Bill To:</strong><br/>
+      <td>
+        <strong>Invoice To:</strong><br/>
         <strong>${custName}</strong><br/>
-        <span style="font-size: 7.5pt;">${billingInfo.fullAddress}</span>
+        <span style="font-size: 7.5pt;">${custAddr || 'Retail POS'}</span>
       </td>
-      <td style="width: 26%;">
-        <strong>Ship To:</strong><br/>
-        <strong>${custName}</strong><br/>
-        <span style="font-size: 7.5pt;">${shippingInfo.fullAddress}</span>
-      </td>
-      <td style="width: 24%;">
+      <td>
         <strong>Invoice Details:</strong><br/>
         Invoice No. : ${order.order_number}<br/>
         Invoice date : ${order.order_date}<br/>
         Invoice Amount : ₹ ${totalAmount.toFixed(2)}
       </td>
-      <td style="width: 24%; text-align: right; vertical-align: bottom;">
-        <div style="border-top: 1px solid #0f172a; width: 140px; margin-left: auto; text-align: center; padding-top: 2px;">
+      <td style="text-align: right; vertical-align: bottom;">
+        <div style="border-top: 1px solid #000000; width: 140px; margin-left: auto; text-align: center; padding-top: 2px;">
           Receiver's Seal & Sign
         </div>
       </td>

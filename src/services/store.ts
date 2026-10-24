@@ -212,6 +212,27 @@ export function dedupeById<T extends { id?: string }>(items: T[]): T[] {
   return result;
 }
 
+export function dedupeSalesOrders(orders: SalesOrder[]): SalesOrder[] {
+  if (!Array.isArray(orders)) return [];
+  const seenIds = new Set<string>();
+  const seenOrderNumbers = new Set<string>();
+  const result: SalesOrder[] = [];
+
+  for (const order of orders) {
+    if (!order) continue;
+    const idKey = order.id ? order.id.trim() : '';
+    const numKey = order.order_number ? order.order_number.trim().toLowerCase() : '';
+
+    if (idKey && seenIds.has(idKey)) continue;
+    if (numKey && seenOrderNumbers.has(numKey)) continue;
+
+    if (idKey) seenIds.add(idKey);
+    if (numKey) seenOrderNumbers.add(numKey);
+    result.push(order);
+  }
+  return result;
+}
+
 const PRE_SEEDED_CATEGORIES: Category[] = [
   {
     id: CAT_1_ID,
@@ -1238,9 +1259,9 @@ class ERPStorage {
               merged.unshift(memOrder);
             }
           });
-          return merged;
+          return dedupeSalesOrders(merged);
         }
-        return loadedSales;
+        return dedupeSalesOrders(loadedSales);
       })(),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
@@ -1598,7 +1619,7 @@ class ERPStorage {
                }
              });
 
-             const finalMergedSales = mergedSales;
+             const finalMergedSales = dedupeSalesOrders(mergedSales);
              this.cache.sales = finalMergedSales;
              safeStorage.setItem('omnipack_erp_sales', JSON.stringify(finalMergedSales));
              if (finalMergedSales.length > 0) {
@@ -4829,7 +4850,12 @@ class ERPStorage {
     }
     const customers = this.getCustomers(normBiz);
     const customerMap = new Map(customers.map(c => [c.id, c]));
-    const res = dedupeById(
+
+    // Clean up duplicate order records in memory and local storage
+    this.cache.sales = dedupeSalesOrders(this.cache.sales || []);
+    safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
+
+    const res = dedupeSalesOrders(
       (this.cache.sales || [])
         .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === normBiz || isSameBusiness(s.business_id, normBiz)))
         .map(s => {

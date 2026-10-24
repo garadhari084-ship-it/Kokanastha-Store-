@@ -4677,7 +4677,7 @@ class ERPStorage {
 
     return dedupeById(
       (this.cache.sales || [])
-        .filter(s => isSameBusiness(s.business_id, businessId) && (!s.id || !deletedSalesIds.has(s.id)))
+        .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === businessId || isSameBusiness(s.business_id, businessId)) && (!s.id || !deletedSalesIds.has(s.id)))
         .map(s => {
           const cust = customerMap.get(s.customer_id);
           const resolvedArea = extractAreaZone(s.area, cust?.shipping_address || (s as any).shipping_address || cust?.area);
@@ -4751,7 +4751,11 @@ class ERPStorage {
             }))
           };
         })
-        .sort((a, b) => new Date(b.created_at || b.order_date).getTime() - new Date(a.created_at || a.order_date).getTime())
+        .sort((a, b) => {
+          const tA = parseOrderDateMs(a.created_at) || parseOrderDateMs(a.order_date);
+          const tB = parseOrderDateMs(b.created_at) || parseOrderDateMs(b.order_date);
+          return tB - tA;
+        })
     );
   }
 
@@ -4857,7 +4861,10 @@ class ERPStorage {
     const isAdvOrFest = Boolean(so.advance_booking || so.festive_booking);
     const initialStatus = (isAdvOrFest && !so.delivered_at) ? 'Pending' : (so.status || 'Pending');
     const initialDelivStatus = (isAdvOrFest && !so.delivered_at) ? 'Pending' : (so.delivery_status || 'Pending');
-    const normBusinessId = normalizeBusinessId(so.business_id);
+    let normBusinessId = normalizeBusinessId(so.business_id);
+    if (!normBusinessId || !normBusinessId.trim()) {
+      normBusinessId = BIZ_ID;
+    }
     const newSO: SalesOrder = {
       ...so,
       business_id: normBusinessId,

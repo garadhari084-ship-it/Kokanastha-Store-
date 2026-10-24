@@ -341,6 +341,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
   const topFilterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    dbStore.purgeLegacyDummySalesOrders();
     setOrders(dbStore.getSalesOrders(businessId));
     setCustomers(dbStore.getCustomers(businessId));
     setProducts(dbStore.getProducts(businessId));

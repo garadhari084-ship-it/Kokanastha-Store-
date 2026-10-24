@@ -374,6 +374,7 @@ export interface SalesOrder {
   returned_at?: string;
   payment_bank?: string;
   inventory_restocked?: boolean;
+  is_live_order?: boolean;
   business_id: string;
   created_at: string;
 }

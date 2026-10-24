@@ -643,6 +643,31 @@ export function isOrderInTimeHorizon(
 }
 
 /**
+ * Detects legacy synthetic/dummy standard sales orders (such as the historical 902 completed orders)
+ * that inflated dashboard metrics and were not created by actual users.
+ * All festive and advance booking orders (e.g. FEST-ADV-*, ADV-*) are genuine user orders and are strictly preserved!
+ */
+export function isLegacyDummySalesOrder(o: any, purgedIdSet?: Set<string>): boolean {
+  if (!o) return false;
+  // Genuine user orders explicitly flagged as live
+  if (o.is_live_order === true) return false;
+  // Strictly preserve all festive or advance booking orders
+  if (o.advance_booking || o.festive_booking) return false;
+  const num = String(o.order_number || '').toUpperCase();
+  if (num.includes('FEST') || num.includes('ADV')) return false;
+
+  if (purgedIdSet && (purgedIdSet.has(o.id) || (o.order_number && purgedIdSet.has(o.order_number)))) {
+    return true;
+  }
+
+  // The 902 legacy dummy orders are standard orders with status 'Delivered'
+  if (o.status === 'Delivered') {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Safely extracts a concise Area Zone location (e.g. 'Dahisar', 'Borivali')
  * and guarantees that a full street/building address is NEVER shown in the Area Zone column.
  */
@@ -949,6 +974,17 @@ class ERPStorage {
   private activeDeviceSessions: ActiveDeviceSession[] = [];
   private bc: BroadcastChannel | null = null;
 
+  public getPurgedDummyIdSet(): Set<string> {
+    try {
+      const raw = safeStorage.getItem('omnipack_erp_purged_dummy_sales_ids');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return new Set(arr);
+      }
+    } catch (_) {}
+    return new Set<string>();
+  }
+
   constructor() {
     // Clear stale deleted sales IDs filter so valid orders are never hidden
     safeStorage.removeItem('omnipack_erp_deleted_sales_ids');
@@ -964,11 +1000,54 @@ class ERPStorage {
        console.log('Clearing old invalid profiles with non-UUIDs...');
        safeStorage.removeItem('omnipack_erp_profiles');
     }
-    const salesSeedKey = 'omnipack_erp_sales_seeded_v4';
-    const lsSales = safeStorage.getItem('omnipack_erp_sales');
-    if (safeStorage.getItem(salesSeedKey) !== 'true' || !lsSales || lsSales === '[]') {
-       safeStorage.setItem('omnipack_erp_sales', JSON.stringify(PRE_SEEDED_SALES));
-       safeStorage.setItem(salesSeedKey, 'true');
+
+    // Purge legacy dummy / synthetic standard orders (the 902 completed orders)
+    const purgeDummyKey = 'omnipack_erp_purged_dummy_sales_orders_v5';
+    let purgedDummyIds: string[] = [];
+    try {
+      purgedDummyIds = JSON.parse(safeStorage.getItem('omnipack_erp_purged_dummy_sales_ids') || '[]');
+    } catch (_) {}
+    const purgedDummyIdSet = new Set(purgedDummyIds);
+
+    const rawLsSales = safeStorage.getItem('omnipack_erp_sales');
+    let initialSalesArray: SalesOrder[] = [];
+    try {
+      initialSalesArray = rawLsSales ? JSON.parse(rawLsSales) : [];
+    } catch (_) {}
+
+    const dummyOrdersFound = initialSalesArray.filter(o => isLegacyDummySalesOrder(o, purgedDummyIdSet));
+    if (dummyOrdersFound.length > 0 || safeStorage.getItem(purgeDummyKey) !== 'true') {
+      console.log(`[Store] Auto-purging ${dummyOrdersFound.length} legacy dummy standard sales orders...`);
+      dummyOrdersFound.forEach(d => {
+        if (d.id) purgedDummyIdSet.add(d.id);
+        if (d.order_number) purgedDummyIdSet.add(d.order_number);
+      });
+      safeStorage.setItem('omnipack_erp_purged_dummy_sales_ids', JSON.stringify(Array.from(purgedDummyIdSet)));
+
+      initialSalesArray = initialSalesArray.filter(o => !isLegacyDummySalesOrder(o, purgedDummyIdSet));
+      safeStorage.setItem('omnipack_erp_sales', JSON.stringify(initialSalesArray));
+      safeStorage.setItem(purgeDummyKey, 'true');
+
+      // Purge remotely from Supabase if configured
+      if (isSupabaseConfigured && supabase) {
+        const dummyUuids = dummyOrdersFound.map(d => d.id).filter(isValidUUID);
+        if (dummyUuids.length > 0) {
+          Promise.resolve().then(async () => {
+            try {
+              const CHUNK = 100;
+              for (let i = 0; i < dummyUuids.length; i += CHUNK) {
+                const chunk = dummyUuids.slice(i, i + CHUNK);
+                try {
+                  await supabase.from('sales_order_items').delete().in('sales_order_id', chunk);
+                } catch (_) {}
+                try {
+                  await supabase.from('sales_orders').delete().in('id', chunk);
+                } catch (_) {}
+              }
+            } catch (_) {}
+          });
+        }
+      }
     }
 
     const isInitialized = safeStorage.getItem('omnipack_erp_initialized') === 'true';
@@ -992,7 +1071,12 @@ class ERPStorage {
       customers: (() => { const lc = this.load('customers', []); return Array.isArray(lc) && lc.length > 0 ? lc : PRE_SEEDED_CUSTOMERS; })(),
       suppliers: (() => { const ls = this.load('suppliers', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SUPPLIERS; })(),
       purchases: (() => { const lp = this.load('purchases', []); return Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PURCHASES; })(),
-      sales: (() => { const ls = this.load('sales', []); return dedupeSalesOrders(Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES); })(),
+      sales: (() => { 
+        const ls = this.load('sales', []); 
+        const loaded = Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES;
+        const clean = (loaded || []).filter((o: any) => !isLegacyDummySalesOrder(o, purgedDummyIdSet));
+        return dedupeSalesOrders(clean);
+      })(),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
       auditLogs: this.load('auditLogs', isInitialized ? [] : PRE_SEEDED_SYSTEM_AUDIT_LOGS),
@@ -1184,18 +1268,20 @@ class ERPStorage {
       });
       this.cache.profiles = list;
     } else if (key === 'sales') {
+      const purgedSet = this.getPurgedDummyIdSet();
       const ls = this.load('sales', []);
       const loadedSales = Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES;
+      const cleanLoaded = (loadedSales || []).filter((o: any) => !isLegacyDummySalesOrder(o, purgedSet));
       if (this.cache && Array.isArray(this.cache.sales) && this.cache.sales.length > 0) {
-        const merged = [...loadedSales];
+        const merged = [...cleanLoaded];
         this.cache.sales.forEach(memOrder => {
-          if (memOrder && memOrder.id && !merged.some(m => m.id === memOrder.id || (m.order_number && m.order_number === memOrder.order_number))) {
+          if (memOrder && memOrder.id && !isLegacyDummySalesOrder(memOrder, purgedSet) && !merged.some(m => m.id === memOrder.id || (m.order_number && m.order_number === memOrder.order_number))) {
             merged.unshift(memOrder);
           }
         });
-        this.cache.sales = dedupeSalesOrders(merged);
+        this.cache.sales = dedupeSalesOrders(merged.filter((o: any) => !isLegacyDummySalesOrder(o, purgedSet)));
       } else {
-        this.cache.sales = dedupeSalesOrders(loadedSales);
+        this.cache.sales = dedupeSalesOrders(cleanLoaded);
       }
     } else if (key === 'categories') {
       const lc = this.load('categories', []);
@@ -1230,6 +1316,7 @@ class ERPStorage {
 
   public reloadFromLocalStorage() {
     const isInitialized = safeStorage.getItem('omnipack_erp_initialized') === 'true';
+    const purgedSet = this.getPurgedDummyIdSet();
     this.cache = {
       businesses: this.load('businesses', PRE_SEEDED_BUSINESSES),
       profiles: (() => {
@@ -1253,16 +1340,17 @@ class ERPStorage {
       sales: (() => { 
         const ls = this.load('sales', []); 
         const loadedSales = Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES;
+        const cleanLoaded = (loadedSales || []).filter((o: any) => !isLegacyDummySalesOrder(o, purgedSet));
         if (this.cache && Array.isArray(this.cache.sales) && this.cache.sales.length > 0) {
-          const merged = [...loadedSales];
+          const merged = [...cleanLoaded];
           this.cache.sales.forEach(memOrder => {
-            if (memOrder && memOrder.id && !merged.some(m => m.id === memOrder.id || (m.order_number && m.order_number === memOrder.order_number))) {
+            if (memOrder && memOrder.id && !isLegacyDummySalesOrder(memOrder, purgedSet) && !merged.some(m => m.id === memOrder.id || (m.order_number && m.order_number === memOrder.order_number))) {
               merged.unshift(memOrder);
             }
           });
-          return dedupeSalesOrders(merged);
+          return dedupeSalesOrders(merged.filter((o: any) => !isLegacyDummySalesOrder(o, purgedSet)));
         }
-        return dedupeSalesOrders(loadedSales);
+        return dedupeSalesOrders(cleanLoaded);
       })(),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
@@ -1564,7 +1652,8 @@ class ERPStorage {
                itemsByOrder[item.sales_order_id].push(item);
              });
 
-             const validRemoteData = data || [];
+             const purgedSet = this.getPurgedDummyIdSet();
+             const validRemoteData = (data || []).filter((so: any) => !isLegacyDummySalesOrder(so, purgedSet));
 
              const mergedSales = validRemoteData.map((so: any) => {
                const existingSO = (this.cache.sales || []).find(s => s.id === so.id || (s.order_number && s.order_number === so.order_number));
@@ -1681,10 +1770,10 @@ class ERPStorage {
                };
              });
 
-             // Preserve ALL existing sales orders in cache
+             // Preserve ALL existing sales orders in cache (excluding dummy legacy orders)
              // (Guarantees newly created orders, offline orders, or concurrent orders are NEVER lost or hidden!)
              (this.cache.sales || []).forEach(localSO => {
-               if (localSO && localSO.id) {
+               if (localSO && localSO.id && !isLegacyDummySalesOrder(localSO, purgedSet)) {
                  const alreadyMerged = mergedSales.some(s => s.id === localSO.id || (s.order_number && s.order_number === localSO.order_number));
                  if (!alreadyMerged) {
                    mergedSales.push(localSO);
@@ -1692,7 +1781,7 @@ class ERPStorage {
                }
              });
 
-             const finalMergedSales = dedupeSalesOrders(mergedSales);
+             const finalMergedSales = dedupeSalesOrders(mergedSales.filter((s: any) => !isLegacyDummySalesOrder(s, purgedSet)));
              this.cache.sales = finalMergedSales;
              safeStorage.setItem('omnipack_erp_sales', JSON.stringify(finalMergedSales));
              if (finalMergedSales.length > 0) {
@@ -4915,6 +5004,44 @@ class ERPStorage {
     } catch (e) {}
   }
 
+  public purgeLegacyDummySalesOrders(): number {
+    const purgedSet = this.getPurgedDummyIdSet();
+    const all = this.cache.sales || [];
+    const dummies = all.filter(o => isLegacyDummySalesOrder(o, purgedSet));
+    if (dummies.length > 0) {
+      dummies.forEach(d => {
+        if (d.id) purgedSet.add(d.id);
+        if (d.order_number) purgedSet.add(d.order_number);
+      });
+      safeStorage.setItem('omnipack_erp_purged_dummy_sales_ids', JSON.stringify(Array.from(purgedSet)));
+      this.cache.sales = dedupeSalesOrders(all.filter(s => !isLegacyDummySalesOrder(s, purgedSet)));
+      safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
+      this.invalidateMemos();
+      this.notify();
+
+      if (isSupabaseConfigured && supabase) {
+        const dummyUuids = dummies.map(d => d.id).filter(isValidUUID);
+        if (dummyUuids.length > 0) {
+          Promise.resolve().then(async () => {
+            try {
+              const CHUNK = 100;
+              for (let i = 0; i < dummyUuids.length; i += CHUNK) {
+                const chunk = dummyUuids.slice(i, i + CHUNK);
+                try {
+                  await supabase.from('sales_order_items').delete().in('sales_order_id', chunk);
+                } catch (_) {}
+                try {
+                  await supabase.from('sales_orders').delete().in('id', chunk);
+                } catch (_) {}
+              }
+            } catch (_) {}
+          });
+        }
+      }
+    }
+    return dummies.length;
+  }
+
   // Sales Order Operations
   public getSalesOrders(businessId: string): SalesOrder[] {
     const normBiz = normalizeBusinessId(businessId);
@@ -4924,13 +5051,16 @@ class ERPStorage {
     const customers = this.getCustomers(normBiz);
     const customerMap = new Map(customers.map(c => [c.id, c]));
 
-    // Clean up duplicate order records in memory and local storage
-    this.cache.sales = dedupeSalesOrders(this.cache.sales || []);
+    const purgedSet = this.getPurgedDummyIdSet();
+    // Clean up duplicate and dummy order records in memory and local storage
+    this.cache.sales = dedupeSalesOrders(
+      (this.cache.sales || []).filter(s => !isLegacyDummySalesOrder(s, purgedSet))
+    );
     safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
 
     const res = dedupeSalesOrders(
       (this.cache.sales || [])
-        .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === normBiz || isSameBusiness(s.business_id, normBiz)))
+        .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === normBiz || isSameBusiness(s.business_id, normBiz)) && !isLegacyDummySalesOrder(s, purgedSet))
         .map(s => {
           const cust = customerMap.get(s.customer_id);
           const resolvedArea = extractAreaZone(s.area, cust?.shipping_address || (s as any).shipping_address || cust?.area);
@@ -5114,6 +5244,7 @@ class ERPStorage {
     }
     const newSO: SalesOrder = {
       ...so,
+      is_live_order: true,
       business_id: normBusinessId,
       status: initialStatus,
       delivery_status: initialDelivStatus,
@@ -5331,6 +5462,7 @@ class ERPStorage {
         total_amount: updatedTotalAmount,
         paid_amount: updatedPaidAmount,
         payment_history: updatedPaymentHistory,
+        is_live_order: true,
         is_updated: true,
         updated_at: updates.updated_at || new Date().toISOString()
       };

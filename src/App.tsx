@@ -660,6 +660,7 @@ export default function App() {
     setIsRefreshingData(true);
     try {
       // 1. Instant local storage reload and immediate UI refresh in 0ms
+      dbStore.purgeLegacyDummySalesOrders();
       dbStore.reloadFromLocalStorage();
       dbStore.notify();
       setSyncTick(prev => prev + 1);

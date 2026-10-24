@@ -759,10 +759,9 @@ export default function App() {
     let didFinish = false;
     const safetyTimer = setTimeout(() => {
       if (!didFinish) {
-        console.warn("Session restore safety timeout reached. Initializing UI...");
         setIsInitializing(false);
       }
-    }, 2000);
+    }, 200);
 
     const restoreSession = async () => {
       try {
@@ -785,22 +784,28 @@ export default function App() {
               setCurrentUser(user);
               setCurrentBusiness(biz);
               setDbMode(mode === 'supabase' ? 'supabase' : 'local');
-              
-              // Blazing fast UI load! Immediately mount the dashboard with cached local state
-              setIsInitializing(false);
             }
           } catch (e) {
             console.error("Instant session parse error:", e);
           }
         }
         
+        // UNCONDITIONALLY UNBLOCK INITIAL LOADING IMMEDIATELY (0ms)
+        setIsInitializing(false);
+        didFinish = true;
+        clearTimeout(safetyTimer);
+
         if (!isSupabaseConfigured) {
           try {
             const srvCfg = await fetchServerSupabaseConfig();
             if (srvCfg && srvCfg.url && srvCfg.key) {
-              saveSupabaseConfig(srvCfg.url, srvCfg.key);
-              window.location.reload();
-              return;
+              const curUrl = localStorage.getItem('kokanastha_supabase_url');
+              if (srvCfg.url !== curUrl && !sessionStorage.getItem('omnipack_config_reloaded')) {
+                saveSupabaseConfig(srvCfg.url, srvCfg.key);
+                sessionStorage.setItem('omnipack_config_reloaded', 'true');
+                window.location.reload();
+                return;
+              }
             }
           } catch (_) {}
         }
@@ -814,7 +819,7 @@ export default function App() {
             const sessionPromise = supabase.auth.getSession();
             const sessionResult = await Promise.race([
               sessionPromise,
-              new Promise<{ data: { session: any } }>((_, r) => setTimeout(() => r(new Error('Session timeout')), 1000))
+              new Promise<{ data: { session: any } }>((_, r) => setTimeout(() => r(new Error('Session timeout')), 800))
             ]);
             const session = sessionResult?.data?.session;
             if (session && session.user) {
@@ -826,7 +831,7 @@ export default function App() {
 
               const profileResult = await Promise.race([
                 profilePromise,
-                new Promise<{ data: any; error: any }>((_, r) => setTimeout(() => r(new Error('Profile timeout')), 1000))
+                new Promise<{ data: any; error: any }>((_, r) => setTimeout(() => r(new Error('Profile timeout')), 800))
               ]);
               const dbProfile = profileResult?.data;
                     
@@ -836,9 +841,6 @@ export default function App() {
                 const biz = dbStore.getBusiness(dbProfile.business_id);
                 setCurrentBusiness(biz);
                 setDbMode('supabase');
-                setIsInitializing(false);
-                didFinish = true;
-                clearTimeout(safetyTimer);
                 
                 // Fetch rest of tables in background so UI remains perfectly responsive and fast
                 dbStore.syncFromSupabase(dbProfile.business_id).then(() => {

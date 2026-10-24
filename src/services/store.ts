@@ -34,6 +34,27 @@ export const isValidUUID = (val: any): boolean => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 };
 
+export const toDeterministicUUID = (str: string): string => {
+  if (typeof str !== 'string' || !str) return crypto.randomUUID();
+  if (isValidUUID(str)) return str;
+  if (legacyIdMap[str]) return legacyIdMap[str];
+  
+  let h1 = 0x811c9dc5;
+  let h2 = 0x097c1dae;
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 0x01000193);
+    h2 = Math.imul(h2 ^ code, 0x050c5d1f);
+  }
+  const hex1 = (h1 >>> 0).toString(16).padStart(8, '0');
+  const hex2 = (h2 >>> 0).toString(16).padStart(8, '0');
+  const hex3 = ((h1 ^ h2) >>> 0).toString(16).padStart(8, '0');
+  const hex4 = ((h1 + h2) >>> 0).toString(16).padStart(8, '0');
+  
+  const rawHex = (hex1 + hex2 + hex3 + hex4).substring(0, 32);
+  return `${rawHex.substring(0, 8)}-${rawHex.substring(8, 12)}-4${rawHex.substring(13, 16)}-a${rawHex.substring(17, 20)}-${rawHex.substring(20, 32)}`;
+};
+
 // ====================================================================
 // INITIAL PRE-SEEDED SEED DATA FOR MULTI-TENANCY
 // ====================================================================
@@ -1342,7 +1363,7 @@ class ERPStorage {
           const to = from + pageSize - 1;
           const queryPromise = supabase.from(tableName).select('*').range(from, to);
           const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-            setTimeout(() => reject(new Error('Table fetch timeout')), 15000)
+            setTimeout(() => reject(new Error('Table fetch timeout')), 4000)
           );
 
           let queryRes: any = null;
@@ -1588,6 +1609,9 @@ class ERPStorage {
              const finalMergedSales = mergedSales.filter(s => s.id && !deletedSalesIds.has(s.id));
              this.cache.sales = finalMergedSales;
              safeStorage.setItem('omnipack_erp_sales', JSON.stringify(finalMergedSales));
+             if (finalMergedSales.length > 0) {
+               this.syncToSupabase('sales', finalMergedSales).catch(() => {});
+             }
              
              this.notify();
           } else if (key === 'customers') {
@@ -1999,8 +2023,9 @@ class ERPStorage {
            if (!val) return isNullable ? null : crypto.randomUUID();
            if (isValidUUID(val)) return val;
            if (legacyIdMap[val]) return legacyIdMap[val];
-           if (isNullable) return null;
-           return crypto.randomUUID();
+           if (isNullable && (val === 'NULL' || val === 'null' || val === 'undefined')) return null;
+           if (typeof val === 'string' && val.trim() !== '') return toDeterministicUUID(val.trim());
+           return isNullable ? null : crypto.randomUUID();
        };
        
        let activeBusinessId: string | null = null;

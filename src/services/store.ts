@@ -1171,106 +1171,6 @@ class ERPStorage {
         }
       });
     }
-
-    this.ensureFullOrderHistoryRestored();
-  }
-
-  public ensureFullOrderHistoryRestored(): void {
-    const sales = this.cache.sales || [];
-    const existingNumbers = new Set<string>();
-    const existingSeqs = new Set<number>();
-
-    let maxSeq = 141; // Guarantee at least 141 total orders
-    let prefix = 'INV-2026-';
-    let digitPadding = 3;
-
-    sales.forEach(s => {
-      if (s && s.order_number) {
-        const clean = s.order_number.trim();
-        existingNumbers.add(clean.toLowerCase());
-        const match = clean.match(/^(.*?)(\d+)$/);
-        if (match) {
-          prefix = match[1] || 'INV-2026-';
-          const num = parseInt(match[2], 10);
-          if (!isNaN(num)) {
-            existingSeqs.add(num);
-            if (num > maxSeq) maxSeq = num;
-            if (match[2].length > digitPadding) digitPadding = match[2].length;
-          }
-        }
-      }
-    });
-
-    const missingSeqs: number[] = [];
-    for (let i = 1; i <= maxSeq; i++) {
-      if (!existingSeqs.has(i)) {
-        missingSeqs.push(i);
-      }
-    }
-
-    if (sales.length < 141 || missingSeqs.length > 0) {
-      const now = new Date();
-      const customers = this.getCustomers(BIZ_ID);
-      const products = this.getProducts(BIZ_ID);
-      const defaultCust = customers[0] || { id: 'c1', name: 'Rajendra Mahajan', area: 'Borivali' };
-      const defaultProd = products[0] || { id: 'p1', name: 'Bhajani Chakli 1kg', selling_price: 320 };
-
-      const restoredOrders: SalesOrder[] = [];
-
-      let seqIdx = 0;
-      while (sales.length + restoredOrders.length < Math.max(141, maxSeq)) {
-        const seq = missingSeqs[seqIdx] || (maxSeq + restoredOrders.length + 1);
-        seqIdx++;
-
-        const numStr = String(seq).padStart(digitPadding, '0');
-        const orderNum = `${prefix}${numStr}`;
-
-        if (existingNumbers.has(orderNum.toLowerCase())) continue;
-        existingNumbers.add(orderNum.toLowerCase());
-
-        const orderDate = new Date(now.getTime() - (seq * 3600 * 1000 * 4)).toISOString().split('T')[0];
-        const orderId = toDeterministicUUID(orderNum);
-
-        const restoredSO: SalesOrder = {
-          id: orderId,
-          order_number: orderNum,
-          customer_id: defaultCust.id || 'c1',
-          customer_name: (seq % 3 === 0 ? 'Rajendra Mahajan' : (seq % 2 === 0 ? 'Harish Patel' : 'Walk-in Customer')),
-          business_id: BIZ_ID,
-          status: 'Delivered',
-          delivery_status: 'Delivered',
-          payment_status: 'Paid',
-          payment_mode: 'UPI',
-          total_amount: 320 + (seq % 5) * 50,
-          paid_amount: 320 + (seq % 5) * 50,
-          order_date: orderDate,
-          created_at: new Date(now.getTime() - (seq * 3600 * 1000 * 4)).toISOString(),
-          area: defaultCust.area || 'Dahisar',
-          channel: 'Direct Order',
-          items: [
-            {
-              id: toDeterministicUUID(`${orderNum}-item-1`),
-              product_id: defaultProd.id || PROD_1_ID,
-              product_name: defaultProd.name || 'Bhajani Chakli 1kg',
-              selling_price: defaultProd.selling_price || 320,
-              qty: 1 + (seq % 3),
-              gst_rate: 5,
-              scanned_qty: 1 + (seq % 3)
-            }
-          ]
-        };
-
-        restoredOrders.push(restoredSO);
-      }
-
-      if (restoredOrders.length > 0) {
-        this.cache.sales.push(...restoredOrders);
-        safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
-        if (isSupabaseConfigured && supabase) {
-          this.syncToSupabase('sales', restoredOrders).catch(() => {});
-        }
-      }
-    }
   }
 
   public reloadKeyFromLocalStorage(key: keyof typeof this.cache) {
@@ -1742,7 +1642,7 @@ class ERPStorage {
              if (finalMergedSales.length > 0) {
                this.syncToSupabase('sales', finalMergedSales).catch(() => {});
              }
-             this.ensureFullOrderHistoryRestored();
+             
              this.notify();
           } else if (key === 'customers') {
              const mergedCustomers = (data || []).map((remoteCust: any) => {

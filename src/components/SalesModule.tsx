@@ -344,11 +344,6 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
     setOrders(dbStore.getSalesOrders(businessId));
     setCustomers(dbStore.getCustomers(businessId));
     setProducts(dbStore.getProducts(businessId));
-    return dbStore.subscribe(() => {
-      setOrders(dbStore.getSalesOrders(businessId));
-      setCustomers(dbStore.getCustomers(businessId));
-      setProducts(dbStore.getProducts(businessId));
-    });
   }, [businessId]);
 
   useEffect(() => {

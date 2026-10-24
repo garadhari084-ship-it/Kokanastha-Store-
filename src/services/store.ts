@@ -717,7 +717,15 @@ class ERPStorage {
   // Tracks authoritative target stock level set recently by application for each product ID
   // Prevents any remote trigger (like trg_stock_logs_on_insert) or race condition from doubling the stock
   private localStockExpectations = new Map<string, { expectedStock: number; changeQty: number; timestamp: number; sku?: string; name?: string }>();
-  private salesOrdersMemo: Record<string, { data: SalesOrder[], timestamp: number }> = {};
+  private salesOrdersMemo: Record<string, SalesOrder[]> = {};
+  private customersMemo: Record<string, Customer[]> = {};
+  private productsMemo: Record<string, Product[]> = {};
+
+  public invalidateMemos() {
+    this.salesOrdersMemo = {};
+    this.customersMemo = {};
+    this.productsMemo = {};
+  }
   
   public getLocalStockExpectation(key: string): { expectedStock: number; changeQty: number; timestamp: number; sku?: string; name?: string } | undefined {
     if (!key) return undefined;
@@ -816,7 +824,7 @@ class ERPStorage {
     return () => { this.listeners = this.listeners.filter(l => l !== listener); };
   }
   public notify() {
-    this.salesOrdersMemo = {};
+    this.invalidateMemos();
     if (this.notificationTimer !== null) return;
     this.notificationTimer = window.requestAnimationFrame(() => {
       // Group listeners to avoid UI thrashing
@@ -1334,13 +1342,14 @@ class ERPStorage {
           const to = from + pageSize - 1;
           const queryPromise = supabase.from(tableName).select('*').range(from, to);
           const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-            setTimeout(() => reject(new Error('Table fetch timeout')), 2000)
+            setTimeout(() => reject(new Error('Table fetch timeout')), 15000)
           );
 
           let queryRes: any = null;
           try {
             queryRes = await Promise.race([queryPromise, timeoutPromise]);
           } catch (_) {
+            console.warn(`Fetch timed out for table ${tableName}`);
             break; // Stop fetching this table if slow or timed out
           }
 
@@ -2709,7 +2718,11 @@ class ERPStorage {
   }
 
   public getProducts(businessId: string): Product[] {
-    return dedupeById(
+    const normBiz = normalizeBusinessId(businessId);
+    if (this.productsMemo[normBiz]) {
+      return this.productsMemo[normBiz];
+    }
+    const res = dedupeById(
       (this.cache.products || [])
         .filter(p => p && (p.id || p.name))
         .map(p => {
@@ -2730,11 +2743,13 @@ class ERPStorage {
             current_stock: stock,
             purchase_price: Number(p.purchase_price || 0),
             selling_price: Number(p.selling_price || 0),
-            business_id: businessId,
+            business_id: normBiz,
             is_combo: isComboProduct(p)
           };
         })
     );
+    this.productsMemo[normBiz] = res;
+    return res;
   }
 
   public findProductByBarcodeOrSku(query: string): Product | undefined {
@@ -3493,7 +3508,11 @@ class ERPStorage {
 
   // Customer Operations
   public getCustomers(businessId: string): Customer[] {
-    const raw = this.cache.customers.filter(c => isSameBusiness(c.business_id, businessId));
+    const normBiz = normalizeBusinessId(businessId);
+    if (this.customersMemo[normBiz]) {
+      return this.customersMemo[normBiz];
+    }
+    const raw = this.cache.customers.filter(c => isSameBusiness(c.business_id, normBiz));
     
     // Deduplicate by normalized customer name and 10-digit mobile number
     const seenNames = new Set<string>();
@@ -3531,7 +3550,7 @@ class ERPStorage {
 
     // Reconcile and calculate multi-invoice outstanding amount for each customer across all active sales orders
     const activeOrders = this.cache.sales.filter(o => 
-      isSameBusiness(o.business_id, businessId) && 
+      isSameBusiness(o.business_id, normBiz) && 
       o.status !== 'Cancelled' && 
       o.status !== 'Returned'
     );
@@ -3568,6 +3587,7 @@ class ERPStorage {
       }
     }
 
+    this.customersMemo[normBiz] = uniqueCustomers;
     return uniqueCustomers;
   }
 
@@ -4745,13 +4765,17 @@ class ERPStorage {
 
   // Sales Order Operations
   public getSalesOrders(businessId: string): SalesOrder[] {
-    const customers = this.getCustomers(businessId);
+    const normBiz = normalizeBusinessId(businessId);
+    if (this.salesOrdersMemo[normBiz]) {
+      return this.salesOrdersMemo[normBiz];
+    }
+    const customers = this.getCustomers(normBiz);
     const customerMap = new Map(customers.map(c => [c.id, c]));
     const deletedSalesIds = this.getDeletedSalesOrderIds();
 
-    return dedupeById(
+    const res = dedupeById(
       (this.cache.sales || [])
-        .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === businessId || isSameBusiness(s.business_id, businessId)) && (!s.id || !deletedSalesIds.has(s.id)))
+        .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === normBiz || isSameBusiness(s.business_id, normBiz)) && (!s.id || !deletedSalesIds.has(s.id)))
         .map(s => {
           const cust = customerMap.get(s.customer_id);
           const resolvedArea = extractAreaZone(s.area, cust?.shipping_address || (s as any).shipping_address || cust?.area);
@@ -4831,6 +4855,9 @@ class ERPStorage {
           return tB - tA;
         })
     );
+
+    this.salesOrdersMemo[normBiz] = res;
+    return res;
   }
 
   public async findSalesOrderByNumber(orderNumber: string): Promise<SalesOrder | null> {

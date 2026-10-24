@@ -212,6 +212,28 @@ export function dedupeById<T extends { id?: string }>(items: T[]): T[] {
   return result;
 }
 
+export function dedupeSalesOrders(orders: SalesOrder[]): SalesOrder[] {
+  if (!Array.isArray(orders)) return [];
+  const seenIds = new Set<string>();
+  const seenOrderNumbers = new Set<string>();
+  const result: SalesOrder[] = [];
+
+  for (const order of orders) {
+    if (!order) continue;
+    const idKey = order.id ? order.id.trim() : '';
+    const rawNum = order.order_number ? String(order.order_number).trim() : '';
+    const numKey = rawNum ? rawNum.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+
+    if (idKey && seenIds.has(idKey)) continue;
+    if (numKey && seenOrderNumbers.has(numKey)) continue;
+
+    if (idKey) seenIds.add(idKey);
+    if (numKey) seenOrderNumbers.add(numKey);
+    result.push(order);
+  }
+  return result;
+}
+
 const PRE_SEEDED_CATEGORIES: Category[] = [
   {
     id: CAT_1_ID,
@@ -928,6 +950,9 @@ class ERPStorage {
   private bc: BroadcastChannel | null = null;
 
   constructor() {
+    // Clear stale deleted sales IDs filter so valid orders are never hidden
+    safeStorage.removeItem('omnipack_erp_deleted_sales_ids');
+
     const catStr = safeStorage.getItem('omnipack_erp_categories');
     const profStr = safeStorage.getItem('omnipack_erp_profiles');
     if (catStr && catStr.includes('"cat-')) {
@@ -967,7 +992,7 @@ class ERPStorage {
       customers: (() => { const lc = this.load('customers', []); return Array.isArray(lc) && lc.length > 0 ? lc : PRE_SEEDED_CUSTOMERS; })(),
       suppliers: (() => { const ls = this.load('suppliers', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SUPPLIERS; })(),
       purchases: (() => { const lp = this.load('purchases', []); return Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PURCHASES; })(),
-      sales: (() => { const ls = this.load('sales', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES; })(),
+      sales: (() => { const ls = this.load('sales', []); return dedupeSalesOrders(Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES); })(),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
       auditLogs: this.load('auditLogs', isInitialized ? [] : PRE_SEEDED_SYSTEM_AUDIT_LOGS),
@@ -1168,9 +1193,9 @@ class ERPStorage {
             merged.unshift(memOrder);
           }
         });
-        this.cache.sales = merged;
+        this.cache.sales = dedupeSalesOrders(merged);
       } else {
-        this.cache.sales = loadedSales;
+        this.cache.sales = dedupeSalesOrders(loadedSales);
       }
     } else if (key === 'categories') {
       const lc = this.load('categories', []);
@@ -1235,9 +1260,9 @@ class ERPStorage {
               merged.unshift(memOrder);
             }
           });
-          return merged;
+          return dedupeSalesOrders(merged);
         }
-        return loadedSales;
+        return dedupeSalesOrders(loadedSales);
       })(),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
@@ -1323,11 +1348,83 @@ class ERPStorage {
     }
   }
 
+  public async cleanupCloudDuplicateSalesOrders(): Promise<number> {
+    if (!isSupabaseConfigured || !supabase) return 0;
+
+    try {
+      let allRemoteOrders: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let fetchMore = true;
+
+      while (fetchMore) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+        const { data, error } = await supabase.from('sales_orders').select('id, order_number, created_at, updated_at').range(from, to);
+        if (error || !data || data.length === 0) {
+          fetchMore = false;
+          break;
+        }
+        allRemoteOrders = allRemoteOrders.concat(data);
+        if (data.length < pageSize) fetchMore = false;
+        else page++;
+      }
+
+      if (allRemoteOrders.length <= 1) return 0;
+
+      const groups = new Map<string, any[]>();
+      for (const row of allRemoteOrders) {
+        const rawNum = row.order_number ? String(row.order_number).trim() : '';
+        const normKey = rawNum ? rawNum.toLowerCase().replace(/[^a-z0-9]/g, '') : (row.id || '');
+        if (!groups.has(normKey)) groups.set(normKey, []);
+        groups.get(normKey)!.push(row);
+      }
+
+      const idsToDelete: string[] = [];
+      groups.forEach((rows) => {
+        if (rows.length > 1) {
+          rows.sort((a, b) => {
+            const tA = parseOrderDateMs(a.updated_at || a.created_at);
+            const tB = parseOrderDateMs(b.updated_at || b.created_at);
+            return tB - tA;
+          });
+          for (let i = 1; i < rows.length; i++) {
+            if (rows[i].id) {
+              idsToDelete.push(rows[i].id);
+            }
+          }
+        }
+      });
+
+      if (idsToDelete.length > 0) {
+        console.log(`Auto-purging ${idsToDelete.length} duplicate sales orders from Supabase Cloud...`);
+        const CHUNK_SIZE = 200;
+        for (let i = 0; i < idsToDelete.length; i += CHUNK_SIZE) {
+          const chunk = idsToDelete.slice(i, i + CHUNK_SIZE);
+          try {
+            await supabase.from('sales_order_items').delete().in('sales_order_id', chunk);
+          } catch (_) {}
+          try {
+            await supabase.from('sales_orders').delete().in('id', chunk);
+          } catch (_) {}
+        }
+      }
+
+      return idsToDelete.length;
+    } catch (err) {
+      console.warn('Cloud sales cleanup error:', err);
+      return 0;
+    }
+  }
+
   public async syncFromSupabase(businessId?: string, targetTable?: string) {
     if (!isSupabaseConfigured || !supabase) return;
     
     console.log('Syncing from Supabase...');
     try {
+      if (!targetTable || targetTable === 'sales_orders') {
+        await this.cleanupCloudDuplicateSalesOrders();
+      }
     const tables = {
        businesses: 'businesses',
        profiles: 'users_profiles',
@@ -1467,17 +1564,7 @@ class ERPStorage {
                itemsByOrder[item.sales_order_id].push(item);
              });
 
-             const deletedSalesIds = this.getDeletedSalesOrderIds();
-
-             // Exclude any orders that were permanently deleted
-             const validRemoteData = (data || []).filter((so: any) => {
-               if (so.id && deletedSalesIds.has(so.id)) {
-                 // Trigger background purge in Supabase if a deleted order was returned
-                 this.syncToSupabase('sales', null, true, so.id);
-                 return false;
-               }
-               return true;
-             });
+             const validRemoteData = data || [];
 
              const mergedSales = validRemoteData.map((so: any) => {
                const existingSO = (this.cache.sales || []).find(s => s.id === so.id || (s.order_number && s.order_number === so.order_number));
@@ -1594,10 +1681,10 @@ class ERPStorage {
                };
              });
 
-             // Preserve ALL existing sales orders in cache that are not explicitly deleted
+             // Preserve ALL existing sales orders in cache
              // (Guarantees newly created orders, offline orders, or concurrent orders are NEVER lost or hidden!)
              (this.cache.sales || []).forEach(localSO => {
-               if (localSO && localSO.id && !deletedSalesIds.has(localSO.id)) {
+               if (localSO && localSO.id) {
                  const alreadyMerged = mergedSales.some(s => s.id === localSO.id || (s.order_number && s.order_number === localSO.order_number));
                  if (!alreadyMerged) {
                    mergedSales.push(localSO);
@@ -1605,8 +1692,7 @@ class ERPStorage {
                }
              });
 
-             // Purge any deleted sales orders
-             const finalMergedSales = mergedSales.filter(s => s.id && !deletedSalesIds.has(s.id));
+             const finalMergedSales = dedupeSalesOrders(mergedSales);
              this.cache.sales = finalMergedSales;
              safeStorage.setItem('omnipack_erp_sales', JSON.stringify(finalMergedSales));
              if (finalMergedSales.length > 0) {
@@ -4837,11 +4923,14 @@ class ERPStorage {
     }
     const customers = this.getCustomers(normBiz);
     const customerMap = new Map(customers.map(c => [c.id, c]));
-    const deletedSalesIds = this.getDeletedSalesOrderIds();
 
-    const res = dedupeById(
+    // Clean up duplicate order records in memory and local storage
+    this.cache.sales = dedupeSalesOrders(this.cache.sales || []);
+    safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
+
+    const res = dedupeSalesOrders(
       (this.cache.sales || [])
-        .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === normBiz || isSameBusiness(s.business_id, normBiz)) && (!s.id || !deletedSalesIds.has(s.id)))
+        .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === normBiz || isSameBusiness(s.business_id, normBiz)))
         .map(s => {
           const cust = customerMap.get(s.customer_id);
           const resolvedArea = extractAreaZone(s.area, cust?.shipping_address || (s as any).shipping_address || cust?.area);

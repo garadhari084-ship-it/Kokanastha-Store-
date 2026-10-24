@@ -2348,61 +2348,11 @@ export default function App() {
                     </button>
                   </form>
 
-                  {/* Instant 1-Click Fast Access Chips */}
-                  <div className="pt-2">
-                    <div className="relative flex py-2 items-center">
-                      <div className="flex-grow border-t border-slate-200"></div>
-                      <span className="flex-shrink mx-3 text-[10px] font-black uppercase tracking-wider text-slate-400">
-                        1-Click Fast Login
-                      </span>
-                      <div className="flex-grow border-t border-slate-200"></div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 mt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleQuickLogin('admin@admin.com', 'admin')}
-                        className="px-3 py-2 bg-slate-100 hover:bg-indigo-50 hover:border-indigo-300 border border-slate-200 rounded-xl text-left transition-all cursor-pointer group"
-                      >
-                        <div className="text-[11px] font-bold text-slate-800 group-hover:text-indigo-600 flex items-center justify-between">
-                          <span>🛡️ Super Admin</span>
-                        </div>
-                        <div className="text-[9px] text-slate-400 font-mono">admin@admin.com</div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleQuickLogin('garadhari084@gmail.com', 'admin')}
-                        className="px-3 py-2 bg-slate-100 hover:bg-indigo-50 hover:border-indigo-300 border border-slate-200 rounded-xl text-left transition-all cursor-pointer group"
-                      >
-                        <div className="text-[11px] font-bold text-slate-800 group-hover:text-indigo-600 flex items-center justify-between">
-                          <span>👑 Owner</span>
-                        </div>
-                        <div className="text-[9px] text-slate-400 font-mono truncate">garadhari084...</div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleQuickLogin('sales@kokanastha.com', 'sales')}
-                        className="px-3 py-2 bg-slate-100 hover:bg-emerald-50 hover:border-emerald-300 border border-slate-200 rounded-xl text-left transition-all cursor-pointer group"
-                      >
-                        <div className="text-[11px] font-bold text-slate-800 group-hover:text-emerald-600 flex items-center justify-between">
-                          <span>💼 Sales Staff</span>
-                        </div>
-                        <div className="text-[9px] text-slate-400 font-mono">sales@kokanastha.com</div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleQuickLogin('pack@kokanastha.com', 'pack')}
-                        className="px-3 py-2 bg-slate-100 hover:bg-amber-50 hover:border-amber-300 border border-slate-200 rounded-xl text-left transition-all cursor-pointer group"
-                      >
-                        <div className="text-[11px] font-bold text-slate-800 group-hover:text-amber-600 flex items-center justify-between">
-                          <span>📦 Packing Staff</span>
-                        </div>
-                        <div className="text-[9px] text-slate-400 font-mono">pack@kokanastha.com</div>
-                      </button>
-                    </div>
+                  {/* Authorized personnel note */}
+                  <div className="pt-2 text-center border-t border-slate-100">
+                    <p className="text-[11px] text-slate-400 font-normal">
+                      Only authorized personnel can access this system.
+                    </p>
                   </div>
 
                 </div>

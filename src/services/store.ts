@@ -992,7 +992,7 @@ class ERPStorage {
       customers: (() => { const lc = this.load('customers', []); return Array.isArray(lc) && lc.length > 0 ? lc : PRE_SEEDED_CUSTOMERS; })(),
       suppliers: (() => { const ls = this.load('suppliers', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SUPPLIERS; })(),
       purchases: (() => { const lp = this.load('purchases', []); return Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PURCHASES; })(),
-      sales: (() => { const ls = this.load('sales', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES; })(),
+      sales: (() => { const ls = this.load('sales', []); return dedupeSalesOrders(Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES); })(),
       settings: this.load('settings', PRE_SEEDED_SETTINGS),
       stockLogs: this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS),
       auditLogs: this.load('auditLogs', isInitialized ? [] : PRE_SEEDED_SYSTEM_AUDIT_LOGS),
@@ -1348,11 +1348,83 @@ class ERPStorage {
     }
   }
 
+  public async cleanupCloudDuplicateSalesOrders(): Promise<number> {
+    if (!isSupabaseConfigured || !supabase) return 0;
+
+    try {
+      let allRemoteOrders: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let fetchMore = true;
+
+      while (fetchMore) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+        const { data, error } = await supabase.from('sales_orders').select('id, order_number, created_at, updated_at').range(from, to);
+        if (error || !data || data.length === 0) {
+          fetchMore = false;
+          break;
+        }
+        allRemoteOrders = allRemoteOrders.concat(data);
+        if (data.length < pageSize) fetchMore = false;
+        else page++;
+      }
+
+      if (allRemoteOrders.length <= 1) return 0;
+
+      const groups = new Map<string, any[]>();
+      for (const row of allRemoteOrders) {
+        const rawNum = row.order_number ? String(row.order_number).trim() : '';
+        const normKey = rawNum ? rawNum.toLowerCase().replace(/[^a-z0-9]/g, '') : (row.id || '');
+        if (!groups.has(normKey)) groups.set(normKey, []);
+        groups.get(normKey)!.push(row);
+      }
+
+      const idsToDelete: string[] = [];
+      groups.forEach((rows) => {
+        if (rows.length > 1) {
+          rows.sort((a, b) => {
+            const tA = parseOrderDateMs(a.updated_at || a.created_at);
+            const tB = parseOrderDateMs(b.updated_at || b.created_at);
+            return tB - tA;
+          });
+          for (let i = 1; i < rows.length; i++) {
+            if (rows[i].id) {
+              idsToDelete.push(rows[i].id);
+            }
+          }
+        }
+      });
+
+      if (idsToDelete.length > 0) {
+        console.log(`Auto-purging ${idsToDelete.length} duplicate sales orders from Supabase Cloud...`);
+        const CHUNK_SIZE = 200;
+        for (let i = 0; i < idsToDelete.length; i += CHUNK_SIZE) {
+          const chunk = idsToDelete.slice(i, i + CHUNK_SIZE);
+          try {
+            await supabase.from('sales_order_items').delete().in('sales_order_id', chunk);
+          } catch (_) {}
+          try {
+            await supabase.from('sales_orders').delete().in('id', chunk);
+          } catch (_) {}
+        }
+      }
+
+      return idsToDelete.length;
+    } catch (err) {
+      console.warn('Cloud sales cleanup error:', err);
+      return 0;
+    }
+  }
+
   public async syncFromSupabase(businessId?: string, targetTable?: string) {
     if (!isSupabaseConfigured || !supabase) return;
     
     console.log('Syncing from Supabase...');
     try {
+      if (!targetTable || targetTable === 'sales_orders') {
+        await this.cleanupCloudDuplicateSalesOrders();
+      }
     const tables = {
        businesses: 'businesses',
        profiles: 'users_profiles',

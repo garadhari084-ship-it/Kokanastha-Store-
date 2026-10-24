@@ -212,38 +212,6 @@ export function dedupeById<T extends { id?: string }>(items: T[]): T[] {
   return result;
 }
 
-export function dedupeSalesOrders(orders: SalesOrder[]): SalesOrder[] {
-  if (!Array.isArray(orders)) return [];
-  const seenOrderNumbers = new Set<string>();
-  const seenIds = new Set<string>();
-  const result: SalesOrder[] = [];
-
-  for (const order of orders) {
-    if (!order) continue;
-    const cleanNum = order.order_number ? order.order_number.trim().toLowerCase() : '';
-    let cleanId = order.id ? order.id.trim().toLowerCase() : '';
-
-    if (cleanNum && seenOrderNumbers.has(cleanNum)) {
-      continue;
-    }
-
-    if (cleanId && seenIds.has(cleanId)) {
-      if (cleanNum) {
-        order.id = toDeterministicUUID(cleanNum);
-        cleanId = order.id.toLowerCase();
-      } else {
-        order.id = crypto.randomUUID();
-        cleanId = order.id.toLowerCase();
-      }
-    }
-
-    if (cleanNum) seenOrderNumbers.add(cleanNum);
-    if (cleanId) seenIds.add(cleanId);
-    result.push(order);
-  }
-  return result;
-}
-
 const PRE_SEEDED_CATEGORIES: Category[] = [
   {
     id: CAT_1_ID,
@@ -1622,15 +1590,9 @@ class ERPStorage {
              // Preserve ALL existing sales orders in cache
              // (Guarantees newly created orders, offline orders, or concurrent orders are NEVER lost or hidden!)
              (this.cache.sales || []).forEach(localSO => {
-               if (localSO && (localSO.id || localSO.order_number)) {
-                 const alreadyMerged = mergedSales.some(s => 
-                   (s.order_number && localSO.order_number && s.order_number.trim().toLowerCase() === localSO.order_number.trim().toLowerCase()) ||
-                   (s.id === localSO.id && (!s.order_number || !localSO.order_number || s.order_number === localSO.order_number))
-                 );
+               if (localSO && localSO.id) {
+                 const alreadyMerged = mergedSales.some(s => s.id === localSO.id || (s.order_number && s.order_number === localSO.order_number));
                  if (!alreadyMerged) {
-                   if (localSO.order_number) {
-                     localSO.id = toDeterministicUUID(localSO.order_number);
-                   }
                    mergedSales.push(localSO);
                  }
                }
@@ -4867,7 +4829,7 @@ class ERPStorage {
     }
     const customers = this.getCustomers(normBiz);
     const customerMap = new Map(customers.map(c => [c.id, c]));
-    const res = dedupeSalesOrders(
+    const res = dedupeById(
       (this.cache.sales || [])
         .filter(s => (!s.business_id || !s.business_id.trim() || s.business_id === normBiz || isSameBusiness(s.business_id, normBiz)))
         .map(s => {

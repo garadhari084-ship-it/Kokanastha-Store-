@@ -251,22 +251,19 @@ export async function exportOrderAsDirectPdf(
 
       const addQrImage = (data: string, x: number, y: number) => {
         try {
-          const img = new Image();
-          img.src = data;
-          // Only add image if already loaded/cached
-          if (img.complete) {
+          if (data && data.startsWith('data:')) {
+            const format = data.includes('image/jpeg') ? 'JPEG' : 'PNG';
+            doc.addImage(data, format, x, y, 20, 20);
+          } else if (data && data.startsWith('http')) {
             doc.addImage(data, 'PNG', x, y, 20, 20);
-          } else {
-            // Skip or use placeholder to avoid hanging
-            console.warn('QR Image not fully loaded, skipping.');
           }
         } catch (e) {
           console.warn('QR Image error', e);
         }
       };
       
-      addQrImage(upiQrData, 12, y);
-      addQrImage(billQrData, 48, y);
+      if (upiQrData) addQrImage(upiQrData, 12, y);
+      if (billQrData) addQrImage(billQrData, 48, y);
       
       y += 22;
     }
@@ -493,16 +490,14 @@ export async function exportOrderAsDirectPdf(
   if (upiQrData || billQrData) {
     const addQrImage = (data: string, x: number, y: number) => {
       try {
-        const img = new Image();
-        img.src = data;
-        // Only add image if already loaded/cached
-        if (img.complete) {
+        if (data && data.startsWith('data:')) {
+          const format = data.includes('image/jpeg') ? 'JPEG' : 'PNG';
+          doc.addImage(data, format, x, y, 24, 24);
+        } else if (data && data.startsWith('http')) {
           doc.addImage(data, 'PNG', x, y, 24, 24);
-        } else {
-          console.warn('QR Image not fully loaded, skipping.');
         }
       } catch (e) {
-        console.warn('QR Image error', e);
+        console.warn('QR Image addImage error', e);
       }
     };
     

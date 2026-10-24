@@ -1061,7 +1061,11 @@ class ERPStorage {
               this.clearLocalCacheOnly();
               this.notify();
             } else if (event.data.type === 'SYNC_STATE') {
-              this.reloadFromLocalStorage();
+              if (event.data.key && typeof event.data.key === 'string') {
+                this.reloadKeyFromLocalStorage(event.data.key as keyof typeof this.cache);
+              } else {
+                this.reloadFromLocalStorage();
+              }
             } else if (event.data.type === 'SYNC_DRAFT_RESERVATIONS') {
               if (event.data.reservations && Array.isArray(event.data.reservations)) {
                 this.syncIncomingDraftReservations(event.data.reservations);
@@ -1094,10 +1098,80 @@ class ERPStorage {
           this.activeDeviceSessions = this.load('deviceSessions', []);
           this.notify();
         } else if (e.key && e.key.startsWith('omnipack_erp_')) {
-          this.reloadFromLocalStorage();
+          const rawKey = e.key.replace('omnipack_erp_', '');
+          if (rawKey && rawKey in this.cache) {
+            this.reloadKeyFromLocalStorage(rawKey as keyof typeof this.cache);
+          } else {
+            this.reloadFromLocalStorage();
+          }
         }
       });
     }
+  }
+
+  public reloadKeyFromLocalStorage(key: keyof typeof this.cache) {
+    if (!key || !(key in this.cache)) {
+      this.reloadFromLocalStorage();
+      return;
+    }
+    const isInitialized = safeStorage.getItem('omnipack_erp_initialized') === 'true';
+    if (key === 'businesses') {
+      this.cache.businesses = this.load('businesses', PRE_SEEDED_BUSINESSES);
+    } else if (key === 'profiles') {
+      const loaded = this.load('profiles', PRE_SEEDED_PROFILES);
+      const list = Array.isArray(loaded) ? [...loaded] : [];
+      PRE_SEEDED_PROFILES.forEach(seed => {
+        const existing = list.find(p => p.email && p.email.toLowerCase().trim() === seed.email.toLowerCase().trim());
+        if (!existing) {
+          list.push(seed);
+        } else if (!existing.password_hash) {
+          existing.password_hash = seed.password_hash;
+        }
+      });
+      this.cache.profiles = list;
+    } else if (key === 'sales') {
+      const ls = this.load('sales', []);
+      const loadedSales = Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES;
+      if (this.cache && Array.isArray(this.cache.sales) && this.cache.sales.length > 0) {
+        const merged = [...loadedSales];
+        this.cache.sales.forEach(memOrder => {
+          if (memOrder && memOrder.id && !merged.some(m => m.id === memOrder.id || (m.order_number && m.order_number === memOrder.order_number))) {
+            merged.unshift(memOrder);
+          }
+        });
+        this.cache.sales = merged;
+      } else {
+        this.cache.sales = loadedSales;
+      }
+    } else if (key === 'categories') {
+      const lc = this.load('categories', []);
+      this.cache.categories = Array.isArray(lc) && lc.length > 0 ? lc : PRE_SEEDED_CATEGORIES;
+    } else if (key === 'products') {
+      const lp = this.load('products', []);
+      this.cache.products = Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PRODUCTS;
+    } else if (key === 'customers') {
+      const lc = this.load('customers', []);
+      this.cache.customers = Array.isArray(lc) && lc.length > 0 ? lc : PRE_SEEDED_CUSTOMERS;
+    } else if (key === 'suppliers') {
+      const ls = this.load('suppliers', []);
+      this.cache.suppliers = Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SUPPLIERS;
+    } else if (key === 'purchases') {
+      const lp = this.load('purchases', []);
+      this.cache.purchases = Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PURCHASES;
+    } else if (key === 'settings') {
+      this.cache.settings = this.load('settings', PRE_SEEDED_SETTINGS);
+    } else if (key === 'stockLogs') {
+      this.cache.stockLogs = this.load('stockLogs', isInitialized ? [] : PRE_SEEDED_STOCK_LOGS);
+    } else if (key === 'auditLogs') {
+      this.cache.auditLogs = this.load('auditLogs', isInitialized ? [] : PRE_SEEDED_SYSTEM_AUDIT_LOGS);
+    } else if (key === 'loyaltyLogs') {
+      this.cache.loyaltyLogs = this.load('loyaltyLogs', isInitialized ? [] : PRE_SEEDED_LOYALTY_LOGS);
+    } else if (key === 'subscriptions') {
+      this.cache.subscriptions = this.load('subscriptions', isInitialized ? [] : PRE_SEEDED_SUBSCRIPTIONS);
+    } else {
+      (this.cache as any)[key] = this.load(key as string, []);
+    }
+    this.notify();
   }
 
   public reloadFromLocalStorage() {

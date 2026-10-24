@@ -1036,6 +1036,7 @@ export default function App() {
 
     // Live polling fallback ensuring background sync without forcing whole-tree flashing
     const liveSyncInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       const sessionData = safeStorage.getItem('omnipack_session');
       if (sessionData && isSupabaseConfigured && supabase) {
         try {
@@ -1045,7 +1046,7 @@ export default function App() {
           }
         } catch(e) {}
       }
-    }, 5000);
+    }, 25000);
 
     // Cross-tab BroadcastChannel listener for immediate local synchronization
     let localBc: BroadcastChannel | null = null;

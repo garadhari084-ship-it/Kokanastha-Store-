@@ -366,11 +366,11 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
       setTick(t => t + 1);
     });
   }, [businessId]);
-  const metrics = dbStore.getDashboardMetrics(businessId, timeHorizon, customStartDate, customEndDate);
-  const products = dbStore.getProducts(businessId);
-  const customers = dbStore.getCustomers(businessId);
-  const allOrders = dbStore.getSalesOrders(businessId);
-  const currentBiz = useMemo(() => dbStore.getBusiness(businessId), [businessId]);
+  const metrics = useMemo(() => dbStore.getDashboardMetrics(businessId, timeHorizon, customStartDate, customEndDate), [businessId, timeHorizon, customStartDate, customEndDate, tick]);
+  const products = useMemo(() => dbStore.getProducts(businessId), [businessId, tick]);
+  const customers = useMemo(() => dbStore.getCustomers(businessId), [businessId, tick]);
+  const allOrders = useMemo(() => dbStore.getSalesOrders(businessId), [businessId, tick]);
+  const currentBiz = useMemo(() => dbStore.getBusiness(businessId), [businessId, tick]);
   const customerMap = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
 
   const totalPipelineValue = useMemo(() => {

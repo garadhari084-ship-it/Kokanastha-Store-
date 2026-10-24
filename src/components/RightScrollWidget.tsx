@@ -121,7 +121,7 @@ export const RightScrollWidget: React.FC<RightScrollWidgetProps> = ({
     window.addEventListener('resize', updateMetrics);
 
     updateMetrics();
-    const interval = setInterval(updateMetrics, 800);
+    const interval = setInterval(updateMetrics, 4000);
 
     return () => {
       if (container === window) {

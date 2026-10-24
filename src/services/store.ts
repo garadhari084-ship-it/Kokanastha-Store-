@@ -221,7 +221,8 @@ export function dedupeSalesOrders(orders: SalesOrder[]): SalesOrder[] {
   for (const order of orders) {
     if (!order) continue;
     const idKey = order.id ? order.id.trim() : '';
-    const numKey = order.order_number ? order.order_number.trim().toLowerCase() : '';
+    const rawNum = order.order_number ? String(order.order_number).trim() : '';
+    const numKey = rawNum ? rawNum.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
 
     if (idKey && seenIds.has(idKey)) continue;
     if (numKey && seenOrderNumbers.has(numKey)) continue;
@@ -1192,9 +1193,9 @@ class ERPStorage {
             merged.unshift(memOrder);
           }
         });
-        this.cache.sales = merged;
+        this.cache.sales = dedupeSalesOrders(merged);
       } else {
-        this.cache.sales = loadedSales;
+        this.cache.sales = dedupeSalesOrders(loadedSales);
       }
     } else if (key === 'categories') {
       const lc = this.load('categories', []);

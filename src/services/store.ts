@@ -71,10 +71,10 @@ const PRE_SEEDED_BUSINESSES: Business[] = [
     shipping_address: 'Godown 3, Industrial Estate, Dahisar East, Mumbai, MH 400068',
     email: 'ops@kokanasthafaral.com',
     phone: '+91 98200 12345',
-    invoice_prefix: 'INV-',
-    advance_invoice_prefix: 'ADV-',
-    festive_invoice_prefix: 'FEST-',
-    festive_advance_invoice_prefix: 'FEST-ADV-',
+    invoice_prefix: 'KDF-2026-',
+    advance_invoice_prefix: 'KDF-2026-',
+    festive_invoice_prefix: 'KDF-2026-',
+    festive_advance_invoice_prefix: 'KDF-2026-',
     tax_rate_default: 5.00,
     currency_symbol: '₹',
     auto_backup: true,
@@ -654,7 +654,7 @@ export function isLegacyDummySalesOrder(o: any, purgedIdSet?: Set<string>): bool
   // Strictly preserve all festive or advance booking orders
   if (o.advance_booking || o.festive_booking) return false;
   const num = String(o.order_number || '').toUpperCase();
-  if (num.includes('FEST') || num.includes('ADV')) return false;
+  if (num.includes('FEST') || num.includes('ADV') || num.includes('KDF')) return false;
 
   if (purgedIdSet && (purgedIdSet.has(o.id) || (o.order_number && purgedIdSet.has(o.order_number)))) {
     return true;
@@ -1090,6 +1090,81 @@ class ERPStorage {
     this.draftReservations = this.load('draftReservations', []);
     this.activeDeviceSessions = this.load('deviceSessions', []);
 
+    // Upgrade all business prefixes to KDF-2026-
+    if (Array.isArray(this.cache.businesses) && this.cache.businesses.length > 0) {
+      let bizChanged = false;
+      this.cache.businesses.forEach(b => {
+        if (!b.invoice_prefix || b.invoice_prefix === 'INV-') {
+          b.invoice_prefix = 'KDF-2026-';
+          bizChanged = true;
+        }
+        if (!b.advance_invoice_prefix || b.advance_invoice_prefix === 'ADV-') {
+          b.advance_invoice_prefix = 'KDF-2026-';
+          bizChanged = true;
+        }
+        if (!b.festive_invoice_prefix || b.festive_invoice_prefix === 'FEST-') {
+          b.festive_invoice_prefix = 'KDF-2026-';
+          bizChanged = true;
+        }
+        if (!b.festive_advance_invoice_prefix || b.festive_advance_invoice_prefix === 'FEST-ADV-') {
+          b.festive_advance_invoice_prefix = 'KDF-2026-';
+          bizChanged = true;
+        }
+      });
+      if (bizChanged) {
+        safeStorage.setItem('omnipack_erp_businesses', JSON.stringify(this.cache.businesses));
+      }
+    }
+
+    // Repair recently created order from FEST-ADV-0999 to KDF-2026-114
+    if (Array.isArray(this.cache.sales) && this.cache.sales.length > 0) {
+      let orderRepaired = false;
+      this.cache.sales = this.cache.sales.map(order => {
+        const isTarget = order && (
+          order.order_number === 'FEST-ADV-0999' ||
+          String(order.order_number).toUpperCase() === 'FEST-ADV-0999' ||
+          (order.order_number?.includes('0999') && (order.customer_name?.includes('Ajinkya') || order.total_amount === 120))
+        );
+        if (isTarget) {
+          orderRepaired = true;
+          const newNum = 'KDF-2026-114';
+          const updatedPayments = Array.isArray(order.payment_history)
+            ? order.payment_history.map(p => ({
+                ...p,
+                order_number: newNum,
+                receipt_number: `RCT-${newNum}`
+              }))
+            : order.payment_history;
+
+          return {
+            ...order,
+            order_number: newNum,
+            qr_code_data: `${newNum}|${order.customer_id}|${order.customer_name}|${(order.items || []).length} items`,
+            payment_history: updatedPayments,
+            is_live_order: true
+          };
+        }
+        return order;
+      });
+
+      if (orderRepaired) {
+        safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
+        purgedDummyIdSet.delete('KDF-2026-114');
+        purgedDummyIdSet.delete('FEST-ADV-0999');
+        safeStorage.setItem('omnipack_erp_purged_dummy_sales_ids', JSON.stringify(Array.from(purgedDummyIdSet)));
+        if (isSupabaseConfigured && supabase) {
+          Promise.resolve(supabase.from('sales_orders').update({ order_number: 'KDF-2026-114' }).eq('order_number', 'FEST-ADV-0999')).catch(() => {});
+        }
+      }
+      this.syncOrderToPublicServer(this.cache.sales);
+    }
+
+    // Clean any draft reservations holding 0999 or FEST-ADV-0999
+    if (Array.isArray(this.draftReservations) && this.draftReservations.length > 0) {
+      this.draftReservations = this.draftReservations.filter(d => !d.invoiceNumber?.includes('0999'));
+      safeStorage.setItem('omnipack_erp_draftReservations', JSON.stringify(this.draftReservations));
+    }
+
     // Load persisted stock expectations to safeguard against remote triggers on refresh
     try {
       const savedExp = safeStorage.getItem('omnipack_erp_stock_expectations');
@@ -1269,8 +1344,21 @@ class ERPStorage {
       this.cache.profiles = list;
     } else if (key === 'sales') {
       const purgedSet = this.getPurgedDummyIdSet();
+      purgedSet.delete('KDF-2026-114');
+      purgedSet.delete('FEST-ADV-0999');
       const ls = this.load('sales', []);
-      const loadedSales = Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES;
+      let loadedSales = Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES;
+      loadedSales = loadedSales.map((order: any) => {
+        if (order && (order.order_number === 'FEST-ADV-0999' || String(order.order_number).toUpperCase() === 'FEST-ADV-0999' || (order.order_number?.includes('0999') && (order.customer_name?.includes('Ajinkya') || order.total_amount === 120)))) {
+          return {
+            ...order,
+            order_number: 'KDF-2026-114',
+            qr_code_data: `KDF-2026-114|${order.customer_id}|${order.customer_name}|${(order.items || []).length} items`,
+            is_live_order: true
+          };
+        }
+        return order;
+      });
       const cleanLoaded = (loadedSales || []).filter((o: any) => !isLegacyDummySalesOrder(o, purgedSet));
       if (this.cache && Array.isArray(this.cache.sales) && this.cache.sales.length > 0) {
         const merged = [...cleanLoaded];
@@ -1338,8 +1426,21 @@ class ERPStorage {
       suppliers: (() => { const ls = this.load('suppliers', []); return Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SUPPLIERS; })(),
       purchases: (() => { const lp = this.load('purchases', []); return Array.isArray(lp) && lp.length > 0 ? lp : PRE_SEEDED_PURCHASES; })(),
       sales: (() => { 
+        purgedSet.delete('KDF-2026-114');
+        purgedSet.delete('FEST-ADV-0999');
         const ls = this.load('sales', []); 
-        const loadedSales = Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES;
+        let loadedSales = Array.isArray(ls) && ls.length > 0 ? ls : PRE_SEEDED_SALES;
+        loadedSales = loadedSales.map((order: any) => {
+          if (order && (order.order_number === 'FEST-ADV-0999' || String(order.order_number).toUpperCase() === 'FEST-ADV-0999' || (order.order_number?.includes('0999') && (order.customer_name?.includes('Ajinkya') || order.total_amount === 120)))) {
+            return {
+              ...order,
+              order_number: 'KDF-2026-114',
+              qr_code_data: `KDF-2026-114|${order.customer_id}|${order.customer_name}|${(order.items || []).length} items`,
+              is_live_order: true
+            };
+          }
+          return order;
+        });
         const cleanLoaded = (loadedSales || []).filter((o: any) => !isLegacyDummySalesOrder(o, purgedSet));
         if (this.cache && Array.isArray(this.cache.sales) && this.cache.sales.length > 0) {
           const merged = [...cleanLoaded];
@@ -4808,10 +4909,19 @@ class ERPStorage {
   ): string {
     const normBiz = normalizeBusinessId(businessId);
     const biz = this.getBusiness(normBiz);
-    const standardPrefix = typeof biz?.invoice_prefix === 'string' && biz.invoice_prefix.trim() ? biz.invoice_prefix.trim() : 'INV-';
-    const advancePrefix = typeof biz?.advance_invoice_prefix === 'string' && biz.advance_invoice_prefix.trim() ? biz.advance_invoice_prefix.trim() : (biz?.invoice_prefix ? `${biz.invoice_prefix.trim()}AB-` : 'ADV-');
-    const festivePrefix = typeof biz?.festive_invoice_prefix === 'string' && biz.festive_invoice_prefix.trim() ? biz.festive_invoice_prefix.trim() : 'FEST-';
-    const festiveAdvancePrefix = typeof biz?.festive_advance_invoice_prefix === 'string' && biz.festive_advance_invoice_prefix.trim() ? biz.festive_advance_invoice_prefix.trim() : (biz?.festive_invoice_prefix ? `${biz.festive_invoice_prefix.trim()}AB-` : 'FEST-ADV-');
+
+    // Resolve unified business prefix (defaults to KDF-2026-)
+    let standardPrefix = typeof biz?.invoice_prefix === 'string' && biz.invoice_prefix.trim() ? biz.invoice_prefix.trim() : 'KDF-2026-';
+    if (standardPrefix === 'INV-') standardPrefix = 'KDF-2026-';
+
+    let advancePrefix = typeof biz?.advance_invoice_prefix === 'string' && biz.advance_invoice_prefix.trim() ? biz.advance_invoice_prefix.trim() : standardPrefix;
+    if (advancePrefix === 'ADV-') advancePrefix = standardPrefix;
+
+    let festivePrefix = typeof biz?.festive_invoice_prefix === 'string' && biz.festive_invoice_prefix.trim() ? biz.festive_invoice_prefix.trim() : standardPrefix;
+    if (festivePrefix === 'FEST-') festivePrefix = standardPrefix;
+
+    let festiveAdvancePrefix = typeof biz?.festive_advance_invoice_prefix === 'string' && biz.festive_advance_invoice_prefix.trim() ? biz.festive_advance_invoice_prefix.trim() : standardPrefix;
+    if (festiveAdvancePrefix === 'FEST-ADV-') festiveAdvancePrefix = standardPrefix;
 
     let targetPrefix = standardPrefix;
     if (isFestive && isAdvance) {
@@ -4825,118 +4935,69 @@ class ERPStorage {
     const allOrders = this.getSalesOrders(normBiz);
     const activeDrafts = this.getActiveDraftReservations(normBiz).filter(d => d.id !== excludeDraftId);
 
-    // Sort orders by creation date (newest first) to accurately locate the last created order
-    const sortedOrders = [...allOrders].sort((a, b) => {
-      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return tB - tA;
+    // Track all exact taken order numbers
+    const usedOrderNumbers = new Set<string>();
+    allOrders.forEach(o => {
+      if (o.order_number) usedOrderNumbers.add(o.order_number.trim());
+    });
+    activeDrafts.forEach(d => {
+      if (d.invoiceNumber) usedOrderNumbers.add(d.invoiceNumber.trim());
     });
 
-    const usedSequences = new Set<number>();
-    const orderSequences: number[] = [];
-    let detectedDigitPadding = 0;
-    let detectedPrefix = targetPrefix;
+    // Collect numeric sequences from genuine live orders
+    const liveSequences: number[] = [];
 
-    // Helper to safely extract integer sequence and pattern from an invoice number
-    const extractSeq = (invNum: string | undefined | null, isFromOrder = false) => {
-      if (!invNum) return;
-      const clean = invNum.trim();
-      
-      // Match exact prefix for this series
+    const processOrderNum = (raw?: string | null) => {
+      if (!raw) return;
+      const clean = raw.trim();
+      // Ignore dummy legacy artifacts like 0999 or 999
+      if (clean.includes('0999') || clean.includes('999')) return;
+
+      // Check if it matches targetPrefix (e.g. KDF-2026-114)
       if (clean.startsWith(targetPrefix)) {
         const numPart = clean.slice(targetPrefix.length);
         const match = numPart.match(/^(\d+)$/);
         if (match) {
-          const parsed = parseInt(match[1], 10);
-          if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
-            usedSequences.add(parsed);
-            if (isFromOrder) {
-              orderSequences.push(parsed);
-              if (match[1].length > 1 && match[1].startsWith('0')) {
-                detectedDigitPadding = Math.max(detectedDigitPadding, match[1].length);
-              }
-            }
+          const val = parseInt(match[1], 10);
+          if (!isNaN(val) && val > 0 && val < 900) {
+            liveSequences.push(val);
             return;
           }
         }
       }
 
-      // Check if matches series prefix with AB / FEST variants
-      const fallbackPrefixes = [standardPrefix, advancePrefix, festivePrefix, festiveAdvancePrefix];
-      for (const p of fallbackPrefixes) {
-        if (clean.startsWith(p)) {
-          const remaining = clean.slice(p.length);
-          const match = remaining.match(/^(\d+)$/);
-          if (match) {
-            const parsed = parseInt(match[1], 10);
-            if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
-              usedSequences.add(parsed);
-              if (isFromOrder) {
-                orderSequences.push(parsed);
-                if (match[1].length > 1 && match[1].startsWith('0')) {
-                  detectedDigitPadding = Math.max(detectedDigitPadding, match[1].length);
-                }
-              }
-              return;
-            }
-          }
-        }
-      }
-
-      // Fallback: extract trailing digits and prefix from invoice number
-      const trailingMatch = clean.match(/^(.*?)(\d+)$/);
-      if (trailingMatch) {
-        const parsed = parseInt(trailingMatch[2], 10);
-        if (!isNaN(parsed) && parsed > 0 && parsed < 10000000) {
-          usedSequences.add(parsed);
-          if (isFromOrder) {
-            orderSequences.push(parsed);
-            if (trailingMatch[2].length > 1 && trailingMatch[2].startsWith('0')) {
-              detectedDigitPadding = Math.max(detectedDigitPadding, trailingMatch[2].length);
-            }
-            // If the latest order used a custom prefix like INV-2026-, adopt it if default prefix was unused
-            if (!isFestive && !isAdvance && trailingMatch[1] && orderSequences.length === 1 && !clean.startsWith(targetPrefix)) {
-              detectedPrefix = trailingMatch[1];
-            }
-          }
+      // Check known live prefixes like KDF-2026-, KDF-, FEST-ADV-, ADV-, FEST-
+      const match = clean.match(/^(?:KDF-2026-|KDF-|FEST-ADV-|ADV-|FEST-)?(\d+)$/i);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        if (!isNaN(val) && val > 0 && val < 900) {
+          liveSequences.push(val);
         }
       }
     };
 
-    // Extract sequences from all orders (most recent first) and active drafts
-    sortedOrders.forEach(o => extractSeq(o.order_number, true));
-    activeDrafts.forEach(d => extractSeq(d.invoiceNumber, false));
+    allOrders.forEach(o => processOrderNum(o.order_number));
+    activeDrafts.forEach(d => processOrderNum(d.invoiceNumber));
 
-    const finalPrefix = detectedPrefix || targetPrefix;
+    // Next candidate sequence starts right after the highest existing sequence (or 114)
+    let candidateSeq = liveSequences.length > 0 
+      ? Math.max(...liveSequences) + 1 
+      : 114;
 
-    // Determine the base starting sequence:
-    // If existing orders exist, start from the minimum sequence of the series or 1 if min <= 1
-    let startSeq = 1;
-    if (orderSequences.length > 0) {
-      const minOrderSeq = Math.min(...orderSequences);
-      const maxOrderSeq = Math.max(...orderSequences);
-      // If minOrderSeq is higher than 1 (e.g. business started sequence at 90 or 1001), start from minOrderSeq
-      if (minOrderSeq > 1 && maxOrderSeq >= minOrderSeq) {
-        startSeq = minOrderSeq;
-      }
+    // In case candidateSeq is less than 114, start at least at 114
+    if (candidateSeq < 114) {
+      candidateSeq = 114;
     }
 
-    // Find the next available unused sequence (filling any gaps or incrementing past max)
-    let nextSeq = startSeq;
-    const formatNumber = (num: number) => {
-      const numStr = detectedDigitPadding > 1 ? String(num).padStart(detectedDigitPadding, '0') : String(num);
-      return `${finalPrefix}${numStr}`;
-    };
-
+    // Advance until we find a guaranteed unused number
     while (
-      usedSequences.has(nextSeq) ||
-      allOrders.some(o => o.order_number === formatNumber(nextSeq)) ||
-      activeDrafts.some(d => d.invoiceNumber === formatNumber(nextSeq))
+      usedOrderNumbers.has(`${targetPrefix}${candidateSeq}`) ||
+      liveSequences.includes(candidateSeq)
     ) {
-      nextSeq++;
+      candidateSeq++;
     }
 
-    return formatNumber(nextSeq);
+    return `${targetPrefix}${candidateSeq}`;
   }
 
   private saveDraftReservations() {
@@ -5052,6 +5113,33 @@ class ERPStorage {
     const customerMap = new Map(customers.map(c => [c.id, c]));
 
     const purgedSet = this.getPurgedDummyIdSet();
+    purgedSet.delete('KDF-2026-114');
+    purgedSet.delete('FEST-ADV-0999');
+
+    // Instant repair of FEST-ADV-0999 -> KDF-2026-114
+    let orderChanged = false;
+    this.cache.sales = (this.cache.sales || []).map(s => {
+      if (s && (s.order_number === 'FEST-ADV-0999' || String(s.order_number).toUpperCase() === 'FEST-ADV-0999' || (s.order_number?.includes('0999') && (s.customer_name?.includes('Ajinkya') || s.total_amount === 120)))) {
+        orderChanged = true;
+        const newNum = 'KDF-2026-114';
+        const updatedPaymentHistory = Array.isArray(s.payment_history)
+          ? s.payment_history.map(p => ({
+              ...p,
+              order_number: newNum,
+              receipt_number: `RCT-${newNum}`
+            }))
+          : s.payment_history;
+        return {
+          ...s,
+          order_number: newNum,
+          qr_code_data: `${newNum}|${s.customer_id}|${s.customer_name}|${(s.items || []).length} items`,
+          payment_history: updatedPaymentHistory,
+          is_live_order: true
+        };
+      }
+      return s;
+    });
+
     // Clean up duplicate and dummy order records in memory and local storage
     this.cache.sales = dedupeSalesOrders(
       (this.cache.sales || []).filter(s => !isLegacyDummySalesOrder(s, purgedSet))
@@ -5145,24 +5233,59 @@ class ERPStorage {
     return res;
   }
 
+  public syncOrderToPublicServer(order: SalesOrder | SalesOrder[]): void {
+    if (typeof window === 'undefined') return;
+    try {
+      fetch('/api/public/invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order)
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
   public async findSalesOrderByNumber(orderNumber: string): Promise<SalesOrder | null> {
-    const rawClean = orderNumber.trim();
+    const rawClean = (orderNumber || '').trim().replace(/^#+/, '');
     const clean = rawClean.toLowerCase();
     if (!clean) return null;
 
     const salesList = this.cache.sales || [];
 
-    // 1. Exact match
+    // 1. Exact match by order_number
     let foundLocal = salesList.find(s => (s.order_number || '').trim().toLowerCase() === clean);
 
-    // 2. Normalized prefix-stripped match (e.g. INV-2026-67 vs SO-2026-67 vs 2026-67)
+    // 1b. Exact match by ID
     if (!foundLocal) {
-      const numOnly = clean.replace(/^(inv|so)-?/i, '');
-      foundLocal = salesList.find(s => {
-        const sNum = (s.order_number || '').trim().toLowerCase();
-        const sNumOnly = sNum.replace(/^(inv|so)-?/i, '');
-        return sNumOnly === numOnly || sNum === clean;
-      });
+      foundLocal = salesList.find(s => (s.id || '').trim().toLowerCase() === clean);
+    }
+
+    // 1c. Legacy alias match (FEST-ADV-0999 <-> KDF-2026-114)
+    if (!foundLocal) {
+      if (clean === 'fest-adv-0999' || clean.includes('0999')) {
+        foundLocal = salesList.find(s => 
+          (s.order_number || '').trim().toUpperCase() === 'KDF-2026-114' ||
+          (s.order_number || '').includes('114') ||
+          (s as any).legacy_order_number === 'FEST-ADV-0999'
+        );
+      } else if (clean === 'kdf-2026-114' || clean.includes('114')) {
+        foundLocal = salesList.find(s => 
+          (s.order_number || '').trim().toUpperCase() === 'FEST-ADV-0999' ||
+          (s.order_number || '').includes('0999') ||
+          (s as any).legacy_order_number === 'FEST-ADV-0999'
+        );
+      }
+    }
+
+    // 2. Normalized prefix-stripped match (e.g. KDF-2026-114 vs 114 vs FEST-ADV-0999 vs 0999)
+    if (!foundLocal) {
+      const numOnly = clean.replace(/^(inv|so|kdf-2026|kdf|fest-adv|adv|fest)-?/i, '');
+      if (numOnly) {
+        foundLocal = salesList.find(s => {
+          const sNum = (s.order_number || '').trim().toLowerCase();
+          const sNumOnly = sNum.replace(/^(inv|so|kdf-2026|kdf|fest-adv|adv|fest)-?/i, '');
+          return sNumOnly === numOnly || sNum === clean;
+        });
+      }
     }
 
     // 3. Substring match fallback
@@ -5182,12 +5305,23 @@ class ERPStorage {
       };
     }
 
+    // 4. Try fetching from server-side public order registry
+    try {
+      const res = await fetch(`/api/public/invoice/${encodeURIComponent(rawClean)}`);
+      if (res.ok) {
+        const remoteOrder = await res.json();
+        if (remoteOrder && remoteOrder.order_number) {
+          return remoteOrder as SalesOrder;
+        }
+      }
+    } catch (_) {}
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data } = await supabase
           .from('sales_orders')
           .select('*')
-          .or(`order_number.ilike.%${clean}%,order_number.ilike.%${clean.replace(/^(inv|so)-?/i, '')}%`)
+          .or(`order_number.ilike.%${clean}%,order_number.ilike.%${clean.replace(/^(inv|so|kdf|fest-adv)-?/i, '')}%`)
           .limit(1);
 
         if (data && data.length > 0) {
@@ -5283,6 +5417,7 @@ class ERPStorage {
 
     // Ensure stock is reduced if order is created in a dispatched/delivered state
     this.syncOrderStock(newSO);
+    this.syncOrderToPublicServer(newSO);
     this.notify();
 
     return newSO;
@@ -5482,6 +5617,7 @@ class ERPStorage {
       this.save('sales', newSO);
       // Handle stock synchronization
       this.syncOrderStock(newSO, oldSO.status, oldSO.items);
+      this.syncOrderToPublicServer(newSO);
       this.notify();
       return newSO;
     }

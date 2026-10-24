@@ -7,6 +7,7 @@ import {
 import { SalesOrder, PurchaseOrder, PaymentRecord, UserProfile } from '../types/erp';
 import { generateWhatsAppInvoiceMessage } from './WhatsAppNotifyModal';
 import { formatWhatsAppPhone } from '../utils/formatters';
+import { getPublicInvoiceUrl } from '../utils/qrCode';
 import { dbStore } from '../services/store';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -443,6 +444,7 @@ export const PaymentCollectionModal: React.FC<PaymentCollectionModalProps> = ({
         (createdReceipt.reference_no ? `Ref / UTR #: ${createdReceipt.reference_no}\n` : '') +
         `*Remaining Outstanding Balance: ${currencySymbol}${calculatedRemaining.toLocaleString()}*\n` +
         `-----------------------------\n` +
+        (order?.order_number ? `📄 View Invoice / Bill:\n${getPublicInvoiceUrl(order.order_number, order)}\n\n` : '') +
         `Thank you for your business!`;
     }
 

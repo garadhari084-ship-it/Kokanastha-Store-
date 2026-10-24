@@ -33,7 +33,7 @@ export function generateWhatsAppInvoiceMessage(
   const formattedPaid = formatAmount(paidAmount);
   const formattedBalance = formatAmount(balance);
   
-  const invoiceLink = getPublicInvoiceUrl(order.order_number);
+  const invoiceLink = getPublicInvoiceUrl(order.order_number, order);
   const googleReviewLink = customGoogleReviewUrl || 'https://share.google/92HZuDJaVzQA5Sd5x';
 
   if (balance <= 0) {
@@ -85,6 +85,13 @@ export const WhatsAppNotifyModal: React.FC<WhatsAppNotifyModalProps> = ({
   useEffect(() => {
     if (order) {
       setMessage(generateWhatsAppInvoiceMessage(order, customerName, businessName, googleReviewUrl));
+      try {
+        fetch('/api/public/invoice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(order)
+        }).catch(() => {});
+      } catch (_) {}
     }
   }, [order, customerName, businessName, googleReviewUrl]);
 
@@ -95,7 +102,7 @@ export const WhatsAppNotifyModal: React.FC<WhatsAppNotifyModalProps> = ({
   const balanceAmount = Math.max(0, billAmount - paidAmount);
   const isPaidInFull = balanceAmount <= 0;
 
-  const invoiceLink = getPublicInvoiceUrl(order.order_number);
+  const invoiceLink = getPublicInvoiceUrl(order.order_number, order);
 
   const handleSendWhatsApp = () => {
     const cleanPhone = formatWhatsAppPhone(customerPhone);

@@ -66,10 +66,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [pan, setPan] = useState(business?.pan || 'AAAAA0000A');
   const [fssaiNumber, setFssaiNumber] = useState(business?.fssai_number || '');
   const [mobileNumber, setMobileNumber] = useState(business?.mobile_number || '');
-  const [invoicePrefix, setInvoicePrefix] = useState(business?.invoice_prefix || 'INV-');
-  const [advanceInvoicePrefix, setAdvanceInvoicePrefix] = useState(business?.advance_invoice_prefix || 'ADV-');
-  const [festiveInvoicePrefix, setFestiveInvoicePrefix] = useState(business?.festive_invoice_prefix || 'FEST-');
-  const [festiveAdvanceInvoicePrefix, setFestiveAdvanceInvoicePrefix] = useState(business?.festive_advance_invoice_prefix || 'FEST-ADV-');
+  const [invoicePrefix, setInvoicePrefix] = useState(business?.invoice_prefix || 'KDF-2026-');
+  const [advanceInvoicePrefix, setAdvanceInvoicePrefix] = useState(business?.advance_invoice_prefix || 'KDF-2026-');
+  const [festiveInvoicePrefix, setFestiveInvoicePrefix] = useState(business?.festive_invoice_prefix || 'KDF-2026-');
+  const [festiveAdvanceInvoicePrefix, setFestiveAdvanceInvoicePrefix] = useState(business?.festive_advance_invoice_prefix || 'KDF-2026-');
   const [taxRateDefault, setTaxRateDefault] = useState<number>(business?.tax_rate_default ?? 18);
   const [billingAddress, setBillingAddress] = useState(business?.billing_address || 'Warehouse 4B, Apex Industrial Estate, Dahisar East, Mumbai 400068');
   const [mfgAddress, setMfgAddress] = useState(business?.mfg_address || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092');
@@ -123,10 +123,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       setPan(updated.pan || '');
       setFssaiNumber(updated.fssai_number || '');
       setMobileNumber(updated.mobile_number || '');
-      setInvoicePrefix(updated.invoice_prefix || 'INV-');
-      setAdvanceInvoicePrefix(updated.advance_invoice_prefix || 'ADV-');
-      setFestiveInvoicePrefix(updated.festive_invoice_prefix || 'FEST-');
-      setFestiveAdvanceInvoicePrefix(updated.festive_advance_invoice_prefix || 'FEST-ADV-');
+      setInvoicePrefix(updated.invoice_prefix || 'KDF-2026-');
+      setAdvanceInvoicePrefix(updated.advance_invoice_prefix || 'KDF-2026-');
+      setFestiveInvoicePrefix(updated.festive_invoice_prefix || 'KDF-2026-');
+      setFestiveAdvanceInvoicePrefix(updated.festive_advance_invoice_prefix || 'KDF-2026-');
       setTaxRateDefault(updated.tax_rate_default ?? 5);
       setBillingAddress(updated.billing_address || '');
       setMfgAddress(updated.mfg_address || 'Shop 14, Station Road, Borivali West, Mumbai, MH 400092');
@@ -677,7 +677,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                       Regular / Standard Prefix
                     </label>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold">
-                      e.g. {(invoicePrefix || 'INV-').trim()}101
+                      e.g. {(invoicePrefix || 'KDF-2026-').trim()}114
                     </span>
                   </div>
                   <input 
@@ -685,7 +685,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                     required
                     value={invoicePrefix}
                     onChange={(e) => setInvoicePrefix(e.target.value)}
-                    placeholder="INV-"
+                    placeholder="KDF-2026-"
                     className="w-full px-3 py-2 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-slate-800 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 uppercase"
                   />
                   <p className="text-[10px] text-slate-500">Used for regular walk-in and standard sales orders.</p>
@@ -698,14 +698,14 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                       Advance Booking Prefix
                     </label>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-sky-100 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 font-bold">
-                      e.g. {(advanceInvoicePrefix || 'ADV-').trim()}101
+                      e.g. {(advanceInvoicePrefix || 'KDF-2026-').trim()}114
                     </span>
                   </div>
                   <input 
                     type="text" 
                     value={advanceInvoicePrefix}
                     onChange={(e) => setAdvanceInvoicePrefix(e.target.value)}
-                    placeholder="ADV-"
+                    placeholder="KDF-2026-"
                     className="w-full px-3 py-2 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-sky-800 dark:text-sky-200 rounded-xl border border-sky-300 dark:border-sky-700 focus:ring-2 focus:ring-sky-500 uppercase"
                   />
                   <p className="text-[10px] text-sky-600/80 dark:text-sky-400/80">Used when Advance Booking is toggled on.</p>
@@ -718,14 +718,14 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                       Festive Booking Prefix
                     </label>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 font-bold">
-                      e.g. {(festiveInvoicePrefix || 'FEST-').trim()}101
+                      e.g. {(festiveInvoicePrefix || 'KDF-2026-').trim()}114
                     </span>
                   </div>
                   <input 
                     type="text" 
                     value={festiveInvoicePrefix}
                     onChange={(e) => setFestiveInvoicePrefix(e.target.value)}
-                    placeholder="FEST-"
+                    placeholder="KDF-2026-"
                     className="w-full px-3 py-2 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-amber-800 dark:text-amber-200 rounded-xl border border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500 uppercase"
                   />
                   <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80">Used for seasonal festival orders.</p>
@@ -738,14 +738,14 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                       Festive Advance Prefix
                     </label>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 font-bold">
-                      e.g. {(festiveAdvanceInvoicePrefix || 'FEST-ADV-').trim()}101
+                      e.g. {(festiveAdvanceInvoicePrefix || 'KDF-2026-').trim()}114
                     </span>
                   </div>
                   <input 
                     type="text" 
                     value={festiveAdvanceInvoicePrefix}
                     onChange={(e) => setFestiveAdvanceInvoicePrefix(e.target.value)}
-                    placeholder="FEST-ADV-"
+                    placeholder="KDF-2026-"
                     className="w-full px-3 py-2 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-purple-800 dark:text-purple-200 rounded-xl border border-purple-300 dark:border-purple-700 focus:ring-2 focus:ring-purple-500 uppercase"
                   />
                   <p className="text-[10px] text-purple-600/80 dark:text-purple-400/80">Used for advance pre-orders during festive seasons.</p>

@@ -528,15 +528,46 @@ export default function App() {
     try {
       const queryString = window.location.search || (window.location.hash.includes('?') ? window.location.hash.substring(window.location.hash.indexOf('?')) : '');
       const searchParams = new URLSearchParams(queryString);
-      const rawInv = searchParams.get('inv') || searchParams.get('invoice');
-      if (rawInv) {
-        const match = rawInv.trim().match(/(SO-?\d+|INV-?\d+|[A-Za-z0-9_-]{3,})/i);
-        return match ? match[0] : rawInv.trim();
+      const rawInv = 
+        searchParams.get('inv') || 
+        searchParams.get('invoice') || 
+        searchParams.get('bill') || 
+        searchParams.get('order') || 
+        searchParams.get('order_no') || 
+        searchParams.get('order_number') || 
+        searchParams.get('orderNumber') || 
+        searchParams.get('bill_no') || 
+        searchParams.get('so') || 
+        searchParams.get('id');
+
+      if (rawInv && rawInv.trim()) {
+        const cleaned = rawInv.trim().replace(/^#+/, '');
+        return cleaned;
       }
 
-      const pathMatches = window.location.pathname.match(/\/inv\/(.+)/);
+      // If 'd' payload is present, extract invoice number from payload if available
+      const dParam = searchParams.get('d');
+      if (dParam) {
+        try {
+          const decodedBase64 = decodeURIComponent(dParam);
+          const jsonStr = decodeURIComponent(Array.prototype.map.call(atob(decodedBase64), (c: string) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+          const payload = JSON.parse(jsonStr);
+          if (payload && payload.no) {
+            return String(payload.no).trim().replace(/^#+/, '');
+          }
+        } catch (_) {}
+      }
+
+      // Path match: /inv/..., /invoice/..., /bill/..., /view-invoice/...
+      const pathMatches = window.location.pathname.match(/\/(?:inv|invoice|bill|view-invoice|public\/invoice|p)\/([^/?#]+)/i);
       if (pathMatches && pathMatches[1]) {
-        return decodeURIComponent(pathMatches[1]).trim();
+        return decodeURIComponent(pathMatches[1]).trim().replace(/^#+/, '');
+      }
+
+      // Hash route match
+      const hashMatches = window.location.hash.match(/(?:inv|invoice|bill|view-invoice)\/([^/?#]+)/i);
+      if (hashMatches && hashMatches[1]) {
+        return decodeURIComponent(hashMatches[1]).trim().replace(/^#+/, '');
       }
     } catch (e) {
       console.error('Error parsing URL for invoice:', e);

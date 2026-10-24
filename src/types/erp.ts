@@ -299,6 +299,7 @@ export interface SalesItem {
 export interface SalesOrder {
   id: string;
   order_number: string;
+  legacy_order_number?: string;
   customer_id: string;
   customer_name: string;
   customer_phone?: string;

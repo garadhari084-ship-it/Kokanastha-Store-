@@ -91,26 +91,65 @@ export function buildUpiPayString(params: {
 }
 
 /**
- * Returns a publicly accessible URL for a given invoice/order number.
- * Automatically maps AI Studio development origins (ais-dev-) to public share origin (ais-pre-)
- * so external mobile scanners open the digital invoice directly in the browser without 403 Google login errors.
+ * Encodes an order into a compact, URL-safe base64 string so customers can open
+ * and view complete invoice details immediately without needing access to staff local storage.
  */
-export function getPublicInvoiceUrl(orderNumber: string, extraPayload?: string): string {
-  const cleanOrder = (orderNumber || '').trim();
+export function encodeOrderToPayload(order: any, businessName?: string): string {
+  if (!order) return '';
+  try {
+    const compactPayload: Record<string, any> = {
+      no: order.order_number,
+      id: order.id,
+      dt: order.order_date || new Date().toISOString().split('T')[0],
+      tot: Number(order.total_amount || 0),
+      paid: Number(order.paid_amount || 0),
+      cust: order.customer_name || 'Customer',
+      biz: businessName || 'Kokanastha Faral & Sweets',
+      pm: order.payment_mode || 'Paid',
+      ps: order.payment_status || (Number(order.paid_amount || order.total_amount || 0) >= Number(order.total_amount || 0) ? 'Paid' : 'Pending'),
+      st: order.status || 'Pending'
+    };
+
+    if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+      compactPayload.its = order.items.slice(0, 25).map((it: any) => ({
+        n: it.product_name || it.name || 'Item',
+        q: Number(it.qty) || 1,
+        p: Number(it.total_price || (it.qty * (it.unit_price || it.selling_price || 0))) || 0,
+        u: Number(it.unit_price || it.selling_price || 0) || 0
+      }));
+    }
+
+    const jsonStr = JSON.stringify(compactPayload);
+    return btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16))));
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
+ * Returns a publicly accessible URL for a given invoice/order number.
+ * Embeds self-contained order payload when available so customers opening via WhatsApp
+ * or mobile phone can view their complete bill directly on screen without login or invalid link errors.
+ */
+export function getPublicInvoiceUrl(orderNumber: string, extraPayloadOrOrder?: string | any): string {
+  const cleanOrder = (orderNumber || '').trim().replace(/^#+/, '');
   if (!cleanOrder) return '';
 
   let origin = '';
   if (typeof window !== 'undefined' && window.location?.origin) {
     origin = window.location.origin;
-    // Replace private dev URL (ais-dev-) with public share URL (ais-pre-) so external phone cameras can open the invoice link directly
-    if (origin.includes('ais-dev-')) {
-      origin = origin.replace('ais-dev-', 'ais-pre-');
-    }
+  }
+
+  let dParam = '';
+  if (typeof extraPayloadOrOrder === 'string') {
+    dParam = extraPayloadOrOrder;
+  } else if (extraPayloadOrOrder && typeof extraPayloadOrOrder === 'object') {
+    dParam = encodeOrderToPayload(extraPayloadOrOrder);
   }
 
   let url = `${origin}/?inv=${encodeURIComponent(cleanOrder)}`;
-  if (extraPayload) {
-    url += `&d=${encodeURIComponent(extraPayload)}`;
+  if (dParam) {
+    url += `&d=${encodeURIComponent(dParam)}`;
   }
   return url;
 }

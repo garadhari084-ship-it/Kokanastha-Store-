@@ -1148,12 +1148,9 @@ class ERPStorage {
           };
         }
 
-        // 2. Strict Walk-in Repair (e.g. FEST-ADV-111 created for Walk-in Customer)
+        // 2. Strict Walk-in Repair (only repair missing/corrupted customer IDs for explicit Walk-in Customer entries)
         const isWalkInCorrupted = order && (
-          order.order_number === 'FEST-ADV-111' ||
-          (order.qr_code_data && (order.qr_code_data.includes('|WALK_IN|') || order.qr_code_data.includes('|Walk-in Customer|'))) ||
-          (order.customer_name === 'Walk-in Customer' && order.customer_id !== 'WALK_IN') ||
-          (order.channel === 'Walk-in' && order.customer_name !== 'Walk-in Customer')
+          (order.customer_name === 'Walk-in Customer' && order.customer_id !== 'WALK_IN')
         );
 
         if (isWalkInCorrupted) {
@@ -1986,15 +1983,18 @@ class ERPStorage {
 
                // Strictly Identify Walk-in Customer orders:
                // Walk-in orders MUST NEVER be overwritten with registered customer names!
-               const isExplicitWalkIn = so.customer_id === 'WALK_IN' ||
-                                        so.customer_name === 'Walk-in Customer' ||
-                                        so.channel === 'Walk-in' ||
-                                        so.order_number === 'FEST-ADV-111' ||
-                                        (so.qr_code_data && (so.qr_code_data.includes('|WALK_IN|') || so.qr_code_data.includes('|Walk-in Customer|'))) ||
-                                        existingSO?.customer_id === 'WALK_IN' ||
-                                        existingSO?.customer_name === 'Walk-in Customer' ||
-                                        existingSO?.channel === 'Walk-in' ||
-                                        (existingSO?.qr_code_data && (existingSO.qr_code_data.includes('|WALK_IN|') || existingSO.qr_code_data.includes('|Walk-in Customer|')));
+               const explicitCustName = (so.customer_name && !['Walk-in Customer', 'Walk-in', 'Customer', ''].includes(so.customer_name.trim()) ? so.customer_name.trim() : null) ||
+                          (existingSO?.customer_name && !['Walk-in Customer', 'Walk-in', 'Customer', ''].includes(existingSO.customer_name.trim()) ? existingSO.customer_name.trim() : null);
+
+   const isExplicitWalkIn = !explicitCustName && (
+     so.customer_id === 'WALK_IN' ||
+     so.customer_name === 'Walk-in Customer' ||
+     so.order_number === 'FEST-ADV-111' ||
+     (so.qr_code_data && (so.qr_code_data.includes('|WALK_IN|') || so.qr_code_data.includes('|Walk-in Customer|'))) ||
+     existingSO?.customer_id === 'WALK_IN' ||
+     existingSO?.customer_name === 'Walk-in Customer' ||
+     (existingSO?.qr_code_data && (existingSO.qr_code_data.includes('|WALK_IN|') || existingSO.qr_code_data.includes('|Walk-in Customer|')))
+   );
 
                let resolvedCustomerName = so.customer_name;
                let resolvedCustomerId = so.customer_id;
@@ -2579,11 +2579,8 @@ class ERPStorage {
                  clean.status = 'Cancelled';
                  clean.dispatch_notes = (clean.dispatch_notes || '') + ' [SYSTEM_RETURNED]';
                }
-               const isWalkInOrder = clean.customer_id === 'WALK_IN' ||
-                                     clean.customer_name === 'Walk-in Customer' ||
-                                     clean.channel === 'Walk-in' ||
-                                     clean.order_number === 'FEST-ADV-111' ||
-                                     (clean.qr_code_data && (clean.qr_code_data.includes('|WALK_IN|') || clean.qr_code_data.includes('|Walk-in Customer|')));
+               const isWalkInOrder = (!clean.customer_name || ['Walk-in Customer', 'Walk-in', 'Customer', ''].includes(String(clean.customer_name).trim())) &&
+                         (clean.customer_id === 'WALK_IN' || clean.customer_name === 'Walk-in Customer' || clean.order_number === 'FEST-ADV-111');
                if (isWalkInOrder) {
                  clean.customer_id = null;
                  clean.customer_name = 'Walk-in Customer';
@@ -3020,10 +3017,23 @@ class ERPStorage {
     // Generate new unique session token to enforce single active session (logs out all other devices)
     profile.session_token = 'st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
     this.updateUser(profile.id, { password_hash: cleanPassword, session_token: profile.session_token });
+    safeStorage.setItem('omnipack_erp_session_token', profile.session_token);
 
     if (deviceId) {
       this.registerDeviceSession(profile.id, deviceId, profile.session_token, profile.business_id);
     }
+
+    // Register active session with server
+    fetch('/api/sessions/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: cleanEmail,
+        userId: profile.id,
+        sessionToken: profile.session_token,
+        deviceId: deviceId || ''
+      })
+    }).catch(() => {});
 
     try {
       const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
@@ -4931,6 +4941,12 @@ class ERPStorage {
       return { active: true, conflictDetected: false, superseded: false };
     }
 
+    // Check if another device/session updated the user's active session token
+    const userProfile = this.cache.profiles.find(u => u.id === userId);
+    if (userProfile && userProfile.session_token && sessionToken && userProfile.session_token !== sessionToken) {
+      return { active: false, conflictDetected: true, superseded: true };
+    }
+
     const now = Date.now();
     const localSessions = this.load<ActiveDeviceSession[]>('deviceSessions', []);
     let currentDeviceSession = (Array.isArray(localSessions) ? localSessions : []).find(
@@ -4957,6 +4973,34 @@ class ERPStorage {
 
     this.saveDeviceSessions();
     return { active: true, conflictDetected: false, superseded: false };
+  }
+
+  public async verifySessionActive(userId: string, email: string, sessionToken: string): Promise<{ active: boolean; reason?: string }> {
+    if (!userId && !email) return { active: true };
+
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const localUser = this.cache.profiles.find(u => u.id === userId || (cleanEmail && u.email?.trim().toLowerCase() === cleanEmail));
+
+    if (localUser && localUser.session_token && sessionToken && localUser.session_token !== sessionToken) {
+      return { active: false, reason: 'NEW_LOGIN_ON_ANOTHER_DEVICE' };
+    }
+
+    try {
+      const query = new URLSearchParams({
+        email: cleanEmail,
+        userId: userId || '',
+        token: sessionToken || ''
+      });
+      const res = await fetch(`/api/sessions/check?${query.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.active === false) {
+          return { active: false, reason: data.reason || 'SUPERSEDED' };
+        }
+      }
+    } catch (_) {}
+
+    return { active: true };
   }
 
   public removeDeviceSession(userId: string, deviceId: string): void {
@@ -5397,11 +5441,12 @@ class ERPStorage {
 
           // Strict Walk-in Identification:
           // A walk-in order MUST NEVER be hijacked or overwritten by registered customer names!
-          const isExplicitWalkIn = s.customer_id === 'WALK_IN' ||
+          const hasExplicitNameInS = s.customer_name && !['Walk-in Customer', 'Walk-in', 'Customer', ''].includes(String(s.customer_name).trim());
+          const isExplicitWalkIn = !hasExplicitNameInS && (
+                                   s.customer_id === 'WALK_IN' ||
                                    s.customer_name === 'Walk-in Customer' ||
-                                   s.channel === 'Walk-in' ||
                                    s.order_number === 'FEST-ADV-111' ||
-                                   (s.qr_code_data && (s.qr_code_data.includes('|WALK_IN|') || s.qr_code_data.includes('|Walk-in Customer|')));
+                                   (s.qr_code_data && (s.qr_code_data.includes('|WALK_IN|') || s.qr_code_data.includes('|Walk-in Customer|'))));
 
           let resolvedCustomerName = s.customer_name;
           let resolvedCustomerId = s.customer_id;
@@ -5550,19 +5595,23 @@ class ERPStorage {
     }
 
     if (foundLocal) {
-      const isWalkIn = foundLocal.customer_id === 'WALK_IN' ||
+      const hasExplicitNameInFound = foundLocal.customer_name && !['Walk-in Customer', 'Walk-in', 'Customer', ''].includes(String(foundLocal.customer_name).trim());
+      const isWalkIn = !hasExplicitNameInFound && (
+                       foundLocal.customer_id === 'WALK_IN' ||
                        foundLocal.customer_name === 'Walk-in Customer' ||
-                       foundLocal.channel === 'Walk-in' ||
                        foundLocal.order_number === 'FEST-ADV-111' ||
-                       (foundLocal.qr_code_data && (foundLocal.qr_code_data.includes('|WALK_IN|') || foundLocal.qr_code_data.includes('|Walk-in Customer|')));
+                       (foundLocal.qr_code_data && (foundLocal.qr_code_data.includes('|WALK_IN|') || foundLocal.qr_code_data.includes('|Walk-in Customer|'))));
 
       const custs = isWalkIn ? [] : this.getCustomers(foundLocal.business_id);
       const cust = isWalkIn ? undefined : custs.find(c => c.id === foundLocal.customer_id);
+      const resolvedName = hasExplicitNameInFound
+        ? foundLocal.customer_name
+        : (isWalkIn ? 'Walk-in Customer' : (foundLocal.customer_name || cust?.name || 'Walk-in Customer'));
       return {
         ...foundLocal,
-        customer_id: isWalkIn ? 'WALK_IN' : (foundLocal.customer_id || 'WALK_IN'),
-        customer_name: isWalkIn ? 'Walk-in Customer' : (foundLocal.customer_name || cust?.name || 'Customer'),
-        channel: isWalkIn ? 'Walk-in' : (foundLocal.channel || 'Direct Order')
+        customer_id: foundLocal.customer_id || 'WALK_IN',
+        customer_name: resolvedName,
+        channel: foundLocal.channel || 'Walk-in'
       };
     }
 
@@ -5637,13 +5686,11 @@ class ERPStorage {
     if (!normBusinessId || !normBusinessId.trim()) {
       normBusinessId = BIZ_ID;
     }
-    const isWalkInOrder = so.customer_id === 'WALK_IN' ||
-                          so.customer_name === 'Walk-in Customer' ||
-                          so.channel === 'Walk-in' ||
-                          (so.qr_code_data && (so.qr_code_data.includes('|WALK_IN|') || so.qr_code_data.includes('|Walk-in Customer|')));
-    const finalCustName = isWalkInOrder ? 'Walk-in Customer' : (so.customer_name || 'Walk-in Customer');
-    const finalCustId = isWalkInOrder ? 'WALK_IN' : (so.customer_id || 'WALK_IN');
-    const finalChannel = isWalkInOrder ? 'Walk-in' : (so.channel || 'Direct Order');
+    const cleanCustName = (so.customer_name || '').trim();
+    const hasExplicitCustName = cleanCustName && !['Walk-in Customer', 'Walk-in', 'Customer', ''].includes(cleanCustName);
+    const finalCustName = hasExplicitCustName ? cleanCustName : 'Walk-in Customer';
+    const finalCustId = hasExplicitCustName ? (so.customer_id || 'WALK_IN') : (so.customer_id === 'WALK_IN' || !so.customer_id ? 'WALK_IN' : so.customer_id);
+    const finalChannel = so.channel || 'Walk-in';
 
     const newSO: SalesOrder = {
       ...so,
@@ -5659,7 +5706,7 @@ class ERPStorage {
       customer_name: finalCustName,
       channel: finalChannel,
       qr_code_data: `${finalOrderNumber}|${finalCustId}|${finalCustName}|${(so.items || []).length} items`,
-      dispatch_notes: isWalkInOrder
+      dispatch_notes: !hasExplicitCustName
         ? (so.dispatch_notes || '').replace(/\[CUSTOMER:[^\]]+\]/g, '').trim()
         : `${so.dispatch_notes || ''} [CUSTOMER:${finalCustName}]`.trim()
     };
@@ -5868,18 +5915,11 @@ class ERPStorage {
 
       const updatedAddType = updates.additional_charges_type || oldSO.additional_charges_type || 'Delivery';
 
-      const isWalkInOrder = updates.customer_id === 'WALK_IN' ||
-                            updates.customer_name === 'Walk-in Customer' ||
-                            updates.channel === 'Walk-in' ||
-                            (oldSO.customer_id === 'WALK_IN' && updates.customer_id === undefined) ||
-                            (oldSO.customer_name === 'Walk-in Customer' && updates.customer_name === undefined) ||
-                            (oldSO.channel === 'Walk-in' && updates.channel === undefined) ||
-                            oldSO.order_number === 'FEST-ADV-111' ||
-                            updates.order_number === 'FEST-ADV-111';
-
-      const finalCustId = isWalkInOrder ? 'WALK_IN' : (updates.customer_id || oldSO.customer_id || 'WALK_IN');
-      const finalCustName = isWalkInOrder ? 'Walk-in Customer' : (updates.customer_name || oldSO.customer_name || 'Walk-in Customer');
-      const finalChannel = isWalkInOrder ? 'Walk-in' : (updates.channel || oldSO.channel || 'Direct Order');
+      const targetCustName = (updates.customer_name !== undefined ? updates.customer_name : oldSO.customer_name || '').trim();
+      const hasExplicitCustName = targetCustName && !['Walk-in Customer', 'Walk-in', 'Customer', ''].includes(targetCustName);
+      const finalCustName = hasExplicitCustName ? targetCustName : 'Walk-in Customer';
+      const finalCustId = updates.customer_id !== undefined ? updates.customer_id : (oldSO.customer_id || (hasExplicitCustName ? '' : 'WALK_IN'));
+      const finalChannel = updates.channel || oldSO.channel || 'Walk-in';
 
       const newSO: SalesOrder = { 
         ...oldSO, 

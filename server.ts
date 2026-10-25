@@ -383,6 +383,104 @@ Ensure that you only output valid JSON.`;
     }
   });
 
+  // Server-Side Active Session Registry for Single Session Enforcement
+  const activeSessionsMap = new Map<string, { userId: string; sessionToken: string; deviceId: string; loginAt: string }>();
+
+  // GET /api/sessions/check - Validate active session token for single device enforcement
+  app.get("/api/sessions/check", (req, res) => {
+    try {
+      const email = String(req.query.email || '').trim().toLowerCase();
+      const userId = String(req.query.userId || '').trim();
+      const token = String(req.query.token || req.query.sessionToken || '').trim();
+
+      if (!email && !userId) {
+        return res.json({ active: true });
+      }
+
+      loadPublicUsers();
+      let targetUser: any = null;
+      if (email) targetUser = publicUsersMap.get(email);
+      if (!targetUser && userId) {
+        targetUser = Array.from(publicUsersMap.values()).find((u: any) => u.id === userId);
+      }
+
+      // Check user session token from public users registry
+      if (targetUser && targetUser.session_token) {
+        if (token && targetUser.session_token !== token) {
+          return res.json({
+            active: false,
+            superseded: true,
+            reason: 'LOGGED_IN_ON_ANOTHER_DEVICE',
+            message: 'Your account was logged in on another device.'
+          });
+        }
+      }
+
+      // Check session token in active sessions map
+      const activeSess = email ? activeSessionsMap.get(email) : null;
+      if (activeSess && activeSess.sessionToken) {
+        if (token && activeSess.sessionToken !== token) {
+          return res.json({
+            active: false,
+            superseded: true,
+            reason: 'LOGGED_IN_ON_ANOTHER_DEVICE',
+            message: 'Your account was logged in on another device.'
+          });
+        }
+      }
+
+      return res.json({ active: true });
+    } catch (err: any) {
+      return res.json({ active: true });
+    }
+  });
+
+  // POST /api/sessions/login - Record active device session token
+  app.post("/api/sessions/login", (req, res) => {
+    try {
+      const { email, userId, sessionToken, deviceId } = req.body || {};
+      if (!email || !sessionToken) {
+        return res.status(400).json({ error: "Email and sessionToken are required" });
+      }
+      const cleanEmail = String(email).trim().toLowerCase();
+      activeSessionsMap.set(cleanEmail, {
+        userId: userId || '',
+        sessionToken,
+        deviceId: deviceId || '',
+        loginAt: new Date().toISOString()
+      });
+
+      loadPublicUsers();
+      const existingUser = publicUsersMap.get(cleanEmail);
+      if (existingUser) {
+        existingUser.session_token = sessionToken;
+        publicUsersMap.set(cleanEmail, existingUser);
+        savePublicUsers();
+      }
+
+      return res.json({ success: true, sessionToken });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Failed to record session" });
+    }
+  });
+
+  // POST /api/sessions/logout - Clear active session on explicit user logout
+  app.post("/api/sessions/logout", (req, res) => {
+    try {
+      const { email, token } = req.body || {};
+      if (email) {
+        const cleanEmail = String(email).trim().toLowerCase();
+        const activeSess = activeSessionsMap.get(cleanEmail);
+        if (!token || (activeSess && activeSess.sessionToken === token)) {
+          activeSessionsMap.delete(cleanEmail);
+        }
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.json({ success: true });
+    }
+  });
+
   // Server-Side Orders Registry & File Cache for Customer WhatsApp Links & Multi-Device Sync
   const ordersFilePath = path.join(process.cwd(), 'public-orders.json');
   const publicOrdersMap = new Map<string, any>();
@@ -435,16 +533,24 @@ Ensure that you only output valid JSON.`;
         // Mark explicitly as live user order
         ord.is_live_order = true;
 
-        // Strictly protect Walk-in Customer orders from having customer_name overwritten
-        const isWalkIn = ord.customer_id === 'WALK_IN' ||
-                         ord.customer_name === 'Walk-in Customer' ||
-                         ord.channel === 'Walk-in' ||
-                         ord.order_number === 'FEST-ADV-111' ||
-                         (ord.qr_code_data && (ord.qr_code_data.includes('|WALK_IN|') || ord.qr_code_data.includes('|Walk-in Customer|')));
-        if (isWalkIn) {
-          ord.customer_name = 'Walk-in Customer';
-          ord.customer_id = 'WALK_IN';
-          ord.channel = 'Walk-in';
+        // Strictly preserve explicit customer_name if provided and not "Walk-in Customer"
+        const cleanCustName = (ord.customer_name || '').trim();
+        const isExplicitNameProvided = Boolean(
+          cleanCustName && 
+          cleanCustName.toLowerCase() !== 'walk-in customer' && 
+          cleanCustName.toLowerCase() !== 'walk-in' && 
+          cleanCustName.toLowerCase() !== 'customer'
+        );
+
+        if (!isExplicitNameProvided) {
+          // Extract customer name from dispatch notes if available (e.g. [CUSTOMER:Name])
+          const notesMatch = (ord.dispatch_notes || ord.payment_notes || '').match(/\[CUSTOMER:([^\]]+)\]/);
+          if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim().toLowerCase() !== 'walk-in customer') {
+            ord.customer_name = notesMatch[1].trim();
+          } else {
+            ord.customer_name = 'Walk-in Customer';
+            ord.customer_id = 'WALK_IN';
+          }
         }
         if (ordNum) publicOrdersMap.set(ordNum, ord);
         if (ordId) publicOrdersMap.set(ordId, ord);

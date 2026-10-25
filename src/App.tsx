@@ -258,6 +258,7 @@ export default function App() {
   const [dbConnected, setDbConnected] = useState(true);
   const [appErrors, setAppErrors] = useState<AppErrorDetail[]>([]);
   const [showErrorModal, setShowErrorModal] = useState(false);
+  const [showSessionSupersededModal, setShowSessionSupersededModal] = useState(false);
 
   useEffect(() => {
     // 1. Check database connection
@@ -1565,8 +1566,76 @@ export default function App() {
         console.warn('Supabase signOut notice:', sbErr);
       }
     }
+    if (currentUser?.email) {
+      fetch('/api/sessions/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentUser.email })
+      }).catch(() => {});
+    }
     triggerToast('Logged out of system securely.', 'info');
   };
+
+  const handleAutoLogout = useCallback(() => {
+    const deviceId = getDeviceId();
+    setIsLoggingIn(false);
+    setAuthError('');
+    if (currentUser) {
+      dbStore.removeDeviceSession(currentUser.id, deviceId);
+      if (currentBusiness) {
+        dbStore.logActivity(
+          currentUser.id,
+          currentUser.name,
+          currentUser.role,
+          'Security Event - Forced Logout',
+          `Session terminated: Account logged in on another device.`,
+          currentBusiness.id
+        );
+      }
+    }
+    setCurrentUser(null);
+    setCurrentBusiness(null);
+    setDeepLinkData(null);
+    setEmailInput('');
+    setPasswordInput('');
+    safeStorage.removeItem('omnipack_session');
+    safeStorage.removeItem('omnipack_erp_session_token');
+    
+    setShowSessionSupersededModal(true);
+  }, [currentUser, currentBusiness]);
+
+  // Active Single Session Heartbeat & Conflict Check (Polling every 3 seconds)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let isCancelled = false;
+    const checkSession = async () => {
+      if (isCancelled) return;
+      const storedToken = safeStorage.getItem('omnipack_erp_session_token') || currentUser.session_token || '';
+      
+      // 1. Check local device session status
+      const localStatus = dbStore.heartbeatDeviceSession(currentUser.id, getDeviceId(), storedToken);
+      if (localStatus.superseded || localStatus.active === false) {
+        handleAutoLogout();
+        return;
+      }
+
+      // 2. Check server session status
+      const serverStatus = await dbStore.verifySessionActive(currentUser.id, currentUser.email, storedToken);
+      if (serverStatus.active === false) {
+        handleAutoLogout();
+        return;
+      }
+    };
+
+    checkSession();
+    const interval = setInterval(checkSession, 3000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [currentUser?.id, currentUser?.email, handleAutoLogout]);
 
   // Deep linking helper
   const handleDeepLinkNavigate = useCallback((view: string, actionData?: any) => {
@@ -3355,6 +3424,33 @@ export default function App() {
         isOpen={showDbConfigModal}
         onClose={() => setShowDbConfigModal(false)}
       />
+
+      {/* Single Session Security Modal */}
+      {showSessionSupersededModal && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-amber-500/40 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 text-center">
+            <div className="w-16 h-16 bg-amber-500/10 dark:bg-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-2 border border-amber-500/30">
+              <ShieldAlert size={36} className="animate-pulse" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+              Logged Out: Active Session Transferred
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              Your account was logged in on another device or browser tab. For security, <strong className="text-amber-600 dark:text-amber-400">only one active session is allowed per account at a time</strong>.
+            </p>
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300 text-left space-y-1">
+              <p className="font-semibold">🔒 Security Notice:</p>
+              <p>You have been automatically logged out of this device. If this was not you, please reset your password immediately.</p>
+            </div>
+            <button
+              onClick={() => setShowSessionSupersededModal(false)}
+              className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-xl transition shadow-lg shadow-amber-600/20 cursor-pointer"
+            >
+              OK, Got It (Return to Login)
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

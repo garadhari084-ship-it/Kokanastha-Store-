@@ -1591,11 +1591,19 @@ class ERPStorage {
           });
 
           const uniqueMerged = dedupeSalesOrders(Array.from(new Set(orderMap.values())));
-          uniqueMerged.sort((a, b) => {
-            const tA = parseOrderDateMs(a.created_at) || parseOrderDateMs(a.order_date) || 0;
-            const tB = parseOrderDateMs(b.created_at) || parseOrderDateMs(b.order_date) || 0;
-            return tB - tA;
-          });
+          const getExactOrderTimeMs = (o: any) => {
+            if (!o) return 0;
+            if (o.created_at) {
+              const t = new Date(o.created_at).getTime();
+              if (!isNaN(t) && t > 0) return t;
+            }
+            if (o.updated_at) {
+              const t = new Date(o.updated_at).getTime();
+              if (!isNaN(t) && t > 0) return t;
+            }
+            return parseOrderDateMs(o.order_date) || 0;
+          };
+          uniqueMerged.sort((a, b) => getExactOrderTimeMs(b) - getExactOrderTimeMs(a));
 
           this.cache.sales = uniqueMerged;
           safeStorage.setItem('omnipack_erp_sales', JSON.stringify(uniqueMerged));
@@ -5516,6 +5524,43 @@ class ERPStorage {
           };
         })
         .sort((a, b) => {
+          const getExactTime = (o: any) => {
+            if (!o) return 0;
+            if (o.created_at) {
+              const t = new Date(o.created_at).getTime();
+              if (!isNaN(t) && t > 0) return t;
+            }
+            if (o.updated_at) {
+              const t = new Date(o.updated_at).getTime();
+              if (!isNaN(t) && t > 0) return t;
+            }
+            if (o.order_date) {
+              const datePart = String(o.order_date).trim().split('T')[0];
+              const timeStr = o.time || '';
+              if (timeStr) {
+                const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+                if (match) {
+                  let h = parseInt(match[1], 10) || 12;
+                  const m = parseInt(match[2], 10) || 0;
+                  const ampm = (match[3] || '').toUpperCase();
+                  if (ampm === 'PM' && h < 12) h += 12;
+                  if (ampm === 'AM' && h === 12) h = 0;
+                  const dt = new Date(`${datePart}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
+                  if (!isNaN(dt.getTime())) return dt.getTime();
+                }
+              }
+              return parseOrderDateMs(o.order_date);
+            }
+            return 0;
+          };
+
+          const timeA = getExactTime(a);
+          const timeB = getExactTime(b);
+
+          if (timeA !== timeB) {
+            return timeB - timeA;
+          }
+
           const extractNum = (str?: string) => {
             if (!str) return 0;
             const match = String(str).match(/(\d+)(?:\D*)$/);
@@ -5529,9 +5574,9 @@ class ERPStorage {
           if (numA !== numB) {
             return numB - numA;
           }
-          const tA = parseOrderDateMs(a.created_at) || parseOrderDateMs(a.order_date);
-          const tB = parseOrderDateMs(b.created_at) || parseOrderDateMs(b.order_date);
-          return tB - tA;
+          const strA = String(a.order_number || '').trim();
+          const strB = String(b.order_number || '').trim();
+          return strB.localeCompare(strA, undefined, { numeric: true, sensitivity: 'base' });
         })
     );
 

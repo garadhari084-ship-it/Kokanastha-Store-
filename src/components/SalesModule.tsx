@@ -1768,6 +1768,43 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
     });
 
     return [...list].sort((a, b) => {
+      const getExactTime = (o: any) => {
+        if (!o) return 0;
+        if (o.created_at) {
+          const t = new Date(o.created_at).getTime();
+          if (!isNaN(t) && t > 0) return t;
+        }
+        if (o.updated_at) {
+          const t = new Date(o.updated_at).getTime();
+          if (!isNaN(t) && t > 0) return t;
+        }
+        if (o.order_date) {
+          const datePart = String(o.order_date).trim().split('T')[0];
+          const timeStr = o.time || '';
+          if (timeStr) {
+            const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+            if (match) {
+              let h = parseInt(match[1], 10) || 12;
+              const m = parseInt(match[2], 10) || 0;
+              const ampm = (match[3] || '').toUpperCase();
+              if (ampm === 'PM' && h < 12) h += 12;
+              if (ampm === 'AM' && h === 12) h = 0;
+              const dt = new Date(`${datePart}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
+              if (!isNaN(dt.getTime())) return dt.getTime();
+            }
+          }
+          return new Date(o.order_date).getTime() || 0;
+        }
+        return 0;
+      };
+
+      const timeA = getExactTime(a);
+      const timeB = getExactTime(b);
+
+      if (timeA !== timeB) {
+        return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+      }
+
       const extractNum = (str?: string) => {
         if (!str) return 0;
         const match = String(str).match(/(\d+)(?:\D*)$/);
@@ -1783,14 +1820,9 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
       }
       const strA = String(a.order_number || '').trim();
       const strB = String(b.order_number || '').trim();
-      if (strA !== strB) {
-        return sortOrder === 'desc'
-          ? strB.localeCompare(strA, undefined, { numeric: true, sensitivity: 'base' })
-          : strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
-      }
-      const timeA = new Date(a.created_at || a.order_date || 0).getTime();
-      const timeB = new Date(b.created_at || b.order_date || 0).getTime();
-      return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+      return sortOrder === 'desc'
+        ? strB.localeCompare(strA, undefined, { numeric: true, sensitivity: 'base' })
+        : strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
     });
   }, [horizonOrders, customers, searchQuery, statusFilter, sortOrder]);
 

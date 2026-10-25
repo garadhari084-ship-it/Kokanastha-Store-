@@ -337,6 +337,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
   const [timeHorizon, setTimeHorizon] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('all');
   const [bookingFilter, setBookingFilter] = useState<'all' | 'advance' | 'festive' | 'regular'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [isTopFilterMenuOpen, setIsTopFilterMenuOpen] = useState(false);
   const topFilterRef = useRef<HTMLDivElement>(null);
 
@@ -1732,7 +1733,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
 
   // Filtered Orders for the Table (applies search & status filter on top of time horizon)
   const filteredOrders = useMemo(() => {
-    return horizonOrders.filter(o => {
+    const list = horizonOrders.filter(o => {
       if (statusFilter !== 'all' && o.status !== statusFilter) return false;
       const isWalkInOrder = o.customer_id === 'WALK_IN' ||
                             o.customer_name === 'Walk-in Customer' ||
@@ -1765,7 +1766,33 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
              (o.area || '').toLowerCase().includes(query) ||
              (o.channel || '').toLowerCase().includes(query);
     });
-  }, [horizonOrders, customers, searchQuery, statusFilter]);
+
+    return [...list].sort((a, b) => {
+      const extractNum = (str?: string) => {
+        if (!str) return 0;
+        const match = String(str).match(/(\d+)(?:\D*)$/);
+        if (match) return parseInt(match[1], 10) || 0;
+        const anyDigits = String(str).match(/\d+/g);
+        if (anyDigits && anyDigits.length > 0) return parseInt(anyDigits[anyDigits.length - 1], 10) || 0;
+        return 0;
+      };
+      const numA = extractNum(a.order_number);
+      const numB = extractNum(b.order_number);
+      if (numA !== numB) {
+        return sortOrder === 'desc' ? numB - numA : numA - numB;
+      }
+      const strA = String(a.order_number || '').trim();
+      const strB = String(b.order_number || '').trim();
+      if (strA !== strB) {
+        return sortOrder === 'desc'
+          ? strB.localeCompare(strA, undefined, { numeric: true, sensitivity: 'base' })
+          : strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
+      }
+      const timeA = new Date(a.created_at || a.order_date || 0).getTime();
+      const timeB = new Date(b.created_at || b.order_date || 0).getTime();
+      return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+    });
+  }, [horizonOrders, customers, searchQuery, statusFilter, sortOrder]);
 
   // Metric counts computed directly from time-horizon filtered orders
   const adjustedTotalOrders = horizonOrders.length;
@@ -2051,7 +2078,18 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
         <table className="w-full text-left text-[11px]">
           <thead className="bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 font-extrabold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700 text-[10px]">
             <tr>
-              <th className="py-2.5 px-3">Order ID</th>
+              <th 
+                className="py-2.5 px-3 cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                title="Click to toggle order series sort direction (Ascending / Descending)"
+              >
+                <div className="flex items-center gap-1">
+                  <span>Order ID</span>
+                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                    {sortOrder === 'desc' ? '▼ Series (High→Low)' : '▲ Series (Low→High)'}
+                  </span>
+                </div>
+              </th>
               <th className="py-2.5 px-3">Customer</th>
               <th className="py-2.5 px-3">Area Zone</th>
               <th className="py-2.5 px-3">Items / Qty</th>

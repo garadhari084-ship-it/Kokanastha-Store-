@@ -110,6 +110,11 @@ export function encodeOrderToPayload(order: any, businessName?: string): string 
       st: order.status || 'Pending'
     };
 
+    if (order.shipping_address) compactPayload.ship = order.shipping_address;
+    if (order.customer_address || order.billing_address) compactPayload.bill_addr = order.customer_address || order.billing_address;
+    if (order.customer_phone || order.phone) compactPayload.ph = order.customer_phone || order.phone;
+    if (order.dispatch_notes || order.payment_notes) compactPayload.notes = order.dispatch_notes || order.payment_notes;
+
     if (order.items && Array.isArray(order.items) && order.items.length > 0) {
       compactPayload.its = order.items.slice(0, 25).map((it: any) => ({
         n: it.product_name || it.name || 'Item',
@@ -178,10 +183,7 @@ export function buildBillVerificationString(params: {
     origin = window.location.origin;
   }
 
-  // Check if running on a custom deployed production domain (not Cloud Run preview container or localhost)
-  const isDevContainer = !origin || origin.includes('run.app') || origin.includes('localhost') || origin.includes('ais-dev') || origin.includes('ais-pre');
-
-  if (!isDevContainer && origin.startsWith('http')) {
+  if (origin && origin.startsWith('http')) {
     const compactPayload: Record<string, any> = {
       no: cleanOrder,
       dt: params.orderDate || new Date().toISOString().split('T')[0],
@@ -192,7 +194,7 @@ export function buildBillVerificationString(params: {
     };
     if (params.gstin) compactPayload.gst = params.gstin;
     if (params.items && Array.isArray(params.items) && params.items.length > 0) {
-      compactPayload.its = params.items.slice(0, 10).map((it: any) => ({
+      compactPayload.its = params.items.slice(0, 25).map((it: any) => ({
         n: it.name || it.product_name || 'Item',
         q: Number(it.qty) || 1,
         p: Number(it.total_price || (it.qty * (it.unit_price || it.selling_price || 0))) || 0
@@ -209,8 +211,6 @@ export function buildBillVerificationString(params: {
   }
 
   // Otherwise, construct a clean, self-contained digital bill verification receipt text.
-  // Any phone camera, Google Lens, or QR scanner app will display the verified bill parameters instantly on screen
-  // without sending network requests to Cloud Run preview containers, completely eliminating 404 / 403 "Page Not Found" errors!
   const bName = (params.businessName || 'Kokanastha Faral & Sweets').toUpperCase();
   const dateStr = params.orderDate || new Date().toISOString().split('T')[0];
   const custName = params.customerName || 'Customer';
@@ -255,3 +255,4 @@ export function buildBillVerificationString(params: {
 
   return lines.join('\n');
 }
+

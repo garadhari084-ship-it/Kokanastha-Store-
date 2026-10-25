@@ -803,10 +803,11 @@ export const DeliveryModule: React.FC<DeliveryModuleProps> = ({
           
           <div class="info-grid">
             <div class="box">
-              <h3>Delivery To</h3>
-              <strong>${cust?.name || 'Customer'}</strong><br/>
-              ${cust?.shipping_address || 'No address provided'}<br/><br/>
-              ${cust?.phone ? `Phone: \${${cust.phone}}` : ''}
+              <h3>Customer & Addresses</h3>
+              <strong>${order.customer_name || cust?.name || 'Customer'}</strong><br/>
+              <strong>Home Address:</strong> ${order.billing_address || cust?.billing_address || 'N/A'}<br/>
+              <strong>Shipping Address:</strong> ${order.shipping_address || cust?.shipping_address || order.billing_address || cust?.billing_address || 'N/A'}<br/>
+              ${(order.customer_phone || cust?.phone) ? `Phone: ${order.customer_phone || cust?.phone}` : ''}
             </div>
             <div class="box">
               <h3>Order Info</h3>

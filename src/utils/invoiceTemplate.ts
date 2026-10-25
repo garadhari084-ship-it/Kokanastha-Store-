@@ -1064,14 +1064,14 @@ export async function generate3InchBillHTML(
         const cName = customerObj?.name || order.customer_name || 'Customer';
         const cPhone = customerObj?.phone || order.customer_phone || order.phone || '';
         return `
-          <div style="font-weight: 900;">${cName}</div>
-          ${cPhone ? `<div>Ph. No.: ${cPhone}</div>` : ''}
-          <div style="font-size: 11px; margin-top: 2px; font-weight: bold;">Bill To:</div>
-          <div style="word-break: break-word;">${bInfo.fullAddress}</div>
-          <div style="margin-top: 3px; font-weight: bold;">Ship To:</div>
-          <div style="word-break: break-word;">${sInfo.streetAddress || sInfo.fullAddress}</div>
+          <div style="font-weight: 900; font-size: 13px;">${cName}</div>
+          ${cPhone ? `<div>Ph. No.: <strong>${cPhone}</strong></div>` : ''}
+          <div style="font-size: 11px; margin-top: 4px; font-weight: bold; text-transform: uppercase;">Bill To (Home Address):</div>
+          <div style="word-break: break-word;">${bInfo.fullAddress || 'Home Address Not Specified'}</div>
+          <div style="margin-top: 5px; font-size: 11px; font-weight: bold; text-transform: uppercase;">Ship To (Shipping Address):</div>
+          <div style="word-break: break-word;">${sInfo.fullAddress || bInfo.fullAddress || 'Shipping Address Not Specified'}</div>
           ${(sInfo.zone || sInfo.pincode) ? `
-            <div style="font-size: 10px; color: #475569;">
+            <div style="font-size: 10px; color: #334155; margin-top: 2px;">
               ${sInfo.zone ? `Zone: <strong>${sInfo.zone}</strong>` : ''}
               ${sInfo.zone && sInfo.pincode ? ` &bull; ` : ''}
               ${sInfo.pincode ? `PIN: <strong>${sInfo.pincode}</strong>` : ''}

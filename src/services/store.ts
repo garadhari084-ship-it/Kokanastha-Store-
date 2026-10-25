@@ -5516,6 +5516,19 @@ class ERPStorage {
           };
         })
         .sort((a, b) => {
+          const extractNum = (str?: string) => {
+            if (!str) return 0;
+            const match = String(str).match(/(\d+)(?:\D*)$/);
+            if (match) return parseInt(match[1], 10) || 0;
+            const anyDigits = String(str).match(/\d+/g);
+            if (anyDigits && anyDigits.length > 0) return parseInt(anyDigits[anyDigits.length - 1], 10) || 0;
+            return 0;
+          };
+          const numA = extractNum(a.order_number);
+          const numB = extractNum(b.order_number);
+          if (numA !== numB) {
+            return numB - numA;
+          }
           const tA = parseOrderDateMs(a.created_at) || parseOrderDateMs(a.order_date);
           const tB = parseOrderDateMs(b.created_at) || parseOrderDateMs(b.order_date);
           return tB - tA;

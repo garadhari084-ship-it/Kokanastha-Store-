@@ -43,33 +43,62 @@ export const PublicInvoiceView: React.FC<PublicInvoiceViewProps> = ({
           const searchParams = new URLSearchParams(queryString);
           const dParam = searchParams.get('d');
           if (dParam) {
-            const decodedBase64 = decodeURIComponent(dParam);
-            const jsonStr = decodeURIComponent(Array.prototype.map.call(atob(decodedBase64), (c: string) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-            const payload = JSON.parse(jsonStr);
+            let payload: any = null;
+            try {
+              const decodedBase64 = decodeURIComponent(dParam);
+              const jsonStr = decodeURIComponent(Array.prototype.map.call(atob(decodedBase64), (c: string) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+              payload = JSON.parse(jsonStr);
+            } catch (_) {}
 
-            if (payload && (payload.no || payload.tot)) {
+            if (!payload) {
+              try { payload = JSON.parse(atob(decodeURIComponent(dParam))); } catch (_) {}
+            }
+            if (!payload) {
+              try { payload = JSON.parse(atob(dParam)); } catch (_) {}
+            }
+            if (!payload) {
+              try {
+                const norm = dParam.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonStr = decodeURIComponent(Array.prototype.map.call(atob(norm), (c: string) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+                payload = JSON.parse(jsonStr);
+              } catch (_) {}
+            }
+
+            if (payload && (payload.no || payload.tot || payload.cust)) {
               const reconstructedOrder: SalesOrder = {
                 id: payload.id || `so-public-${payload.no || cleanRef}`,
                 business_id: 'b1111111-1111-1111-1111-111111111111',
                 order_number: payload.no || cleanRef,
-                customer_id: 'cust-public',
+                customer_id: payload.cust_id || (payload.cust && payload.cust.toLowerCase() !== 'walk-in customer' ? `cust-${payload.no || cleanRef}` : 'WALK_IN'),
                 customer_name: payload.cust || 'Walk-in Customer',
+                customer_phone: payload.ph || payload.phone || payload.customer_phone || '',
+                shipping_address: payload.ship || payload.shipping_address || '',
+                customer_address: payload.bill_addr || payload.customer_address || payload.billing_address || '',
+                billing_address: payload.bill_addr || payload.customer_address || payload.billing_address || '',
                 order_date: payload.dt || new Date().toISOString().split('T')[0],
                 time: '12:00 PM',
-                items: (payload.its || []).map((it: any, idx: number) => ({
-                  product_id: `prod-public-${idx}`,
-                  product_name: it.n || 'Faral Item',
-                  qty: Number(it.q) || 1,
-                  selling_price: Number(it.u) || ((Number(it.p) || 0) / (Number(it.q) || 1)),
-                  price: Number(it.u) || ((Number(it.p) || 0) / (Number(it.q) || 1)),
-                  gst_rate: 5,
-                  total_amount: Number(it.p) || 0
-                })),
+                items: (payload.its || []).map((it: any, idx: number) => {
+                  const qty = Number(it.q || it.qty) || 1;
+                  const price = Number(it.u || it.unit_price || it.selling_price) || (Number(it.p || it.total_price || 0) / qty);
+                  const total = Number(it.p || it.total_price) || (qty * price);
+                  return {
+                    product_id: it.id || `prod-public-${idx}`,
+                    product_name: it.n || it.product_name || it.name || 'Faral Item',
+                    qty,
+                    selling_price: price,
+                    price,
+                    unit_price: price,
+                    gst_rate: Number(it.gst || it.gst_rate) || 5,
+                    total_amount: total
+                  };
+                }),
                 total_amount: Number(payload.tot) || 0,
                 paid_amount: payload.paid !== undefined ? Number(payload.paid) : Number(payload.tot) || 0,
-                discount_amount: 0,
+                discount_amount: Number(payload.disc || payload.discount_amount) || 0,
                 status: payload.st || 'Delivered',
                 delivery_status: payload.st || 'Delivered',
+                dispatch_notes: payload.notes || payload.dispatch_notes || '',
+                payment_notes: payload.notes || payload.payment_notes || '',
                 advance_booking: false,
                 qr_code_data: payload.no || cleanRef,
                 payment_mode: payload.pm || 'Paid',
@@ -81,6 +110,11 @@ export const PublicInvoiceView: React.FC<PublicInvoiceViewProps> = ({
               // Cache reconstructed order on backend server for future hits
               try {
                 fetch('/api/public/invoice', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(reconstructedOrder)
+                }).catch(() => {});
+                fetch('/api/orders', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(reconstructedOrder)
@@ -170,18 +204,20 @@ export const PublicInvoiceView: React.FC<PublicInvoiceViewProps> = ({
             id: 'WALK_IN',
             business_id: biz.id,
             name: 'Walk-in Customer',
-            phone: '',
+            phone: found.customer_phone || '',
             email: '',
+            address: found.customer_address || found.billing_address || '',
             loyalty_points: 0,
             total_spent: found.total_amount || 0,
             orders_count: 1,
             created_at: new Date().toISOString()
           } : (custs.find(c => c.id === found.customer_id || (c.name && c.name.toLowerCase() === (found.customer_name || '').toLowerCase())) || {
-            id: 'cust-public',
+            id: found.customer_id || 'cust-public',
             business_id: biz.id,
             name: found.customer_name || 'Valued Customer',
-            phone: '',
+            phone: found.customer_phone || '',
             email: '',
+            address: found.customer_address || found.billing_address || '',
             loyalty_points: 0,
             total_spent: found.total_amount || 0,
             orders_count: 1,

@@ -200,21 +200,43 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
         Bill of Supply
       </div>
 
-      {/* Metadata 3-col Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-5 text-xs sm:text-[12px] bg-white p-1 print:bg-white print:border-none print:p-0">
+      {/* Metadata 4-col Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-5 text-xs sm:text-[12px] bg-white p-1 print:bg-white print:border-none print:p-0 print:grid-cols-4">
+        {/* Column 1: Bill To (Home Address) */}
         <div>
-          <div className="font-black text-slate-950 border-b border-slate-300 pb-1 mb-1.5 text-xs">
-            Bill To
+          <div className="font-black text-slate-950 border-b border-slate-300 pb-1 mb-1.5 text-xs uppercase tracking-wider">
+            Bill To (Home Address)
           </div>
           <div className="text-slate-800 space-y-0.5">
             <strong className="block text-slate-950 font-bold text-sm">{custName}</strong>
-            <span className="block text-slate-800 break-words leading-relaxed">{custAddr || 'Retail POS'}</span>
-            <span className="block text-slate-800 mt-1">Contact No. : <strong className="font-mono text-slate-950">{custPhone || '8779792825'}</strong></span>
+            <span className="block text-slate-800 break-words leading-relaxed">{custAddr || 'Home Address Not Specified'}</span>
+            <span className="block text-slate-800 mt-1">Contact No. : <strong className="font-mono text-slate-950">{custPhone || 'N/A'}</strong></span>
           </div>
         </div>
 
+        {/* Column 2: Ship To (Shipping Address) */}
         <div>
-          <div className="font-black text-slate-950 border-b border-slate-300 pb-1 mb-1.5 text-xs">
+          <div className="font-black text-slate-950 border-b border-slate-300 pb-1 mb-1.5 text-xs uppercase tracking-wider">
+            Ship To (Shipping Address)
+          </div>
+          <div className="text-slate-800 space-y-0.5">
+            <strong className="block text-slate-950 font-bold text-sm">{custName}</strong>
+            <span className="block text-slate-800 break-words leading-relaxed">
+              {custShippingAddr || custAddr || 'Shipping Address Not Specified'}
+            </span>
+            {(shippingInfo.zone || shippingInfo.pincode) && (
+              <span className="block text-[11px] text-slate-700 font-semibold mt-0.5">
+                {shippingInfo.zone ? `Zone: ${shippingInfo.zone}` : ''}
+                {shippingInfo.zone && shippingInfo.pincode ? ` • ` : ''}
+                {shippingInfo.pincode ? `PIN: ${shippingInfo.pincode}` : ''}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Column 3: Transportation Details */}
+        <div>
+          <div className="font-black text-slate-950 border-b border-slate-300 pb-1 mb-1.5 text-xs uppercase tracking-wider">
             Transportation Details
           </div>
           <div className="text-slate-800 space-y-0.5">
@@ -225,8 +247,9 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
           </div>
         </div>
 
+        {/* Column 4: Invoice Details */}
         <div>
-          <div className="font-black text-slate-950 border-b border-slate-300 pb-1 mb-1.5 text-xs">
+          <div className="font-black text-slate-950 border-b border-slate-300 pb-1 mb-1.5 text-xs uppercase tracking-wider">
             Invoice Details
           </div>
           <div className="text-slate-800 space-y-0.5 font-mono text-xs">

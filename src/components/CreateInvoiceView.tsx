@@ -547,7 +547,8 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     });
 
     const orderNum = customInvoiceNumber.trim() || getSuggestedInvoiceNumber(isFestiveBooking, isAdvanceBooking);
-    const custName = selectedCustomerName?.trim() || selectedCust?.name || (selectedCustomerId === 'WALK_IN' ? 'Walk-in Customer' : 'Customer');
+    const isOrderWalkIn = selectedCustomerId === 'WALK_IN' || selectedCustomerName === 'Walk-in Customer';
+    const custName = isOrderWalkIn ? 'Walk-in Customer' : (selectedCustomerName?.trim() || selectedCust?.name || 'Customer');
     const shippingAddr = isSameShippingAddress 
       ? (selectedCustomerAddress.trim() || selectedCust?.billing_address || '')
       : (selectedCustomerShippingAddress.trim() || selectedCust?.shipping_address || selectedCustomerAddress.trim() || selectedCust?.billing_address || '');
@@ -619,15 +620,16 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   };
 
   const handlePrintPreviewInvoice = async (order: SalesOrder) => {
-    const existingCust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
+    const isOrderWalkIn = order.customer_id === 'WALK_IN' || order.customer_name === 'Walk-in Customer' || order.channel === 'Walk-in' || order.order_number === 'FEST-ADV-111';
+    const existingCust = isOrderWalkIn ? null : (customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id));
     const cust = {
       ...(existingCust || {}),
-      id: order.customer_id,
-      name: order.customer_name || existingCust?.name || selectedCustomerName || 'Customer',
-      phone: order.customer_phone || existingCust?.phone || selectedCustomerPhone || '',
-      billing_address: order.billing_address || existingCust?.billing_address || selectedCustomerAddress || '',
-      shipping_address: order.shipping_address || (isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress) || existingCust?.shipping_address || '',
-      pin_code: order.pin_code || existingCust?.pin_code || selectedPincode || '',
+      id: isOrderWalkIn ? 'WALK_IN' : order.customer_id,
+      name: isOrderWalkIn ? 'Walk-in Customer' : (order.customer_name || existingCust?.name || selectedCustomerName || 'Customer'),
+      phone: isOrderWalkIn ? '' : (order.customer_phone || existingCust?.phone || selectedCustomerPhone || ''),
+      billing_address: isOrderWalkIn ? '' : (order.billing_address || existingCust?.billing_address || selectedCustomerAddress || ''),
+      shipping_address: isOrderWalkIn ? '' : (order.shipping_address || (isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress) || existingCust?.shipping_address || ''),
+      pin_code: isOrderWalkIn ? '' : (order.pin_code || existingCust?.pin_code || selectedPincode || ''),
       area: order.area || existingCust?.area || selectedArea || 'Dahisar'
     } as any;
     const businessObj = currentBiz || dbStore.getBusiness(businessId);
@@ -642,15 +644,16 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
   const handleDownloadPreviewPDF = async (order: SalesOrder) => {
     try {
-      const existingCust = customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id);
+      const isOrderWalkIn = order.customer_id === 'WALK_IN' || order.customer_name === 'Walk-in Customer' || order.channel === 'Walk-in' || order.order_number === 'FEST-ADV-111';
+      const existingCust = isOrderWalkIn ? null : (customers.find(c => c.id === order.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === order.customer_id));
       const cust = {
         ...(existingCust || {}),
-        id: order.customer_id,
-        name: order.customer_name || existingCust?.name || selectedCustomerName || 'Customer',
-        phone: order.customer_phone || existingCust?.phone || selectedCustomerPhone || '',
-        billing_address: order.billing_address || existingCust?.billing_address || selectedCustomerAddress || '',
-        shipping_address: order.shipping_address || (isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress) || existingCust?.shipping_address || '',
-        pin_code: order.pin_code || existingCust?.pin_code || selectedPincode || '',
+        id: isOrderWalkIn ? 'WALK_IN' : order.customer_id,
+        name: isOrderWalkIn ? 'Walk-in Customer' : (order.customer_name || existingCust?.name || selectedCustomerName || 'Customer'),
+        phone: isOrderWalkIn ? '' : (order.customer_phone || existingCust?.phone || selectedCustomerPhone || ''),
+        billing_address: isOrderWalkIn ? '' : (order.billing_address || existingCust?.billing_address || selectedCustomerAddress || ''),
+        shipping_address: isOrderWalkIn ? '' : (order.shipping_address || (isSameShippingAddress ? selectedCustomerAddress : selectedCustomerShippingAddress) || existingCust?.shipping_address || ''),
+        pin_code: isOrderWalkIn ? '' : (order.pin_code || existingCust?.pin_code || selectedPincode || ''),
         area: order.area || existingCust?.area || selectedArea || 'Dahisar'
       } as any;
       const businessObj = currentBiz || dbStore.getBusiness(businessId);

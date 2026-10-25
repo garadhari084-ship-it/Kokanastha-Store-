@@ -932,24 +932,40 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
     
     setEditingOrderId(order.id);
     setCustomInvoiceNumber(order.order_number);
-    setSelectedCustomerId(order.customer_id || 'WALK_IN');
+    const isWalkIn = order.customer_id === 'WALK_IN' ||
+                     order.customer_name === 'Walk-in Customer' ||
+                     order.channel === 'Walk-in' ||
+                     order.order_number === 'FEST-ADV-111' ||
+                     (order.qr_code_data && (order.qr_code_data.includes('|WALK_IN|') || order.qr_code_data.includes('|Walk-in Customer|')));
 
-    const c = customers.find(cust => cust.id === order.customer_id) || dbStore.getCustomers(businessId).find(cust => cust.id === order.customer_id);
-    setSelectedCustomerName(order.customer_name || c?.name || 'Walk-in Customer');
+    if (isWalkIn) {
+      setSelectedCustomerId('WALK_IN');
+      setSelectedCustomerName('Walk-in Customer');
+      setSelectedCustomerPhone('');
+      setSelectedCustomerAddress('');
+      setSelectedCustomerShippingAddress('');
+      setSelectedPincode('');
+      setIsSameShippingAddress(true);
+      setSelectedArea(order.area || 'Dahisar');
+    } else {
+      setSelectedCustomerId(order.customer_id || 'WALK_IN');
+      const c = customers.find(cust => cust.id === order.customer_id) || dbStore.getCustomers(businessId).find(cust => cust.id === order.customer_id);
+      setSelectedCustomerName(order.customer_name || c?.name || 'Walk-in Customer');
 
-    const phone = (order as any).customer_phone || (order as any).phone || c?.phone || '';
-    const billingAddr = (order as any).billing_address || (order as any).address || c?.billing_address || c?.address || '';
-    const shippingAddr = (order as any).shipping_address || c?.shipping_address || billingAddr || '';
-    const pin = (order as any).pin_code || (order as any).pincode || (order as any).postal_code || c?.pin_code || '';
+      const phone = (order as any).customer_phone || (order as any).phone || c?.phone || '';
+      const billingAddr = (order as any).billing_address || (order as any).address || c?.billing_address || c?.address || '';
+      const shippingAddr = (order as any).shipping_address || c?.shipping_address || billingAddr || '';
+      const pin = (order as any).pin_code || (order as any).pincode || (order as any).postal_code || c?.pin_code || '';
 
-    setSelectedCustomerPhone(phone);
-    setSelectedCustomerAddress(billingAddr);
-    setSelectedCustomerShippingAddress(shippingAddr);
-    setSelectedPincode(pin);
-    setIsSameShippingAddress(!shippingAddr || shippingAddr === billingAddr);
+      setSelectedCustomerPhone(phone);
+      setSelectedCustomerAddress(billingAddr);
+      setSelectedCustomerShippingAddress(shippingAddr);
+      setSelectedPincode(pin);
+      setIsSameShippingAddress(!shippingAddr || shippingAddr === billingAddr);
+      setSelectedArea(order.area || c?.area || 'Dahisar');
+    }
 
     setPointsToRedeem(order.points_redeemed || 0);
-    setSelectedArea(order.area || c?.area || 'Dahisar');
     setOrderDate(normalizeToYMD(order.order_date) || getLocalTodayDate());
     setOrderTime(order.time || getLocalCurrentTimeInput());
     setDeliveryDate(normalizeToYMD(order.delivery_date) || '');
@@ -1348,6 +1364,11 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
       
       let customerObj = customers.find(c => c.id === finalCustomerId) || dbStore.getCustomers(businessId).find(c => c.id === finalCustomerId);
       const isWalkIn = customerObj?.name === 'Walk-in Customer' || finalCustomerId === 'WALK_IN' || selectedCustomerId === 'WALK_IN' || !finalCustomerId || (Boolean(finalCustomerName) && finalCustomerName.toLowerCase().includes('walk-in'));
+      if (isWalkIn) {
+        finalCustomerId = 'WALK_IN';
+        finalCustomerName = 'Walk-in Customer';
+        customerObj = undefined;
+      }
 
       // Credit limit bypass check for registered customers with actual debt
       // Only warn if a positive credit limit is set for the customer
@@ -1713,8 +1734,13 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
   const filteredOrders = useMemo(() => {
     return horizonOrders.filter(o => {
       if (statusFilter !== 'all' && o.status !== statusFilter) return false;
-      const cust = customers.find(c => c.id === o.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === o.customer_id);
-      const custName = o.customer_name && o.customer_name !== 'Walk-in Customer' ? o.customer_name : (cust ? cust.name : (o.customer_name || ''));
+      const isWalkInOrder = o.customer_id === 'WALK_IN' ||
+                            o.customer_name === 'Walk-in Customer' ||
+                            o.channel === 'Walk-in' ||
+                            o.order_number === 'FEST-ADV-111' ||
+                            (o.qr_code_data && (o.qr_code_data.includes('|WALK_IN|') || o.qr_code_data.includes('|Walk-in Customer|')));
+      const cust = isWalkInOrder ? undefined : (customers.find(c => c.id === o.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === o.customer_id));
+      const custName = isWalkInOrder ? 'Walk-in Customer' : (o.customer_name && o.customer_name !== 'Walk-in Customer' ? o.customer_name : (cust ? cust.name : (o.customer_name || 'Walk-in Customer')));
       let query = searchQuery.toLowerCase().trim();
       
       // If the scanned text is a full URL from the Bill QR code, extract the order number
@@ -2038,19 +2064,20 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
             {filteredOrders.map((o) => {
-              const cust = customers.find(c => c.id === o.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === o.customer_id);
-              let custName = o.customer_name?.trim();
-              if (o.customer_id && o.customer_id !== 'WALK_IN' && cust && cust.name && cust.name !== 'Walk-in Customer') {
-                custName = cust.name;
-              } else if (!custName || custName === 'Walk-in Customer') {
-                if (cust && cust.name && cust.name !== 'Walk-in Customer') {
+              const isWalkInOrder = o.customer_id === 'WALK_IN' ||
+                                    o.customer_name === 'Walk-in Customer' ||
+                                    o.channel === 'Walk-in' ||
+                                    o.order_number === 'FEST-ADV-111' ||
+                                    (o.qr_code_data && (o.qr_code_data.includes('|WALK_IN|') || o.qr_code_data.includes('|Walk-in Customer|')));
+              const cust = isWalkInOrder ? undefined : (customers.find(c => c.id === o.customer_id) || dbStore.getCustomers(businessId).find(c => c.id === o.customer_id));
+              let custName = isWalkInOrder ? 'Walk-in Customer' : (o.customer_name?.trim() || cust?.name || 'Walk-in Customer');
+              if (!isWalkInOrder) {
+                if (o.customer_id && o.customer_id !== 'WALK_IN' && cust && cust.name && cust.name !== 'Walk-in Customer') {
                   custName = cust.name;
-                } else {
+                } else if (!custName || custName === 'Customer') {
                   const notesMatch = (o.dispatch_notes || o.payment_notes || '').match(/\[CUSTOMER:([^\]]+)\]/);
                   if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim() !== 'Walk-in Customer') {
                     custName = notesMatch[1].trim();
-                  } else {
-                    custName = (o.customer_name && o.customer_name !== 'Walk-in Customer') ? o.customer_name : 'Walk-in Customer';
                   }
                 }
               }
@@ -2095,9 +2122,9 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
                   <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span>{custName}</span>
-                      {o.channel && (
+                      {(o.channel || isWalkInOrder) && (
                         <span className="text-[10px] text-slate-400 font-normal">
-                          ({o.channel})
+                          ({isWalkInOrder ? 'Walk-in' : o.channel})
                         </span>
                       )}
                     </div>
@@ -2363,7 +2390,7 @@ export const SalesModule: React.FC<SalesModuleProps> = React.memo(({
               <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <div>
                   <strong className="text-sm font-extrabold text-slate-900 dark:text-white block">
-                    {selectedOrderForDetail.customer_name || 'Walk-in Customer'}
+                    {(selectedOrderForDetail.customer_id === 'WALK_IN' || selectedOrderForDetail.customer_name === 'Walk-in Customer' || selectedOrderForDetail.channel === 'Walk-in' || selectedOrderForDetail.order_number === 'FEST-ADV-111') ? 'Walk-in Customer' : (selectedOrderForDetail.customer_name || 'Walk-in Customer')}
                   </strong>
                   <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 font-medium">
                     <MapPin size={12} className="text-amber-500 shrink-0" />

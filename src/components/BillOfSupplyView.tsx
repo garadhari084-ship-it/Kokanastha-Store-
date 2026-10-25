@@ -96,14 +96,20 @@ export const BillOfSupplyView: React.FC<BillOfSupplyViewProps> = ({
   const balance = Math.max(0, totalAmount - received);
   const paymentMode = order.payment_mode || (order.payment_status === 'Paid' ? 'Online / Paid' : 'Credit / Pending');
 
-  let cust = customer;
-  if (!cust && order.customer_id) {
+  const isWalkIn = order.customer_id === 'WALK_IN' ||
+                   order.customer_name === 'Walk-in Customer' ||
+                   order.channel === 'Walk-in' ||
+                   order.order_number === 'FEST-ADV-111' ||
+                   (order.qr_code_data && (order.qr_code_data.includes('|WALK_IN|') || order.qr_code_data.includes('|Walk-in Customer|')));
+
+  let cust = isWalkIn ? undefined : customer;
+  if (!cust && order.customer_id && !isWalkIn) {
     const allCusts = dbStore.getCustomers(order.business_id || businessObj?.id || '');
     cust = allCusts.find(c => c.id === order.customer_id);
   }
 
-  const custName = cust?.name || order.customer_name || 'Customer';
-  const custPhone = cust?.phone || (order as any).phone || (order as any).customer_phone || '';
+  const custName = isWalkIn ? 'Walk-in Customer' : (order.customer_name || cust?.name || 'Customer');
+  const custPhone = isWalkIn ? ((order as any).phone || (order as any).customer_phone || '') : (cust?.phone || (order as any).phone || (order as any).customer_phone || '');
 
   const billingInfo = buildCompleteBillingAddress(order, cust);
   const shippingInfo = buildCompleteShippingAddress(order, cust);

@@ -75,9 +75,15 @@ export const WhatsAppNotifyModal: React.FC<WhatsAppNotifyModalProps> = ({
   const [message, setMessage] = useState<string>('');
 
   // Resolve customer name & phone safely
-  const matchedCust = order ? customers.find(c => c.id === order.customer_id || (c.name && c.name.toLowerCase() === (order.customer_name || '').toLowerCase())) : null;
-  const customerName = order?.customer_name || matchedCust?.name || 'Customer';
-  const customerPhone = matchedCust?.phone || '';
+  const isWalkIn = order?.customer_id === 'WALK_IN' ||
+                   order?.customer_name === 'Walk-in Customer' ||
+                   order?.channel === 'Walk-in' ||
+                   order?.order_number === 'FEST-ADV-111' ||
+                   (order?.qr_code_data && (order.qr_code_data.includes('|WALK_IN|') || order.qr_code_data.includes('|Walk-in Customer|')));
+
+  const matchedCust = (!isWalkIn && order) ? customers.find(c => c.id === order.customer_id || (c.name && c.name.toLowerCase() === (order.customer_name || '').toLowerCase())) : null;
+  const customerName = isWalkIn ? 'Walk-in Customer' : (order?.customer_name || matchedCust?.name || 'Customer');
+  const customerPhone = matchedCust?.phone || (order as any)?.customer_phone || (order as any)?.phone || '';
 
   const businessName = business?.name || 'कोकणस्थ';
   const googleReviewUrl = (business as any)?.google_review_url || 'https://share.google/92HZuDJaVzQA5Sd5x';

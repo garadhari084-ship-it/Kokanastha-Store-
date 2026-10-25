@@ -249,7 +249,141 @@ Ensure that you only output valid JSON.`;
     }
   });
 
-  // Server-Side Public Orders Registry & File Cache for Customer WhatsApp Links
+  // Server-Side User Accounts Registry for Multi-Device Login
+  const usersFilePath = path.join(process.cwd(), 'users.json');
+  const initialDefaultUsers = [
+    {
+      id: 'a1111111-1111-1111-1111-111111111111',
+      email: 'admin@admin.com',
+      name: 'System Admin',
+      role: 'Super Admin',
+      business_id: 'b1111111-1111-1111-1111-111111111111',
+      active: true,
+      created_at: new Date().toISOString(),
+      password_hash: 'admin'
+    },
+    {
+      id: 'a2222222-2222-2222-2222-222222222222',
+      email: 'sales@kokanastha.com',
+      name: 'Sales Manager',
+      role: 'Sales Staff',
+      business_id: 'b1111111-1111-1111-1111-111111111111',
+      active: true,
+      created_at: new Date().toISOString(),
+      password_hash: 'sales'
+    },
+    {
+      id: 'a3333333-3333-3333-3333-333333333333',
+      email: 'pack@kokanastha.com',
+      name: 'Packing Supervisor',
+      role: 'Packing Staff',
+      business_id: 'b1111111-1111-1111-1111-111111111111',
+      active: true,
+      created_at: new Date().toISOString(),
+      password_hash: 'pack'
+    },
+    {
+      id: 'a4444444-4444-4444-4444-444444444444',
+      email: 'garadhari084@gmail.com',
+      name: 'Garadhari (Owner)',
+      role: 'Super Admin',
+      business_id: 'b1111111-1111-1111-1111-111111111111',
+      active: true,
+      created_at: new Date().toISOString(),
+      password_hash: 'admin'
+    }
+  ];
+
+  const publicUsersMap = new Map<string, any>();
+
+  const loadPublicUsers = () => {
+    try {
+      if (fs.existsSync(usersFilePath)) {
+        const raw = fs.readFileSync(usersFilePath, 'utf8');
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          for (const u of list) {
+            if (u?.email) {
+              publicUsersMap.set(String(u.email).trim().toLowerCase(), u);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load users cache:", e);
+    }
+    // Ensure default users are registered
+    for (const defU of initialDefaultUsers) {
+      const em = defU.email.toLowerCase();
+      if (!publicUsersMap.has(em)) {
+        publicUsersMap.set(em, defU);
+      }
+    }
+  };
+  loadPublicUsers();
+
+  const savePublicUsers = () => {
+    try {
+      fs.writeFileSync(usersFilePath, JSON.stringify(Array.from(publicUsersMap.values()), null, 2), 'utf8');
+    } catch (e) {
+      console.warn("Could not save users cache:", e);
+    }
+  };
+
+  // GET /api/users - Retrieve all registered user accounts for cross-device authentication
+  app.get("/api/users", (req, res) => {
+    try {
+      loadPublicUsers();
+      return res.json(Array.from(publicUsersMap.values()));
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Failed to get users" });
+    }
+  });
+
+  // POST /api/users - Create or update user account(s) across devices
+  app.post("/api/users", (req, res) => {
+    try {
+      const body = req.body;
+      const usersToSave = Array.isArray(body) ? body : [body];
+      let updated = false;
+      for (const u of usersToSave) {
+        if (u && u.email) {
+          const em = String(u.email).trim().toLowerCase();
+          const existing = publicUsersMap.get(em) || {};
+          publicUsersMap.set(em, { ...existing, ...u });
+          updated = true;
+        }
+      }
+      if (updated) {
+        savePublicUsers();
+      }
+      return res.json({ success: true, count: usersToSave.length });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Failed to save users" });
+    }
+  });
+
+  // DELETE /api/users/:identifier - Delete user account
+  app.delete("/api/users/:identifier", (req, res) => {
+    try {
+      const target = (req.params.identifier || '').trim().toLowerCase();
+      let deleted = false;
+      for (const [em, u] of publicUsersMap.entries()) {
+        if (em === target || String(u.id).toLowerCase() === target) {
+          publicUsersMap.delete(em);
+          deleted = true;
+        }
+      }
+      if (deleted) {
+        savePublicUsers();
+      }
+      return res.json({ success: true, deleted });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Failed to delete user" });
+    }
+  });
+
+  // Server-Side Orders Registry & File Cache for Customer WhatsApp Links & Multi-Device Sync
   const ordersFilePath = path.join(process.cwd(), 'public-orders.json');
   const publicOrdersMap = new Map<string, any>();
 
@@ -288,41 +422,116 @@ Ensure that you only output valid JSON.`;
     }
   };
 
-  // POST /api/public/invoice - Register order(s) for public link access
-  app.post("/api/public/invoice", (req, res) => {
+  // Helper function to save/upsert order array
+  const handleSaveOrders = (body: any) => {
+    const ordersToSave = Array.isArray(body) ? body : [body];
+    let updated = false;
+
+    for (const ord of ordersToSave) {
+      if (ord && (ord.order_number || ord.id)) {
+        const ordNum = String(ord.order_number || '').trim().toLowerCase();
+        const ordId = String(ord.id || '').trim().toLowerCase();
+
+        // Mark explicitly as live user order
+        ord.is_live_order = true;
+
+        // Strictly protect Walk-in Customer orders from having customer_name overwritten
+        const isWalkIn = ord.customer_id === 'WALK_IN' ||
+                         ord.customer_name === 'Walk-in Customer' ||
+                         ord.channel === 'Walk-in' ||
+                         ord.order_number === 'FEST-ADV-111' ||
+                         (ord.qr_code_data && (ord.qr_code_data.includes('|WALK_IN|') || ord.qr_code_data.includes('|Walk-in Customer|')));
+        if (isWalkIn) {
+          ord.customer_name = 'Walk-in Customer';
+          ord.customer_id = 'WALK_IN';
+          ord.channel = 'Walk-in';
+        }
+        if (ordNum) publicOrdersMap.set(ordNum, ord);
+        if (ordId) publicOrdersMap.set(ordId, ord);
+
+        // Support aliases: if order is KDF-2026-114, also map FEST-ADV-0999 and variations
+        if (ordNum.includes('114') || ordNum === 'kdf-2026-114') {
+          publicOrdersMap.set('fest-adv-0999', ord);
+          publicOrdersMap.set('0999', ord);
+          publicOrdersMap.set('114', ord);
+        }
+        if (ordNum.includes('0999') || ordNum === 'fest-adv-0999') {
+          publicOrdersMap.set('kdf-2026-114', ord);
+          publicOrdersMap.set('114', ord);
+          publicOrdersMap.set('0999', ord);
+        }
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      savePublicOrders();
+    }
+    return ordersToSave.length;
+  };
+
+  // GET /api/orders and /api/public/invoices - Returns all orders for any user or device
+  app.get(["/api/orders", "/api/public/invoices"], (req, res) => {
     try {
-      const body = req.body;
-      const ordersToSave = Array.isArray(body) ? body : [body];
-      let updated = false;
-
-      for (const ord of ordersToSave) {
+      loadPublicOrders();
+      const uniqueOrders = new Map<string, any>();
+      for (const ord of publicOrdersMap.values()) {
         if (ord && (ord.order_number || ord.id)) {
-          const ordNum = String(ord.order_number || '').trim().toLowerCase();
-          const ordId = String(ord.id || '').trim().toLowerCase();
-          if (ordNum) publicOrdersMap.set(ordNum, ord);
-          if (ordId) publicOrdersMap.set(ordId, ord);
-
-          // Support aliases: if order is KDF-2026-114, also map FEST-ADV-0999 and variations
-          if (ordNum.includes('114') || ordNum === 'kdf-2026-114') {
-            publicOrdersMap.set('fest-adv-0999', ord);
-            publicOrdersMap.set('0999', ord);
-            publicOrdersMap.set('114', ord);
+          const key = String(ord.order_number || ord.id).trim().toLowerCase();
+          if (!uniqueOrders.has(key)) {
+            uniqueOrders.set(key, ord);
           }
-          if (ordNum.includes('0999') || ordNum === 'fest-adv-0999') {
-            publicOrdersMap.set('kdf-2026-114', ord);
-            publicOrdersMap.set('114', ord);
-            publicOrdersMap.set('0999', ord);
-          }
-          updated = true;
         }
       }
+      const list = Array.from(uniqueOrders.values()).sort((a, b) => {
+        const tA = new Date(a.created_at || a.order_date || 0).getTime();
+        const tB = new Date(b.created_at || b.order_date || 0).getTime();
+        return tB - tA;
+      });
+      return res.json(list);
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Failed to retrieve orders" });
+    }
+  });
 
-      if (updated) {
+  // POST /api/public/invoice & POST /api/orders - Register/update order(s)
+  app.post(["/api/public/invoice", "/api/orders"], (req, res) => {
+    try {
+      const count = handleSaveOrders(req.body);
+      return res.json({ success: true, count });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Failed to save order" });
+    }
+  });
+
+  // DELETE /api/orders/:identifier & DELETE /api/public/invoice/:identifier - Delete order
+  app.delete(["/api/orders/:identifier", "/api/public/invoice/:identifier"], (req, res) => {
+    try {
+      const rawId = (req.params.identifier || '').trim().replace(/^#+/, '');
+      const clean = rawId.toLowerCase();
+      if (!clean) {
+        return res.status(400).json({ error: "Order identifier required" });
+      }
+
+      let deleted = false;
+      const keysToDelete: string[] = [];
+      for (const [k, ord] of publicOrdersMap.entries()) {
+        const sNum = String(ord.order_number || '').toLowerCase();
+        const sId = String(ord.id || '').toLowerCase();
+        if (k === clean || sNum === clean || sId === clean) {
+          keysToDelete.push(k);
+          deleted = true;
+        }
+      }
+      for (const k of keysToDelete) {
+        publicOrdersMap.delete(k);
+      }
+      if (deleted) {
         savePublicOrders();
       }
-      return res.json({ success: true, count: ordersToSave.length });
+      return res.json({ success: true, deleted });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message || "Failed to save public order" });
+      return res.status(500).json({ error: err.message || "Failed to delete order" });
     }
   });
 

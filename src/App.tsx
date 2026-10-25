@@ -798,6 +798,8 @@ export default function App() {
     const restoreSession = async () => {
       try {
         dbStore.reloadFromLocalStorage();
+        // Immediately initiate background sync with server for orders and users
+        dbStore.syncWithServer().catch(() => {});
         const savedSession = safeStorage.getItem('omnipack_session');
         const deviceId = getDeviceId();
         let localSessionToken = '';
@@ -1195,8 +1197,14 @@ export default function App() {
     try {
       dbStore.reloadFromLocalStorage();
       // 2. FAST-PATH: First verify local credentials in dbStore
-      // This grants instant sub-50ms login without waiting on slow network/cloud roundtrips!
-      const localResult = dbStore.login(cleanEmail, cleanPassword, deviceId);
+      let localResult = dbStore.login(cleanEmail, cleanPassword, deviceId);
+      
+      // If user account is not found locally, fetch registered profiles from server
+      if (!localResult.success) {
+        await dbStore.syncWithServer();
+        localResult = dbStore.login(cleanEmail, cleanPassword, deviceId);
+      }
+
       if (localResult.success && localResult.user && localResult.business) {
         clearTimeout(watchdog);
         const newSessionToken = localResult.user.session_token || ('st_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11));
@@ -1214,6 +1222,7 @@ export default function App() {
         setCurrentUser(localResult.user);
         setCurrentBusiness(localResult.business);
         dbStore.reloadFromLocalStorage();
+        dbStore.syncWithServer().catch(() => {});
         
         dbStore.broadcastForceLogout(localResult.user.id, newSessionToken, deviceId);
         
@@ -1544,6 +1553,7 @@ export default function App() {
     setPasswordInput('');
     safeStorage.removeItem('omnipack_session');
     dbStore.reloadFromLocalStorage();
+    dbStore.syncWithServer().catch(() => {});
     
     if (isSupabaseConfigured && supabase) {
       try {

@@ -356,15 +356,20 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
   const handleOpenQuickAdjust = (item: any, mode: 'add' | 'deduct' | 'set' = 'add', defaultPreset = 5) => {
     setQuickAdjustProduct(item);
     setAdjustMode(mode);
-    setAdjustQtyInput(defaultPreset);
+    if (mode === 'set') {
+      const pStock = Number(item.physicalStock);
+      setAdjustQtyInput(isNaN(pStock) || pStock < 0 ? 0 : pStock);
+    } else {
+      setAdjustQtyInput(defaultPreset);
+    }
     setAdjustReason(mode === 'add' ? 'Stock Inward / Restock' : mode === 'deduct' ? 'Stock Reduction / Audit' : 'Physical Inventory Count');
   };
 
   const handleConfirmQuickAdjust = async () => {
     if (!quickAdjustProduct || isSubmittingAdjust) return;
     const qtyVal = Number(adjustQtyInput);
-    if (isNaN(qtyVal) || (adjustMode !== 'set' && qtyVal <= 0)) {
-      triggerToast('Please enter a valid stock quantity greater than zero.', 'error');
+    if (isNaN(qtyVal) || (adjustMode !== 'set' && qtyVal <= 0) || (adjustMode === 'set' && qtyVal < 0)) {
+      triggerToast('Please enter a valid stock quantity.', 'error');
       return;
     }
 
@@ -375,38 +380,39 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                       dbStore.getProducts(businessId).find(p => p.id === quickAdjustProduct.id) ||
                       quickAdjustProduct;
     const currentStock = Number(freshProd.current_stock) || 0;
+    const effectiveBase = (adjustMode === 'add' && currentStock < 0) ? 0 : currentStock;
     let changeQty = 0;
+    let targetBalance = 0;
     let logType: StockLog['type'] = 'Adjustment';
 
     if (adjustMode === 'add') {
-      changeQty = qtyVal;
+      targetBalance = effectiveBase + qtyVal;
+      changeQty = targetBalance - currentStock;
       logType = 'In';
     } else if (adjustMode === 'deduct') {
-      changeQty = -qtyVal;
+      targetBalance = Math.max(0, currentStock - qtyVal);
+      changeQty = -(currentStock - targetBalance);
       logType = 'Out';
     } else if (adjustMode === 'set') {
-      changeQty = qtyVal - currentStock;
+      targetBalance = Math.max(0, qtyVal);
+      changeQty = targetBalance - currentStock;
       logType = 'Adjustment';
     }
 
-    if (changeQty === 0) {
-      triggerToast('No change in stock level.', 'info');
+    if (changeQty === 0 && targetBalance === currentStock) {
+      triggerToast('No change in physical stock level.', 'info');
       setQuickAdjustProduct(null);
-      return;
-    }
-
-    if (changeQty < 0 && (currentStock + changeQty < 0)) {
-      triggerToast(`Insufficient Stock! "${freshProd.name}" only has ${currentStock} units available. Cannot deduct ${Math.abs(changeQty)}.`, 'error');
       return;
     }
 
     setIsSubmittingAdjust(true);
     try {
-      const finalNote = adjustReason.trim() || `Manual stock update via Item Stock Live Report (${adjustMode} ${Math.abs(changeQty)})`;
-      const targetBalance = currentStock + changeQty;
+      const finalNote = adjustReason.trim() || `Manual stock update via Item Stock Live Report (${adjustMode} ${Math.abs(changeQty)} -> Physical ${targetBalance})`;
 
       // Lock in authoritative expectation before updating store
       dbStore.setAuthoritativeStock(freshProd.id, targetBalance, changeQty, freshProd.sku, freshProd.name);
+      if (freshProd.sku) dbStore.setAuthoritativeStock(freshProd.sku, targetBalance, changeQty, freshProd.sku, freshProd.name);
+      if (freshProd.name) dbStore.setAuthoritativeStock(freshProd.name, targetBalance, changeQty, freshProd.sku, freshProd.name);
 
       dbStore.addStockLog(
         freshProd.id,
@@ -422,16 +428,19 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         user.name,
         user.role,
         'Stock Change',
-        `Adjusted stock for ${freshProd.name}: ${changeQty > 0 ? '+' : ''}${changeQty} (${logType}) via Item Stock Live Report`,
+        `Adjusted physical stock for ${freshProd.name}: Set to ${targetBalance} (change ${changeQty > 0 ? '+' : ''}${changeQty} ${logType}) via Item Stock Live Report`,
         businessId
       );
 
       // Instantly refresh local state
-      setProducts(dbStore.getProducts(businessId));
-      setStockLogs(dbStore.getStockLogs(businessId));
+      dbStore.invalidateMemos();
+      setProducts([...dbStore.getProducts(businessId)]);
+      setStockLogs([...dbStore.getStockLogs(businessId)]);
 
+      const unitStr = freshProd.unit || 'units';
+      const netAvail = targetBalance - (reportData.find(r => r.id === freshProd.id)?.bookQty || 0);
       triggerToast(
-        `Stock updated for "${freshProd.name}": ${changeQty > 0 ? `+${changeQty}` : changeQty} ${freshProd.unit || 'units'}. New Balance: ${targetBalance} ${freshProd.unit || 'units'}.`,
+        `Stock updated for "${freshProd.name}": Physical Stock is now ${targetBalance} ${unitStr} (Net Live Available: ${netAvail} ${unitStr})`,
         'success'
       );
       setQuickAdjustProduct(null);
@@ -465,8 +474,9 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         p.name || 'N/A',
         p.sku || 'N/A',
         p.categoryName,
-        p.availableStock,
+        p.physicalStock,
         p.bookQty,
+        p.availableStock,
         p.packQty,
         p.activePipelineQty,
         p.totalOrderQty
@@ -474,7 +484,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
 
       autoTable(doc, {
         startY: 40,
-        head: [['Product Name', 'SKU', 'Category', 'Available', 'Booked', 'Packed', 'Pipeline', 'Total Orders']],
+        head: [['Product Name', 'SKU', 'Category', 'Physical Stock', 'Booked', 'Net Available', 'Packed', 'Pipeline', 'Total Orders']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
@@ -498,8 +508,9 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         'Product Name': p.name,
         'SKU': p.sku,
         'Category': p.categoryName,
-        'Available Stock': p.availableStock,
+        'Physical Stock (On Hand)': p.physicalStock,
         'Booked Qty': p.bookQty,
+        'Net Available Live Stock': p.availableStock,
         'Packed Qty': p.packQty,
         'Active Pipeline': p.activePipelineQty,
         'Total Ordered': p.totalOrderQty,
@@ -554,13 +565,22 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
   // Derived values for quick adjust modal calculation
   const modalFreshProduct = useMemo(() => {
     if (!quickAdjustProduct) return null;
-    return products.find(p => p.id === quickAdjustProduct.id) || quickAdjustProduct;
+    return products.find(p => p.id === quickAdjustProduct.id) || 
+           products.find(p => p.sku && quickAdjustProduct.sku && p.sku.toLowerCase() === quickAdjustProduct.sku.toLowerCase()) ||
+           products.find(p => p.name && quickAdjustProduct.name && p.name.toLowerCase() === quickAdjustProduct.name.toLowerCase()) ||
+           quickAdjustProduct;
   }, [quickAdjustProduct, products]);
   const modalCurrentStock = modalFreshProduct ? (Number(modalFreshProduct.current_stock) || 0) : 0;
-  const modalBookedQty = modalFreshProduct ? (reportData.find(r => r.id === modalFreshProduct.id)?.bookQty || 0) : 0;
+  const modalBookedQty = modalFreshProduct ? (reportData.find(r => r.id === modalFreshProduct.id || (modalFreshProduct.sku && r.sku === modalFreshProduct.sku))?.bookQty || 0) : 0;
   const modalAdjustQty = Math.max(0, Number(adjustQtyInput) || 0);
-  const modalCalculatedDelta = adjustMode === 'add' ? modalAdjustQty : adjustMode === 'deduct' ? -modalAdjustQty : (modalAdjustQty - modalCurrentStock);
-  const modalNewPhysicalBalance = modalCurrentStock + modalCalculatedDelta;
+
+  const modalEffectiveBase = (adjustMode === 'add' && modalCurrentStock < 0) ? 0 : modalCurrentStock;
+  const modalCalculatedDelta = adjustMode === 'add' 
+    ? (modalEffectiveBase + modalAdjustQty - modalCurrentStock) 
+    : adjustMode === 'deduct' 
+      ? -Math.min(modalAdjustQty, Math.max(0, modalCurrentStock)) 
+      : (modalAdjustQty - modalCurrentStock);
+  const modalNewPhysicalBalance = Math.max(0, modalCurrentStock + modalCalculatedDelta);
   const modalNewAvailable = modalNewPhysicalBalance - modalBookedQty;
 
   return (
@@ -630,16 +650,23 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
         </div>
 
         {/* Global Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-8">
           <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-            <p className="text-indigo-300/60 text-[10px] font-black uppercase tracking-widest">Available Stock</p>
+            <p className="text-indigo-300/60 text-[10px] font-black uppercase tracking-widest">Physical Stock (On Hand)</p>
             <div className="flex items-end justify-between mt-1">
-              <h3 className="text-2xl font-black font-mono">{totals.totalAvailable.toLocaleString()}</h3>
+              <h3 className="text-2xl font-black font-mono text-white">{totals.totalPhysical.toLocaleString()}</h3>
+              <Package size={16} className="text-indigo-400 mb-1" />
+            </div>
+          </div>
+          <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+            <p className="text-indigo-300/60 text-[10px] font-black uppercase tracking-widest">Net Available Stock</p>
+            <div className="flex items-end justify-between mt-1">
+              <h3 className="text-2xl font-black font-mono text-emerald-400">{totals.totalAvailable.toLocaleString()}</h3>
               <TrendingUp size={16} className="text-emerald-400 mb-1" />
             </div>
           </div>
           <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-            <p className="text-rose-300/60 text-[10px] font-black uppercase tracking-widest">Shortage Items</p>
+            <p className="text-rose-300/60 text-[10px] font-black uppercase tracking-widest">Shortage Items (Deficit)</p>
             <div className="flex items-end justify-between mt-1">
               <h3 className="text-2xl font-black font-mono text-rose-400">{totals.negativeCount}</h3>
               <AlertTriangle size={16} className="text-rose-400 mb-1" />
@@ -743,8 +770,9 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                 <thead className="bg-slate-50/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest text-[10px] border-b border-slate-100 dark:border-slate-800">
                   <tr>
                     <th className="py-4 px-6">Product Details</th>
-                    <th className="py-4 px-3 text-center">Available Stock</th>
+                    <th className="py-4 px-3 text-center">Physical (On Hand)</th>
                     <th className="py-4 px-3 text-center">Book Quantity</th>
+                    <th className="py-4 px-3 text-center">Live Available Stock</th>
                     <th className="py-4 px-3 text-center">In Pipeline</th>
                     <th className="py-4 px-3 text-center">Last Move</th>
                     <th className="py-4 px-3 text-right">Activity</th>
@@ -754,7 +782,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {reportData.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-20 text-center">
+                      <td colSpan={8} className="py-20 text-center">
                         <div className="flex flex-col items-center gap-3">
                           <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-300">
                             <PackageOpen size={40} />
@@ -809,28 +837,24 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                             </div>
                           </td>
 
+                          {/* 1. PHYSICAL STOCK ON HAND */}
                           <td className="py-4 px-3 text-center">
                             <div className="inline-flex flex-col items-center">
                               <button
                                 type="button"
-                                onClick={() => handleOpenQuickAdjust(item, 'add', 5)}
-                                title={`Available Stock: ${item.availableStock} (Physical: ${item.physicalStock} - Booked: ${item.bookQty})`}
-                                className={`text-sm font-black font-mono px-3 py-1 rounded-xl shadow-xs border cursor-pointer hover:scale-105 active:scale-95 transition-transform ${
-                                  isShort 
-                                    ? 'bg-rose-500 text-white border-rose-600 shadow-sm' 
-                                    : isLow 
-                                      ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/50' 
-                                      : 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50'
-                                }`}
+                                onClick={() => handleOpenQuickAdjust(item, 'set', item.physicalStock)}
+                                title={`Physical Stock: ${item.physicalStock} ${item.unit || 'units'} on hand. Click to calibrate exact physical inventory.`}
+                                className="text-sm font-black font-mono px-3 py-1 rounded-xl shadow-xs border cursor-pointer hover:scale-105 active:scale-95 transition-transform bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700"
                               >
-                                {item.availableStock}
+                                {item.physicalStock}
                               </button>
-                              {isShort && <span className="text-[9px] text-rose-500 font-black mt-1 uppercase tracking-wider">Deficit ({item.availableStock})</span>}
-                              {isLow && <span className="text-[9px] text-amber-500 font-black mt-1 uppercase tracking-wider">Refill Needed</span>}
-                              {!isShort && !isLow && <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 uppercase tracking-wider">In Stock</span>}
+                              <span className="text-[9px] text-slate-500 dark:text-slate-400 font-bold mt-1 uppercase tracking-wider">
+                                {item.unit || 'pkts'} On Hand
+                              </span>
                             </div>
                           </td>
 
+                          {/* 2. BOOK QUANTITY */}
                           <td className="py-4 px-3 text-center">
                             <div className="inline-flex flex-col items-center">
                               <span className={`text-sm font-black font-mono px-3 py-1 rounded-xl border ${
@@ -840,7 +864,39 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                               }`}>
                                 {item.bookQty}
                               </span>
-                              <span className="text-[9px] text-slate-400 font-bold mt-1 uppercase">Book Quantity</span>
+                              <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold mt-1 uppercase">
+                                Booked ({item.unit || 'pkts'})
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* 3. LIVE AVAILABLE STOCK */}
+                          <td className="py-4 px-3 text-center">
+                            <div className="inline-flex flex-col items-center">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuickAdjust(item, 'add', 5)}
+                                title={`Net Available: ${item.availableStock} (${item.physicalStock} on hand - ${item.bookQty} booked)`}
+                                className={`text-sm font-black font-mono px-3 py-1 rounded-xl shadow-xs border cursor-pointer hover:scale-105 active:scale-95 transition-transform ${
+                                  isShort 
+                                    ? 'bg-rose-500 text-white border-rose-600 shadow-sm' 
+                                    : isLow 
+                                      ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/50' 
+                                      : 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50'
+                                }`}
+                              >
+                                {item.availableStock > 0 ? `+${item.availableStock}` : item.availableStock}
+                              </button>
+                              {isShort && <span className="text-[9px] text-rose-500 font-black mt-1 uppercase tracking-wider">Deficit ({item.availableStock})</span>}
+                              {isLow && <span className="text-[9px] text-amber-500 font-black mt-1 uppercase tracking-wider">Refill Needed</span>}
+                              {!isShort && !isLow && (
+                                <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 uppercase tracking-wider">
+                                  In Stock
+                                </span>
+                              )}
+                              <span className="text-[8px] text-slate-400 font-mono mt-0.5" title="Physical - Booked">
+                                {item.physicalStock} - {item.bookQty}
+                              </span>
                             </div>
                           </td>
 
@@ -919,6 +975,16 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                                 <span>Minus</span>
                               </button>
 
+                              <button 
+                                type="button"
+                                onClick={() => handleOpenQuickAdjust(item, 'set', item.physicalStock)}
+                                className="px-2.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all cursor-pointer font-black text-[11px] flex items-center gap-1 border border-indigo-200 dark:border-indigo-800 shadow-2xs hover:scale-105 active:scale-95"
+                                title="Set exact physical stock count (=)"
+                              >
+                                <Sliders size={13} className="stroke-[2.5]" />
+                                <span>Set (=)</span>
+                              </button>
+
                               {onOpenInventory && (
                                 <button 
                                   type="button"
@@ -926,7 +992,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                                   className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all cursor-pointer hover:scale-105 active:scale-95"
                                   title="Open Full Inventory Ledger for this item"
                                 >
-                                  <Sliders size={15} />
+                                  <Layers size={15} />
                                 </button>
                               )}
                             </div>
@@ -1083,7 +1149,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
 
                   <button
                     type="button"
-                    onClick={() => { setAdjustMode('set'); setAdjustReason('Physical Inventory Count / Correction'); setAdjustQtyInput(modalCurrentStock); }}
+                    onClick={() => { setAdjustMode('set'); setAdjustReason('Physical Inventory Count / Correction'); setAdjustQtyInput(Math.max(0, modalCurrentStock)); }}
                     className={`py-2.5 px-3 rounded-2xl text-xs font-black border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                       adjustMode === 'set'
                         ? 'bg-indigo-600 text-white border-indigo-700 shadow-md shadow-indigo-600/20'
@@ -1100,7 +1166,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    {adjustMode === 'set' ? 'New Exact Stock Level' : 'Quantity to Add / Minus'}
+                    {adjustMode === 'set' ? 'New Exact Physical Stock' : 'Quantity to Add / Minus'}
                   </label>
                   <span className="text-[11px] font-bold text-slate-500">
                     Unit: <strong className="text-slate-800 dark:text-slate-200">{quickAdjustProduct.unit || 'units'}</strong>
@@ -1136,7 +1202,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                 {/* Fast Presets */}
                 <div className="flex items-center gap-1.5 flex-wrap pt-1">
                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Quick Select:</span>
-                  {[1, 5, 10, 20, 50, 100].map(amt => (
+                  {[1, 5, 10, 20, 50, 90, 100, 200].map(amt => (
                     <button
                       key={amt}
                       type="button"
@@ -1155,12 +1221,25 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
 
               {/* Live Impact Calculation Preview Card */}
               <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                  Real-time Stock Impact Preview
-                </p>
-                <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Real-time Stock Impact Preview
+                  </p>
+                  <span className="text-[9px] font-mono text-indigo-500 dark:text-indigo-400 font-bold">
+                    Physical - Booked = Net Available
+                  </span>
+                </div>
+
+                {modalCurrentStock < 0 && (
+                  <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl p-2.5 flex items-center gap-2 text-amber-800 dark:text-amber-200 text-xs font-semibold">
+                    <AlertTriangle size={15} className="shrink-0 text-amber-600" />
+                    <span>Physical stock was previously {modalCurrentStock}. Updating will calibrate total physical packets to {modalNewPhysicalBalance}.</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
                   <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                    <span className="text-[8px] font-bold text-slate-400 uppercase">Physical</span>
+                    <span className="text-[8px] font-bold text-slate-400 uppercase">Current Stock</span>
                     <h5 className="text-sm font-black font-mono text-slate-700 dark:text-slate-200 mt-0.5">{modalCurrentStock}</h5>
                   </div>
                   <div className={`p-2 rounded-xl border ${
@@ -1175,6 +1254,10 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                       {modalCalculatedDelta > 0 ? `+${modalCalculatedDelta}` : modalCalculatedDelta}
                     </h5>
                   </div>
+                  <div className="bg-emerald-50 dark:bg-emerald-950/40 p-2 rounded-xl border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
+                    <span className="text-[8px] font-bold text-emerald-600 uppercase">New Physical</span>
+                    <h5 className="text-sm font-black font-mono mt-0.5">{modalNewPhysicalBalance}</h5>
+                  </div>
                   <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
                     <span className="text-[8px] font-bold text-amber-500 uppercase">Booked Qty</span>
                     <h5 className="text-sm font-black font-mono text-amber-600 dark:text-amber-400 mt-0.5">{modalBookedQty}</h5>
@@ -1185,7 +1268,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                       : 'bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 text-indigo-700 dark:text-indigo-400'
                   }`}>
                     <span className="text-[8px] font-bold uppercase">Net Available</span>
-                    <h5 className="text-sm font-black font-mono mt-0.5">{modalNewAvailable}</h5>
+                    <h5 className="text-sm font-black font-mono mt-0.5">{modalNewAvailable > 0 ? `+${modalNewAvailable}` : modalNewAvailable}</h5>
                   </div>
                 </div>
               </div>
@@ -1252,7 +1335,7 @@ export const ItemStockLiveReportModule: React.FC<ItemStockLiveReportModuleProps>
                   ) : (
                     <>
                       <Check size={16} />
-                      <span>Confirm Stock ({modalCalculatedDelta > 0 ? `+${modalCalculatedDelta}` : modalCalculatedDelta})</span>
+                      <span>Confirm Physical Stock ({modalNewPhysicalBalance} {quickAdjustProduct.unit || 'units'})</span>
                     </>
                   )}
                 </button>

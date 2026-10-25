@@ -654,14 +654,15 @@ export function isLegacyDummySalesOrder(o: any, purgedIdSet?: Set<string>): bool
   // Strictly preserve all festive or advance booking orders
   if (o.advance_booking || o.festive_booking) return false;
   const num = String(o.order_number || '').toUpperCase();
-  if (num.includes('FEST') || num.includes('ADV') || num.includes('KDF')) return false;
+  if (num.includes('FEST') || num.includes('ADV') || num.includes('KDF') || num.includes('INV') || num.includes('SO')) return false;
+
+  // Genuine orders with items or customer details or payment are ALWAYS preserved
+  if (Array.isArray(o.items) && o.items.length > 0) return false;
+  if (o.customer_name && o.customer_name !== 'Walk-in Customer' && o.customer_name !== 'Customer') return false;
+  if (o.customer_phone || o.pin_code || o.billing_address || o.shipping_address) return false;
+  if (typeof o.total_amount === 'number' && o.total_amount > 0) return false;
 
   if (purgedIdSet && (purgedIdSet.has(o.id) || (o.order_number && purgedIdSet.has(o.order_number)))) {
-    return true;
-  }
-
-  // The 902 legacy dummy orders are standard orders with status 'Delivered'
-  if (o.status === 'Delivered') {
     return true;
   }
   return false;
@@ -988,6 +989,7 @@ class ERPStorage {
   constructor() {
     // Clear stale deleted sales IDs filter so valid orders are never hidden
     safeStorage.removeItem('omnipack_erp_deleted_sales_ids');
+    safeStorage.removeItem('omnipack_erp_purged_dummy_sales_ids');
 
     const catStr = safeStorage.getItem('omnipack_erp_categories');
     const profStr = safeStorage.getItem('omnipack_erp_profiles');
@@ -1116,16 +1118,17 @@ class ERPStorage {
       }
     }
 
-    // Repair recently created order from FEST-ADV-0999 to KDF-2026-114
+    // Repair and protect Walk-in Orders (including FEST-ADV-111, KDF-2026-114, etc.)
     if (Array.isArray(this.cache.sales) && this.cache.sales.length > 0) {
       let orderRepaired = false;
       this.cache.sales = this.cache.sales.map(order => {
-        const isTarget = order && (
+        // 1. Repair FEST-ADV-0999 -> KDF-2026-114
+        const isTarget0999 = order && (
           order.order_number === 'FEST-ADV-0999' ||
           String(order.order_number).toUpperCase() === 'FEST-ADV-0999' ||
           (order.order_number?.includes('0999') && (order.customer_name?.includes('Ajinkya') || order.total_amount === 120))
         );
-        if (isTarget) {
+        if (isTarget0999) {
           orderRepaired = true;
           const newNum = 'KDF-2026-114';
           const updatedPayments = Array.isArray(order.payment_history)
@@ -1144,6 +1147,26 @@ class ERPStorage {
             is_live_order: true
           };
         }
+
+        // 2. Strict Walk-in Repair (e.g. FEST-ADV-111 created for Walk-in Customer)
+        const isWalkInCorrupted = order && (
+          order.order_number === 'FEST-ADV-111' ||
+          (order.qr_code_data && (order.qr_code_data.includes('|WALK_IN|') || order.qr_code_data.includes('|Walk-in Customer|'))) ||
+          (order.customer_name === 'Walk-in Customer' && order.customer_id !== 'WALK_IN') ||
+          (order.channel === 'Walk-in' && order.customer_name !== 'Walk-in Customer')
+        );
+
+        if (isWalkInCorrupted) {
+          orderRepaired = true;
+          return {
+            ...order,
+            customer_id: 'WALK_IN',
+            customer_name: 'Walk-in Customer',
+            channel: 'Walk-in',
+            qr_code_data: `${order.order_number}|WALK_IN|Walk-in Customer|${(order.items || []).length} items`
+          };
+        }
+
         return order;
       });
 
@@ -1151,9 +1174,11 @@ class ERPStorage {
         safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
         purgedDummyIdSet.delete('KDF-2026-114');
         purgedDummyIdSet.delete('FEST-ADV-0999');
+        purgedDummyIdSet.delete('FEST-ADV-111');
         safeStorage.setItem('omnipack_erp_purged_dummy_sales_ids', JSON.stringify(Array.from(purgedDummyIdSet)));
         if (isSupabaseConfigured && supabase) {
           Promise.resolve(supabase.from('sales_orders').update({ order_number: 'KDF-2026-114' }).eq('order_number', 'FEST-ADV-0999')).catch(() => {});
+          Promise.resolve(supabase.from('sales_orders').update({ customer_id: null, customer_name: 'Walk-in Customer', channel: 'Walk-in' }).eq('order_number', 'FEST-ADV-111')).catch(() => {});
         }
       }
       this.syncOrderToPublicServer(this.cache.sales);
@@ -1319,6 +1344,26 @@ class ERPStorage {
           }
         }
       });
+
+      // Synchronize with server on startup and register listeners
+      setTimeout(() => {
+        this.syncWithServer().catch(() => {});
+      }, 50);
+
+      window.addEventListener('focus', () => {
+        this.syncWithServer().catch(() => {});
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          this.syncWithServer().catch(() => {});
+        }
+      });
+
+      // Periodic 4-second polling to ensure all devices and user IDs stay updated in real time
+      setInterval(() => {
+        this.syncWithServer().catch(() => {});
+      }, 4000);
     }
   }
 
@@ -1477,7 +1522,9 @@ class ERPStorage {
       }
       safeStorage.setItem(tierMigrationKey, 'true');
     }
+    this.invalidateMemos();
     this.notify();
+    this.syncWithServer().catch(() => {});
   }
 
   private load<T>(key: string, defaultValue: T): T {
@@ -1488,6 +1535,135 @@ class ERPStorage {
       console.warn(`Error loading state for key ${key}`, e);
       return defaultValue;
     }
+  }
+
+  /**
+   * Synchronizes orders and registered user accounts with the backend server.
+   * Ensures that orders created in one user ID or on one device are instantly
+   * visible across all user accounts and across all devices upon login or refresh.
+   */
+  public async syncWithServer(): Promise<{ ordersCount: number; usersCount: number }> {
+    if (typeof window === 'undefined') return { ordersCount: 0, usersCount: 0 };
+    let ordersCount = 0;
+    let usersCount = 0;
+
+    // 1. Sync all orders from server
+    try {
+      const res = await fetch('/api/orders');
+      if (res.ok) {
+        const serverOrders = await res.json();
+        if (Array.isArray(serverOrders) && serverOrders.length > 0) {
+          ordersCount = serverOrders.length;
+          const localOrders = Array.isArray(this.cache.sales) ? this.cache.sales : [];
+          
+          const orderMap = new Map<string, SalesOrder>();
+          
+          // First add server orders (tag as is_live_order)
+          serverOrders.forEach((so: any) => {
+            if (so && (so.order_number || so.id)) {
+              const liveSO: SalesOrder = {
+                ...so,
+                is_live_order: true,
+                items: Array.isArray(so.items) ? so.items : []
+              };
+              const key = String(liveSO.order_number || liveSO.id).trim().toLowerCase();
+              orderMap.set(key, liveSO);
+              if (liveSO.id) orderMap.set(String(liveSO.id).trim().toLowerCase(), liveSO);
+            }
+          });
+
+          // Merge local orders that might be newly created or updated
+          localOrders.forEach((locSO: SalesOrder) => {
+            if (locSO && (locSO.order_number || locSO.id)) {
+              const numKey = String(locSO.order_number || '').trim().toLowerCase();
+              const idKey = String(locSO.id || '').trim().toLowerCase();
+              const existingServer = (numKey ? orderMap.get(numKey) : undefined) || (idKey ? orderMap.get(idKey) : undefined);
+              
+              if (existingServer) {
+                const isLocalNewer = Boolean(locSO.updated_at && existingServer.updated_at && (new Date(locSO.updated_at).getTime() > new Date(existingServer.updated_at).getTime()));
+                const merged = isLocalNewer ? { ...existingServer, ...locSO } : { ...locSO, ...existingServer };
+                merged.is_live_order = true;
+                if (numKey) orderMap.set(numKey, merged);
+                if (idKey) orderMap.set(idKey, merged);
+              } else {
+                if (numKey) orderMap.set(numKey, locSO);
+                if (idKey) orderMap.set(idKey, locSO);
+                this.syncOrderToPublicServer(locSO);
+              }
+            }
+          });
+
+          const uniqueMerged = dedupeSalesOrders(Array.from(new Set(orderMap.values())));
+          uniqueMerged.sort((a, b) => {
+            const tA = parseOrderDateMs(a.created_at) || parseOrderDateMs(a.order_date) || 0;
+            const tB = parseOrderDateMs(b.created_at) || parseOrderDateMs(b.order_date) || 0;
+            return tB - tA;
+          });
+
+          this.cache.sales = uniqueMerged;
+          safeStorage.setItem('omnipack_erp_sales', JSON.stringify(uniqueMerged));
+          this.invalidateMemos();
+          this.notify();
+        }
+      }
+    } catch (e) {
+      console.warn("Could not sync orders from server:", e);
+    }
+
+    // 2. Sync registered user accounts from server for multi-device authentication
+    try {
+      const uRes = await fetch('/api/users');
+      if (uRes.ok) {
+        const serverUsers = await uRes.json();
+        if (Array.isArray(serverUsers) && serverUsers.length > 0) {
+          usersCount = serverUsers.length;
+          const localProfiles = Array.isArray(this.cache.profiles) ? this.cache.profiles : [];
+          const userMap = new Map<string, UserProfile & { password_hash?: string }>();
+          
+          serverUsers.forEach((su: any) => {
+            if (su && su.email) {
+              userMap.set(su.email.trim().toLowerCase(), su);
+            }
+          });
+
+          localProfiles.forEach((lu) => {
+            if (lu && lu.email) {
+              const em = lu.email.trim().toLowerCase();
+              if (userMap.has(em)) {
+                userMap.set(em, { ...userMap.get(em)!, ...lu });
+              } else {
+                userMap.set(em, lu);
+                fetch('/api/users', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(lu)
+                }).catch(() => {});
+              }
+            }
+          });
+
+          const mergedProfiles = Array.from(userMap.values());
+          this.cache.profiles = mergedProfiles;
+          safeStorage.setItem('omnipack_erp_profiles', JSON.stringify(mergedProfiles));
+
+          try {
+            const saved = JSON.parse(safeStorage.getItem('omnipack_erp_passwords') || '{}');
+            mergedProfiles.forEach(p => {
+              if (p.email && p.password_hash) {
+                saved[p.email.toLowerCase().trim()] = p.password_hash;
+              }
+            });
+            safeStorage.setItem('omnipack_erp_passwords', JSON.stringify(saved));
+          } catch (_) {}
+
+          this.notify();
+        }
+      }
+    } catch (e) {
+      console.warn("Could not sync users from server:", e);
+    }
+
+    return { ordersCount, usersCount };
   }
 
 
@@ -1808,27 +1984,47 @@ class ERPStorage {
                  };
                });
 
-               // Recover true customer name if missing or defaulted to Walk-in
+               // Strictly Identify Walk-in Customer orders:
+               // Walk-in orders MUST NEVER be overwritten with registered customer names!
+               const isExplicitWalkIn = so.customer_id === 'WALK_IN' ||
+                                        so.customer_name === 'Walk-in Customer' ||
+                                        so.channel === 'Walk-in' ||
+                                        so.order_number === 'FEST-ADV-111' ||
+                                        (so.qr_code_data && (so.qr_code_data.includes('|WALK_IN|') || so.qr_code_data.includes('|Walk-in Customer|'))) ||
+                                        existingSO?.customer_id === 'WALK_IN' ||
+                                        existingSO?.customer_name === 'Walk-in Customer' ||
+                                        existingSO?.channel === 'Walk-in' ||
+                                        (existingSO?.qr_code_data && (existingSO.qr_code_data.includes('|WALK_IN|') || existingSO.qr_code_data.includes('|Walk-in Customer|')));
+
                let resolvedCustomerName = so.customer_name;
-               const custObj = (this.cache.customers || []).find((c: any) => c.id === (so.customer_id || existingSO?.customer_id));
-               if (custObj && custObj.name && custObj.name !== 'Walk-in Customer') {
-                 resolvedCustomerName = custObj.name;
-               } else if (existingSO?.customer_name && existingSO.customer_name !== 'Walk-in Customer') {
-                 resolvedCustomerName = existingSO.customer_name;
-               } else if (!resolvedCustomerName || resolvedCustomerName === 'Walk-in Customer' || resolvedCustomerName === 'Customer') {
-                 const notesCandidate = so.dispatch_notes || so.payment_notes || existingSO?.dispatch_notes || existingSO?.payment_notes || '';
-                 const notesMatch = notesCandidate.match(/\[CUSTOMER:([^\]]+)\]/);
-                 if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim() !== 'Walk-in Customer') {
-                   resolvedCustomerName = notesMatch[1].trim();
-                 } else if (so.qr_code_data && so.qr_code_data.includes('|')) {
-                   const parts = so.qr_code_data.split('|');
-                   if (parts.length >= 3 && parts[2]?.trim() && parts[2].trim() !== 'Walk-in Customer' && parts[2].trim() !== 'Walk-in' && parts[2].trim() !== 'Customer') {
-                     resolvedCustomerName = parts[2].trim();
-                   }
-                 } else if (existingSO?.qr_code_data && existingSO.qr_code_data.includes('|')) {
-                   const parts = existingSO.qr_code_data.split('|');
-                   if (parts.length >= 3 && parts[2]?.trim() && parts[2].trim() !== 'Walk-in Customer' && parts[2].trim() !== 'Walk-in') {
-                     resolvedCustomerName = parts[2].trim();
+               let resolvedCustomerId = so.customer_id;
+               let resolvedChannel = so.channel;
+               const custObj = isExplicitWalkIn ? null : (this.cache.customers || []).find((c: any) => c.id === (so.customer_id || existingSO?.customer_id));
+
+               if (isExplicitWalkIn) {
+                 resolvedCustomerName = 'Walk-in Customer';
+                 resolvedCustomerId = 'WALK_IN';
+                 resolvedChannel = 'Walk-in';
+               } else {
+                 if (custObj && custObj.name && custObj.name !== 'Walk-in Customer') {
+                   resolvedCustomerName = custObj.name;
+                 } else if (existingSO?.customer_name && existingSO.customer_name !== 'Walk-in Customer') {
+                   resolvedCustomerName = existingSO.customer_name;
+                 } else if (!resolvedCustomerName || resolvedCustomerName === 'Customer') {
+                   const notesCandidate = so.dispatch_notes || so.payment_notes || existingSO?.dispatch_notes || existingSO?.payment_notes || '';
+                   const notesMatch = notesCandidate.match(/\[CUSTOMER:([^\]]+)\]/);
+                   if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim() !== 'Walk-in Customer') {
+                     resolvedCustomerName = notesMatch[1].trim();
+                   } else if (so.qr_code_data && so.qr_code_data.includes('|')) {
+                     const parts = so.qr_code_data.split('|');
+                     if (parts.length >= 3 && parts[2]?.trim() && parts[2].trim() !== 'Walk-in Customer' && parts[2].trim() !== 'Walk-in' && parts[2].trim() !== 'Customer') {
+                       resolvedCustomerName = parts[2].trim();
+                     }
+                   } else if (existingSO?.qr_code_data && existingSO.qr_code_data.includes('|')) {
+                     const parts = existingSO.qr_code_data.split('|');
+                     if (parts.length >= 3 && parts[2]?.trim() && parts[2].trim() !== 'Walk-in Customer' && parts[2].trim() !== 'Walk-in') {
+                       resolvedCustomerName = parts[2].trim();
+                     }
                    }
                  }
                }
@@ -1861,10 +2057,10 @@ class ERPStorage {
                   delivered_at: (isLocalNewer || existingSO?.delivered_at) && existingSO?.delivered_at ? existingSO.delivered_at : (so.delivered_at || existingSO?.delivered_at || (existingSO?.status === 'Delivered' ? new Date().toISOString() : undefined)),
                  order_date: isLocalNewer && existingSO?.order_date ? existingSO.order_date : (so.order_date || existingSO?.order_date),
                  delivery_date: isLocalNewer && existingSO?.delivery_date ? existingSO.delivery_date : ((so.delivery_date !== undefined && so.delivery_date !== null && so.delivery_date !== '') ? so.delivery_date : (existingSO?.delivery_date || null)),
-                 customer_id: (so.customer_id && so.customer_id !== 'WALK_IN') ? so.customer_id : (existingSO?.customer_id || 'WALK_IN'),
-                 customer_name: resolvedCustomerName || existingSO?.customer_name || 'Walk-in Customer',
-                 area: (so.area && so.area !== 'Other') ? so.area : (existingSO?.area || custObj?.area || 'Dahisar'),
-                 channel: so.channel || existingSO?.channel || (resolvedCustomerName && resolvedCustomerName !== 'Walk-in Customer' ? 'Direct Order' : 'Walk-in'),
+                 customer_id: isExplicitWalkIn ? 'WALK_IN' : ((so.customer_id && so.customer_id !== 'WALK_IN') ? so.customer_id : (existingSO?.customer_id || 'WALK_IN')),
+                 customer_name: isExplicitWalkIn ? 'Walk-in Customer' : (resolvedCustomerName || existingSO?.customer_name || 'Walk-in Customer'),
+                 area: (so.area && so.area !== 'Other') ? so.area : (existingSO?.area || (isExplicitWalkIn ? 'Dahisar' : (custObj?.area || 'Dahisar'))),
+                 channel: isExplicitWalkIn ? 'Walk-in' : (resolvedChannel || so.channel || existingSO?.channel || (resolvedCustomerName && resolvedCustomerName !== 'Walk-in Customer' ? 'Direct Order' : 'Walk-in')),
                  time: so.time || existingSO?.time || undefined,
                  items: mergedItems,
                  updated_at: isLocalNewer ? existingSO?.updated_at : (so.updated_at || existingSO?.updated_at)
@@ -2383,9 +2579,20 @@ class ERPStorage {
                  clean.status = 'Cancelled';
                  clean.dispatch_notes = (clean.dispatch_notes || '') + ' [SYSTEM_RETURNED]';
                }
-               clean.customer_id = sanitizeUUID(clean.customer_id, true);
-               if (!clean.customer_name) {
-                   clean.customer_name = 'Walk-in Customer';
+               const isWalkInOrder = clean.customer_id === 'WALK_IN' ||
+                                     clean.customer_name === 'Walk-in Customer' ||
+                                     clean.channel === 'Walk-in' ||
+                                     clean.order_number === 'FEST-ADV-111' ||
+                                     (clean.qr_code_data && (clean.qr_code_data.includes('|WALK_IN|') || clean.qr_code_data.includes('|Walk-in Customer|')));
+               if (isWalkInOrder) {
+                 clean.customer_id = null;
+                 clean.customer_name = 'Walk-in Customer';
+                 clean.channel = 'Walk-in';
+               } else {
+                 clean.customer_id = sanitizeUUID(clean.customer_id, true);
+                 if (!clean.customer_name) {
+                     clean.customer_name = 'Walk-in Customer';
+                 }
                }
                if (clean.items && Array.isArray(clean.items)) {
                    clean.items.forEach((i: any) => {
@@ -2829,6 +3036,9 @@ class ERPStorage {
     // Add audit log
     this.logActivity(profile.id, profile.name, profile.role, 'User Login', `Logged in successfully via email: ${email}`, profile.business_id);
 
+    this.invalidateMemos();
+    this.syncWithServer().catch(() => {});
+
     return { success: true, user: profile, business };
   }
 
@@ -2893,6 +3103,16 @@ class ERPStorage {
     };
     this.cache.profiles.push(newProfile);
     this.save('profiles', newProfile);
+
+    // Sync newly created user to server so any other device can immediately log in
+    if (typeof window !== 'undefined') {
+      fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProfile)
+      }).catch(() => {});
+    }
+
     return newProfile;
   }
 
@@ -2908,6 +3128,16 @@ class ERPStorage {
         } catch (e) {}
       }
       this.save('profiles', this.cache.profiles[index]);
+
+      // Sync user profile updates to server
+      if (typeof window !== 'undefined') {
+        fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.cache.profiles[index])
+        }).catch(() => {});
+      }
+
       return this.cache.profiles[index];
     }
     throw new Error('User not found');
@@ -5165,26 +5395,43 @@ class ERPStorage {
             rawItems = [];
           }
 
-          // Recover true customer name from customerMap, all cached customers, [CUSTOMER:...] note tag, or qr_code_data
+          // Strict Walk-in Identification:
+          // A walk-in order MUST NEVER be hijacked or overwritten by registered customer names!
+          const isExplicitWalkIn = s.customer_id === 'WALK_IN' ||
+                                   s.customer_name === 'Walk-in Customer' ||
+                                   s.channel === 'Walk-in' ||
+                                   s.order_number === 'FEST-ADV-111' ||
+                                   (s.qr_code_data && (s.qr_code_data.includes('|WALK_IN|') || s.qr_code_data.includes('|Walk-in Customer|')));
+
           let resolvedCustomerName = s.customer_name;
-          if (!resolvedCustomerName || resolvedCustomerName === 'Walk-in Customer' || resolvedCustomerName === 'Customer') {
-            if (cust && cust.name && cust.name !== 'Walk-in Customer') {
-              resolvedCustomerName = cust.name;
-            } else {
-              const anyCust = (this.cache.customers || []).find(c => c.id === s.customer_id);
-              if (anyCust && anyCust.name && anyCust.name !== 'Walk-in Customer') {
-                resolvedCustomerName = anyCust.name;
+          let resolvedCustomerId = s.customer_id;
+          let resolvedChannel = s.channel;
+
+          if (isExplicitWalkIn) {
+            resolvedCustomerName = 'Walk-in Customer';
+            resolvedCustomerId = 'WALK_IN';
+            resolvedChannel = 'Walk-in';
+          } else {
+            // Recover customer name ONLY for genuine registered customer orders if missing or generic
+            if (!resolvedCustomerName || resolvedCustomerName === 'Customer') {
+              if (cust && cust.name && cust.name !== 'Walk-in Customer') {
+                resolvedCustomerName = cust.name;
+              } else {
+                const anyCust = (this.cache.customers || []).find(c => c.id === s.customer_id);
+                if (anyCust && anyCust.name && anyCust.name !== 'Walk-in Customer') {
+                  resolvedCustomerName = anyCust.name;
+                }
               }
-            }
-            if (!resolvedCustomerName || resolvedCustomerName === 'Walk-in Customer') {
-              const notesCandidate = s.dispatch_notes || s.payment_notes || '';
-              const notesMatch = notesCandidate.match(/\[CUSTOMER:([^\]]+)\]/);
-              if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim() !== 'Walk-in Customer') {
-                resolvedCustomerName = notesMatch[1].trim();
-              } else if (s.qr_code_data && s.qr_code_data.includes('|')) {
-                const parts = s.qr_code_data.split('|');
-                if (parts.length >= 3 && parts[2]?.trim() && parts[2].trim() !== 'Walk-in Customer' && parts[2].trim() !== 'Walk-in' && parts[2].trim() !== 'Customer') {
-                  resolvedCustomerName = parts[2].trim();
+              if (!resolvedCustomerName) {
+                const notesCandidate = s.dispatch_notes || s.payment_notes || '';
+                const notesMatch = notesCandidate.match(/\[CUSTOMER:([^\]]+)\]/);
+                if (notesMatch && notesMatch[1]?.trim() && notesMatch[1].trim() !== 'Walk-in Customer') {
+                  resolvedCustomerName = notesMatch[1].trim();
+                } else if (s.qr_code_data && s.qr_code_data.includes('|')) {
+                  const parts = s.qr_code_data.split('|');
+                  if (parts.length >= 3 && parts[2]?.trim() && parts[2].trim() !== 'Walk-in Customer' && parts[2].trim() !== 'Walk-in' && parts[2].trim() !== 'Customer') {
+                    resolvedCustomerName = parts[2].trim();
+                  }
                 }
               }
             }
@@ -5192,11 +5439,11 @@ class ERPStorage {
 
           const lowCustName = (resolvedCustomerName || s.customer_name || cust?.name || '').toLowerCase();
           const isAdvanceOrFestive = Boolean(s.advance_booking || s.festive_booking);
-          const rawIsWalkIn = s.channel === 'Walk-in' || s.customer_id === 'WALK_IN' || lowCustName.includes('walk-in') || lowCustName.includes('walkin') || lowCustName.includes('walk in') || (Boolean(cust?.group) && cust!.group!.toLowerCase().includes('walk'));
-          const isWalkIn = rawIsWalkIn && !isAdvanceOrFestive;
+          // Walk-in orders can be regular, delivered, advance, or festive! Never negate isWalkIn with !isAdvanceOrFestive!
+          const isWalkIn = isExplicitWalkIn || resolvedChannel === 'Walk-in' || resolvedCustomerId === 'WALK_IN' || lowCustName.includes('walk-in') || lowCustName.includes('walkin') || lowCustName.includes('walk in');
 
           // Never hijack an explicit order status to 'Delivered'. Always respect the actual order status!
-          const finalStatus: OrderStatus = (s.status as OrderStatus) || (isAdvanceOrFestive ? 'Pending' : 'Pending');
+          const finalStatus: OrderStatus = (s.status as OrderStatus) || 'Pending';
           const finalDeliveryStatus = s.delivery_status || (finalStatus === 'Delivered' ? 'Delivered' : 'Pending');
           const finalDeliveryDate = s.delivery_date || null;
 
@@ -5205,7 +5452,9 @@ class ERPStorage {
 
           return {
             ...s,
-            channel: s.channel || (isWalkIn ? 'Walk-in' : 'Direct Order'),
+            customer_id: isWalkIn ? 'WALK_IN' : (s.customer_id || resolvedCustomerId || 'WALK_IN'),
+            customer_name: isWalkIn ? 'Walk-in Customer' : (resolvedCustomerName || cust?.name || 'Walk-in Customer'),
+            channel: isWalkIn ? 'Walk-in' : (resolvedChannel || s.channel || 'Direct Order'),
             delivery_date: finalDeliveryDate,
             additional_charges: addCharges,
             delivery_charges: delCharges,
@@ -5215,7 +5464,6 @@ class ERPStorage {
             delivery_status: finalDeliveryStatus,
             delivered_at: finalStatus === 'Delivered' ? (s.delivered_at || s.created_at || new Date().toISOString()) : s.delivered_at,
             area: resolvedArea,
-            customer_name: resolvedCustomerName || cust?.name || 'Walk-in Customer',
             items: rawItems.map((it: any) => ({
               ...it,
               scanned_qty: typeof it.scanned_qty === 'number' && !isNaN(it.scanned_qty) ? it.scanned_qty : 0
@@ -5236,6 +5484,11 @@ class ERPStorage {
   public syncOrderToPublicServer(order: SalesOrder | SalesOrder[]): void {
     if (typeof window === 'undefined') return;
     try {
+      fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order)
+      }).catch(() => {});
       fetch('/api/public/invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -5297,11 +5550,19 @@ class ERPStorage {
     }
 
     if (foundLocal) {
-      const custs = this.getCustomers(foundLocal.business_id);
-      const cust = custs.find(c => c.id === foundLocal.customer_id);
+      const isWalkIn = foundLocal.customer_id === 'WALK_IN' ||
+                       foundLocal.customer_name === 'Walk-in Customer' ||
+                       foundLocal.channel === 'Walk-in' ||
+                       foundLocal.order_number === 'FEST-ADV-111' ||
+                       (foundLocal.qr_code_data && (foundLocal.qr_code_data.includes('|WALK_IN|') || foundLocal.qr_code_data.includes('|Walk-in Customer|')));
+
+      const custs = isWalkIn ? [] : this.getCustomers(foundLocal.business_id);
+      const cust = isWalkIn ? undefined : custs.find(c => c.id === foundLocal.customer_id);
       return {
         ...foundLocal,
-        customer_name: foundLocal.customer_name || cust?.name || 'Customer'
+        customer_id: isWalkIn ? 'WALK_IN' : (foundLocal.customer_id || 'WALK_IN'),
+        customer_name: isWalkIn ? 'Walk-in Customer' : (foundLocal.customer_name || cust?.name || 'Customer'),
+        channel: isWalkIn ? 'Walk-in' : (foundLocal.channel || 'Direct Order')
       };
     }
 
@@ -5376,6 +5637,14 @@ class ERPStorage {
     if (!normBusinessId || !normBusinessId.trim()) {
       normBusinessId = BIZ_ID;
     }
+    const isWalkInOrder = so.customer_id === 'WALK_IN' ||
+                          so.customer_name === 'Walk-in Customer' ||
+                          so.channel === 'Walk-in' ||
+                          (so.qr_code_data && (so.qr_code_data.includes('|WALK_IN|') || so.qr_code_data.includes('|Walk-in Customer|')));
+    const finalCustName = isWalkInOrder ? 'Walk-in Customer' : (so.customer_name || 'Walk-in Customer');
+    const finalCustId = isWalkInOrder ? 'WALK_IN' : (so.customer_id || 'WALK_IN');
+    const finalChannel = isWalkInOrder ? 'Walk-in' : (so.channel || 'Direct Order');
+
     const newSO: SalesOrder = {
       ...so,
       is_live_order: true,
@@ -5386,8 +5655,13 @@ class ERPStorage {
       paid_amount: numPaid,
       id: crypto.randomUUID(),
       created_at: createdAtStr,
-      customer_name: so.customer_name || 'Walk-in Customer',
-      dispatch_notes: `${so.dispatch_notes || ''} [CUSTOMER:${so.customer_name || 'Walk-in Customer'}]`.trim()
+      customer_id: finalCustId,
+      customer_name: finalCustName,
+      channel: finalChannel,
+      qr_code_data: `${finalOrderNumber}|${finalCustId}|${finalCustName}|${(so.items || []).length} items`,
+      dispatch_notes: isWalkInOrder
+        ? (so.dispatch_notes || '').replace(/\[CUSTOMER:[^\]]+\]/g, '').trim()
+        : `${so.dispatch_notes || ''} [CUSTOMER:${finalCustName}]`.trim()
     };
 
     // Ensure newly created order is NEVER marked as deleted
@@ -5511,16 +5785,23 @@ class ERPStorage {
     safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
     
 
-    // 10. Permanently purge from database (Supabase & broadcast to all connected devices)
+    // 10. Permanently purge from database (Supabase, server cache & broadcast to all connected devices)
     try {
       this.save('sales', null, true, orderId, orderNumber);
       if (isSupabaseConfigured && supabase) {
         await this.syncToSupabase('sales', null, true, orderId, orderNumber);
       }
+      if (typeof window !== 'undefined') {
+        fetch(`/api/orders/${encodeURIComponent(orderId)}`, { method: 'DELETE' }).catch(() => {});
+        if (orderNumber && orderNumber !== orderId) {
+          fetch(`/api/orders/${encodeURIComponent(orderNumber)}`, { method: 'DELETE' }).catch(() => {});
+        }
+      }
     } catch (dbErr) {
       console.warn("Database deletion error:", dbErr);
     }
 
+    this.invalidateMemos();
     this.notify();
     return true;
   }
@@ -5587,9 +5868,26 @@ class ERPStorage {
 
       const updatedAddType = updates.additional_charges_type || oldSO.additional_charges_type || 'Delivery';
 
+      const isWalkInOrder = updates.customer_id === 'WALK_IN' ||
+                            updates.customer_name === 'Walk-in Customer' ||
+                            updates.channel === 'Walk-in' ||
+                            (oldSO.customer_id === 'WALK_IN' && updates.customer_id === undefined) ||
+                            (oldSO.customer_name === 'Walk-in Customer' && updates.customer_name === undefined) ||
+                            (oldSO.channel === 'Walk-in' && updates.channel === undefined) ||
+                            oldSO.order_number === 'FEST-ADV-111' ||
+                            updates.order_number === 'FEST-ADV-111';
+
+      const finalCustId = isWalkInOrder ? 'WALK_IN' : (updates.customer_id || oldSO.customer_id || 'WALK_IN');
+      const finalCustName = isWalkInOrder ? 'Walk-in Customer' : (updates.customer_name || oldSO.customer_name || 'Walk-in Customer');
+      const finalChannel = isWalkInOrder ? 'Walk-in' : (updates.channel || oldSO.channel || 'Direct Order');
+
       const newSO: SalesOrder = { 
         ...oldSO, 
         ...updates, 
+        customer_id: finalCustId,
+        customer_name: finalCustName,
+        channel: finalChannel,
+        qr_code_data: `${updates.order_number || oldSO.order_number}|${finalCustId}|${finalCustName}|${(updates.items || oldSO.items || []).length} items`,
         additional_charges: updatedAddCharges,
         delivery_charges: updatedDelCharges,
         delivery_charge: updatedDelCharges,

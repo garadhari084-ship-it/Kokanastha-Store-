@@ -159,8 +159,24 @@ export const PublicInvoiceView: React.FC<PublicInvoiceViewProps> = ({
           } as Business;
 
           setBusiness(biz);
-          const custs = dbStore.getCustomers(found.business_id);
-          const cust = custs.find(c => c.id === found.customer_id || (c.name && c.name.toLowerCase() === (found.customer_name || '').toLowerCase())) || {
+          const isWalkIn = found.customer_id === 'WALK_IN' ||
+                           found.customer_name === 'Walk-in Customer' ||
+                           found.channel === 'Walk-in' ||
+                           found.order_number === 'FEST-ADV-111' ||
+                           (found.qr_code_data && (found.qr_code_data.includes('|WALK_IN|') || found.qr_code_data.includes('|Walk-in Customer|')));
+
+          const custs = isWalkIn ? [] : dbStore.getCustomers(found.business_id);
+          const cust = isWalkIn ? {
+            id: 'WALK_IN',
+            business_id: biz.id,
+            name: 'Walk-in Customer',
+            phone: '',
+            email: '',
+            loyalty_points: 0,
+            total_spent: found.total_amount || 0,
+            orders_count: 1,
+            created_at: new Date().toISOString()
+          } : (custs.find(c => c.id === found.customer_id || (c.name && c.name.toLowerCase() === (found.customer_name || '').toLowerCase())) || {
             id: 'cust-public',
             business_id: biz.id,
             name: found.customer_name || 'Valued Customer',
@@ -170,7 +186,7 @@ export const PublicInvoiceView: React.FC<PublicInvoiceViewProps> = ({
             total_spent: found.total_amount || 0,
             orders_count: 1,
             created_at: new Date().toISOString()
-          };
+          });
           setCustomer(cust);
           const prods = dbStore.getProducts(found.business_id);
           setProducts(prods);

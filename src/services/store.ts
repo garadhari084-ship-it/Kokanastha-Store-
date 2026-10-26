@@ -1794,10 +1794,13 @@ class ERPStorage {
     }
   }
 
+  private isSyncingFromSupabase = false;
+
   public async syncFromSupabase(businessId?: string, targetTable?: string) {
     if (!isSupabaseConfigured || !supabase) return;
-    
-    console.log('Syncing from Supabase...');
+    if (this.isSyncingFromSupabase && !targetTable) return;
+
+    this.isSyncingFromSupabase = true;
     try {
       if (!targetTable || targetTable === 'sales_orders') {
         await this.cleanupCloudDuplicateSalesOrders();
@@ -1845,7 +1848,7 @@ class ERPStorage {
             queryRes = await Promise.race([queryPromise, timeoutPromise]);
           } catch (_) {
             console.warn(`Fetch timed out for table ${tableName}`);
-            break; // Stop fetching this table if slow or timed out
+            break;
           }
 
           const data = queryRes?.data;
@@ -1874,7 +1877,6 @@ class ERPStorage {
         console.warn(`Supabase fetchAllFromTable catch error on ${tableName}:`, err);
       }
 
-      // Normalize business_id on all fetched rows so ALL database records display in active business views
       if (normBId && allRows.length > 0) {
         allRows = allRows.map(row => {
           if (!row || typeof row !== 'object') return row;
@@ -1892,12 +1894,12 @@ class ERPStorage {
        const prevCustomersSig = (this.cache.customers || []).map(c => c.id + (c.outstanding_amount || 0)).join(',');
        const prevProductsSig = (this.cache.products || []).map(p => p.id + (p.current_stock || 0)).join(',');
 
-       const syncPromises = Object.entries(tables)
-      .filter(([_, table]) => !targetTable || table === targetTable)
-      .map(async ([key, table]) => {
-       try {
-       const data = await fetchAllFromTable(table, businessId);
-       if (data) {
+       const entriesToSync = Object.entries(tables).filter(([_, table]) => !targetTable || table === targetTable);
+
+       for (const [key, table] of entriesToSync) {
+        try {
+        const data = await fetchAllFromTable(table, businessId);
+        if (data) {
           const sess = JSON.parse(safeStorage.getItem('omnipack_session') || '{}');
           const isCloudSession = isSupabaseConfigured && Boolean(supabase) && sess.userId && sess.mode === 'supabase';
 
@@ -2286,26 +2288,23 @@ class ERPStorage {
              safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(data));
              
           }
-       }
+        }
        } catch (tableErr) {
          console.warn(`Supabase query failed for ${table}:`, tableErr);
        }
-    });
+     }
 
-    await Promise.all(syncPromises);
+     const newSalesSig = (this.cache.sales || []).map(s => s.id + s.status + (s.total_amount || 0)).join(',');
+     const newCustomersSig = (this.cache.customers || []).map(c => c.id + (c.outstanding_amount || 0)).join(',');
+     const newProductsSig = (this.cache.products || []).map(p => p.id + (p.current_stock || 0)).join(',');
 
-    // If user is authenticated in cloud session, ensure operational entities are not kept on local machine disk
-    
-
-    const newSalesSig = (this.cache.sales || []).map(s => s.id + s.status + (s.total_amount || 0)).join(',');
-    const newCustomersSig = (this.cache.customers || []).map(c => c.id + (c.outstanding_amount || 0)).join(',');
-    const newProductsSig = (this.cache.products || []).map(p => p.id + (p.current_stock || 0)).join(',');
-
-    if (prevSalesSig !== newSalesSig || prevCustomersSig !== newCustomersSig || prevProductsSig !== newProductsSig) {
-      this.notify();
-    }
+     if (prevSalesSig !== newSalesSig || prevCustomersSig !== newCustomersSig || prevProductsSig !== newProductsSig) {
+       this.notify();
+     }
     } catch (err) {
       console.warn('Supabase syncFromSupabase network error:', err);
+    } finally {
+      this.isSyncingFromSupabase = false;
     }
   }
 

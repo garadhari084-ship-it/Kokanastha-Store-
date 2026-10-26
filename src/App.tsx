@@ -819,6 +819,15 @@ export default function App() {
               setCurrentUser(user);
               setCurrentBusiness(biz);
               setDbMode(mode === 'supabase' ? 'supabase' : 'local');
+
+              if (isSupabaseConfigured && supabase) {
+                dbStore.syncFromSupabase(biz.id).then(() => {
+                  setSyncTick(prev => prev + 1);
+                }).catch(() => {});
+              }
+              dbStore.syncWithServer().then(() => {
+                setSyncTick(prev => prev + 1);
+              }).catch(() => {});
             }
           } catch (e) {
             console.error("Instant session parse error:", e);
@@ -906,6 +915,15 @@ export default function App() {
               setCurrentUser(user);
               setCurrentBusiness(biz);
               setDbMode(mode === 'supabase' ? 'supabase' : 'local');
+
+              if (isSupabaseConfigured && supabase) {
+                dbStore.syncFromSupabase(biz.id).then(() => {
+                  setSyncTick(prev => prev + 1);
+                }).catch(() => {});
+              }
+              dbStore.syncWithServer().then(() => {
+                setSyncTick(prev => prev + 1);
+              }).catch(() => {});
             }
           } catch(e) {
             console.error("Error parsing session:", e);

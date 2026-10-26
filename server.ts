@@ -494,7 +494,17 @@ Ensure that you only output valid JSON.`;
         if (Array.isArray(list)) {
           for (const ord of list) {
             if (ord?.order_number) {
-              publicOrdersMap.set(String(ord.order_number).trim().toLowerCase(), ord);
+              let curNum = String(ord.order_number).trim();
+              if (curNum && !curNum.startsWith('KDF-2026-')) {
+                const match = curNum.match(/(\d+)(?:\D*)$/);
+                if (match && match[1]) {
+                  const newNum = `KDF-2026-${match[1]}`;
+                  publicOrdersMap.set(curNum.toLowerCase(), ord);
+                  ord.order_number = newNum;
+                  curNum = newNum;
+                }
+              }
+              publicOrdersMap.set(curNum.toLowerCase(), ord);
               if (ord.id) publicOrdersMap.set(String(ord.id).trim().toLowerCase(), ord);
             }
           }
@@ -527,7 +537,20 @@ Ensure that you only output valid JSON.`;
 
     for (const ord of ordersToSave) {
       if (ord && (ord.order_number || ord.id)) {
-        const ordNum = String(ord.order_number || '').trim().toLowerCase();
+        let rawNum = String(ord.order_number || '').trim();
+        const originalNum = rawNum;
+
+        // Standardize legacy prefixes (FEST-ADV-110, INV-2026-1007, etc.) to KDF-2026-
+        if (rawNum && !rawNum.startsWith('KDF-2026-')) {
+          const match = rawNum.match(/(\d+)(?:\D*)$/);
+          const seq = match ? match[1] : '';
+          if (seq) {
+            rawNum = `KDF-2026-${seq}`;
+            ord.order_number = rawNum;
+          }
+        }
+
+        const ordNum = rawNum.toLowerCase();
         const ordId = String(ord.id || '').trim().toLowerCase();
 
         // Mark explicitly as live user order
@@ -554,18 +577,16 @@ Ensure that you only output valid JSON.`;
         }
         if (ordNum) publicOrdersMap.set(ordNum, ord);
         if (ordId) publicOrdersMap.set(ordId, ord);
+        if (originalNum && originalNum.toLowerCase() !== ordNum) {
+          publicOrdersMap.set(originalNum.toLowerCase(), ord);
+        }
 
-        // Support aliases: if order is KDF-2026-114, also map FEST-ADV-0999 and variations
-        if (ordNum.includes('114') || ordNum === 'kdf-2026-114') {
-          publicOrdersMap.set('fest-adv-0999', ord);
-          publicOrdersMap.set('0999', ord);
-          publicOrdersMap.set('114', ord);
+        // Support sequence alias lookup
+        const match = rawNum.match(/(\d+)(?:\D*)$/);
+        if (match && match[1]) {
+          publicOrdersMap.set(match[1], ord);
         }
-        if (ordNum.includes('0999') || ordNum === 'fest-adv-0999') {
-          publicOrdersMap.set('kdf-2026-114', ord);
-          publicOrdersMap.set('114', ord);
-          publicOrdersMap.set('0999', ord);
-        }
+
         updated = true;
       }
     }

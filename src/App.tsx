@@ -962,29 +962,34 @@ export default function App() {
           { event: 'sync_update' },
           async (payload: any) => {
             console.log('Sync update broadcast received live:', payload);
-            const sessionData = safeStorage.getItem('omnipack_session');
-            if (sessionData) {
-              try {
-                const { businessId } = JSON.parse(sessionData);
-                const pl = payload?.payload || payload;
-                const incomingBId = pl?.businessId;
-                const incomingTable = pl?.table;
-                const incomingKey = pl?.key;
+            try {
+              let businessId = currentBusiness?.id || 'b1111111-1111-1111-1111-111111111111';
+              const sessionData = safeStorage.getItem('omnipack_session');
+              if (sessionData) {
+                try {
+                  const parsed = JSON.parse(sessionData);
+                  if (parsed.businessId) businessId = parsed.businessId;
+                } catch (_) {}
+              }
 
-                if (businessId && (!incomingBId || isSameBusiness(incomingBId, businessId))) {
-                  // Direct 0ms in-memory cache update for instantaneous display
-                  if (pl?.record && incomingKey && pl?.action === 'upsert') {
-                    dbStore.patchIncomingRecord(incomingKey, pl.record);
-                  } else if (pl?.id && incomingKey && pl?.action === 'delete') {
-                    dbStore.patchIncomingDelete(incomingKey, pl.id);
-                  }
+              const pl = payload?.payload || payload;
+              const incomingBId = pl?.businessId;
+              const incomingTable = pl?.table;
+              const incomingKey = pl?.key;
 
-                  // Fully sync relational table from Supabase in background
-                  await dbStore.syncFromSupabase(businessId, incomingTable);
-                  setSyncTick(prev => prev + 1);
+              if (!incomingBId || isSameBusiness(incomingBId, businessId)) {
+                // Direct 0ms in-memory cache update for instantaneous display
+                if (pl?.record && incomingKey && pl?.action === 'upsert') {
+                  dbStore.patchIncomingRecord(incomingKey, pl.record);
+                } else if (pl?.id && incomingKey && pl?.action === 'delete') {
+                  dbStore.patchIncomingDelete(incomingKey, pl.id);
                 }
-              } catch(e) {}
-            }
+
+                // Fully sync relational table from Supabase in background
+                await dbStore.syncFromSupabase(businessId, incomingTable);
+                setSyncTick(prev => prev + 1);
+              }
+            } catch(e) {}
           }
         )
         .on(

@@ -1552,12 +1552,16 @@ class ERPStorage {
         if (Array.isArray(serverOrders) && serverOrders.length > 0) {
           ordersCount = serverOrders.length;
           const localOrders = Array.isArray(this.cache.sales) ? this.cache.sales : [];
+          const deletedSalesSet = this.getDeletedSalesOrderIds();
           
           const orderMap = new Map<string, SalesOrder>();
           
           // First add server orders (tag as is_live_order)
           serverOrders.forEach((so: any) => {
             if (so && (so.order_number || so.id)) {
+              if (deletedSalesSet.has(so.id) || (so.order_number && deletedSalesSet.has(so.order_number))) {
+                return;
+              }
               const liveSO: SalesOrder = {
                 ...so,
                 is_live_order: true,
@@ -1572,6 +1576,9 @@ class ERPStorage {
           // Merge local orders that might be newly created or updated
           localOrders.forEach((locSO: SalesOrder) => {
             if (locSO && (locSO.order_number || locSO.id)) {
+              if (deletedSalesSet.has(locSO.id) || (locSO.order_number && deletedSalesSet.has(locSO.order_number))) {
+                return;
+              }
               const numKey = String(locSO.order_number || '').trim().toLowerCase();
               const idKey = String(locSO.id || '').trim().toLowerCase();
               const existingServer = (numKey ? orderMap.get(numKey) : undefined) || (idKey ? orderMap.get(idKey) : undefined);
@@ -1582,7 +1589,7 @@ class ERPStorage {
                 merged.is_live_order = true;
                 if (numKey) orderMap.set(numKey, merged);
                 if (idKey) orderMap.set(idKey, merged);
-              } else {
+              } else if (this.pendingUploads.has(locSO.id)) {
                 if (numKey) orderMap.set(numKey, locSO);
                 if (idKey) orderMap.set(idKey, locSO);
                 this.syncOrderToPublicServer(locSO);
@@ -5192,26 +5199,13 @@ class ERPStorage {
     const normBiz = normalizeBusinessId(businessId);
     const biz = this.getBusiness(normBiz);
 
-    // Resolve unified business prefix (defaults to KDF-2026-)
-    let standardPrefix = typeof biz?.invoice_prefix === 'string' && biz.invoice_prefix.trim() ? biz.invoice_prefix.trim() : 'KDF-2026-';
-    if (standardPrefix === 'INV-') standardPrefix = 'KDF-2026-';
-
-    let advancePrefix = typeof biz?.advance_invoice_prefix === 'string' && biz.advance_invoice_prefix.trim() ? biz.advance_invoice_prefix.trim() : standardPrefix;
-    if (advancePrefix === 'ADV-') advancePrefix = standardPrefix;
-
-    let festivePrefix = typeof biz?.festive_invoice_prefix === 'string' && biz.festive_invoice_prefix.trim() ? biz.festive_invoice_prefix.trim() : standardPrefix;
-    if (festivePrefix === 'FEST-') festivePrefix = standardPrefix;
-
-    let festiveAdvancePrefix = typeof biz?.festive_advance_invoice_prefix === 'string' && biz.festive_advance_invoice_prefix.trim() ? biz.festive_advance_invoice_prefix.trim() : standardPrefix;
-    if (festiveAdvancePrefix === 'FEST-ADV-') festiveAdvancePrefix = standardPrefix;
-
-    let targetPrefix = standardPrefix;
-    if (isFestive && isAdvance) {
-      targetPrefix = festiveAdvancePrefix;
-    } else if (isFestive) {
-      targetPrefix = festivePrefix;
-    } else if (isAdvance) {
-      targetPrefix = advancePrefix;
+    // Resolve unified, consistent business invoice prefix (strictly KDF-2026- for all orders)
+    let targetPrefix = 'KDF-2026-';
+    if (biz?.invoice_prefix && typeof biz.invoice_prefix === 'string') {
+      const p = biz.invoice_prefix.trim();
+      if (p && p !== 'INV-' && p !== 'INV-2026-' && p !== 'FEST-ADV-' && p !== 'FEST-' && p !== 'ADV-') {
+        targetPrefix = p.endsWith('-') ? p : `${p}-`;
+      }
     }
 
     const allOrders = this.getSalesOrders(normBiz);
@@ -5398,12 +5392,25 @@ class ERPStorage {
     purgedSet.delete('KDF-2026-114');
     purgedSet.delete('FEST-ADV-0999');
 
-    // Instant repair of FEST-ADV-0999 -> KDF-2026-114
+    // Instant repair and prefix standardization for legacy/mismatched order numbers
     let orderChanged = false;
     this.cache.sales = (this.cache.sales || []).map(s => {
-      if (s && (s.order_number === 'FEST-ADV-0999' || String(s.order_number).toUpperCase() === 'FEST-ADV-0999' || (s.order_number?.includes('0999') && (s.customer_name?.includes('Ajinkya') || s.total_amount === 120)))) {
+      if (!s) return s;
+      const curNum = String(s.order_number || '').trim();
+
+      if (curNum && !curNum.startsWith('KDF-2026-')) {
         orderChanged = true;
-        const newNum = 'KDF-2026-114';
+        let newNum = curNum;
+        if (curNum === 'FEST-ADV-0999' || curNum.includes('0999')) {
+          newNum = 'KDF-2026-114';
+        } else {
+          const match = curNum.match(/(\d+)(?:\D*)$/);
+          const seq = match ? match[1] : '';
+          if (seq) {
+            newNum = `KDF-2026-${seq}`;
+          }
+        }
+
         const updatedPaymentHistory = Array.isArray(s.payment_history)
           ? s.payment_history.map(p => ({
               ...p,
@@ -5411,6 +5418,7 @@ class ERPStorage {
               receipt_number: `RCT-${newNum}`
             }))
           : s.payment_history;
+
         return {
           ...s,
           order_number: newNum,
@@ -5421,6 +5429,10 @@ class ERPStorage {
       }
       return s;
     });
+
+    if (orderChanged) {
+      safeStorage.setItem('omnipack_erp_sales', JSON.stringify(this.cache.sales));
+    }
 
     // Clean up duplicate and dummy order records in memory and local storage
     this.cache.sales = dedupeSalesOrders(
@@ -5794,6 +5806,12 @@ class ERPStorage {
     this.cache.sales.unshift(newSO);
     this.save('sales', newSO);
 
+    if (isSupabaseConfigured && supabase) {
+      this.syncToSupabase('sales', newSO).catch(err => {
+        console.warn('Immediate Supabase sync error on create:', err);
+      });
+    }
+
     // Ensure stock is reduced if order is created in a dispatched/delivered state
     this.syncOrderStock(newSO);
     this.syncOrderToPublicServer(newSO);
@@ -6011,6 +6029,11 @@ class ERPStorage {
       if (newSO.order_number) this.pendingUploads.add(newSO.order_number);
       this.cache.sales[index] = newSO;
       this.save('sales', newSO);
+      if (isSupabaseConfigured && supabase) {
+        this.syncToSupabase('sales', newSO).catch(err => {
+          console.warn('Immediate Supabase sync error on update:', err);
+        });
+      }
       // Handle stock synchronization
       this.syncOrderStock(newSO, oldSO.status, oldSO.items);
       this.syncOrderToPublicServer(newSO);

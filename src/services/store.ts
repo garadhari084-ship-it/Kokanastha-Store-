@@ -2940,11 +2940,16 @@ class ERPStorage {
 
   private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string, secondaryDeleteKey?: string) {
     try {
-      const cacheVal = this.cache[key];
-      const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
-        ? cacheVal.slice(0, 50)
-        : cacheVal;
-      safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
+      if (key === 'sales' && isSupabaseConfigured && supabase) {
+        // Do NOT persist sales orders on local machine storage when connected to Supabase DB
+        safeStorage.removeItem('omnipack_erp_sales');
+      } else {
+        const cacheVal = this.cache[key];
+        const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
+          ? cacheVal.slice(0, 50)
+          : cacheVal;
+        safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
+      }
     } catch (e) {
       console.warn(`Error saving state for key ${key}`, e);
     }

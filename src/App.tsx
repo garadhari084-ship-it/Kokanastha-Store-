@@ -719,13 +719,14 @@ export default function App() {
   const [isRefreshingData, setIsRefreshingData] = useState(false);
 
   // Fast, instant app refresh (immediate UI sync + brief 450ms spinner)
-  const handleRefreshApp = useCallback(() => {
+  const handleRefreshApp = useCallback(async () => {
     if (isRefreshingData) return;
     setIsRefreshingData(true);
     try {
       // 1. Instant local storage reload and immediate UI refresh in 0ms
       dbStore.purgeLegacyDummySalesOrders();
       dbStore.reloadFromLocalStorage();
+      await dbStore.syncWithServer().catch(() => {});
       dbStore.notify();
       setSyncTick(prev => prev + 1);
 
@@ -755,6 +756,7 @@ export default function App() {
     setIsSyncingOrdersToDb(true);
     triggerToast('Syncing all orders to Supabase Database...', 'info');
     try {
+      await dbStore.syncWithServer().catch(() => {});
       const res = await dbStore.syncAllOrdersToSupabase(currentBusiness?.id);
       if (res.success) {
         setSyncTick(prev => prev + 1);
@@ -1005,7 +1007,11 @@ export default function App() {
     // Setup Supabase Realtime for data sync
     let realtimeChannel: any = null;
     if (isSupabaseConfigured && supabase) {
-      realtimeChannel = supabase.channel('schema-db-changes');
+      realtimeChannel = supabase.channel('schema-db-changes', {
+        config: {
+          broadcast: { ack: false, self: false }
+        }
+      });
       dbStore.setRealtimeChannel(realtimeChannel);
       
       realtimeChannel
@@ -1029,11 +1035,43 @@ export default function App() {
                     }
                     dbStore.patchIncomingRecord('products', rec);
                   }
+                  if (incomingTable === 'sales_orders') {
+                    if (payload.eventType === 'DELETE' && (payload.old?.id || payload.old?.order_number)) {
+                      dbStore.patchIncomingDelete('sales', payload.old.id || payload.old.order_number);
+                    } else if (payload?.new) {
+                      dbStore.patchIncomingRecord('sales', payload.new);
+                    }
+                  }
                   await dbStore.syncFromSupabase(businessId, incomingTable);
                   // Force re-render of App to trickle down changes
                   setSyncTick(prev => prev + 1);
                 }
               } catch(e) {}
+            }
+          }
+        )
+        .on(
+          'broadcast',
+          { event: 'order_created' },
+          (payload: any) => {
+            const ord = payload?.payload?.order || payload?.order;
+            if (ord && (ord.id || ord.order_number)) {
+              console.log('[Realtime] Live order created by another user:', ord.order_number);
+              dbStore.patchIncomingRecord('sales', ord);
+              setSyncTick(prev => prev + 1);
+            }
+          }
+        )
+        .on(
+          'broadcast',
+          { event: 'order_deleted' },
+          (payload: any) => {
+            const ord = payload?.payload?.order || payload?.payload || payload;
+            const targetId = ord?.id || ord?.order_number;
+            if (targetId) {
+              console.log('[Realtime] Live order deleted by another user:', targetId);
+              dbStore.patchIncomingDelete('sales', targetId);
+              setSyncTick(prev => prev + 1);
             }
           }
         )
@@ -1156,19 +1194,23 @@ export default function App() {
         });
     }
 
-    // Live polling fallback ensuring background sync without forcing whole-tree flashing
+    // Live multi-device background polling fallback ensuring order synchronization (every 3 seconds)
     const liveSyncInterval = setInterval(() => {
+      // 1. Instant sync from backend server cache (<5ms HTTP response)
+      dbStore.syncWithServer().catch(() => {});
+
+      // 2. Relational sync from Supabase if configured and tab is visible
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       const sessionData = safeStorage.getItem('omnipack_session');
       if (sessionData && isSupabaseConfigured && supabase) {
         try {
           const { businessId } = JSON.parse(sessionData);
           if (businessId) {
-            dbStore.syncFromSupabase(businessId).catch(() => {});
+            dbStore.syncFromSupabase(businessId, 'sales_orders').catch(() => {});
           }
         } catch(e) {}
       }
-    }, 25000);
+    }, 3000);
 
     // Cross-tab BroadcastChannel listener for immediate local synchronization
     let localBc: BroadcastChannel | null = null;
@@ -1177,6 +1219,13 @@ export default function App() {
       localBc.onmessage = (event) => {
         if (!event || !event.data) return;
         const { type, payload } = event.data;
+        if ((type === 'ORDER_CREATED' || type === 'ORDER_UPDATED') && payload?.order) {
+          dbStore.patchIncomingRecord('sales', payload.order);
+          setSyncTick(prev => prev + 1);
+        } else if (type === 'ORDER_DELETED' && (payload?.order?.id || payload?.order?.order_number)) {
+          dbStore.patchIncomingDelete('sales', payload.order.id || payload.order.order_number);
+          setSyncTick(prev => prev + 1);
+        }
         if (type === 'FORCE_LOGOUT' || type === 'FORCE_LOGOUT_ALL') {
           const sessionData = safeStorage.getItem('omnipack_session');
           if (sessionData && payload?.userId) {

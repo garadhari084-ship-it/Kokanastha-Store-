@@ -866,6 +866,55 @@ class ERPStorage {
     }
   }
 
+  public broadcastOrderEvent(action: 'upsert' | 'delete', order: any) {
+    if (!order) return;
+    const businessId = order.business_id || BIZ_ID;
+    
+    // 1. Supabase Realtime multi-client broadcast
+    if (this.realtimeChannel) {
+      try {
+        if (action === 'delete') {
+          this.realtimeChannel.send({
+            type: 'broadcast',
+            event: 'order_deleted',
+            payload: { order, id: order.id, order_number: order.order_number, businessId, timestamp: Date.now() }
+          }).catch(() => {});
+        } else {
+          this.realtimeChannel.send({
+            type: 'broadcast',
+            event: 'order_created',
+            payload: { order, businessId, timestamp: Date.now() }
+          }).catch(() => {});
+        }
+
+        // Also broadcast sync_update for standard listeners
+        this.realtimeChannel.send({
+          type: 'broadcast',
+          event: 'sync_update',
+          payload: {
+            businessId,
+            key: 'sales',
+            table: 'sales_orders',
+            action,
+            id: order.id,
+            record: action === 'upsert' ? order : undefined,
+            timestamp: Date.now()
+          }
+        }).catch(() => {});
+      } catch (e) {}
+    }
+
+    // 2. Cross-tab local broadcast channel
+    if (this.bc) {
+      try {
+        this.bc.postMessage({
+          type: action === 'delete' ? 'ORDER_DELETED' : 'ORDER_CREATED',
+          payload: { order, businessId, timestamp: Date.now() }
+        });
+      } catch (e) {}
+    }
+  }
+
   public purgeLocalEntityCaches(): void {
     // Safely prune only transient notification/audit logs, preserving core tables, area columns, and delivery charges
     const keysToRemove = [
@@ -905,16 +954,29 @@ class ERPStorage {
   }
 
   public patchIncomingRecord(key: string, record: any) {
-    if (!record || !record.id) return;
+    if (!record || (!record.id && !record.order_number)) return;
     const cacheArr = (this.cache as any)[key];
     if (Array.isArray(cacheArr)) {
-      const idx = cacheArr.findIndex((item: any) => 
-        item.id === record.id || 
-        (key === 'sales' && record.order_number && item.order_number === record.order_number) ||
-        (key === 'purchases' && record.po_number && item.po_number === record.po_number)
-      );
+      if (!record.id && record.order_number) {
+        record.id = crypto.randomUUID();
+      }
 
       let patchedRecord = { ...record };
+
+      if (key === 'sales') {
+        patchedRecord.is_live_order = true;
+        this.unmarkDeletedSalesOrderId(patchedRecord.id);
+        if (patchedRecord.order_number) {
+          this.unmarkDeletedSalesOrderId(patchedRecord.order_number);
+        }
+      }
+
+      const idx = cacheArr.findIndex((item: any) => 
+        item.id === patchedRecord.id || 
+        (key === 'sales' && patchedRecord.order_number && item.order_number === patchedRecord.order_number) ||
+        (key === 'purchases' && patchedRecord.po_number && item.po_number === patchedRecord.po_number)
+      );
+
       if (key === 'products') {
         const exp = (record.id ? this.getLocalStockExpectation(record.id) : undefined) ||
                     (record.sku ? this.getLocalStockExpectation(record.sku) : undefined) ||
@@ -935,18 +997,24 @@ class ERPStorage {
         cacheArr.unshift(patchedRecord);
       }
       safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
+      this.invalidateMemos();
       this.notify();
     }
   }
 
   public patchIncomingDelete(key: string, id: string) {
     if (!id) return;
+    const cleanId = String(id).trim().toLowerCase();
     const cacheArr = (this.cache as any)[key];
     if (Array.isArray(cacheArr)) {
-      const idx = cacheArr.findIndex((item: any) => item.id === id);
+      const idx = cacheArr.findIndex((item: any) => 
+        String(item.id).trim().toLowerCase() === cleanId || 
+        (key === 'sales' && String(item.order_number || '').trim().toLowerCase() === cleanId)
+      );
       if (idx !== -1) {
         cacheArr.splice(idx, 1);
         safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(cacheArr));
+        this.invalidateMemos();
         this.notify();
       }
     }
@@ -1983,7 +2051,7 @@ class ERPStorage {
                   }
                 }
              }
-             return;
+             continue;
           }
           if (key === 'profiles') {
              const existingPasswords: Record<string, string> = {};
@@ -3033,16 +3101,11 @@ class ERPStorage {
 
   private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string, secondaryDeleteKey?: string) {
     try {
-      if (key === 'sales' && isSupabaseConfigured && supabase) {
-        // Do NOT persist sales orders on local machine storage when connected to Supabase DB
-        safeStorage.removeItem('omnipack_erp_sales');
-      } else {
-        const cacheVal = this.cache[key];
-        const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
-          ? cacheVal.slice(0, 50)
-          : cacheVal;
-        safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
-      }
+      const cacheVal = this.cache[key];
+      const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
+        ? cacheVal.slice(0, 50)
+        : cacheVal;
+      safeStorage.setItem(`omnipack_erp_${key}`, JSON.stringify(valToPersist));
     } catch (e) {
       console.warn(`Error saving state for key ${key}`, e);
     }
@@ -5903,6 +5966,11 @@ class ERPStorage {
 
     this.cache.sales.unshift(newSO);
     this.save('sales', newSO);
+    this.invalidateMemos();
+
+    // Instant real-time multi-user broadcast & public server sync (<50ms)
+    this.broadcastOrderEvent('upsert', newSO);
+    this.syncOrderToPublicServer(newSO);
 
     if (isSupabaseConfigured && supabase) {
       this.syncToSupabase('sales', newSO).catch(err => {
@@ -5912,7 +5980,6 @@ class ERPStorage {
 
     // Ensure stock is reduced if order is created in a dispatched/delivered state
     this.syncOrderStock(newSO);
-    this.syncOrderToPublicServer(newSO);
     this.notify();
 
     return newSO;
@@ -6008,6 +6075,7 @@ class ERPStorage {
 
     // 10. Permanently purge from database (Supabase, server cache & broadcast to all connected devices)
     try {
+      this.broadcastOrderEvent('delete', { id: orderId, order_number: orderNumber });
       this.save('sales', null, true, orderId, orderNumber);
       if (isSupabaseConfigured && supabase) {
         await this.syncToSupabase('sales', null, true, orderId, orderNumber);
@@ -6127,6 +6195,12 @@ class ERPStorage {
       if (newSO.order_number) this.pendingUploads.add(newSO.order_number);
       this.cache.sales[index] = newSO;
       this.save('sales', newSO);
+      this.invalidateMemos();
+
+      // Instant real-time multi-user broadcast & public server sync (<50ms)
+      this.broadcastOrderEvent('upsert', newSO);
+      this.syncOrderToPublicServer(newSO);
+
       if (isSupabaseConfigured && supabase) {
         this.syncToSupabase('sales', newSO).catch(err => {
           console.warn('Immediate Supabase sync error on update:', err);
@@ -6134,7 +6208,6 @@ class ERPStorage {
       }
       // Handle stock synchronization
       this.syncOrderStock(newSO, oldSO.status, oldSO.items);
-      this.syncOrderToPublicServer(newSO);
       this.notify();
       return newSO;
     }
@@ -6793,17 +6866,20 @@ class ERPStorage {
     
     // 1. Immediately reload all local tables & in-memory cache for instant 0ms data refresh
     this.reloadFromLocalStorage();
+    await this.syncWithServer().catch(() => {});
+    this.invalidateMemos();
     this.notify();
 
-    // 2. Perform background cloud sync with a strict 2s timeout so UI never hangs
+    // 2. Perform background cloud sync with a strict 3s timeout so UI never hangs
     if (isSupabaseConfigured && supabase) {
       try {
         const syncPromise = this.syncFromSupabase(normBId);
-        const timeoutPromise = new Promise(resolve => setTimeout(resolve, 2000));
+        const timeoutPromise = new Promise(resolve => setTimeout(resolve, 3000));
         await Promise.race([syncPromise, timeoutPromise]);
       } catch (e) {
         console.warn('Sync check error on app refresh:', e);
       }
+      this.invalidateMemos();
       this.notify();
     }
   }

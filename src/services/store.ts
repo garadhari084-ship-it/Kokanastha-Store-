@@ -1739,7 +1739,10 @@ class ERPStorage {
       console.log('[Store] Syncing all orders to Supabase Cloud Database...');
       // 1. Ensure prerequisite entities exist so foreign keys pass
       if (this.cache.businesses.length > 0) {
-        await this.syncToSupabase('businesses', this.cache.businesses);
+        const bErr = await this.syncToSupabase('businesses', this.cache.businesses);
+        if (bErr && (bErr.message?.toLowerCase().includes('not usable') || bErr.message?.toLowerCase().includes('usable connection'))) {
+          return { success: false, count: 0, error: 'Database not usable: The database did not accept a usable connection. Please restart your Supabase project.' };
+        }
       }
       if (this.cache.customers.length > 0) {
         await this.syncToSupabase('customers', this.cache.customers);
@@ -1760,7 +1763,22 @@ class ERPStorage {
       const CHUNK = 50;
       for (let i = 0; i < validOrders.length; i += CHUNK) {
         const chunk = validOrders.slice(i, i + CHUNK);
-        await this.syncToSupabase('sales', chunk);
+        const chunkErr = await this.syncToSupabase('sales', chunk);
+        if (chunkErr) {
+          const errMsg = String(chunkErr.message || '').toLowerCase();
+          if (errMsg.includes('not usable') || errMsg.includes('usable connection') || chunkErr.code === '57P01' || chunkErr.code === '08006') {
+            return {
+              success: false,
+              count: 0,
+              error: 'Database not usable: The Supabase PostgreSQL database did not accept a usable connection. Please open your Supabase Dashboard and click "Restart Project" (or "Restore Project") to resume the database.'
+            };
+          }
+          return {
+            success: false,
+            count: 0,
+            error: chunkErr.message || `Database upload error (code: ${chunkErr.code})`
+          };
+        }
       }
 
       // 4. Also broadcast to public server fallback
@@ -2831,6 +2849,18 @@ class ERPStorage {
              const err = await doUpsert(chunk);
              if (err && err.code !== 'PGRST205') {
                console.warn(`Supabase sync error on chunk of ${tableName}:`, JSON.stringify(err));
+               const errMsg = String(err.message || '').toLowerCase();
+               const isDbUnusable = errMsg.includes('not usable') || errMsg.includes('usable connection') || err.code === '57P01' || err.code === '08006' || (err as any).status === 503;
+               if (isDbUnusable && typeof window !== 'undefined') {
+                 window.dispatchEvent(new CustomEvent('supabase-db-error', { 
+                   detail: { 
+                     type: 'not_usable',
+                     message: 'Database not usable: The database did not accept a usable connection.',
+                     tableName
+                   } 
+                 }));
+               }
+               return err;
              }
            }
            if (tableName === 'sales_orders' && salesItems.length > 0) {
@@ -2909,6 +2939,17 @@ class ERPStorage {
            return;
          }
          console.warn(`Supabase sync error on ${tableName}:`, JSON.stringify(error));
+         const errMsg = String(error.message || '').toLowerCase();
+         const isDbUnusable = errMsg.includes('not usable') || errMsg.includes('usable connection') || error.code === '57P01' || error.code === '08006' || (error as any).status === 503;
+         if (isDbUnusable && typeof window !== 'undefined') {
+           window.dispatchEvent(new CustomEvent('supabase-db-error', { 
+             detail: { 
+               type: 'not_usable',
+               message: 'Database not usable: The database did not accept a usable connection. Please restart your Supabase project in the Supabase Dashboard.',
+               tableName
+             } 
+           }));
+         }
          return error;
        }
        

@@ -68,7 +68,18 @@ export async function fetchServerSupabaseConfig(): Promise<{ url: string; key: s
   return null;
 }
 
-export async function testSupabaseConnection(url: string, key: string): Promise<{ success: boolean; error?: string }> {
+export function getSupabaseProjectRef(): string {
+  const { url } = getSupabaseConfig();
+  const match = url.match(/https:\/\/([a-z0-9-]+)\.supabase\.co/i);
+  return match ? match[1] : 'wtlldxrnuyruxdrdnxcj';
+}
+
+export async function testSupabaseConnection(url: string, key: string): Promise<{ 
+  success: boolean; 
+  error?: string; 
+  isDatabaseNotUsable?: boolean; 
+  projectRef?: string 
+}> {
   try {
     if (!url || !key) {
       return { success: false, error: 'Project URL and Anon Key are required.' };
@@ -77,21 +88,77 @@ export async function testSupabaseConnection(url: string, key: string): Promise<
     if (!cleanUrl.startsWith('https://')) {
       return { success: false, error: 'Supabase URL must start with https://' };
     }
+    const match = cleanUrl.match(/https:\/\/([a-z0-9-]+)\.supabase\.co/i);
+    const projectRef = match ? match[1] : 'wtlldxrnuyruxdrdnxcj';
+
     const client = createClient(cleanUrl, key.trim(), {
       auth: { persistSession: false }
     });
     
-    // Attempt a lightweight fetch from supabase
-    const { error } = await client.from('businesses').select('id').limit(1);
-    if (error && error.code !== 'PGRST116') {
-      // If table doesn't exist yet, we still check if the key is unauthorized
-      if (error.message?.toLowerCase().includes('jwt') || error.code === '401' || (error as any).status === 401) {
-        return { success: false, error: 'Invalid Supabase Anon/Public Key (Unauthorized).' };
+    // Attempt a lightweight fetch from supabase with a timeout
+    const testPromise = client.from('businesses').select('id').limit(1);
+    const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+      setTimeout(() => reject(new Error('Connection timed out after 8 seconds. The database did not accept a usable connection or is paused.')), 8000)
+    );
+
+    const { error } = await Promise.race([testPromise, timeoutPromise]) as any;
+
+    if (error) {
+      const code = String(error.code || '');
+      const msg = String(error.message || '').toLowerCase();
+      const status = (error as any).status || (error as any).statusCode;
+
+      // Missing table (PGRST116, PGRST205, 42P01) means PostgreSQL connection is alive and working!
+      const isMissingTable = code === 'PGRST116' || code === 'PGRST205' || code === '42P01' || msg.includes('relation') || msg.includes('does not exist');
+      if (isMissingTable) {
+        return { success: true, projectRef };
       }
+
+      // Detect "Database not usable" or paused/terminated connection errors
+      const isUnusable = 
+        msg.includes('not usable') || 
+        msg.includes('usable connection') || 
+        msg.includes('connection refused') || 
+        msg.includes('connection terminated') || 
+        msg.includes('timeout') || 
+        msg.includes('terminat') ||
+        msg.includes('upstream connect error') ||
+        msg.includes('disconnect/reset') ||
+        status === 503 || 
+        status === 500 || 
+        status === 502 || 
+        status === 504 ||
+        code === '57P01' || 
+        code === '08006' || 
+        code === '08001';
+
+      if (isUnusable) {
+        return {
+          success: false,
+          isDatabaseNotUsable: true,
+          projectRef,
+          error: 'Database not usable: The database did not accept a usable connection. Please open your Supabase Dashboard and click "Restart Project" (or "Restore Project") in Project Settings.'
+        };
+      }
+
+      if (msg.includes('jwt') || code === '401' || status === 401) {
+        return { success: false, projectRef, error: 'Invalid Supabase Anon/Public Key (Unauthorized).' };
+      }
+
+      return { success: false, projectRef, error: error.message || `Database error (${code})` };
     }
-    return { success: true };
+    return { success: true, projectRef };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Could not connect to Supabase.' };
+    const msg = String(err?.message || '').toLowerCase();
+    const isUnusable = msg.includes('not usable') || msg.includes('usable connection') || msg.includes('timed out') || msg.includes('timeout');
+    const match = url.match(/https:\/\/([a-z0-9-]+)\.supabase\.co/i);
+    const projectRef = match ? match[1] : 'wtlldxrnuyruxdrdnxcj';
+    return { 
+      success: false, 
+      isDatabaseNotUsable: isUnusable,
+      projectRef,
+      error: err.message || 'Could not connect to Supabase.' 
+    };
   }
 }
 

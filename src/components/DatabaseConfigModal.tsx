@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Database, 
   CheckCircle2, 
@@ -9,14 +9,17 @@ import {
   ExternalLink,
   Trash2,
   Check,
-  UploadCloud
+  UploadCloud,
+  AlertTriangle,
+  RotateCw
 } from 'lucide-react';
 import { 
   getSupabaseConfig, 
   saveSupabaseConfig, 
   clearSupabaseConfig, 
   testSupabaseConnection, 
-  isSupabaseConfigured 
+  isSupabaseConfigured,
+  getSupabaseProjectRef
 } from '../services/supabase';
 import { dbStore } from '../services/store';
 
@@ -35,10 +38,28 @@ export const DatabaseConfigModal: React.FC<DatabaseConfigModalProps> = ({
   const [url, setUrl] = useState(currentConfig.url);
   const [key, setKey] = useState(currentConfig.key);
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; isDatabaseNotUsable?: boolean; projectRef?: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncingOrders, setIsSyncingOrders] = useState(false);
   const [ordersSyncStatus, setOrdersSyncStatus] = useState<string | null>(null);
+
+  const currentProjectRef = getSupabaseProjectRef();
+
+  // Test on mount if configured
+  useEffect(() => {
+    if (isOpen && url.trim() && key.trim()) {
+      testSupabaseConnection(url, key).then(res => {
+        if (!res.success) {
+          setTestResult({
+            success: false,
+            message: res.error || 'Connection failed',
+            isDatabaseNotUsable: res.isDatabaseNotUsable,
+            projectRef: res.projectRef || currentProjectRef
+          });
+        }
+      }).catch(() => {});
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -71,7 +92,12 @@ export const DatabaseConfigModal: React.FC<DatabaseConfigModalProps> = ({
       if (res.success) {
         setTestResult({ success: true, message: 'Connected successfully to Supabase database!' });
       } else {
-        setTestResult({ success: false, message: res.error || 'Connection failed.' });
+        setTestResult({ 
+          success: false, 
+          message: res.error || 'Connection failed.',
+          isDatabaseNotUsable: res.isDatabaseNotUsable,
+          projectRef: res.projectRef || currentProjectRef
+        });
       }
     } catch (err: any) {
       setTestResult({ success: false, message: err.message || 'Connection test failed.' });
@@ -214,17 +240,66 @@ export const DatabaseConfigModal: React.FC<DatabaseConfigModalProps> = ({
 
           {/* Test Result Notice */}
           {testResult && (
-            <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 ${
+            <div className={`p-4 rounded-xl border text-xs flex flex-col gap-2.5 ${
               testResult.success 
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                : testResult.isDatabaseNotUsable
+                ? 'bg-amber-50 border-amber-300 text-amber-950'
                 : 'bg-rose-50 border-rose-200 text-rose-800'
             }`}>
-              {testResult.success ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+              <div className="flex items-start gap-2.5">
+                {testResult.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                ) : testResult.isDatabaseNotUsable ? (
+                  <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm mb-1">
+                    {testResult.success 
+                      ? 'Database Connection Successful' 
+                      : testResult.isDatabaseNotUsable 
+                      ? 'Supabase Health Error: Database Not Usable' 
+                      : 'Connection Failed'}
+                  </div>
+                  <span className="font-medium leading-relaxed block">{testResult.message}</span>
+                </div>
+              </div>
+
+              {testResult.isDatabaseNotUsable && (
+                <div className="mt-2 pt-2.5 border-t border-amber-200/80 space-y-2">
+                  <p className="text-[11px] font-semibold text-amber-900">
+                    Why this happens: Your Supabase PostgreSQL database project is paused or sleeping and did not accept connection.
+                  </p>
+                  <div className="bg-white/90 p-3 rounded-lg border border-amber-200 text-[11px] text-amber-900 space-y-1">
+                    <p className="font-bold text-amber-950">How to fix in 1 minute:</p>
+                    <ol className="list-decimal pl-4 space-y-1">
+                      <li>Click the button below to open your Supabase Project Settings</li>
+                      <li>Click <strong className="text-amber-950">"Restart Project"</strong> (or "Restore Project" if paused)</li>
+                      <li>Wait ~60 seconds for status to turn active, then return here and click <strong className="text-amber-950">"Test Connection"</strong> & <strong className="text-amber-950">"Sync Orders Now"</strong></li>
+                    </ol>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1 flex-wrap">
+                    <a
+                      href={`https://supabase.com/dashboard/project/${testResult.projectRef || currentProjectRef}/project-settings/general`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 shadow-xs"
+                    >
+                      Open Supabase Settings to Restart <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                    <a
+                      href={`https://supabase.com/dashboard/project/${testResult.projectRef || currentProjectRef}/advisors/health`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5"
+                    >
+                      View Health Advisor <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
               )}
-              <span className="font-medium leading-relaxed">{testResult.message}</span>
             </div>
           )}
 

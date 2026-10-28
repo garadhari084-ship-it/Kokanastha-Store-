@@ -49,7 +49,7 @@ import { dbStore, isSameBusiness } from './services/store';
 import { safeStorage } from './utils/safeStorage';
 import { useNotificationSound } from './utils/useNotificationSound';
 import { UserProfile, Business, UserRole } from './types/erp';
-import { supabase, isSupabaseConfigured, fetchServerSupabaseConfig, saveSupabaseConfig, testSupabaseConnection, supabaseUrl, supabaseAnonKey } from './services/supabase';
+import { supabase, isSupabaseConfigured, fetchServerSupabaseConfig, saveSupabaseConfig, testSupabaseConnection, supabaseUrl, supabaseAnonKey, getSupabaseProjectRef } from './services/supabase';
 import { DatabaseConfigModal } from './components/DatabaseConfigModal';
 
 import { TopProgressBar } from './components/TopProgressBar';
@@ -257,6 +257,7 @@ export default function App() {
   const [syncTick, setSyncTick] = useState(0);
 
   const [dbConnected, setDbConnected] = useState(true);
+  const [dbErrorDetail, setDbErrorDetail] = useState<{ isUnusable: boolean; message: string; projectRef: string } | null>(null);
   const [appErrors, setAppErrors] = useState<AppErrorDetail[]>([]);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [showSessionSupersededModal, setShowSessionSupersededModal] = useState(false);
@@ -265,10 +266,29 @@ export default function App() {
     // 1. Check database connection
     if (isSupabaseConfigured) {
       testSupabaseConnection(supabaseUrl, supabaseAnonKey)
-        .then(res => setDbConnected(res.success))
-        .catch(() => setDbConnected(false));
+        .then(res => {
+          setDbConnected(res.success);
+          if (!res.success) {
+            setDbErrorDetail({
+              isUnusable: !!res.isDatabaseNotUsable,
+              message: res.error || 'Connection failed',
+              projectRef: res.projectRef || getSupabaseProjectRef()
+            });
+          } else {
+            setDbErrorDetail(null);
+          }
+        })
+        .catch(err => {
+          setDbConnected(false);
+          setDbErrorDetail({
+            isUnusable: true,
+            message: err?.message || 'Database not usable',
+            projectRef: getSupabaseProjectRef()
+          });
+        });
     } else {
       setDbConnected(true); // Local storage DB is always connected
+      setDbErrorDetail(null);
     }
 
     // 2. Add global error listeners to catch and count runtime errors with details
@@ -327,12 +347,23 @@ export default function App() {
       setAppErrors(prev => [...prev, errorDetail]);
     };
 
+    const handleDbErrorEvent = (e: any) => {
+      setDbConnected(false);
+      setDbErrorDetail({
+        isUnusable: true,
+        message: e?.detail?.message || 'Database not usable: The database did not accept a usable connection.',
+        projectRef: getSupabaseProjectRef()
+      });
+    };
+
     window.addEventListener('error', handleError);
     window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    window.addEventListener('supabase-db-error', handleDbErrorEvent);
 
     return () => {
       window.removeEventListener('error', handleError);
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+      window.removeEventListener('supabase-db-error', handleDbErrorEvent);
     };
   }, []);
   
@@ -2937,18 +2968,44 @@ export default function App() {
               className={`px-2 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
                 dbConnected && isSupabaseConfigured
                   ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                  : dbErrorDetail?.isUnusable
+                  ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40 animate-pulse'
                   : 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 animate-pulse'
               }`}
-              title={isSupabaseConfigured ? "Connected to Supabase Cloud Database. Click to view configuration." : "Click to connect Supabase database"}
+              title={
+                dbConnected && isSupabaseConfigured 
+                  ? "Connected to Supabase Cloud Database. Click to view configuration." 
+                  : dbErrorDetail?.isUnusable 
+                  ? "Database Not Usable: PostgreSQL database is paused or sleeping. Click to restart." 
+                  : "Click to connect Supabase database"
+              }
             >
-              <Database size={15} className={dbConnected && isSupabaseConfigured ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"} />
+              {dbErrorDetail?.isUnusable ? (
+                <AlertTriangle size={15} className="text-rose-600 dark:text-rose-400 shrink-0" />
+              ) : (
+                <Database size={15} className={dbConnected && isSupabaseConfigured ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"} />
+              )}
               <span className="hidden sm:inline">
-                {dbConnected && isSupabaseConfigured ? 'DB Connected' : 'Connect DB'}
+                {dbConnected && isSupabaseConfigured 
+                  ? 'DB Connected' 
+                  : dbErrorDetail?.isUnusable 
+                  ? 'DB Not Usable' 
+                  : 'Connect DB'}
               </span>
               <span className="sm:hidden">
-                {dbConnected && isSupabaseConfigured ? 'DB' : 'Connect'}
+                {dbConnected && isSupabaseConfigured 
+                  ? 'DB' 
+                  : dbErrorDetail?.isUnusable 
+                  ? 'DB Error' 
+                  : 'Connect'}
               </span>
-              <span className={`w-2 h-2 rounded-full shrink-0 ${dbConnected && isSupabaseConfigured ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50' : 'bg-amber-500 shadow-xs shadow-amber-500/50'}`} />
+              <span className={`w-2 h-2 rounded-full shrink-0 ${
+                dbConnected && isSupabaseConfigured 
+                  ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50' 
+                  : dbErrorDetail?.isUnusable
+                  ? 'bg-rose-500 shadow-xs shadow-rose-500/50'
+                  : 'bg-amber-500 shadow-xs shadow-amber-500/50'
+              }`} />
             </button>
 
             {/* Sync All Orders to Database Button */}
@@ -3167,6 +3224,63 @@ export default function App() {
           </div>
 
         </header>
+
+        {/* Supabase Database Not Usable Alert Banner */}
+        {isSupabaseConfigured && (!dbConnected || dbErrorDetail?.isUnusable) && (
+          <div className="shrink-0 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/60 dark:to-orange-950/60 border-b border-amber-300 dark:border-amber-700 px-3 sm:px-4 py-2.5 flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs text-amber-900 dark:text-amber-100 z-20 shadow-xs">
+            <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+              <div className="p-1 rounded-lg bg-amber-200/80 dark:bg-amber-800/60 shrink-0 mt-0.5 sm:mt-0">
+                <AlertTriangle size={17} className="text-amber-800 dark:text-amber-200" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-bold flex items-center gap-2 flex-wrap">
+                  <span>Supabase Database Status: Database Not Usable</span>
+                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-200/70 dark:bg-amber-800/50 rounded text-amber-900 dark:text-amber-200 font-mono">
+                    Project: {dbErrorDetail?.projectRef || getSupabaseProjectRef()}
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-800 dark:text-amber-200/90 leading-tight mt-0.5">
+                  The database did not accept a connection (project paused or sleeping). All orders created on this app are safely preserved locally on this device.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 self-end md:self-auto flex-wrap">
+              <a
+                href={`https://supabase.com/dashboard/project/${dbErrorDetail?.projectRef || getSupabaseProjectRef()}/project-settings/general`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 shadow-xs"
+              >
+                Restart Project <ExternalLink size={12} />
+              </a>
+              <button
+                onClick={async () => {
+                  triggerToast('Checking Supabase Database connection...', 'info');
+                  const res = await testSupabaseConnection(supabaseUrl, supabaseAnonKey);
+                  if (res.success) {
+                    setDbConnected(true);
+                    setDbErrorDetail(null);
+                    triggerToast('Database reconnected successfully! Syncing pending orders...', 'success');
+                    await dbStore.syncAllOrdersToSupabase(currentBusiness?.id);
+                    setSyncTick(prev => prev + 1);
+                  } else {
+                    setDbConnected(false);
+                    setDbErrorDetail({
+                      isUnusable: !!res.isDatabaseNotUsable,
+                      message: res.error || 'Database is still not responding.',
+                      projectRef: res.projectRef || getSupabaseProjectRef()
+                    });
+                    triggerToast(res.error || 'Database is still not responding. Please allow ~60s after clicking Restart in Supabase.', 'error');
+                  }
+                }}
+                className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-slate-700 text-amber-900 dark:text-amber-200 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <RefreshCw size={12} /> Check Status
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Dynamic active view body */}
         <main 

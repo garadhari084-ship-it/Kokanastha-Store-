@@ -125,6 +125,21 @@ export const PackingVerificationModule: React.FC<PackingVerificationModuleProps>
   }, [selectedOrder]);
 
   useEffect(() => {
+    const updatePendingOrders = () => {
+      setPendingOrders(
+        dbStore.getSalesOrders(businessId).filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled')
+      );
+      setProducts(dbStore.getProducts(businessId));
+      setCategories(dbStore.getCategories(businessId));
+      setCustomers(dbStore.getCustomers(businessId));
+    };
+
+    updatePendingOrders();
+    const unsubscribe = dbStore.subscribe(updatePendingOrders);
+    return unsubscribe;
+  }, [businessId]);
+
+  useEffect(() => {
     const targetId = deepLinkData?.orderId || openOrderIdInitially;
     const targetNum = deepLinkData?.orderNumber;
 

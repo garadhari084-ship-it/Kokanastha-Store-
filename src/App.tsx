@@ -43,6 +43,7 @@ import {
   Award,
   RefreshCw,
   User,
+  UploadCloud,
 } from 'lucide-react';
 import { dbStore, isSameBusiness } from './services/store';
 import { safeStorage } from './utils/safeStorage';
@@ -709,6 +710,36 @@ export default function App() {
       }, 450);
     }
   }, [currentBusiness?.id, isRefreshingData, triggerToast]);
+
+  const [isSyncingOrdersToDb, setIsSyncingOrdersToDb] = useState(false);
+
+  const handleSyncOrdersToDatabase = useCallback(async () => {
+    if (isSyncingOrdersToDb) return;
+    if (!isSupabaseConfigured) {
+      triggerToast('Please connect to Supabase first using the Database button.', 'info');
+      setShowDbConfigModal(true);
+      return;
+    }
+
+    setIsSyncingOrdersToDb(true);
+    triggerToast('Syncing all orders to Supabase Database...', 'info');
+    try {
+      const res = await dbStore.syncAllOrdersToSupabase(currentBusiness?.id);
+      if (res.success) {
+        setSyncTick(prev => prev + 1);
+        triggerToast(`Successfully synced ${res.count} orders to Supabase Database!`, 'success');
+      } else {
+        triggerToast(res.error || 'Failed to sync orders.', 'error');
+        if (res.error?.includes('not connected')) {
+          setShowDbConfigModal(true);
+        }
+      }
+    } catch (err: any) {
+      triggerToast(err.message || 'Error syncing orders to database.', 'error');
+    } finally {
+      setIsSyncingOrdersToDb(false);
+    }
+  }, [currentBusiness?.id, isSyncingOrdersToDb, triggerToast]);
 
   useEffect(() => {
     const handleGlobalRefresh = () => {
@@ -2194,7 +2225,7 @@ export default function App() {
       default:
         return <div>Module view not resolved.</div>;
     }
-  }, [activeView, currentUser, currentBusiness, deepLinkData, handleClearDeepLink, handleDeepLinkNavigate, triggerToast]);
+  }, [activeView, currentUser, currentBusiness, deepLinkData, handleClearDeepLink, handleDeepLinkNavigate, triggerToast, syncTick]);
 
   // Render Public Invoice view if requested via link
   if (publicInvoiceNum) {
@@ -2899,7 +2930,47 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-4 relative header-dropdown-container">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 relative header-dropdown-container">
+            {/* Database Connect Status Button */}
+            <button
+              onClick={() => setShowDbConfigModal(true)}
+              className={`px-2 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
+                dbConnected && isSupabaseConfigured
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                  : 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 animate-pulse'
+              }`}
+              title={isSupabaseConfigured ? "Connected to Supabase Cloud Database. Click to view configuration." : "Click to connect Supabase database"}
+            >
+              <Database size={15} className={dbConnected && isSupabaseConfigured ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"} />
+              <span className="hidden sm:inline">
+                {dbConnected && isSupabaseConfigured ? 'DB Connected' : 'Connect DB'}
+              </span>
+              <span className="sm:hidden">
+                {dbConnected && isSupabaseConfigured ? 'DB' : 'Connect'}
+              </span>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${dbConnected && isSupabaseConfigured ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50' : 'bg-amber-500 shadow-xs shadow-amber-500/50'}`} />
+            </button>
+
+            {/* Sync All Orders to Database Button */}
+            <button
+              onClick={handleSyncOrdersToDatabase}
+              disabled={isSyncingOrdersToDb}
+              className="px-2 sm:px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
+              title="Push and sync all sales orders directly to Supabase cloud database"
+            >
+              {isSyncingOrdersToDb ? (
+                <Loader2 size={15} className="animate-spin text-indigo-600 dark:text-indigo-400 shrink-0" />
+              ) : (
+                <UploadCloud size={15} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+              )}
+              <span className="hidden md:inline">
+                {isSyncingOrdersToDb ? 'Syncing Orders...' : 'Sync Orders to DB'}
+              </span>
+              <span className="md:hidden">
+                {isSyncingOrdersToDb ? 'Syncing' : 'Sync Orders'}
+              </span>
+            </button>
+
             {/* Refresh App Icon Button */}
             <button 
               onClick={handleRefreshApp}

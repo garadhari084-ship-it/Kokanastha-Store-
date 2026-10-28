@@ -8,7 +8,8 @@ import {
   Key, 
   ExternalLink,
   Trash2,
-  Check
+  Check,
+  UploadCloud
 } from 'lucide-react';
 import { 
   getSupabaseConfig, 
@@ -17,6 +18,7 @@ import {
   testSupabaseConnection, 
   isSupabaseConfigured 
 } from '../services/supabase';
+import { dbStore } from '../services/store';
 
 interface DatabaseConfigModalProps {
   isOpen: boolean;
@@ -35,8 +37,27 @@ export const DatabaseConfigModal: React.FC<DatabaseConfigModalProps> = ({
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSyncingOrders, setIsSyncingOrders] = useState(false);
+  const [ordersSyncStatus, setOrdersSyncStatus] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handleSyncAllOrders = async () => {
+    setIsSyncingOrders(true);
+    setOrdersSyncStatus(null);
+    try {
+      const res = await dbStore.syncAllOrdersToSupabase();
+      if (res.success) {
+        setOrdersSyncStatus(`Successfully uploaded ${res.count} orders to your Supabase database!`);
+      } else {
+        setOrdersSyncStatus(`Sync failed: ${res.error}`);
+      }
+    } catch (err: any) {
+      setOrdersSyncStatus(`Error: ${err.message || 'Failed to sync orders'}`);
+    } finally {
+      setIsSyncingOrders(false);
+    }
+  };
 
   const handleTest = async () => {
     if (!url.trim() || !key.trim()) {
@@ -126,6 +147,32 @@ export const DatabaseConfigModal: React.FC<DatabaseConfigModalProps> = ({
               </button>
             )}
           </div>
+
+          {/* Sync All Orders to Database Action */}
+          {isSupabaseConfigured && (
+            <div className="p-3.5 rounded-xl border border-indigo-100 bg-indigo-50/60 dark:bg-indigo-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-bold text-indigo-950 dark:text-indigo-200">Sync All Orders to Database</h4>
+                <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300">Push all local sales orders and items directly to Supabase cloud</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSyncAllOrders}
+                disabled={isSyncingOrders}
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-xs shrink-0"
+              >
+                {isSyncingOrders ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+                {isSyncingOrders ? 'Uploading...' : 'Sync Orders Now'}
+              </button>
+            </div>
+          )}
+
+          {ordersSyncStatus && (
+            <div className="p-3 rounded-xl border text-xs bg-slate-50 border-slate-200 text-slate-800 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{ordersSyncStatus}</span>
+            </div>
+          )}
 
           <div className="space-y-4">
             <div>

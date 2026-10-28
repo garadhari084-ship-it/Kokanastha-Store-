@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, isSupabaseConfigured, getSupabaseClient, checkIsSupabaseConfigured } from './supabase';
 import { safeStorage } from '../utils/safeStorage';
 import {
   Business,
@@ -1722,6 +1722,59 @@ class ERPStorage {
 
     if (errors.length > 0) {
        throw new Error(errors.join('\n'));
+    }
+  }
+
+  public async syncAllOrdersToSupabase(businessId?: string): Promise<{ success: boolean; count: number; error?: string }> {
+    const client = getSupabaseClient();
+    if (!client) {
+      return { 
+        success: false, 
+        count: 0, 
+        error: 'Database not connected. Please connect to Supabase first.' 
+      };
+    }
+
+    try {
+      console.log('[Store] Syncing all orders to Supabase Cloud Database...');
+      // 1. Ensure prerequisite entities exist so foreign keys pass
+      if (this.cache.businesses.length > 0) {
+        await this.syncToSupabase('businesses', this.cache.businesses);
+      }
+      if (this.cache.customers.length > 0) {
+        await this.syncToSupabase('customers', this.cache.customers);
+      }
+      if (this.cache.products.length > 0) {
+        await this.syncToSupabase('products', this.cache.products);
+      }
+
+      // 2. Filter genuine valid sales orders
+      const purgedSet = this.getPurgedDummyIdSet();
+      const validOrders = (this.cache.sales || []).filter(o => !isLegacyDummySalesOrder(o, purgedSet));
+
+      if (validOrders.length === 0) {
+        return { success: true, count: 0 };
+      }
+
+      // 3. Batch push sales orders to Supabase
+      const CHUNK = 50;
+      for (let i = 0; i < validOrders.length; i += CHUNK) {
+        const chunk = validOrders.slice(i, i + CHUNK);
+        await this.syncToSupabase('sales', chunk);
+      }
+
+      // 4. Also broadcast to public server fallback
+      validOrders.forEach(o => {
+        this.syncOrderToPublicServer(o);
+      });
+
+      // 5. Notify local store subscribers
+      this.notify();
+
+      return { success: true, count: validOrders.length };
+    } catch (err: any) {
+      console.error('Error syncing all orders to database:', err);
+      return { success: false, count: 0, error: err.message || 'Failed to sync orders to database.' };
     }
   }
 

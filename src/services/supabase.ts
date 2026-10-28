@@ -95,15 +95,61 @@ export async function testSupabaseConnection(url: string, key: string): Promise<
   }
 }
 
-const { url: initialUrl, key: initialKey } = getSupabaseConfig();
-export const supabaseUrl = initialUrl;
-export const supabaseAnonKey = initialKey;
+let cachedClient: SupabaseClient | null = null;
+let cachedUrl = '';
+let cachedKey = '';
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export function getSupabaseClient(): SupabaseClient | null {
+  const { url, key } = getSupabaseConfig();
+  if (!url || !key) {
+    cachedClient = null;
+    cachedUrl = '';
+    cachedKey = '';
+    return null;
+  }
+  if (cachedClient && cachedUrl === url && cachedKey === key) {
+    return cachedClient;
+  }
+  try {
+    cachedUrl = url;
+    cachedKey = key;
+    cachedClient = createClient(url, key);
+    return cachedClient;
+  } catch (err) {
+    console.warn('Error creating Supabase client:', err);
+    return null;
+  }
+}
 
-export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+export function checkIsSupabaseConfigured(): boolean {
+  const { url, key } = getSupabaseConfig();
+  return Boolean(url && key);
+}
+
+export function getSupabaseUrl(): string {
+  return getSupabaseConfig().url;
+}
+
+export function getSupabaseAnonKey(): string {
+  return getSupabaseConfig().key;
+}
+
+// Deprecated constant getters maintained for compatibility
+export const supabaseUrl = getSupabaseConfig().url;
+export const supabaseAnonKey = getSupabaseConfig().key;
+
+export const isSupabaseConfigured = checkIsSupabaseConfigured();
+
+export const supabase: SupabaseClient | null = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getSupabaseClient();
+    if (!client) {
+      return undefined;
+    }
+    const val = (client as any)[prop];
+    return typeof val === 'function' ? val.bind(client) : val;
+  }
+});
 
 /**
  * Uploads an image to Supabase Storage and returns its public URL accessible by any user.
@@ -114,7 +160,8 @@ export async function uploadFileToSupabaseStorage(
   file: File,
   folderName: string = 'tenant'
 ): Promise<string> {
-  if (isSupabaseConfigured && supabase) {
+  const client = getSupabaseClient();
+  if (client) {
     try {
       const bucketName = 'tenant-assets';
       const fileExt = file.name.split('.').pop() || 'png';
@@ -122,7 +169,7 @@ export async function uploadFileToSupabaseStorage(
       const fileName = `${folderName}/${Date.now()}_${cleanFileName}.${fileExt}`;
 
       // Upload file directly to Supabase storage bucket 'tenant-assets'
-      const { data, error } = await supabase.storage
+      const { data, error } = await client.storage
         .from(bucketName)
         .upload(fileName, file, {
           cacheControl: '3600',
@@ -130,7 +177,7 @@ export async function uploadFileToSupabaseStorage(
         });
 
       if (!error && data) {
-        const { data: publicUrlData } = supabase.storage
+        const { data: publicUrlData } = client.storage
           .from(bucketName)
           .getPublicUrl(fileName);
 
@@ -141,12 +188,12 @@ export async function uploadFileToSupabaseStorage(
 
       // Try 'public' bucket if 'tenant-assets' bucket was not found
       if (error && (error.message?.includes('not found') || (error as any).statusCode === '404')) {
-        const altRes = await supabase.storage
+        const altRes = await client.storage
           .from('public')
           .upload(fileName, file, { cacheControl: '3600', upsert: true });
 
         if (!altRes.error) {
-          const { data: publicUrlData } = supabase.storage
+          const { data: publicUrlData } = client.storage
             .from('public')
             .getPublicUrl(fileName);
           if (publicUrlData?.publicUrl) {

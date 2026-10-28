@@ -915,6 +915,38 @@ class ERPStorage {
     }
   }
 
+  public broadcastEntityChange(key: keyof typeof this.cache, action: 'upsert' | 'delete', record?: any, id?: string, businessId?: string) {
+    const bId = businessId || (record ? record.business_id : undefined) || BIZ_ID;
+    
+    // 1. Supabase Realtime multi-client broadcast
+    if (this.realtimeChannel) {
+      try {
+        this.realtimeChannel.send({
+          type: 'broadcast',
+          event: 'sync_update',
+          payload: {
+            businessId: bId,
+            key,
+            action,
+            id: id || (record ? record.id : undefined),
+            record,
+            timestamp: Date.now()
+          }
+        }).catch(() => {});
+      } catch (e) {}
+    }
+
+    // 2. Cross-tab local broadcast channel
+    if (this.bc) {
+      try {
+        this.bc.postMessage({
+          type: 'ENTITY_CHANGED',
+          payload: { key, action, id: id || (record ? record.id : undefined), record, businessId: bId, timestamp: Date.now() }
+        });
+      } catch (e) {}
+    }
+  }
+
   public purgeLocalEntityCaches(): void {
     // Safely prune only transient notification/audit logs, preserving core tables, area columns, and delivery charges
     const keysToRemove = [
@@ -974,7 +1006,10 @@ class ERPStorage {
       const idx = cacheArr.findIndex((item: any) => 
         item.id === patchedRecord.id || 
         (key === 'sales' && patchedRecord.order_number && item.order_number === patchedRecord.order_number) ||
-        (key === 'purchases' && patchedRecord.po_number && item.po_number === patchedRecord.po_number)
+        (key === 'purchases' && (patchedRecord.order_number || patchedRecord.po_number) && (item.order_number === (patchedRecord.order_number || patchedRecord.po_number) || item.po_number === (patchedRecord.order_number || patchedRecord.po_number))) ||
+        (key === 'products' && patchedRecord.sku && item.sku === patchedRecord.sku) ||
+        (key === 'customers' && patchedRecord.phone && item.phone === patchedRecord.phone) ||
+        (key === 'suppliers' && patchedRecord.phone && item.phone === patchedRecord.phone)
       );
 
       if (key === 'products') {
@@ -3099,7 +3134,7 @@ class ERPStorage {
     }
   }
 
-  private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string, secondaryDeleteKey?: string) {
+  private save(key: keyof typeof this.cache, dataItem?: any, isDelete = false, deleteId?: string, secondaryDeleteKey?: string, skipSupabaseSync = false) {
     try {
       const cacheVal = this.cache[key];
       const valToPersist = Array.isArray(cacheVal) && (key === 'auditLogs' || key === 'stockLogs' || key === 'comboLogs' || key === 'messages' || key === 'packingSessions')
@@ -3114,9 +3149,18 @@ class ERPStorage {
         this.bc.postMessage({ type: 'SYNC_STATE', key });
       } catch (e) {}
     }
-    setTimeout(() => {
-      this.syncToSupabase(key, dataItem, isDelete, deleteId, secondaryDeleteKey);
-    }, 0);
+    // Broadcast entity mutation immediately to all connected devices in real time (<50ms)
+    if (dataItem && !Array.isArray(dataItem)) {
+      this.broadcastEntityChange(key, isDelete ? 'delete' : 'upsert', dataItem, deleteId);
+    } else if (isDelete && deleteId) {
+      this.broadcastEntityChange(key, 'delete', undefined, deleteId);
+    }
+
+    if (!skipSupabaseSync) {
+      setTimeout(() => {
+        this.syncToSupabase(key, dataItem, isDelete, deleteId, secondaryDeleteKey);
+      }, 0);
+    }
     this.notify();
   }
 
@@ -5965,7 +6009,7 @@ class ERPStorage {
     }
 
     this.cache.sales.unshift(newSO);
-    this.save('sales', newSO);
+    this.save('sales', newSO, false, undefined, undefined, true);
     this.invalidateMemos();
 
     // Instant real-time multi-user broadcast & public server sync (<50ms)
@@ -6076,7 +6120,7 @@ class ERPStorage {
     // 10. Permanently purge from database (Supabase, server cache & broadcast to all connected devices)
     try {
       this.broadcastOrderEvent('delete', { id: orderId, order_number: orderNumber });
-      this.save('sales', null, true, orderId, orderNumber);
+      this.save('sales', null, true, orderId, orderNumber, true);
       if (isSupabaseConfigured && supabase) {
         await this.syncToSupabase('sales', null, true, orderId, orderNumber);
       }
@@ -6194,7 +6238,7 @@ class ERPStorage {
       this.pendingUploads.add(newSO.id);
       if (newSO.order_number) this.pendingUploads.add(newSO.order_number);
       this.cache.sales[index] = newSO;
-      this.save('sales', newSO);
+      this.save('sales', newSO, false, undefined, undefined, true);
       this.invalidateMemos();
 
       // Instant real-time multi-user broadcast & public server sync (<50ms)
@@ -6862,26 +6906,10 @@ class ERPStorage {
   }
 
   public async refreshApp(businessId?: string) {
-    const normBId = businessId ? normalizeBusinessId(businessId) : undefined;
-    
-    // 1. Immediately reload all local tables & in-memory cache for instant 0ms data refresh
+    // Instant in-memory refresh in 0ms without querying or hanging the database
     this.reloadFromLocalStorage();
-    await this.syncWithServer().catch(() => {});
     this.invalidateMemos();
     this.notify();
-
-    // 2. Perform background cloud sync with a strict 3s timeout so UI never hangs
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const syncPromise = this.syncFromSupabase(normBId);
-        const timeoutPromise = new Promise(resolve => setTimeout(resolve, 3000));
-        await Promise.race([syncPromise, timeoutPromise]);
-      } catch (e) {
-        console.warn('Sync check error on app refresh:', e);
-      }
-      this.invalidateMemos();
-      this.notify();
-    }
   }
 
   public async saveAllLocalDataAndRefreshFromDatabase(businessId?: string) {

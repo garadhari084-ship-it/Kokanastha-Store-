@@ -95,10 +95,10 @@ export async function testSupabaseConnection(url: string, key: string): Promise<
       auth: { persistSession: false }
     });
     
-    // Attempt a lightweight fetch from supabase with a timeout
+    // Attempt a lightweight fetch from supabase with a fast 2-second timeout
     const testPromise = client.from('businesses').select('id').limit(1);
     const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-      setTimeout(() => reject(new Error('Connection timed out after 8 seconds. The database did not accept a usable connection or is paused.')), 8000)
+      setTimeout(() => reject(new Error('Connection timed out after 2 seconds. The database did not accept a usable connection or is paused.')), 2000)
     );
 
     const { error } = await Promise.race([testPromise, timeoutPromise]) as any;

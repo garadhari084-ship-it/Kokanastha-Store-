@@ -256,7 +256,7 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [syncTick, setSyncTick] = useState(0);
 
-  const [dbConnected, setDbConnected] = useState(true);
+  const [dbConnected, setDbConnected] = useState<boolean>(() => isSupabaseConfigured);
   const [dbErrorDetail, setDbErrorDetail] = useState<{ isUnusable: boolean; message: string; projectRef: string } | null>(null);
   const [appErrors, setAppErrors] = useState<AppErrorDetail[]>([]);
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -718,30 +718,24 @@ export default function App() {
 
   const [isRefreshingData, setIsRefreshingData] = useState(false);
 
-  // Fast, instant app refresh (immediate UI sync + brief 450ms spinner)
+  // Fast, instant app refresh (immediate UI sync + brief 350ms spinner without querying database)
   const handleRefreshApp = useCallback(async () => {
     if (isRefreshingData) return;
     setIsRefreshingData(true);
     try {
-      // 1. Instant local storage reload and immediate UI refresh in 0ms
-      dbStore.purgeLegacyDummySalesOrders();
-      dbStore.reloadFromLocalStorage();
-      await dbStore.syncWithServer().catch(() => {});
+      // 1. Instant in-memory refresh in 0ms without hitting or hanging the database
+      dbStore.invalidateMemos();
       dbStore.notify();
       setSyncTick(prev => prev + 1);
-
-      // 2. Trigger non-blocking background check
-      dbStore.refreshApp(currentBusiness?.id).catch(() => {});
     } catch (err: any) {
       console.warn('App refresh notice:', err);
     } finally {
-      // 3. Strictly terminate the spinner animation after exactly 450ms
       setTimeout(() => {
         setIsRefreshingData(false);
         triggerToast('App refreshed successfully', 'success');
-      }, 450);
+      }, 350);
     }
-  }, [currentBusiness?.id, isRefreshingData, triggerToast]);
+  }, [isRefreshingData, triggerToast]);
 
   const [isSyncingOrdersToDb, setIsSyncingOrdersToDb] = useState(false);
 
@@ -883,15 +877,6 @@ export default function App() {
               setCurrentUser(user);
               setCurrentBusiness(biz);
               setDbMode(mode === 'supabase' ? 'supabase' : 'local');
-
-              if (isSupabaseConfigured && supabase) {
-                dbStore.syncFromSupabase(biz.id).then(() => {
-                  setSyncTick(prev => prev + 1);
-                }).catch(() => {});
-              }
-              dbStore.syncWithServer().then(() => {
-                setSyncTick(prev => prev + 1);
-              }).catch(() => {});
             }
           } catch (e) {
             console.error("Instant session parse error:", e);
@@ -919,9 +904,6 @@ export default function App() {
         }
 
         if (isSupabaseConfigured && supabase) {
-          // Sync businesses table in background so logo and cover images load without blocking UI mount
-          dbStore.syncFromSupabase(undefined, 'businesses').catch(() => {});
-
           // Try supabase session with strict timeout to avoid blocking page load
           try {
             const sessionPromise = supabase.auth.getSession();
@@ -949,11 +931,6 @@ export default function App() {
                 const biz = dbStore.getBusiness(dbProfile.business_id);
                 setCurrentBusiness(biz);
                 setDbMode('supabase');
-                
-                // Fetch rest of tables in background so UI remains perfectly responsive and fast
-                dbStore.syncFromSupabase(dbProfile.business_id).then(() => {
-                  setSyncTick(prev => prev + 1);
-                }).catch(() => {});
                 return;
               }
             }
@@ -979,15 +956,6 @@ export default function App() {
               setCurrentUser(user);
               setCurrentBusiness(biz);
               setDbMode(mode === 'supabase' ? 'supabase' : 'local');
-
-              if (isSupabaseConfigured && supabase) {
-                dbStore.syncFromSupabase(biz.id).then(() => {
-                  setSyncTick(prev => prev + 1);
-                }).catch(() => {});
-              }
-              dbStore.syncWithServer().then(() => {
-                setSyncTick(prev => prev + 1);
-              }).catch(() => {});
             }
           } catch(e) {
             console.error("Error parsing session:", e);
@@ -1042,7 +1010,6 @@ export default function App() {
                       dbStore.patchIncomingRecord('sales', payload.new);
                     }
                   }
-                  await dbStore.syncFromSupabase(businessId, incomingTable);
                   // Force re-render of App to trickle down changes
                   setSyncTick(prev => prev + 1);
                 }
@@ -1092,7 +1059,6 @@ export default function App() {
 
               const pl = payload?.payload || payload;
               const incomingBId = pl?.businessId;
-              const incomingTable = pl?.table;
               const incomingKey = pl?.key;
 
               if (!incomingBId || isSameBusiness(incomingBId, businessId)) {
@@ -1102,9 +1068,6 @@ export default function App() {
                 } else if (pl?.id && incomingKey && pl?.action === 'delete') {
                   dbStore.patchIncomingDelete(incomingKey, pl.id);
                 }
-
-                // Fully sync relational table from Supabase in background
-                await dbStore.syncFromSupabase(businessId, incomingTable);
                 setSyncTick(prev => prev + 1);
               }
             } catch(e) {}
@@ -1194,24 +1157,6 @@ export default function App() {
         });
     }
 
-    // Live multi-device background polling fallback ensuring order synchronization (every 3 seconds)
-    const liveSyncInterval = setInterval(() => {
-      // 1. Instant sync from backend server cache (<5ms HTTP response)
-      dbStore.syncWithServer().catch(() => {});
-
-      // 2. Relational sync from Supabase if configured and tab is visible
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      const sessionData = safeStorage.getItem('omnipack_session');
-      if (sessionData && isSupabaseConfigured && supabase) {
-        try {
-          const { businessId } = JSON.parse(sessionData);
-          if (businessId) {
-            dbStore.syncFromSupabase(businessId, 'sales_orders').catch(() => {});
-          }
-        } catch(e) {}
-      }
-    }, 3000);
-
     // Cross-tab BroadcastChannel listener for immediate local synchronization
     let localBc: BroadcastChannel | null = null;
     try {
@@ -1224,6 +1169,13 @@ export default function App() {
           setSyncTick(prev => prev + 1);
         } else if (type === 'ORDER_DELETED' && (payload?.order?.id || payload?.order?.order_number)) {
           dbStore.patchIncomingDelete('sales', payload.order.id || payload.order.order_number);
+          setSyncTick(prev => prev + 1);
+        } else if (type === 'ENTITY_CHANGED' && payload?.key) {
+          if (payload.action === 'upsert' && payload.record) {
+            dbStore.patchIncomingRecord(payload.key, payload.record);
+          } else if (payload.action === 'delete' && payload.id) {
+            dbStore.patchIncomingDelete(payload.key, payload.id);
+          }
           setSyncTick(prev => prev + 1);
         }
         if (type === 'FORCE_LOGOUT' || type === 'FORCE_LOGOUT_ALL') {
@@ -1264,7 +1216,6 @@ export default function App() {
         }
       });
       return () => {
-        clearInterval(liveSyncInterval);
         subscription.unsubscribe();
         if (realtimeChannel) {
           supabase.removeChannel(realtimeChannel);
@@ -1277,7 +1228,6 @@ export default function App() {
     }
 
     return () => {
-      clearInterval(liveSyncInterval);
       if (localBc) {
         localBc.close();
       }
@@ -1364,13 +1314,10 @@ export default function App() {
         setActiveView('dashboard');
         triggerToast(`Welcome back, ${localResult.user.name}!`, 'success');
 
-        // Silent non-blocking background sync if Supabase is active
+        // Silent non-blocking background sign-in if Supabase is active
         if (isSupabaseConfigured && supabase) {
           supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword })
             .catch(() => {});
-          dbStore.syncFromSupabase(localResult.business.id).then(() => {
-            setSyncTick(prev => prev + 1);
-          }).catch(() => {});
         }
         return;
       }
@@ -1439,10 +1386,6 @@ export default function App() {
                 dbStore.broadcastForceLogout(userObj.id, newSessionToken, deviceId);
                 setActiveView('dashboard');
                 triggerToast(`Session Established. Welcome, ${userObj.name}!`, 'success');
-
-                dbStore.syncFromSupabase(biz.id).then(() => {
-                  setSyncTick(prev => prev + 1);
-                }).catch(() => {});
                 return;
               }
             } catch (_) {}
@@ -1534,10 +1477,6 @@ export default function App() {
 
             setActiveView('dashboard');
             triggerToast(`Supabase Cloud Session Established. Welcome, ${profile.name}!`, 'success');
-
-            dbStore.syncFromSupabase(profile.business_id).then(() => {
-              setSyncTick(prev => prev + 1);
-            }).catch(() => {});
             return;
           }
         } catch (sbErr: any) {
@@ -3011,71 +2950,33 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2.5 relative header-dropdown-container">
-            {/* Database Connect Status Button */}
-            <button
-              onClick={() => setShowDbConfigModal(true)}
-              className={`px-2 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
+            {/* Database Connect Status Label (Non-clickable) */}
+            <div
+              className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 shadow-2xs select-none ${
                 dbConnected && isSupabaseConfigured
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
-                  : dbErrorDetail?.isUnusable
-                  ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40 animate-pulse'
-                  : 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 animate-pulse'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                  : 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-300'
               }`}
               title={
                 dbConnected && isSupabaseConfigured 
-                  ? "Connected to Supabase Cloud Database. Click to view configuration." 
-                  : dbErrorDetail?.isUnusable 
-                  ? "Database Not Usable: PostgreSQL database is paused or sleeping. Click to restart." 
-                  : "Click to connect Supabase database"
+                  ? "Database Connected" 
+                  : "Database Disconnected"
               }
             >
-              {dbErrorDetail?.isUnusable ? (
-                <AlertTriangle size={15} className="text-rose-600 dark:text-rose-400 shrink-0" />
-              ) : (
-                <Database size={15} className={dbConnected && isSupabaseConfigured ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"} />
-              )}
+              <Database size={15} className={dbConnected && isSupabaseConfigured ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"} />
               <span className="hidden sm:inline">
-                {dbConnected && isSupabaseConfigured 
-                  ? 'DB Connected' 
-                  : dbErrorDetail?.isUnusable 
-                  ? 'DB Not Usable' 
-                  : 'Connect DB'}
+                {dbConnected && isSupabaseConfigured ? 'DB Connected' : 'DB Disconnected'}
               </span>
               <span className="sm:hidden">
-                {dbConnected && isSupabaseConfigured 
-                  ? 'DB' 
-                  : dbErrorDetail?.isUnusable 
-                  ? 'DB Error' 
-                  : 'Connect'}
+                {dbConnected && isSupabaseConfigured ? 'Connected' : 'Disconnected'}
               </span>
               <span className={`w-2 h-2 rounded-full shrink-0 ${
                 dbConnected && isSupabaseConfigured 
                   ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50' 
-                  : dbErrorDetail?.isUnusable
-                  ? 'bg-rose-500 shadow-xs shadow-rose-500/50'
-                  : 'bg-amber-500 shadow-xs shadow-amber-500/50'
+                  : 'bg-rose-500 shadow-xs shadow-rose-500/50'
               }`} />
-            </button>
+            </div>
 
-            {/* Sync All Orders to Database Button */}
-            <button
-              onClick={handleSyncOrdersToDatabase}
-              disabled={isSyncingOrdersToDb}
-              className="px-2 sm:px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
-              title="Push and sync all sales orders directly to Supabase cloud database"
-            >
-              {isSyncingOrdersToDb ? (
-                <Loader2 size={15} className="animate-spin text-indigo-600 dark:text-indigo-400 shrink-0" />
-              ) : (
-                <UploadCloud size={15} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
-              )}
-              <span className="hidden md:inline">
-                {isSyncingOrdersToDb ? 'Syncing Orders...' : 'Sync Orders to DB'}
-              </span>
-              <span className="md:hidden">
-                {isSyncingOrdersToDb ? 'Syncing' : 'Sync Orders'}
-              </span>
-            </button>
 
             {/* Refresh App Icon Button */}
             <button 

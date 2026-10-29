@@ -1460,10 +1460,10 @@ class ERPStorage {
         }
       });
 
-      // Periodic 4-second polling to ensure all devices and user IDs stay updated in real time
+      // Periodic 2-second polling to ensure all devices and user IDs stay updated in real time
       setInterval(() => {
         this.syncWithServer().catch(() => {});
-      }, 4000);
+      }, 2000);
     }
   }
 
@@ -1647,80 +1647,103 @@ class ERPStorage {
     let ordersCount = 0;
     let usersCount = 0;
 
-    // 1. Sync all orders from server
+    // 1. Sync all orders from server and Supabase
     try {
-      const res = await fetch('/api/orders');
-      if (res.ok) {
-        const serverOrders = await res.json();
-        if (Array.isArray(serverOrders) && serverOrders.length > 0) {
-          ordersCount = serverOrders.length;
-          const localOrders = Array.isArray(this.cache.sales) ? this.cache.sales : [];
-          const deletedSalesSet = this.getDeletedSalesOrderIds();
-          
-          const orderMap = new Map<string, SalesOrder>();
-          
-          // First add server orders (tag as is_live_order)
-          serverOrders.forEach((so: any) => {
-            if (so && (so.order_number || so.id)) {
-              if (deletedSalesSet.has(so.id) || (so.order_number && deletedSalesSet.has(so.order_number))) {
-                return;
-              }
-              const liveSO: SalesOrder = {
-                ...so,
-                is_live_order: true,
-                items: Array.isArray(so.items) ? so.items : []
-              };
-              const key = String(liveSO.order_number || liveSO.id).trim().toLowerCase();
-              orderMap.set(key, liveSO);
-              if (liveSO.id) orderMap.set(String(liveSO.id).trim().toLowerCase(), liveSO);
-            }
-          });
+      const serverOrdersRes = await fetch('/api/orders').catch(() => null);
+      const serverOrders = (serverOrdersRes && serverOrdersRes.ok) ? await serverOrdersRes.json().catch(() => []) : [];
+      
+      const localOrders = Array.isArray(this.cache.sales) ? this.cache.sales : [];
+      const deletedSalesSet = this.getDeletedSalesOrderIds();
+      const purgedSet = this.getPurgedDummyIdSet();
+      
+      const orderMap = new Map<string, SalesOrder>();
 
-          // Merge local orders that might be newly created or updated
-          localOrders.forEach((locSO: SalesOrder) => {
-            if (locSO && (locSO.order_number || locSO.id)) {
-              if (deletedSalesSet.has(locSO.id) || (locSO.order_number && deletedSalesSet.has(locSO.order_number))) {
-                return;
-              }
-              const numKey = String(locSO.order_number || '').trim().toLowerCase();
-              const idKey = String(locSO.id || '').trim().toLowerCase();
-              const existingServer = (numKey ? orderMap.get(numKey) : undefined) || (idKey ? orderMap.get(idKey) : undefined);
-              
-              if (existingServer) {
-                const isLocalNewer = Boolean(locSO.updated_at && existingServer.updated_at && (new Date(locSO.updated_at).getTime() > new Date(existingServer.updated_at).getTime()));
-                const merged = isLocalNewer ? { ...existingServer, ...locSO } : { ...locSO, ...existingServer };
-                merged.is_live_order = true;
-                if (numKey) orderMap.set(numKey, merged);
-                if (idKey) orderMap.set(idKey, merged);
-              } else if (this.pendingUploads.has(locSO.id)) {
-                if (numKey) orderMap.set(numKey, locSO);
-                if (idKey) orderMap.set(idKey, locSO);
-                this.syncOrderToPublicServer(locSO);
-              }
-            }
-          });
+      const addOrMergeOrder = (so: any) => {
+        if (!so || (!so.order_number && !so.id)) return;
+        if (deletedSalesSet.has(so.id) || (so.order_number && deletedSalesSet.has(so.order_number))) return;
+        if (isLegacyDummySalesOrder(so, purgedSet)) return;
 
-          const uniqueMerged = dedupeSalesOrders(Array.from(new Set(orderMap.values())));
-          const getExactOrderTimeMs = (o: any) => {
-            if (!o) return 0;
-            if (o.created_at) {
-              const t = new Date(o.created_at).getTime();
-              if (!isNaN(t) && t > 0) return t;
-            }
-            if (o.updated_at) {
-              const t = new Date(o.updated_at).getTime();
-              if (!isNaN(t) && t > 0) return t;
-            }
-            return parseOrderDateMs(o.order_date) || 0;
-          };
-          uniqueMerged.sort((a, b) => getExactOrderTimeMs(b) - getExactOrderTimeMs(a));
-
-          this.cache.sales = uniqueMerged;
-          safeStorage.setItem('omnipack_erp_sales', JSON.stringify(uniqueMerged));
-          this.invalidateMemos();
-          this.notify();
+        let parsedItems = so.items;
+        if (typeof parsedItems === 'string') {
+          try { parsedItems = JSON.parse(parsedItems); } catch (_) { parsedItems = []; }
         }
+        if (!Array.isArray(parsedItems)) parsedItems = [];
+
+        const liveSO: SalesOrder = {
+          ...so,
+          is_live_order: true,
+          items: parsedItems
+        };
+
+        const numKey = liveSO.order_number ? String(liveSO.order_number).trim().toLowerCase() : '';
+        const idKey = liveSO.id ? String(liveSO.id).trim().toLowerCase() : '';
+        const existing = (numKey ? orderMap.get(numKey) : undefined) || (idKey ? orderMap.get(idKey) : undefined);
+
+        if (existing) {
+          const isLocalNewer = Boolean(liveSO.updated_at && existing.updated_at && (new Date(liveSO.updated_at).getTime() > new Date(existing.updated_at).getTime()));
+          const merged = isLocalNewer ? { ...existing, ...liveSO } : { ...liveSO, ...existing };
+          merged.is_live_order = true;
+          if (!merged.items || merged.items.length === 0) {
+            merged.items = (existing.items && existing.items.length > 0) ? existing.items : liveSO.items;
+          }
+          if (numKey) orderMap.set(numKey, merged);
+          if (idKey) orderMap.set(idKey, merged);
+        } else {
+          if (numKey) orderMap.set(numKey, liveSO);
+          if (idKey) orderMap.set(idKey, liveSO);
+        }
+      };
+
+      // A. Merge Express server orders
+      if (Array.isArray(serverOrders)) {
+        serverOrders.forEach(addOrMergeOrder);
       }
+
+      // B. If Supabase configured, merge Supabase sales_orders
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const sbPromise = supabase.from('sales_orders').select('*').order('created_at', { ascending: false }).limit(200);
+          const sbTimeout = new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Supabase fetch timeout')), 3000));
+          const sbRes = await Promise.race([sbPromise, sbTimeout]);
+          if (sbRes && sbRes.data && Array.isArray(sbRes.data)) {
+            sbRes.data.forEach(addOrMergeOrder);
+          }
+        } catch (_) {}
+      }
+
+      // C. Retain local orders created on this device
+      localOrders.forEach(locSO => {
+        addOrMergeOrder(locSO);
+        if (locSO && locSO.id && this.pendingUploads.has(locSO.id)) {
+          this.syncOrderToPublicServer(locSO);
+        }
+      });
+
+      const uniqueMerged = dedupeSalesOrders(Array.from(new Set(orderMap.values())));
+      const getExactOrderTimeMs = (o: any) => {
+        if (!o) return 0;
+        if (o.created_at) {
+          const t = new Date(o.created_at).getTime();
+          if (!isNaN(t) && t > 0) return t;
+        }
+        if (o.updated_at) {
+          const t = new Date(o.updated_at).getTime();
+          if (!isNaN(t) && t > 0) return t;
+        }
+        return parseOrderDateMs(o.order_date) || 0;
+      };
+      uniqueMerged.sort((a, b) => getExactOrderTimeMs(b) - getExactOrderTimeMs(a));
+
+      const prevSig = (this.cache.sales || []).map(s => `${s.id}_${s.status}_${s.total_amount}_${s.paid_amount}`).join('|');
+      const newSig = uniqueMerged.map(s => `${s.id}_${s.status}_${s.total_amount}_${s.paid_amount}`).join('|');
+
+      if (prevSig !== newSig || (this.cache.sales || []).length !== uniqueMerged.length) {
+        this.cache.sales = uniqueMerged;
+        safeStorage.setItem('omnipack_erp_sales', JSON.stringify(uniqueMerged));
+        this.invalidateMemos();
+        this.notify();
+      }
+      ordersCount = uniqueMerged.length;
     } catch (e) {
       console.warn("Could not sync orders from server:", e);
     }

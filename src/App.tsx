@@ -263,33 +263,38 @@ export default function App() {
   const [showSessionSupersededModal, setShowSessionSupersededModal] = useState(false);
 
   useEffect(() => {
-    // 1. Check database connection
-    if (isSupabaseConfigured) {
-      testSupabaseConnection(supabaseUrl, supabaseAnonKey)
-        .then(res => {
-          setDbConnected(res.success);
-          if (!res.success) {
+    // 1. Check database connection function
+    const checkConn = () => {
+      if (isSupabaseConfigured) {
+        testSupabaseConnection(supabaseUrl, supabaseAnonKey)
+          .then(res => {
+            setDbConnected(res.success);
+            if (!res.success) {
+              setDbErrorDetail({
+                isUnusable: !!res.isDatabaseNotUsable,
+                message: res.error || 'Connection failed',
+                projectRef: res.projectRef || getSupabaseProjectRef()
+              });
+            } else {
+              setDbErrorDetail(null);
+            }
+          })
+          .catch(err => {
+            setDbConnected(false);
             setDbErrorDetail({
-              isUnusable: !!res.isDatabaseNotUsable,
-              message: res.error || 'Connection failed',
-              projectRef: res.projectRef || getSupabaseProjectRef()
+              isUnusable: true,
+              message: err?.message || 'Database not usable',
+              projectRef: getSupabaseProjectRef()
             });
-          } else {
-            setDbErrorDetail(null);
-          }
-        })
-        .catch(err => {
-          setDbConnected(false);
-          setDbErrorDetail({
-            isUnusable: true,
-            message: err?.message || 'Database not usable',
-            projectRef: getSupabaseProjectRef()
           });
-        });
-    } else {
-      setDbConnected(true); // Local storage DB is always connected
-      setDbErrorDetail(null);
-    }
+      } else {
+        setDbConnected(true); // Local storage DB is always connected
+        setDbErrorDetail(null);
+      }
+    };
+
+    checkConn();
+    const connInterval = setInterval(checkConn, 5000);
 
     // 2. Add global error listeners to catch and count runtime errors with details
     // Ignore development-specific environment errors such as Vite HMR / WebSocket client connection disconnects
@@ -361,6 +366,7 @@ export default function App() {
     window.addEventListener('supabase-db-error', handleDbErrorEvent);
 
     return () => {
+      clearInterval(connInterval);
       window.removeEventListener('error', handleError);
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
       window.removeEventListener('supabase-db-error', handleDbErrorEvent);
@@ -988,33 +994,27 @@ export default function App() {
           { event: '*', schema: 'public' },
           async (payload: any) => {
             console.log('Realtime update received:', payload);
-            const sessionData = safeStorage.getItem('omnipack_session');
-            if (sessionData) {
-              try {
-                const { businessId } = JSON.parse(sessionData);
-                if (businessId) {
-                  const incomingTable = payload?.table || payload?.payload?.table;
-                  if (incomingTable === 'products' && payload?.new) {
-                    const rec = { ...payload.new };
-                    const exp = (rec.id ? dbStore.getLocalStockExpectation(rec.id) : undefined) ||
-                                (rec.sku ? dbStore.getLocalStockExpectation(rec.sku) : undefined);
-                    if (exp && rec.current_stock !== exp.expectedStock) {
-                      rec.current_stock = exp.expectedStock;
-                    }
-                    dbStore.patchIncomingRecord('products', rec);
-                  }
-                  if (incomingTable === 'sales_orders') {
-                    if (payload.eventType === 'DELETE' && (payload.old?.id || payload.old?.order_number)) {
-                      dbStore.patchIncomingDelete('sales', payload.old.id || payload.old.order_number);
-                    } else if (payload?.new) {
-                      dbStore.patchIncomingRecord('sales', payload.new);
-                    }
-                  }
-                  // Force re-render of App to trickle down changes
-                  setSyncTick(prev => prev + 1);
+            try {
+              const incomingTable = payload?.table || payload?.payload?.table;
+              if (incomingTable === 'products' && payload?.new) {
+                const rec = { ...payload.new };
+                const exp = (rec.id ? dbStore.getLocalStockExpectation(rec.id) : undefined) ||
+                            (rec.sku ? dbStore.getLocalStockExpectation(rec.sku) : undefined);
+                if (exp && rec.current_stock !== exp.expectedStock) {
+                  rec.current_stock = exp.expectedStock;
                 }
-              } catch(e) {}
-            }
+                dbStore.patchIncomingRecord('products', rec);
+              }
+              if (incomingTable === 'sales_orders') {
+                if (payload.eventType === 'DELETE' && (payload.old?.id || payload.old?.order_number)) {
+                  dbStore.patchIncomingDelete('sales', payload.old.id || payload.old.order_number);
+                } else if (payload?.new) {
+                  dbStore.patchIncomingRecord('sales', payload.new);
+                }
+              }
+              setSyncTick(prev => prev + 1);
+              dbStore.syncWithServer().catch(() => {});
+            } catch (e) {}
           }
         )
         .on(
@@ -1026,6 +1026,7 @@ export default function App() {
               console.log('[Realtime] Live order created by another user:', ord.order_number);
               dbStore.patchIncomingRecord('sales', ord);
               setSyncTick(prev => prev + 1);
+              dbStore.syncWithServer().catch(() => {});
             }
           }
         )
@@ -1039,6 +1040,7 @@ export default function App() {
               console.log('[Realtime] Live order deleted by another user:', targetId);
               dbStore.patchIncomingDelete('sales', targetId);
               setSyncTick(prev => prev + 1);
+              dbStore.syncWithServer().catch(() => {});
             }
           }
         )
@@ -1048,29 +1050,19 @@ export default function App() {
           async (payload: any) => {
             console.log('Sync update broadcast received live:', payload);
             try {
-              let businessId = currentBusiness?.id || 'b1111111-1111-1111-1111-111111111111';
-              const sessionData = safeStorage.getItem('omnipack_session');
-              if (sessionData) {
-                try {
-                  const parsed = JSON.parse(sessionData);
-                  if (parsed.businessId) businessId = parsed.businessId;
-                } catch (_) {}
-              }
-
               const pl = payload?.payload || payload;
-              const incomingBId = pl?.businessId;
               const incomingKey = pl?.key;
 
-              if (!incomingBId || isSameBusiness(incomingBId, businessId)) {
-                // Direct 0ms in-memory cache update for instantaneous display
-                if (pl?.record && incomingKey && pl?.action === 'upsert') {
+              if (incomingKey) {
+                if (pl?.record && pl?.action === 'upsert') {
                   dbStore.patchIncomingRecord(incomingKey, pl.record);
-                } else if (pl?.id && incomingKey && pl?.action === 'delete') {
+                } else if (pl?.id && pl?.action === 'delete') {
                   dbStore.patchIncomingDelete(incomingKey, pl.id);
                 }
                 setSyncTick(prev => prev + 1);
+                dbStore.syncWithServer().catch(() => {});
               }
-            } catch(e) {}
+            } catch (e) {}
           }
         )
         .on(
